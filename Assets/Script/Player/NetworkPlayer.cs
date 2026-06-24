@@ -1,10 +1,12 @@
+using System.Collections.Generic;
 using UnityEngine;
 using Mirror;
 using TMPro;
 
 public class NetworkPlayer : NetworkBehaviour
 {
-    public static NetworkPlayer LocalPlayer { get; private set; }
+    public static NetworkPlayer Local { get; private set; }
+    public static NetworkPlayer Remote { get; private set; }
 
     [Header("基础属性")]
     public int maxHealth = 20;
@@ -17,15 +19,12 @@ public class NetworkPlayer : NetworkBehaviour
     [SyncVar(hook = nameof(OnEnergyChanged))]
     public int currentEnergy;
 
-    [SyncVar]
-    public int currentHandCount;
-
     [Header("手牌")]
     public Transform handArea;
     public HandManager handManager;
     public GameObject cardPrefab2D;
     public GameObject spellCardPrefab2D;
-    public SyncList<CardSyncData> syncedHandCards = new SyncList<CardSyncData>();
+    public List<GameObject> handCards = new List<GameObject>();
 
     [Header("UI")]
     public TextMeshProUGUI healthText;
@@ -33,25 +32,36 @@ public class NetworkPlayer : NetworkBehaviour
 
     public override void OnStartLocalPlayer()
     {
-        LocalPlayer = this;
+        Debug.Log($"OnStartLocalPlayer: netId={netId}, isServer={isServer}");
+        Local = this;
         currentHealth = maxHealth;
         currentEnergy = 0;
+        UpdateUI();
+        // 动态绑定本地玩家UI
+        healthText = GameObject.Find("Health")?.GetComponent<TextMeshProUGUI>();
+        energyText = GameObject.Find("Energy")?.GetComponent<TextMeshProUGUI>();
+        handArea = GameObject.Find("HandArea")?.transform;
 
-        // 只启用本地玩家的交互
-        EnableLocalInteraction(true);
+        UpdateUI();
     }
-    // 快捷访问：本地玩家（等同于原来的 Player.Instance）
-    public static NetworkPlayer Local { get; private set; }
-
-    // 快捷访问：远程玩家（等同于原来的 EnemyPlayer.Instance）
-    public static NetworkPlayer Remote { get; private set; }
-
-    
-    // 在 NetworkManager 中，当另一个玩家连接时设置 Remote
-    public static void SetRemote(NetworkPlayer remotePlayer)
+    void OnGUI()
     {
-        Remote = remotePlayer;
+        GUI.Label(new Rect(10, 10, 400, 30), $"Server active: {NetworkServer.active}, connections: {NetworkServer.connections.Count}");
+        GUI.Label(new Rect(10, 40, 400, 30), $"Client active: {NetworkClient.active}, connected: {NetworkClient.isConnected}");
     }
+    public override void OnStartServer()
+    {
+        base.OnStartServer();
+        foreach (var conn in NetworkServer.connections.Values)
+        {
+            var player = conn.identity?.GetComponent<NetworkPlayer>();
+            if (player != null && player != this)
+            {
+                NetworkPlayer.Remote = player;
+            }
+        }
+    }
+
     public override void OnStartClient()
     {
         UpdateUI();
@@ -59,7 +69,6 @@ public class NetworkPlayer : NetworkBehaviour
 
     void EnableLocalInteraction(bool enabled)
     {
-        // 手牌拖拽、按钮等由本地控制
         if (handManager != null)
             handManager.SetHandAreaRaycast(enabled);
     }
@@ -67,7 +76,7 @@ public class NetworkPlayer : NetworkBehaviour
     void OnHealthChanged(int oldValue, int newValue)
     {
         UpdateUI();
-        if (newValue <= 0)
+        if (newValue <= 0 && isServer)
             Debug.Log("玩家死亡");
     }
 
@@ -75,6 +84,72 @@ public class NetworkPlayer : NetworkBehaviour
     {
         UpdateUI();
     }
+
+    // ========== 生命值 ==========
+
+    public void TakeDamage(int amount)
+    {
+        if (isServer)
+            currentHealth -= amount;
+        else
+            CmdTakeDamage(amount);
+    }
+
+    [Command]
+    void CmdTakeDamage(int amount)
+    {
+        currentHealth -= amount;
+    }
+
+    public void Heal(int amount)
+    {
+        if (isServer)
+            currentHealth = Mathf.Min(maxHealth, currentHealth + amount);
+        else
+            CmdHeal(amount);
+    }
+
+    [Command]
+    void CmdHeal(int amount)
+    {
+        currentHealth = Mathf.Min(maxHealth, currentHealth + amount);
+    }
+
+    // ========== 能量 ==========
+
+    public void AddEnergy(int amount)
+    {
+        if (isServer)
+            currentEnergy = Mathf.Min(maxEnergy, currentEnergy + amount);
+        else
+            CmdAddEnergy(amount);
+    }
+
+    [Command]
+    void CmdAddEnergy(int amount)
+    {
+        currentEnergy = Mathf.Min(maxEnergy, currentEnergy + amount);
+    }
+
+    public bool UseEnergy(int amount)
+    {
+        if (currentEnergy >= amount)
+        {
+            CmdUseEnergy(amount);
+            return true;
+        }
+        return false;
+    }
+
+    [Command]
+    void CmdUseEnergy(int amount)
+    {
+        currentEnergy -= amount;
+    }
+
+    public int GetEnergy() => currentEnergy;
+
+    // ========== UI ==========
 
     public void UpdateUI()
     {
@@ -84,69 +159,218 @@ public class NetworkPlayer : NetworkBehaviour
             energyText.text = isLocalPlayer ? $" {currentEnergy}/{maxEnergy}" : $"{currentEnergy}/{maxEnergy}";
     }
 
-    [Command]
-    public void CmdTakeDamage(int amount)
+    // ========== 抽牌 ==========
+
+    public void DrawCard()
     {
-        currentHealth -= amount;
+        handCards.RemoveAll(c => c == null);
+
+        DrawCardUI drawUI = FindObjectOfType<DrawCardUI>();
+        if (drawUI != null && drawUI.GetRemainingDraws() <= 0)
+        {
+            Debug.Log("本回合抽牌次数已用完");
+            return;
+        }
+
+        if (handCards.Count >= maxHandSize)
+        {
+            Debug.Log("手牌已满");
+            return;
+        }
+
+        CardData data = DeckManager.Instance?.DrawFromMain();
+        if (data == null)
+        {
+            Debug.Log("牌库为空");
+            return;
+        }
+
+        GameObject prefab = data.cardType == CardType.Spell ? spellCardPrefab2D : cardPrefab2D;
+        GameObject card = Instantiate(prefab, handArea);
+        CardInstance instance = card.GetComponent<CardInstance>();
+        if (instance != null)
+            instance.InitFromTemplate(data, GetCopyIndex(data.templateID));
+
+        CardDisplay2D display = card.GetComponent<CardDisplay2D>();
+        display.RefreshWithInstance(instance);
+
+        handCards.Add(card);
+        CardView cv = card.GetComponent<CardView>();
+        if (cv != null)
+        {
+            cv.handManager = handManager;
+            handManager?.RegisterCard(cv);
+        }
+
+        Debug.Log($"抽牌成功，当前手牌数：{handCards.Count}");
     }
 
-    [Command]
-    public void CmdHeal(int amount)
+    public void DrawCardWithoutLimit()
     {
-        currentHealth = Mathf.Min(maxHealth, currentHealth + amount);
+        handCards.RemoveAll(c => c == null);
+
+        if (handCards.Count >= maxHandSize)
+        {
+            Debug.Log("手牌已满");
+            return;
+        }
+
+        CardData data = DeckManager.Instance?.DrawFromMain();
+        if (data == null)
+        {
+            Debug.Log("牌库为空");
+            return;
+        }
+
+        GameObject prefab = data.cardType == CardType.Spell ? spellCardPrefab2D : cardPrefab2D;
+        GameObject card = Instantiate(prefab, handArea);
+        CardInstance instance = card.GetComponent<CardInstance>();
+        if (instance != null)
+            instance.InitFromTemplate(data, GetCopyIndex(data.templateID));
+
+        CardDisplay2D display = card.GetComponent<CardDisplay2D>();
+        display.RefreshWithInstance(instance);
+
+        handCards.Add(card);
+        CardView cv = card.GetComponent<CardView>();
+        if (cv != null)
+        {
+            cv.handManager = handManager;
+            handManager?.RegisterCard(cv);
+        }
     }
 
-    [Command]
-    public void CmdAddEnergy(int amount)
+    int GetCopyIndex(string templateID)
     {
-        currentEnergy = Mathf.Min(maxEnergy, currentEnergy + amount);
+        handCards.RemoveAll(card => card == null);
+        int count = 0;
+        foreach (var card in handCards)
+        {
+            CardInstance ci = card.GetComponent<CardInstance>();
+            if (ci != null && ci.templateID == templateID)
+                count++;
+        }
+        return count;
     }
 
-    [Command]
-    public void CmdUseEnergy(int amount)
+    public void RemoveCardFromHand(GameObject card)
     {
-        currentEnergy -= amount;
+        if (handCards.Contains(card))
+        {
+            handCards.Remove(card);
+            Destroy(card);
+            handCards.RemoveAll(c => c == null);
+            FindObjectOfType<HandManager>()?.RefreshLayout(true);
+        }
     }
 
-    [Command]
-    public void CmdDrawCard(string templateID, int copyIndex)
+    public void AddCardToHand(CardData template)
     {
-        // 服务器验证抽牌合法性
-        currentHandCount++;
-        RpcOnCardDrawn(templateID, copyIndex);
+        if (handCards.Count >= maxHandSize) return;
+
+        GameObject prefab = template.cardType == CardType.Spell ? spellCardPrefab2D : cardPrefab2D;
+        GameObject card = Instantiate(prefab, handArea);
+
+        CardInstance inst = card.GetComponent<CardInstance>();
+        if (inst == null)
+            inst = card.AddComponent<CardInstance>();
+        inst.InitFromTemplate(template, 0);
+
+        CardDisplay2D display = card.GetComponent<CardDisplay2D>();
+        if (display != null) display.RefreshWithInstance(inst);
+
+        handCards.Add(card);
+
+        CardView cv = card.GetComponent<CardView>();
+        if (cv != null)
+        {
+            cv.handManager = handManager;
+            handManager?.RegisterCard(cv);
+        }
     }
 
-    [ClientRpc]
-    void RpcOnCardDrawn(string templateID, int copyIndex)
+    public void AddCardToHandFromInstance(CardData template, CardInstance oldInstance, bool isEnemy = false)
     {
-        if (isLocalPlayer) return;
-        // 远程玩家看到对方抽牌动画（不暴露手牌内容）
+        if (isEnemy && Remote == null) return;
+        if (!isEnemy && Local == null) return;
+
+        int maxSize = isEnemy ? Remote.maxHandSize : Local.maxHandSize;
+        Transform targetHandArea = isEnemy ? Remote.handArea : Local.handArea;
+        GameObject prefab = isEnemy ? Remote.cardPrefab2D : cardPrefab2D;
+
+        if (!isEnemy && handCards.Count >= maxSize) return;
+
+        GameObject card = Instantiate(prefab, targetHandArea);
+        CardInstance inst = card.GetComponent<CardInstance>();
+        if (inst == null) inst = card.AddComponent<CardInstance>();
+
+        inst.CopyFrom(oldInstance);
+        inst.currentAttack = inst.baseAttack;
+        inst.currentHealth = inst.baseHealth;
+        inst.currentMaxHealth = inst.baseMaxHealth;
+        inst.currentTier = inst.baseTier;
+        inst.tempAttackBoost = 0;
+        inst.tempHealthBoost = 0;
+        inst.handledReturnToHand = false;
+
+        if (inst.energyReaperDiscounted && !IsEnergyReaperOnField())
+            inst.energyReaperDiscounted = false;
+        if (inst.templateID == "01524")
+        {
+            inst.scrollCorePhaseCount = 0;
+            inst.currentCost = 0;
+        }
+        if (inst.merchantDiscounted && !IsMerchantOnField())
+        {
+            inst.merchantDiscounted = false;
+            inst.currentCost += 1;
+        }
+        if (inst.isShadow)
+        {
+            Destroy(card);
+            return;
+        }
+
+        CardDisplay2D display = card.GetComponent<CardDisplay2D>();
+        if (display != null) display.RefreshWithInstance(inst);
+
+        if (!isEnemy)
+        {
+            handCards.Add(card);
+            CardView cv = card.GetComponent<CardView>();
+            if (cv != null)
+            {
+                HandManager hm = FindObjectOfType<HandManager>();
+                cv.handManager = hm;
+                hm?.RegisterCard(cv);
+            }
+        }
     }
 
-    [Command]
-    public void CmdPlayCard(string cardInstanceID, int fromSlotID, int targetSlotID)
+    // ========== 辅助方法 ==========
+
+    bool IsMerchantOnField()
     {
-        // 服务器验证并广播
-        RpcOnCardPlayed(cardInstanceID, fromSlotID, targetSlotID);
+        var allAuras = GlobalEventManager.Instance?.GetAllAuras();
+        if (allAuras == null) return false;
+        foreach (var a in allAuras)
+        {
+            if (a is MerchantAura && a.IsActive()) return true;
+        }
+        return false;
     }
 
-    [ClientRpc]
-    void RpcOnCardPlayed(string cardInstanceID, int fromSlotID, int targetSlotID)
+    bool IsEnergyReaperOnField()
     {
-        // 客户端执行卡牌效果
+        var allAuras = GlobalEventManager.Instance?.GetAllAuras();
+        if (allAuras == null) return false;
+        foreach (var a in allAuras)
+        {
+            if (a is EnergyReaperAura && a.IsActive()) return true;
+        }
+        return false;
     }
 
-    [Command]
-    public void CmdEndTurn()
-    {
-        TurnManager.Instance.ServerEndTurn(this);
-    }
-}
-
-// 手牌同步数据结构
-[System.Serializable]
-public struct CardSyncData
-{
-    public string templateID;
-    public string instanceID;
+    public bool IsMerchantOnFieldPublic() => IsMerchantOnField();
+    public bool IsEnergyReaperOnFieldPublic() => IsEnergyReaperOnField();
 }

@@ -759,8 +759,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             case "01108":
                 if (CounterManager.Instance != null && CounterManager.Instance.enemyCounters.Count > 0)
                 {
-                    EnemyPlayer.Instance.currentEnergy -= 1;
-                    EnemyPlayer.Instance.UpdateUI();
+                    NetworkPlayer.Local.currentEnergy -= 1;
+                    NetworkPlayer.Local.UpdateUI();
                 }
                 CleanupAfterPlacement();
                 return;
@@ -3658,7 +3658,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     IEnumerator ThiefActiveExitEffect()
     {
         List<CardInstance> enemyCards = new List<CardInstance>();
-        foreach (GameObject card in EnemyPlayer.Instance.handCards)
+        foreach (GameObject card in NetworkPlayer.Local.handCards)
         {
             if (card == null) continue;
             CardInstance ci = card.GetComponent<CardInstance>();
@@ -3686,7 +3686,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         if (selected != null)
         {
             GameObject toRemove = null;
-            foreach (GameObject card in EnemyPlayer.Instance.handCards)
+            foreach (GameObject card in NetworkPlayer.Local.handCards)
             {
                 CardInstance ci = card?.GetComponent<CardInstance>();
                 if (ci != null && ci.instanceID == selected.instanceID)
@@ -3697,7 +3697,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             }
             if (toRemove != null)
             {
-                EnemyPlayer.Instance.handCards.Remove(toRemove);
+                NetworkPlayer.Local.handCards.Remove(toRemove);
                 CardData template = CardDatabase.Instance?.GetTemplate(selected.templateID);
                 if (template != null)
                     Player.Instance.AddCardToHand(template);
@@ -3713,7 +3713,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         // 收集对方手牌
         List<CardInstance> enemyCards = new List<CardInstance>();
-        foreach (GameObject card in EnemyPlayer.Instance.handCards)
+        foreach (GameObject card in NetworkPlayer.Local.handCards)
         {
             if (card == null) continue;
             CardInstance ci = card.GetComponent<CardInstance>();
@@ -3745,7 +3745,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         // 弃掉所有邪恶法术
         List<GameObject> toRemove = new List<GameObject>();
-        foreach (GameObject card in EnemyPlayer.Instance.handCards)
+        foreach (GameObject card in NetworkPlayer.Local.handCards)
         {
             if (card == null) continue;
             CardInstance ci = card.GetComponent<CardInstance>();
@@ -3759,7 +3759,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         foreach (GameObject card in toRemove)
         {
-            EnemyPlayer.Instance.handCards.Remove(card);
+            NetworkPlayer.Local.handCards.Remove(card);
             Destroy(card);
         }
 

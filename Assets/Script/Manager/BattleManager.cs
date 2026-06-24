@@ -493,7 +493,7 @@ public class BattleManager : MonoBehaviour
                             ti.cardInstance.RemoveShield();
                             ti.cardInstance.poisoned = true;
                             if (ti.cardInstance.summonType == SummonType.ChosenOne)
-                            { EnemyPlayer.Instance.currentEnergy -= 1; EnemyPlayer.Instance.UpdateUI(); }
+                            { NetworkPlayer.Remote.currentEnergy -= 1; NetworkPlayer.Remote.UpdateUI(); }
                         }
                     }
                     poisonDone = true;
@@ -530,7 +530,7 @@ public class BattleManager : MonoBehaviour
             // 万人迷：对手+1能量
             if (ci.templateID == "01314")
             {
-                EnemyPlayer.Instance.AddEnergy(1);
+                NetworkPlayer.Remote.AddEnergy(1);
             }
         }
 
@@ -634,7 +634,7 @@ public class BattleManager : MonoBehaviour
             }
             if (ci.templateID == "03020")
             {
-                EnemyPlayer.Instance.TakeDamage(1);
+                NetworkPlayer.Remote.TakeDamage(1);
             }
             // 修正者赋予的先手：对对方前排造成1伤害
             if (ci.grantedTraitTexts.Exists(t => t.Contains("先手：对对方前排召唤物造成1伤害")))
@@ -676,9 +676,9 @@ public class BattleManager : MonoBehaviour
             if (ci.HasFirstStrike && ci.grantedTraitTexts.Contains("先手：扣己方玩家1生命值"))
             {
                 if (slot.slotID >= 6)
-                    Player.Instance.TakeDamage(1);
+                    NetworkPlayer.Local.TakeDamage(1);
                 else
-                    EnemyPlayer.Instance.TakeDamage(1);
+                    NetworkPlayer.Remote.TakeDamage(1);
             }
         }
 
@@ -952,7 +952,7 @@ public class BattleManager : MonoBehaviour
             if (myInst.templateID == "01531" && targetEnemyInst != null && !myInst._outlawPlayerDamageThisTurn
                 && (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(myInst)))
             {
-                EnemyPlayer.Instance.TakeDamage(2);
+                NetworkPlayer.Remote.TakeDamage(2);
                 myInst._outlawPlayerDamageThisTurn = true;
             }
             if (targetEnemyCard == null)
@@ -1193,11 +1193,11 @@ public class BattleManager : MonoBehaviour
                                 string dragonInstanceID = c3d.cardInstance.instanceID;
                                 if (deadInst.damageSourceInstanceIDs.Contains(dragonInstanceID))
                                 {
-                                    if (EnemyPlayer.Instance != null && EnemyPlayer.Instance.handCards.Count > 0)
+                                    if (NetworkPlayer.Remote != null && NetworkPlayer.Remote.handCards.Count > 0)
                                     {
-                                        int randomIndex = UnityEngine.Random.Range(0, EnemyPlayer.Instance.handCards.Count);
-                                        GameObject card = EnemyPlayer.Instance.handCards[randomIndex];
-                                        EnemyPlayer.Instance.handCards.RemoveAt(randomIndex);
+                                        int randomIndex = UnityEngine.Random.Range(0, NetworkPlayer.Remote.handCards.Count);
+                                        GameObject card = NetworkPlayer.Remote.handCards[randomIndex];
+                                        NetworkPlayer.Remote.handCards.RemoveAt(randomIndex);
                                         Destroy(card);
                                     }
                                 }
@@ -1213,12 +1213,12 @@ public class BattleManager : MonoBehaviour
                     {
                         CardData data = DeckManager.Instance?.DrawFromMain();
                         if (data != null)
-                            EnemyPlayer.Instance.AddCardToHand(data);
+                            NetworkPlayer.Remote.AddCardToHand(data);
                     }
                 }
                 else if (deadInst != null && deadInst.revengeEffect != null && deadInst.revengeEffect.Contains("+1能量"))
                 {
-                    Player.Instance.AddEnergy(1);
+                    NetworkPlayer.Local.AddEnergy(1);
                 }
                 else if (deadInst != null && deadInst.revengeEffect != null && deadInst.revengeEffect.Contains("选定一个格子，该格子上的召唤物临时+0-1（最少为0）并且每阶段开始扣一生命值"))
                 {
@@ -1385,7 +1385,7 @@ public class BattleManager : MonoBehaviour
             {
                 CardData data = DeckManager.Instance?.DrawFromMain();
                 if (data != null)
-                    EnemyPlayer.Instance.AddCardToHand(data);
+                    NetworkPlayer.Remote.AddCardToHand(data);
             }
         }
         else if (effect.Contains("选定一个格子，该格子上的召唤物临时+0-1（最少为0）并且每阶段开始扣一生命值"))
@@ -1415,7 +1415,7 @@ public class BattleManager : MonoBehaviour
         }
         else if (effect.Contains("+1能量"))
         {
-            Player.Instance.AddEnergy(1);
+            NetworkPlayer.Local.AddEnergy(1);
         }
         else
         {
@@ -1478,13 +1478,13 @@ public class BattleManager : MonoBehaviour
         if (pendingDamageToMe > pendingDamageToEnemy)
         {
             int finalDamage = pendingDamageToMe - pendingDamageToEnemy;
-            Player.Instance?.TakeDamage(finalDamage);
+            NetworkPlayer.Local?.TakeDamage(finalDamage);
             Debug.Log($"[战斗] 最终扣血判定 → 我方承受 {finalDamage} 点伤害");
         }
         else if (pendingDamageToEnemy > pendingDamageToMe)
         {
             int finalDamage = pendingDamageToEnemy - pendingDamageToMe;
-            EnemyPlayer.Instance?.TakeDamage(finalDamage);
+            NetworkPlayer.Remote?.TakeDamage(finalDamage);
             Debug.Log($"[战斗] 最终扣血判定 → 敌方承受 {finalDamage} 点伤害");
         }
         else
@@ -1920,7 +1920,7 @@ public class BattleManager : MonoBehaviour
 
             if (targetCI.currentHealth <= 0)
             {
-                EnemyPlayer.Instance.TakeDamage(2);
+                NetworkPlayer.Remote.TakeDamage(2);
             }
         }
     }
@@ -2012,7 +2012,7 @@ public class BattleManager : MonoBehaviour
                 conquerorCI.currentHealth += excessDamage;
             }
             s.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
-            Player.Instance.Heal(1);
+            NetworkPlayer.Local.Heal(1);
             conquerorCI._conquerorPendingCheck = false;
         }
     }

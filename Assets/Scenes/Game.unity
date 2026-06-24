@@ -4992,6 +4992,7 @@ GameObject:
   - component: {fileID: 1276774486}
   - component: {fileID: 1276774488}
   - component: {fileID: 1276774487}
+  - component: {fileID: 1276774489}
   m_Layer: 0
   m_Name: NetworkManager
   m_TagString: Untagged
@@ -5034,7 +5035,7 @@ MonoBehaviour:
   unreliableBaselineRate: 1
   unreliableRedundancy: 0
   transport: {fileID: 1276774488}
-  networkAddress: localhost
+  networkAddress: 127.0.0.1
   maxConnections: 100
   disconnectInactiveConnections: 0
   disconnectInactiveTimeout: 60
@@ -5043,7 +5044,7 @@ MonoBehaviour:
   offlineScene: 
   onlineScene: 
   offlineSceneLoadDelay: 0
-  playerPrefab: {fileID: 0}
+  playerPrefab: {fileID: 6627974864803943667, guid: 273b79bc5eb1d864fafa50441dd57c2b, type: 3}
   autoCreatePlayer: 1
   playerSpawnMethod: 0
   spawnPrefabs: []
@@ -5110,6 +5111,18 @@ MonoBehaviour:
   relayGUI: 1
   userId: 11111111
   sessionId: 22222222
+--- !u!114 &1276774489
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1276774473}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 587c584ba2ae877449e5fb743faf89c3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!1 &1309084825
 GameObject:
   m_ObjectHideFlags: 0

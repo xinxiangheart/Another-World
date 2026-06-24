@@ -1004,4 +1004,12 @@ public class TurnManager : MonoBehaviour
         }
         return null;
     }
+    public void ServerEndTurn(NetworkPlayer player)
+    {
+        
+        if (currentPhase == TurnPhase.MyTurn)
+        {
+            EndCurrentTurn();
+        }
+    }
 }

@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.XR;
-using static UnityEditor.Experimental.GraphView.GraphView;
 
 public class HandManager : MonoBehaviour
 {
