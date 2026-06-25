@@ -5,17 +5,14 @@ using UnityEngine.SceneManagement;
 
 public static class LobbyConfig
 {
-    /// <summary>True if player clicked "Create Room"</summary>
     public static bool IsHost { get; set; }
-    /// <summary>Server IP (for client mode)</summary>
     public static string ServerIP { get; set; } = "127.0.0.1";
-    /// <summary>True if we came from Lobby scene (always true after clicking any Lobby button)</summary>
     public static bool FromLobby { get; set; }
 }
 
 /// <summary>
-/// Lobby is a pure UI scene. It sets LobbyConfig then loads Game.
-/// All networking happens in Game scene via AutoConnect.
+/// Lobby is a pure UI scene. Sets LobbyConfig, then loads Game.
+/// Game scene's AutoConnect reads LobbyConfig and handles all networking.
 /// </summary>
 public class LobbyManager : MonoBehaviour
 {
@@ -43,18 +40,20 @@ public class LobbyManager : MonoBehaviour
         LobbyConfig.FromLobby = true;
         LobbyConfig.IsHost = true;
         LobbyConfig.ServerIP = "127.0.0.1";
-        SetStatus("正在进入房间...");
+        SetStatus("正在进入游戏房间...");
         SceneManager.LoadScene("Game");
     }
 
     public void JoinRoom()
     {
-        string ip = ipInputField != null ? ipInputField.text.Trim() : "127.0.0.1";
-        if (string.IsNullOrEmpty(ip)) ip = "127.0.0.1";
+        string ip = "127.0.0.1";
+        if (ipInputField != null && !string.IsNullOrEmpty(ipInputField.text.Trim()))
+            ip = ipInputField.text.Trim();
+
         LobbyConfig.FromLobby = true;
         LobbyConfig.IsHost = false;
         LobbyConfig.ServerIP = ip;
-        SetStatus("正在加入房间...");
+        SetStatus("正在加入游戏房间...");
         SceneManager.LoadScene("Game");
     }
 

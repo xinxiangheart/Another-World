@@ -25,7 +25,13 @@ public partial class TurnManager : MonoBehaviour
 
     void Start()
     {
-        Debug.Log("=== ÓÎÏ·¿ªÊ¼ ===");
+        // If coming from Lobby, wait for NetworkTurnSync to signal game start
+        if (LobbyConfig.FromLobby)
+        {
+            Debug.Log("[TurnManager] Online mode, waiting for both players...");
+            return;
+        }
+        Debug.Log("=== æ¸¸æˆå¼€å§‹ ===");
         StartCoroutine(InitialDraw());
     }
 

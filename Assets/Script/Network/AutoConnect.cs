@@ -3,6 +3,10 @@ using Mirror;
 using kcp2k;
 using TMPro;
 
+/// <summary>
+/// Reads LobbyConfig, starts Host or Client using Game scene's NetworkManager,
+/// shows waiting overlay, and enables TurnManager when both players are ready.
+/// </summary>
 [DefaultExecutionOrder(-100)]
 public class AutoConnect : MonoBehaviour
 {
@@ -15,98 +19,111 @@ public class AutoConnect : MonoBehaviour
         _turnManager = FindObjectOfType<TurnManager>();
         _turnSync = FindObjectOfType<NetworkTurnSync>();
 
-        // Create waiting overlay
         CreateWaitingUI();
 
-        // Read LobbyConfig
+        if (!LobbyConfig.FromLobby)
+        {
+            // Standalone / Editor manual mode
+            if (_waitingUI != null) _waitingUI.SetActive(false);
+            Debug.Log("[AutoConnect] Standalone mode");
+            return;
+        }
+
+        NetworkClient.OnConnectedEvent += OnConnected;
+        NetworkClient.OnDisconnectedEvent += OnDisconnected;
+
         if (LobbyConfig.IsHost)
         {
-            Debug.Log("[AutoConnect] Starting as Host...");
-            NetworkClient.OnConnectedEvent += OnConnectedToServer;
+            Debug.Log("[AutoConnect] Starting Host...");
             Invoke(nameof(StartAsHost), 0.1f);
-        }
-        else if (LobbyConfig.FromLobby)
-        {
-            Debug.Log("[AutoConnect] Starting as Client, IP=" + LobbyConfig.ServerIP);
-            NetworkClient.OnConnectedEvent += OnConnectedToServer;
-            Invoke(nameof(StartAsClient), 0.1f);
         }
         else
         {
-            // Standalone / Editor manual mode - hide waiting UI
-            Debug.Log("[AutoConnect] Standalone mode");
-            if (_waitingUI != null) _waitingUI.SetActive(false);
+            Debug.Log("[AutoConnect] Starting Client -> " + LobbyConfig.ServerIP);
+            Invoke(nameof(StartAsClient), 0.1f);
         }
     }
 
     void Start()
     {
-        // Disable TurnManager until connected (client) or both ready (host)
-        if (_turnManager != null && (_turnSync == null || !_turnSync.gameStarted))
+        if (LobbyConfig.FromLobby && _turnManager != null)
         {
             _turnManager.enabled = false;
-            Debug.Log("[AutoConnect] TurnManager disabled until game is ready");
+            Debug.Log("[AutoConnect] TurnManager disabled, waiting for both players");
         }
     }
+
+    // ========== Waiting UI ==========
 
     void CreateWaitingUI()
     {
         _waitingUI = new GameObject("NetworkWaiting");
         DontDestroyOnLoad(_waitingUI);
-        Canvas canvas = _waitingUI.AddComponent<Canvas>();
-        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        canvas.sortingOrder = 999;
+        Canvas c = _waitingUI.AddComponent<Canvas>();
+        c.renderMode = RenderMode.ScreenSpaceOverlay;
+        c.sortingOrder = 999;
         _waitingUI.AddComponent<UnityEngine.UI.CanvasScaler>();
         _waitingUI.AddComponent<UnityEngine.UI.GraphicRaycaster>();
 
         GameObject panel = new GameObject("Panel");
         panel.transform.SetParent(_waitingUI.transform, false);
-        var panelImg = panel.AddComponent<UnityEngine.UI.Image>();
-        panelImg.color = new Color(0, 0, 0, 0.85f);
-        var panelRect = panel.GetComponent<RectTransform>();
-        panelRect.anchorMin = Vector2.zero;
-        panelRect.anchorMax = Vector2.one;
-        panelRect.offsetMin = Vector2.zero;
-        panelRect.offsetMax = Vector2.zero;
+        var img = panel.AddComponent<UnityEngine.UI.Image>();
+        img.color = new Color(0, 0, 0, 0.85f);
+        var pr = panel.GetComponent<RectTransform>();
+        pr.anchorMin = Vector2.zero;
+        pr.anchorMax = Vector2.one;
+        pr.offsetMin = Vector2.zero;
+        pr.offsetMax = Vector2.zero;
 
-        GameObject text = new GameObject("Text");
-        text.transform.SetParent(_waitingUI.transform, false);
-        var tmp = text.AddComponent<TextMeshProUGUI>();
+        GameObject txt = new GameObject("Text");
+        txt.transform.SetParent(_waitingUI.transform, false);
+        var tmp = txt.AddComponent<TextMeshProUGUI>();
         tmp.text = "正在连接服务器...";
         tmp.fontSize = 36;
         tmp.color = Color.white;
         tmp.alignment = TextAlignmentOptions.Center;
-        var textRect = text.GetComponent<RectTransform>();
-        textRect.anchorMin = new Vector2(0, 0.4f);
-        textRect.anchorMax = new Vector2(1, 0.6f);
-        textRect.offsetMin = Vector2.zero;
-        textRect.offsetMax = Vector2.zero;
+        TMP_FontAsset font = Resources.Load<TMP_FontAsset>("Fonts & Materials/NotoSansSC SDF");
+        if (font != null) tmp.font = font;
+        var tr = txt.GetComponent<RectTransform>();
+        tr.anchorMin = new Vector2(0, 0.4f);
+        tr.anchorMax = new Vector2(1, 0.6f);
+        tr.offsetMin = Vector2.zero;
+        tr.offsetMax = Vector2.zero;
     }
+
+    void SetText(string msg)
+    {
+        if (_waitingUI == null) return;
+        var tmp = _waitingUI.GetComponentInChildren<TextMeshProUGUI>();
+        if (tmp != null) tmp.text = msg;
+    }
+
+    // ========== Start Network ==========
 
     void StartAsHost()
     {
         NetworkManager nm = FindObjectOfType<NetworkManager>();
-        if (nm == null) { Debug.LogError("[AutoConnect] No NM!"); return; }
+        if (nm == null) { Debug.LogError("[AutoConnect] No NetworkManager!"); return; }
         FixTransport(nm);
         nm.StartHost();
-        SetWaitingText("已创建房间\n等待对手加入...");
+        SetText("已创建房间\n等待对手加入...");
     }
 
     void StartAsClient()
     {
         NetworkManager nm = FindObjectOfType<NetworkManager>();
-        if (nm == null) { Debug.LogError("[AutoConnect] No NM!"); return; }
+        if (nm == null) { Debug.LogError("[AutoConnect] No NetworkManager!"); return; }
         nm.networkAddress = LobbyConfig.ServerIP;
         FixTransport(nm);
         nm.StartClient();
-        SetWaitingText("正在连接 " + LobbyConfig.ServerIP + " ...");
+        SetText("正在连接 " + LobbyConfig.ServerIP + " ...");
     }
 
     void FixTransport(NetworkManager nm)
     {
         if (nm.transport != null && nm.transport.GetType().Name.Contains("Edgegap"))
         {
-            KcpTransport kcp = FindObjectOfType<KcpTransport>();
+            KcpTransport kcp = nm.gameObject.GetComponent<KcpTransport>();
             if (kcp == null)
             {
                 kcp = nm.gameObject.AddComponent<KcpTransport>();
@@ -116,45 +133,35 @@ public class AutoConnect : MonoBehaviour
         }
     }
 
-    void OnConnectedToServer()
+    // ========== Network Callbacks ==========
+
+    void OnConnected()
     {
         if (!NetworkServer.active)
-        {
-            SetWaitingText("已连接！\n等待房主开始游戏...");
-        }
+            SetText("已连接！\n等待房主开始游戏...");
         else
-        {
-            SetWaitingText("对手已加入！\n即将开始游戏...");
-        }
+            SetText("对手已加入！\n即将开始游戏...");
     }
 
-    void SetWaitingText(string msg)
+    void OnDisconnected()
     {
-        if (_waitingUI == null) return;
-        var tmp = _waitingUI.GetComponentInChildren<TextMeshProUGUI>();
-        if (tmp != null) tmp.text = msg;
+        SetText("连接断开\n请返回 Lobby 重试");
     }
 
     void OnDestroy()
     {
-        NetworkClient.OnConnectedEvent -= OnConnectedToServer;
+        NetworkClient.OnConnectedEvent -= OnConnected;
+        NetworkClient.OnDisconnectedEvent -= OnDisconnected;
     }
+
+    // ========== Update: hide waiting UI when TurnManager starts ==========
 
     void Update()
     {
-        if (_waitingUI == null) return;
+        if (_waitingUI == null || !_waitingUI.activeSelf) return;
+        if (_turnManager == null) return;
 
-        // Hide waiting UI when TurnManager starts
-        if (_turnManager != null && _turnManager.enabled && _turnManager.HasGameStarted())
-        {
+        if (_turnManager.enabled && NetworkTurnSync.Instance != null && NetworkTurnSync.Instance.gameStarted)
             _waitingUI.SetActive(false);
-            return;
-        }
-
-        // Hide when server has 2 players and TurnManager already enabled
-        if (NetworkServer.active && _turnManager != null && _turnManager.enabled)
-        {
-            _waitingUI.SetActive(false);
-        }
     }
 }
