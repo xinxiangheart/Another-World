@@ -3,57 +3,53 @@ using Mirror;
 
 /// <summary>
 /// Network extension for TurnManager (partial class).
-/// All network-related TurnManager methods live here to avoid
-/// modifying the GB2312-encoded TurnManager.cs.
+/// All network-related TurnManager methods live here.
 /// </summary>
 public partial class TurnManager
 {
-    /// <summary>Check if game has started (for network clients)</summary>
+    /// <summary>Check if game has started (delegates to NetworkTurnSync.Instance.gameStarted)</summary>
     public bool HasGameStarted()
     {
-        return _gameStarted;
+        if (NetworkTurnSync.Instance != null)
+            return NetworkTurnSync.Instance.gameStarted;
+        return false;
     }
 
-    /// <summary>Called by NetworkTurnSync when the host signals game start</summary>
+    /// <summary>Called by NetworkTurnSync when ready to start</summary>
     public void StartGameForClient()
     {
-        if (_gameStarted) return;
         Debug.Log("[TurnManager] StartGameForClient: starting game");
-        _gameStarted = true;
+        Debug.Log("=== Game Start ===");
         StartCoroutine(InitialDraw());
     }
 
     /// <summary>Called by RPC to sync current turn phase from server</summary>
     public void SetPhaseFromNetwork(TurnPhase phase)
     {
-        Debug.Log($"[TurnManager] SetPhaseFromNetwork: {phase}, current={currentPhase}");
+        Debug.Log(string.Format("[TurnManager] SetPhaseFromNetwork: {0}, current={1}", phase, currentPhase));
 
         if (phase == TurnPhase.MyTurn && currentPhase != TurnPhase.MyTurn)
         {
             currentPhase = TurnPhase.MyTurn;
             SetEndButton(true);
-            NetworkPlayer.Local?.AddEnergy(6);
+            if (NetworkPlayer.Local != null) NetworkPlayer.Local.AddEnergy(6);
             FindObjectOfType<DrawCardUI>()?.ResetForNewPhase();
             TriggerMyTurnStartEffects();
-            Debug.Log("[TurnManager] My turn started (from network)");
         }
         else if (phase == TurnPhase.BattlePhase)
         {
             currentPhase = TurnPhase.BattlePhase;
             StartCoroutine(BattleManager.Instance.BattleCoroutine());
-            Debug.Log("[TurnManager] Battle phase started (from network)");
         }
         else if (phase == TurnPhase.EnemyTurn)
         {
             currentPhase = TurnPhase.EnemyTurn;
             SetEndButton(false);
-            Debug.Log("[TurnManager] Enemy turn - waiting (from network)");
         }
     }
 
     /// <summary>
-    /// Server-authoritative end turn. Validates the correct player is ending their turn,
-    /// then processes the turn end and broadcasts the result to all clients.
+    /// Server-authoritative end turn.
     /// </summary>
     public void ServerEndTurn(NetworkPlayer player)
     {
@@ -62,7 +58,7 @@ public partial class TurnManager
 
         if (!isHostTurn && !isRemoteTurn)
         {
-            Debug.LogWarning("[TurnManager] ServerEndTurn rejected: wrong player");
+            Debug.LogWarning("[TurnManager] ServerEndTurn rejected: not player's turn");
             return;
         }
 
@@ -70,7 +66,6 @@ public partial class TurnManager
         {
             Debug.Log("[TurnManager] ServerEndTurn: ending turn");
 
-            // Cap energy before ending turn
             if (player != null)
             {
                 player._energyCanExceedLimit = false;
@@ -88,7 +83,6 @@ public partial class TurnManager
                 {
                     nts.currentPhaseId = (int)currentPhase;
                     nts.RpcPhaseChange((int)currentPhase);
-                    Debug.Log("[TurnManager] Phase change broadcast sent");
                 }
             }
         }

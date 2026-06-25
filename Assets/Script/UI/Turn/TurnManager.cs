@@ -23,22 +23,9 @@ public partial class TurnManager : MonoBehaviour
     [Header("调试信息")]
     public int phaseCount = 0;
 
-    private bool _gameStarted;
-
     void Start()
     {
-        if (NetworkServer.active)
-        {
-            Debug.Log("[TurnManager] Server mode: waiting for both players");
-            return;
-        }
-        if (NetworkClient.isConnected && !NetworkServer.active)
-        {
-            Debug.Log("[TurnManager] Client mode: waiting for host signal");
-            return;
-        }
-        Debug.Log("=== Game Start ===");
-        _gameStarted = true;
+        Debug.Log("=== 游戏开始 ===");
         StartCoroutine(InitialDraw());
     }
 
@@ -451,13 +438,15 @@ public partial class TurnManager : MonoBehaviour
         }
         else
         {
+            Debug.Log("敌方先手 → 跳过（测试模式）");
             currentPhase = TurnPhase.EnemyTurn;
-            SetEndButton(false);
-            Debug.Log("[TurnManager] Enemy turn - waiting for remote player");
-            if (NetworkServer.active && NetworkPlayer.Remote != null)
-            {
-                NetworkPlayer.Remote.RpcStartTurn(6);
-            }
+            Debug.Log("敌方回合 → 跳过");
+            currentPhase = TurnPhase.MyTurn;
+            SetEndButton(true);
+            NetworkPlayer.Local.AddEnergy(6);
+            FindObjectOfType<DrawCardUI>()?.ResetForNewPhase();
+            TriggerMyTurnStartEffects();
+            Debug.Log("进入我方主回合");
         }
     }
 
@@ -1016,5 +1005,4 @@ public partial class TurnManager : MonoBehaviour
         }
         return null;
     }
-    // ServerEndTurn moved to TurnManagerNetwork.cs (partial class)
 }
