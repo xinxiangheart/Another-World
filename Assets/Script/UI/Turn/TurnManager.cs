@@ -1,9 +1,10 @@
+using Mirror;
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class TurnManager : MonoBehaviour
+public partial class TurnManager : MonoBehaviour
 {
     public enum TurnPhase
     {
@@ -22,9 +23,22 @@ public class TurnManager : MonoBehaviour
     [Header("调试信息")]
     public int phaseCount = 0;
 
+    private bool _gameStarted;
+
     void Start()
     {
-        Debug.Log("=== 游戏开始 ===");
+        if (NetworkServer.active)
+        {
+            Debug.Log("[TurnManager] Server mode: waiting for both players");
+            return;
+        }
+        if (NetworkClient.isConnected && !NetworkServer.active)
+        {
+            Debug.Log("[TurnManager] Client mode: waiting for host signal");
+            return;
+        }
+        Debug.Log("=== Game Start ===");
+        _gameStarted = true;
         StartCoroutine(InitialDraw());
     }
 
@@ -33,15 +47,15 @@ public class TurnManager : MonoBehaviour
         yield return null;
 
         for (int i = 0; i < 2; i++)
-            Player.Instance.DrawCard();
+            NetworkPlayer.Local.DrawCard();
 
         CardData chosenOne = ChosenOneManager.Instance?.DrawChosenOne();
         if (chosenOne != null)
         {
-            Player.Instance.AddCardToHand(chosenOne);
+            NetworkPlayer.Local.AddCardToHand(chosenOne);
         }
 
-        Debug.Log($"开局抽牌完成，手牌：{Player.Instance.handCards.Count} 张");
+        Debug.Log($"开局抽牌完成，手牌：{NetworkPlayer.Local.handCards.Count} 张");
         StartNewPhase();
     }
 
@@ -219,7 +233,7 @@ public class TurnManager : MonoBehaviour
             }
             BoardSlot.CheckAndHandleDeaths();
         }
-        foreach (GameObject card in Player.Instance.handCards)
+        foreach (GameObject card in NetworkPlayer.Local.handCards)
         {
             if (card == null) continue;
             CardInstance ci = card.GetComponent<CardInstance>();
@@ -328,7 +342,7 @@ public class TurnManager : MonoBehaviour
                 if (ci != null && ci.templateID == "03011" && !ci._justTransformed)
                 {
                     slot.HandleDeath(slot.currentCard3D);
-                    Player.Instance.AddEnergy(5);
+                    NetworkPlayer.Local.AddEnergy(5);
                     StartCoroutine(SummonSmallEvilOnSlot());
                     break;
                 }
@@ -430,31 +444,29 @@ public class TurnManager : MonoBehaviour
         {
             currentPhase = TurnPhase.MyTurn;
             SetEndButton(true);
-            Player.Instance.AddEnergy(6);
+            NetworkPlayer.Local.AddEnergy(6);
             FindObjectOfType<DrawCardUI>()?.ResetForNewPhase();
             TriggerMyTurnStartEffects();
             Debug.Log("我方先手，进入我方主回合");
         }
         else
         {
-            Debug.Log("敌方先手 → 跳过（测试模式）");
             currentPhase = TurnPhase.EnemyTurn;
-            Debug.Log("敌方回合 → 跳过");
-            currentPhase = TurnPhase.MyTurn;
-            SetEndButton(true);
-            Player.Instance.AddEnergy(6);
-            FindObjectOfType<DrawCardUI>()?.ResetForNewPhase();
-            TriggerMyTurnStartEffects();
-            Debug.Log("进入我方主回合");
+            SetEndButton(false);
+            Debug.Log("[TurnManager] Enemy turn - waiting for remote player");
+            if (NetworkServer.active && NetworkPlayer.Remote != null)
+            {
+                NetworkPlayer.Remote.RpcStartTurn(6);
+            }
         }
     }
 
     public void EndCurrentTurn()
     {
-        Player.Instance._energyCanExceedLimit = false;
-        if (Player.Instance.currentEnergy > Player.Instance.maxEnergy)
-            Player.Instance.currentEnergy = Player.Instance.maxEnergy;
-        Player.Instance.UpdateUI();
+        NetworkPlayer.Local._energyCanExceedLimit = false;
+        if (NetworkPlayer.Local.currentEnergy > NetworkPlayer.Local.maxEnergy)
+            NetworkPlayer.Local.currentEnergy = NetworkPlayer.Local.maxEnergy;
+        NetworkPlayer.Local.UpdateUI();
 
         if (currentPhase != TurnPhase.MyTurn) return;
 
@@ -497,7 +509,7 @@ public class TurnManager : MonoBehaviour
 
             currentPhase = TurnPhase.MyTurn;
             SetEndButton(true);
-            Player.Instance.AddEnergy(6);
+            NetworkPlayer.Local.AddEnergy(6);
             FindObjectOfType<DrawCardUI>()?.ResetForNewPhase();
             TriggerMyTurnStartEffects();
             return;
@@ -546,7 +558,7 @@ public class TurnManager : MonoBehaviour
             {
                 ci.isActiveExit = false;
                 slot.HandleDeath(slot.currentCard3D);
-                Player.Instance.AddEnergy(2);
+                NetworkPlayer.Local.AddEnergy(2);
                 break;
             }
         }
@@ -607,7 +619,7 @@ public class TurnManager : MonoBehaviour
                 if (c3d?.cardInstance != null && c3d.cardInstance.templateID == "01105")
                 {
                     if (!c3d.cardInstance.CanTriggerTrait("回合开始")) continue;
-                    Player.Instance.DrawCard();
+                    NetworkPlayer.Local.DrawCard();
                 }
             }
         }
@@ -657,8 +669,8 @@ public class TurnManager : MonoBehaviour
                 if (ci != null && ci.templateID == "01315")
                 {
                     if (!ci.CanTriggerTrait("回合开始")) continue;
-                    Player.Instance.AddEnergy(1);
-                    Player.Instance.DrawCardWithoutLimit();
+                    NetworkPlayer.Local.AddEnergy(1);
+                    NetworkPlayer.Local.DrawCardWithoutLimit();
                 }
             }
         }
@@ -748,8 +760,8 @@ public class TurnManager : MonoBehaviour
             int cost = template?.baseCost ?? 0;
             int energy = cost switch { 1 => 0, 3 => 2, 5 => 4, _ => 0 };
 
-            Player.Instance.AddEnergy(energy);
-            Player.Instance.RemoveCardFromHand(selectedCard.gameObject);
+            NetworkPlayer.Local.AddEnergy(energy);
+            NetworkPlayer.Local.RemoveCardFromHand(selectedCard.gameObject);
             Destroy(selectedCard.gameObject);
 
             ironSmithInst.ironSmithTotalConsumedCount++;
@@ -840,11 +852,11 @@ public class TurnManager : MonoBehaviour
             bool isYuan = selectedCard.prefixes.Contains("渊");
             int healAmount = tier + (isYuan ? 1 : 0);
 
-            Player.Instance.Heal(healAmount);
+            NetworkPlayer.Local.Heal(healAmount);
             rebelCI.currentHealth = Mathf.Min(rebelCI.currentMaxHealth, rebelCI.currentHealth + healAmount);
             rebel3D.UpdateValues();
 
-            Player.Instance.RemoveCardFromHand(selectedCard.gameObject);
+            NetworkPlayer.Local.RemoveCardFromHand(selectedCard.gameObject);
             Destroy(selectedCard.gameObject);
         }
 
@@ -932,7 +944,7 @@ public class TurnManager : MonoBehaviour
     }
     IEnumerator ExecutionSwordSelectSpell(CardInstance sword, Action done)
     {
-        Player.Instance.handCards.RemoveAll(c => c == null);
+        NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
 
         var validCards = ConfirmQueueManager.FilterHandCards(ci =>
         {
@@ -975,7 +987,7 @@ public class TurnManager : MonoBehaviour
             if (td != null)
             {
                 sword.consumedSpellCost = td.baseCost;
-                Player.Instance.handCards.Remove(selected);
+                NetworkPlayer.Local.handCards.Remove(selected);
                 Destroy(selected);
                 HandManager hm = FindObjectOfType<HandManager>();
                 hm?.RefreshLayout(true);
@@ -1004,12 +1016,5 @@ public class TurnManager : MonoBehaviour
         }
         return null;
     }
-    public void ServerEndTurn(NetworkPlayer player)
-    {
-        
-        if (currentPhase == TurnPhase.MyTurn)
-        {
-            EndCurrentTurn();
-        }
-    }
+    // ServerEndTurn moved to TurnManagerNetwork.cs (partial class)
 }

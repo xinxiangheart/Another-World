@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using Mirror;
 
 public class EndTurnButton : MonoBehaviour
 {
@@ -16,6 +17,19 @@ public class EndTurnButton : MonoBehaviour
     void EndTurn()
     {
         TurnManager turnManager = FindObjectOfType<TurnManager>();
+
+        // Client: send end-turn command to server
+        if (NetworkClient.isConnected && !NetworkServer.active)
+        {
+            NetworkTurnSync nts = FindObjectOfType<NetworkTurnSync>();
+            if (nts != null)
+                nts.CmdRequestEndTurn();
+            else
+                NetworkPlayer.Local?.CmdEndTurn();
+            return;
+        }
+
+        // Server/Host: execute directly
         turnManager?.EndCurrentTurn();
     }
 

@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using Mirror;
@@ -8,7 +9,7 @@ public class NetworkPlayer : NetworkBehaviour
     public static NetworkPlayer Local { get; private set; }
     public static NetworkPlayer Remote { get; private set; }
 
-    [Header("基础属性")]
+    [Header("Player Stats")]
     public int maxHealth = 20;
     public int maxEnergy = 15;
     public int maxHandSize = 20;
@@ -19,7 +20,15 @@ public class NetworkPlayer : NetworkBehaviour
     [SyncVar(hook = nameof(OnEnergyChanged))]
     public int currentEnergy;
 
-    [Header("手牌")]
+    [SyncVar(hook = nameof(OnHandCountChanged))]
+    public int handCardCount;
+
+    [SyncVar]
+    public bool isReady;
+
+    public bool _energyCanExceedLimit;
+
+    [Header("Hand")]
     public Transform handArea;
     public HandManager handManager;
     public GameObject cardPrefab2D;
@@ -30,34 +39,41 @@ public class NetworkPlayer : NetworkBehaviour
     public TextMeshProUGUI healthText;
     public TextMeshProUGUI energyText;
 
+    // ========== Mirror Lifecycle ==========
+
     public override void OnStartLocalPlayer()
     {
         Debug.Log($"OnStartLocalPlayer: netId={netId}, isServer={isServer}");
         Local = this;
         currentHealth = maxHealth;
         currentEnergy = 0;
+        _energyCanExceedLimit = false;
         UpdateUI();
-        // 动态绑定本地玩家UI
+        // Find UI references
         healthText = GameObject.Find("Health")?.GetComponent<TextMeshProUGUI>();
         energyText = GameObject.Find("Energy")?.GetComponent<TextMeshProUGUI>();
         handArea = GameObject.Find("HandArea")?.transform;
-
         UpdateUI();
     }
-    void OnGUI()
-    {
-        GUI.Label(new Rect(10, 10, 400, 30), $"Server active: {NetworkServer.active}, connections: {NetworkServer.connections.Count}");
-        GUI.Label(new Rect(10, 40, 400, 30), $"Client active: {NetworkClient.active}, connected: {NetworkClient.isConnected}");
-    }
+
     public override void OnStartServer()
     {
         base.OnStartServer();
+        Debug.Log($"[NetworkPlayer] OnStartServer: netId={netId}");
+        StartCoroutine(DelayedSetRemote());
+    }
+
+    IEnumerator DelayedSetRemote()
+    {
+        yield return new WaitForSeconds(0.3f);
         foreach (var conn in NetworkServer.connections.Values)
         {
             var player = conn.identity?.GetComponent<NetworkPlayer>();
             if (player != null && player != this)
             {
-                NetworkPlayer.Remote = player;
+                Remote = player;
+                Debug.Log($"[NetworkPlayer] Remote set: netId={Remote.netId}");
+                break;
             }
         }
     }
@@ -67,17 +83,33 @@ public class NetworkPlayer : NetworkBehaviour
         UpdateUI();
     }
 
-    void EnableLocalInteraction(bool enabled)
+    // ========== UI ==========
+
+    void OnGUI()
     {
-        if (handManager != null)
-            handManager.SetHandAreaRaycast(enabled);
+        if (!isLocalPlayer) return;
+
+        GUI.Label(new Rect(10, 10, 400, 30),
+            $"Server active: {NetworkServer.active}, connections: {NetworkServer.connections.Count}");
+        GUI.Label(new Rect(10, 40, 400, 30),
+            $"Client active: {NetworkClient.active}, connected: {NetworkClient.isConnected}");
+        GUI.Label(new Rect(10, 70, 400, 30),
+            $"isLocalPlayer: {isLocalPlayer}, handCards: {handCards.Count}");
+    }
+
+    // ========== SyncVar Hooks ==========
+
+    void OnHandCountChanged(int oldValue, int newValue)
+    {
+        UpdateUI();
+        Debug.Log($"[NetworkPlayer] Hand count changed: {oldValue} -> {newValue} (isLocal={isLocalPlayer})");
     }
 
     void OnHealthChanged(int oldValue, int newValue)
     {
         UpdateUI();
         if (newValue <= 0 && isServer)
-            Debug.Log("玩家死亡");
+            Debug.Log("[NetworkPlayer] Player died");
     }
 
     void OnEnergyChanged(int oldValue, int newValue)
@@ -85,7 +117,98 @@ public class NetworkPlayer : NetworkBehaviour
         UpdateUI();
     }
 
-    // ========== 生命值 ==========
+    // ========== ClientRpc ==========
+
+    [ClientRpc]
+    public void RpcStartTurn(int energyGain)
+    {
+        if (!isLocalPlayer) return;
+        Debug.Log($"[NetworkPlayer] RpcStartTurn: gaining {energyGain} energy");
+        AddEnergy(energyGain);
+        FindObjectOfType<DrawCardUI>()?.ResetForNewPhase();
+
+        TurnManager tm = FindObjectOfType<TurnManager>();
+        if (tm != null)
+            tm.SetPhaseFromNetwork(TurnManager.TurnPhase.MyTurn);
+    }
+
+    [ClientRpc]
+    public void RpcYourTurnStart()
+    {
+        if (!isLocalPlayer) return;
+        Debug.Log("[NetworkPlayer] Remote turn started - your turn is over");
+        TurnManager tm = FindObjectOfType<TurnManager>();
+        if (tm != null && tm.currentPhase == TurnManager.TurnPhase.EnemyTurn)
+        {
+            // Remote player's "EnemyTurn" is local player's "MyTurn" from their perspective
+            // Actually from remote's perspective: EnemyTurn means it's the other player's turn
+            tm.SetPhaseFromNetwork(TurnManager.TurnPhase.MyTurn);
+        }
+    }
+
+    // ========== Commands ==========
+
+    [Command]
+    public void CmdRequestDraw()
+    {
+        Debug.Log($"[NetworkPlayer] CmdRequestDraw from netId={netId}");
+        TurnManager tm = FindObjectOfType<TurnManager>();
+        if (tm == null || tm.currentPhase != TurnManager.TurnPhase.MyTurn) return;
+
+        DrawCardUI drawUI = FindObjectOfType<DrawCardUI>();
+        if (drawUI != null && drawUI.GetRemainingDraws() <= 0) return;
+
+        if (currentEnergy < 1) return;
+
+        UseEnergy(1);
+        DrawCard();
+    }
+
+    [Command]
+    public void CmdPlayCard(string templateID, int slotID)
+    {
+        Debug.Log($"[NetworkPlayer] CmdPlayCard: templateID={templateID}, slotID={slotID}");
+
+        TurnManager tm = FindObjectOfType<TurnManager>();
+        if (tm == null || tm.currentPhase != TurnManager.TurnPhase.MyTurn) return;
+
+        // Find the card in the player's hand
+        foreach (GameObject card in handCards)
+        {
+            if (card == null) continue;
+            CardInstance ci = card.GetComponent<CardInstance>();
+            if (ci != null && ci.templateID == templateID)
+            {
+                BoardManager bm = FindObjectOfType<BoardManager>();
+                BoardSlot slot = bm?.GetSlot(slotID);
+                if (slot != null)
+                {
+                    HandManager hm = FindObjectOfType<HandManager>();
+                    hm?.PlaceCardToSlot(slot, card);
+                }
+                break;
+            }
+        }
+    }
+
+    [Command]
+    public void CmdEndTurn()
+    {
+        Debug.Log($"[NetworkPlayer] CmdEndTurn from netId={netId}");
+        TurnManager tm = FindObjectOfType<TurnManager>();
+        tm?.ServerEndTurn(this);
+    }
+
+    // ========== Health ==========
+
+    // Event for card effects that need to intercept healing
+    public System.Action<int, CardInstance.HealSourceType> OnBeforePlayerHeal;
+
+    public void ReceiveHeal(int amount, CardInstance.HealSourceType sourceType)
+    {
+        OnBeforePlayerHeal?.Invoke(amount, sourceType);
+        Heal(amount);
+    }
 
     public void TakeDamage(int amount)
     {
@@ -115,12 +238,12 @@ public class NetworkPlayer : NetworkBehaviour
         currentHealth = Mathf.Min(maxHealth, currentHealth + amount);
     }
 
-    // ========== 能量 ==========
+    // ========== Energy ==========
 
     public void AddEnergy(int amount)
     {
         if (isServer)
-            currentEnergy = Mathf.Min(maxEnergy, currentEnergy + amount);
+            currentEnergy += amount;
         else
             CmdAddEnergy(amount);
     }
@@ -128,7 +251,9 @@ public class NetworkPlayer : NetworkBehaviour
     [Command]
     void CmdAddEnergy(int amount)
     {
-        currentEnergy = Mathf.Min(maxEnergy, currentEnergy + amount);
+        currentEnergy += amount;
+        if (!_energyCanExceedLimit && currentEnergy > maxEnergy)
+            currentEnergy = maxEnergy;
     }
 
     public bool UseEnergy(int amount)
@@ -149,17 +274,13 @@ public class NetworkPlayer : NetworkBehaviour
 
     public int GetEnergy() => currentEnergy;
 
-    // ========== UI ==========
+    // ========== Hand Management ==========
 
-    public void UpdateUI()
+    [Server]
+    public void DrawCardOnServer()
     {
-        if (healthText != null)
-            healthText.text = isLocalPlayer ? $" {currentHealth}" : currentHealth.ToString();
-        if (energyText != null)
-            energyText.text = isLocalPlayer ? $" {currentEnergy}/{maxEnergy}" : $"{currentEnergy}/{maxEnergy}";
+        DrawCard();
     }
-
-    // ========== 抽牌 ==========
 
     public void DrawCard()
     {
@@ -168,20 +289,20 @@ public class NetworkPlayer : NetworkBehaviour
         DrawCardUI drawUI = FindObjectOfType<DrawCardUI>();
         if (drawUI != null && drawUI.GetRemainingDraws() <= 0)
         {
-            Debug.Log("本回合抽牌次数已用完");
+            Debug.Log("[NetworkPlayer] DrawCard: no remaining draws");
             return;
         }
 
         if (handCards.Count >= maxHandSize)
         {
-            Debug.Log("手牌已满");
+            Debug.Log("[NetworkPlayer] DrawCard: hand full");
             return;
         }
 
         CardData data = DeckManager.Instance?.DrawFromMain();
         if (data == null)
         {
-            Debug.Log("牌库为空");
+            Debug.Log("[NetworkPlayer] DrawCard: deck empty");
             return;
         }
 
@@ -202,7 +323,8 @@ public class NetworkPlayer : NetworkBehaviour
             handManager?.RegisterCard(cv);
         }
 
-        Debug.Log($"抽牌成功，当前手牌数：{handCards.Count}");
+        handCardCount = handCards.Count;
+        Debug.Log($"[NetworkPlayer] DrawCard: templateID={data.templateID}, handCount={handCardCount}");
     }
 
     public void DrawCardWithoutLimit()
@@ -211,14 +333,14 @@ public class NetworkPlayer : NetworkBehaviour
 
         if (handCards.Count >= maxHandSize)
         {
-            Debug.Log("手牌已满");
+            Debug.Log("[NetworkPlayer] DrawCardWithoutLimit: hand full");
             return;
         }
 
         CardData data = DeckManager.Instance?.DrawFromMain();
         if (data == null)
         {
-            Debug.Log("牌库为空");
+            Debug.Log("[NetworkPlayer] DrawCardWithoutLimit: deck empty");
             return;
         }
 
@@ -238,19 +360,8 @@ public class NetworkPlayer : NetworkBehaviour
             cv.handManager = handManager;
             handManager?.RegisterCard(cv);
         }
-    }
 
-    int GetCopyIndex(string templateID)
-    {
-        handCards.RemoveAll(card => card == null);
-        int count = 0;
-        foreach (var card in handCards)
-        {
-            CardInstance ci = card.GetComponent<CardInstance>();
-            if (ci != null && ci.templateID == templateID)
-                count++;
-        }
-        return count;
+        handCardCount = handCards.Count;
     }
 
     public void RemoveCardFromHand(GameObject card)
@@ -261,6 +372,7 @@ public class NetworkPlayer : NetworkBehaviour
             Destroy(card);
             handCards.RemoveAll(c => c == null);
             FindObjectOfType<HandManager>()?.RefreshLayout(true);
+            handCardCount = handCards.Count;
         }
     }
 
@@ -287,6 +399,8 @@ public class NetworkPlayer : NetworkBehaviour
             cv.handManager = handManager;
             handManager?.RegisterCard(cv);
         }
+
+        handCardCount = handCards.Count;
     }
 
     public void AddCardToHandFromInstance(CardData template, CardInstance oldInstance, bool isEnemy = false)
@@ -344,10 +458,17 @@ public class NetworkPlayer : NetworkBehaviour
                 cv.handManager = hm;
                 hm?.RegisterCard(cv);
             }
+            handCardCount = handCards.Count;
         }
     }
 
-    // ========== 辅助方法 ==========
+    // ========== Helper Methods ==========
+
+    void EnableLocalInteraction(bool enabled)
+    {
+        if (handManager != null)
+            handManager.SetHandAreaRaycast(enabled);
+    }
 
     bool IsMerchantOnField()
     {
@@ -373,4 +494,27 @@ public class NetworkPlayer : NetworkBehaviour
 
     public bool IsMerchantOnFieldPublic() => IsMerchantOnField();
     public bool IsEnergyReaperOnFieldPublic() => IsEnergyReaperOnField();
+
+    // ========== UI ==========
+
+    public void UpdateUI()
+    {
+        if (healthText != null)
+            healthText.text = isLocalPlayer ? $" {currentHealth}" : currentHealth.ToString();
+        if (energyText != null)
+            energyText.text = isLocalPlayer ? $" {currentEnergy}/{maxEnergy}" : $"{currentEnergy}/{maxEnergy}";
+    }
+
+    int GetCopyIndex(string templateID)
+    {
+        handCards.RemoveAll(card => card == null);
+        int count = 0;
+        foreach (var card in handCards)
+        {
+            CardInstance ci = card.GetComponent<CardInstance>();
+            if (ci != null && ci.templateID == templateID)
+                count++;
+        }
+        return count;
+    }
 }

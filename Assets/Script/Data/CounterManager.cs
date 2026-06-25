@@ -122,7 +122,7 @@ public class CounterManager : MonoBehaviour
             if (counter.template.templateID == "02304")
             {
                 GlobalEventManager.Instance.PendingEnterRedirectTemplate = playedCard;
-                Player.Instance.AddEnergy(1);
+                NetworkPlayer.Local.AddEnergy(1);
             }
 
             TriggerCounter(counter, i, true);
@@ -227,7 +227,7 @@ public class CounterManager : MonoBehaviour
                 // 片甲不留：对方能量为0触发
                 if (counter.template.templateID == "02305")
                 {
-                    if (EnemyPlayer.Instance.currentEnergy == 0)
+                    if (NetworkPlayer.Remote.currentEnergy == 0)
                         TriggerCounterWithCardSelect(counter, i, true);
                     else
                         ExpireWithNoEffect(counter, i, true);
@@ -236,7 +236,7 @@ public class CounterManager : MonoBehaviour
                 // 屯能噩梦：对方能量不为0触发
                 if (counter.template.templateID == "02306")
                 {
-                    if (EnemyPlayer.Instance.currentEnergy != 0)
+                    if (NetworkPlayer.Remote.currentEnergy != 0)
                         TriggerCounterWithCardSelect(counter, i, true);
                     else
                         ExpireWithNoEffect(counter, i, true);
@@ -350,13 +350,13 @@ public class CounterManager : MonoBehaviour
             int cost = counter.reducedTriggerCost >= 0 ? counter.reducedTriggerCost : counter.template.baseCost;
             if (isMine)
             {
-                Player.Instance.currentEnergy -= cost;
-                Player.Instance.UpdateUI();
+                NetworkPlayer.Local.currentEnergy -= cost;
+                NetworkPlayer.Local.UpdateUI();
             }
             else
             {
-                EnemyPlayer.Instance.currentEnergy -= cost;
-                EnemyPlayer.Instance.UpdateUI();
+                NetworkPlayer.Remote.currentEnergy -= cost;
+                NetworkPlayer.Remote.UpdateUI();
             }
         }
 
@@ -373,11 +373,11 @@ public class CounterManager : MonoBehaviour
             if (effect.Contains("摸三张牌"))
             {
                 for (int j = 0; j < 3; j++)
-                    Player.Instance.DrawCard();
+                    NetworkPlayer.Local.DrawCard();
             }
             else if (effect.Contains("+3能量"))
             {
-                Player.Instance.AddEnergy(3);
+                NetworkPlayer.Local.AddEnergy(3);
             }
            
         }
@@ -387,13 +387,13 @@ public class CounterManager : MonoBehaviour
             int cost = counter.reducedTriggerCost >= 0 ? counter.reducedTriggerCost : counter.template.baseCost;
             if (isMine)
             {
-                Player.Instance.currentEnergy -= cost;
-                Player.Instance.UpdateUI();
+                NetworkPlayer.Local.currentEnergy -= cost;
+                NetworkPlayer.Local.UpdateUI();
             }
             else
             {
-                EnemyPlayer.Instance.currentEnergy -= cost;
-                EnemyPlayer.Instance.UpdateUI();
+                NetworkPlayer.Remote.currentEnergy -= cost;
+                NetworkPlayer.Remote.UpdateUI();
             }
         }
 
@@ -434,7 +434,7 @@ public class CounterManager : MonoBehaviour
     void TriggerCounterWithCardSelect(CounterCard counter, int index, bool isMine)
     {
         List<CardInstance> enemyCards = new List<CardInstance>();
-        foreach (GameObject card in EnemyPlayer.Instance.handCards)
+        foreach (GameObject card in NetworkPlayer.Remote.handCards)
         {
             if (card == null) continue;
             CardInstance ci = card.GetComponent<CardInstance>();
@@ -454,7 +454,7 @@ public class CounterManager : MonoBehaviour
             if (selected != null)
             {
                 GameObject toRemove = null;
-                foreach (GameObject card in EnemyPlayer.Instance.handCards)
+                foreach (GameObject card in NetworkPlayer.Remote.handCards)
                 {
                     CardInstance ci = card?.GetComponent<CardInstance>();
                     if (ci != null && ci.instanceID == selected.instanceID)
@@ -465,27 +465,27 @@ public class CounterManager : MonoBehaviour
                 }
                 if (toRemove != null)
                 {
-                    EnemyPlayer.Instance.handCards.Remove(toRemove);
+                    NetworkPlayer.Remote.handCards.Remove(toRemove);
                     CardData template = CardDatabase.Instance?.GetTemplate(selected.templateID);
                     if (template != null)
-                        Player.Instance.AddCardToHand(template);
+                        NetworkPlayer.Local.AddCardToHand(template);
                     Destroy(toRemove);
                 }
 
                 if (counter.template.templateID == "02305")
-                    Player.Instance.AddEnergy(2);
+                    NetworkPlayer.Local.AddEnergy(2);
                 else if (counter.template.templateID == "02306")
                 {
-                    Player.Instance.DrawCardWithoutLimit();
-                    Player.Instance.DrawCardWithoutLimit();
+                    NetworkPlayer.Local.DrawCardWithoutLimit();
+                    NetworkPlayer.Local.DrawCardWithoutLimit();
                 }
             }
 
             CardDisplayPanel.Instance.Hide();
 
             int cost = counter.template.baseCost;
-            Player.Instance.currentEnergy -= cost;
-            Player.Instance.UpdateUI();
+            NetworkPlayer.Local.currentEnergy -= cost;
+            NetworkPlayer.Local.UpdateUI();
             RemoveCounter(index, true);
         }, "获得");
     }

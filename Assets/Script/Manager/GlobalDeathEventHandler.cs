@@ -43,7 +43,7 @@ public static class GlobalDeathEventHandler
             CardInstance ink = FindByTemplateID(bm, "01523", isAlly);
             if (ink != null && !IsSilenced(ink))
             {
-                Player.Instance.AddEnergy(1);
+                NetworkPlayer.Local.AddEnergy(1);
             }
         }
 
@@ -78,8 +78,8 @@ public static class GlobalDeathEventHandler
                 CardInstance sourceCI = FindByInstanceID(bm, sourceID);
                 if (sourceCI != null && sourceCI.templateID == "01528")
                 {
-                    if (sourceCI.isAttached) Player.Instance.AddEnergy(2);
-                    else Player.Instance.AddEnergy(3);
+                    if (sourceCI.isAttached) NetworkPlayer.Local.AddEnergy(2);
+                    else NetworkPlayer.Local.AddEnergy(3);
                 }
                 else
                 {
@@ -92,7 +92,7 @@ public static class GlobalDeathEventHandler
                             Card3DInstance c3d = obj?.GetComponent<Card3DInstance>();
                             if (c3d?.cardInstance?.templateID == "01528" && c3d.cardInstance.hostSlotID == hostSlotID)
                             {
-                                Player.Instance.AddEnergy(2);
+                                NetworkPlayer.Local.AddEnergy(2);
                             }
                         }
                     }
@@ -108,11 +108,11 @@ public static class GlobalDeathEventHandler
                 CardInstance sourceCI = FindByInstanceID(bm, sourceID);
                 if (sourceCI != null && sourceCI.templateID == "01530" && !IsSilenced(sourceCI))
                 {
-                    if (EnemyPlayer.Instance != null && EnemyPlayer.Instance.handCards.Count > 0)
+                    if (NetworkPlayer.Remote != null && NetworkPlayer.Remote.handCards.Count > 0)
                     {
-                        int randomIndex = Random.Range(0, EnemyPlayer.Instance.handCards.Count);
-                        GameObject card = EnemyPlayer.Instance.handCards[randomIndex];
-                        EnemyPlayer.Instance.handCards.RemoveAt(randomIndex);
+                        int randomIndex = Random.Range(0, NetworkPlayer.Remote.handCards.Count);
+                        GameObject card = NetworkPlayer.Remote.handCards[randomIndex];
+                        NetworkPlayer.Remote.handCards.RemoveAt(randomIndex);
                         Object.Destroy(card);
                     }
                 }

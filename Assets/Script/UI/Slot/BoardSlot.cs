@@ -634,7 +634,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                             if (!targetInst.handledReturnToHand)
                             {
                                 CardData tt = CardDatabase.Instance?.GetTemplate(targetInst.templateID);
-                                if (tt != null) Player.Instance.AddCardToHandFromInstance(tt, targetInst);
+                                if (tt != null) NetworkPlayer.Local.AddCardToHandFromInstance(tt, targetInst);
                             }
                             Card3DInstance self3D = currentCard3D?.GetComponent<Card3DInstance>();
                             if (self3D != null)
@@ -844,8 +844,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 CardData follower = CardDatabase.Instance?.GetTemplate("03001");
                 if (follower != null)
                 {
-                    Player.Instance.AddCardToHand(follower);
-                    Player.Instance.AddCardToHand(follower);
+                    NetworkPlayer.Local.AddCardToHand(follower);
+                    NetworkPlayer.Local.AddCardToHand(follower);
                 }
                 CleanupAfterPlacement();
                 return;
@@ -866,7 +866,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 return;
             case "01520":
                 GlobalEventManager.Instance.RegisterAura(new MerchantAura { source = inst });
-                foreach (GameObject card in Player.Instance.handCards)
+                foreach (GameObject card in NetworkPlayer.Local.handCards)
                 {
                     if (card == null) continue;
                     CardInstance ci = card.GetComponent<CardInstance>();
@@ -922,7 +922,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             case "01528":
                 if (!inst.isAttached)
                     GlobalEventManager.Instance.RegisterAura(new EnergyReaperAura { source = inst });
-                foreach (GameObject card in Player.Instance.handCards)
+                foreach (GameObject card in NetworkPlayer.Local.handCards)
                 {
                     if (card == null) continue;
                     CardInstance ci = card.GetComponent<CardInstance>();
@@ -1121,8 +1121,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
         if (templateID == "01106")
         {
-            if (isActiveExit) Player.Instance.AddEnergy(3);
-            else Player.Instance.AddEnergy(1);
+            if (isActiveExit) NetworkPlayer.Local.AddEnergy(3);
+            else NetworkPlayer.Local.AddEnergy(1);
         }
 
         bool shouldReturn03504 = false;
@@ -1142,7 +1142,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         if (templateID == "01107" && isActiveExit)
         {
             Debug.Log("妖精护盾选择前");
-            Player.Instance.AddEnergy(2);
+            NetworkPlayer.Local.AddEnergy(2);
             bool hasAlly = false;
             BoardManager bm = FindObjectOfType<BoardManager>();
             for (int i = 6; i <= 11; i++)
@@ -1261,7 +1261,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                         CardInstance targetCI = targetSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
                         if (targetCI != null)
                         {
-                            Player.Instance.AddEnergy(targetCI.currentCost);
+                            NetworkPlayer.Local.AddEnergy(targetCI.currentCost);
                             targetCI.isActiveExit = true;
                             targetCI._conductorDoubleDeath = true;
                             targetSlot.HandleDeath(targetSlot.currentCard3D);
@@ -1280,8 +1280,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             else
             {
                 // 普通退场：摸两张牌
-                Player.Instance.DrawCardWithoutLimit();
-                Player.Instance.DrawCardWithoutLimit();
+                NetworkPlayer.Local.DrawCardWithoutLimit();
+                NetworkPlayer.Local.DrawCardWithoutLimit();
             }
         }
         if (templateID == "01320")
@@ -1293,7 +1293,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             {
                 CardData data = DeckManager.Instance?.DrawFromMain();
                 if (data == null) break;
-                Player.Instance.AddCardToHand(data);
+                NetworkPlayer.Local.AddCardToHand(data);
                 totalCost += data.baseCost;
                 drawnCount++;
             }
@@ -1311,8 +1311,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         {
             int baseHP = Mathf.Max(0, c3d.cardInstance.currentHealth);
             int energyGain = baseHP * 2;
-            Player.Instance._energyCanExceedLimit = true;
-            Player.Instance.AddEnergy(energyGain);
+            NetworkPlayer.Local._energyCanExceedLimit = true;
+            NetworkPlayer.Local.AddEnergy(energyGain);
         }
         if (templateID == "01331")
         {
@@ -1385,7 +1385,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 c3d.cardInstance.handledReturnToHand = true;
                 CardData template = CardDatabase.Instance?.GetTemplate(templateID);
                 if (template != null)
-                    Player.Instance.AddCardToHandFromInstance(template, c3d.cardInstance);
+                    NetworkPlayer.Local.AddCardToHandFromInstance(template, c3d.cardInstance);
             }
         }
         if (templateID == "01515")
@@ -1407,10 +1407,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
         if (templateID == "01520")
         {
-            Player.Instance.DrawCardWithoutLimit();
+            NetworkPlayer.Local.DrawCardWithoutLimit();
             GlobalEventManager.Instance?.UnregisterAuraOfSource(c3d.cardInstance);
 
-            foreach (GameObject card in Player.Instance.handCards)
+            foreach (GameObject card in NetworkPlayer.Local.handCards)
             {
                 if (card == null) continue;
                 CardInstance ci = card.GetComponent<CardInstance>();
@@ -1424,7 +1424,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         if (templateID == "01528")
         {
             GlobalEventManager.Instance?.UnregisterAuraOfSource(c3d.cardInstance);
-            foreach (GameObject card in Player.Instance.handCards)
+            foreach (GameObject card in NetworkPlayer.Local.handCards)
             {
                 if (card == null) continue;
                 CardInstance ci = card.GetComponent<CardInstance>();
@@ -1461,7 +1461,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             if (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(c3d.cardInstance))
             {
                 CardData next = CardDatabase.Instance?.GetTemplate("03021");
-                if (next != null) Player.Instance.AddCardToHand(next);
+                if (next != null) NetworkPlayer.Local.AddCardToHand(next);
             }
         }
         if (templateID == "03021" && !c3d.cardInstance.handledReturnToHand)
@@ -1469,7 +1469,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             if (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(c3d.cardInstance))
             {
                 CardData next = CardDatabase.Instance?.GetTemplate("03022");
-                if (next != null) Player.Instance.AddCardToHand(next);
+                if (next != null) NetworkPlayer.Local.AddCardToHand(next);
             }
         }
 
@@ -1497,8 +1497,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 switch (trait)
                 {
                     case "退场：减一能量":
-                        Player.Instance.currentEnergy -= 1;
-                        Player.Instance.UpdateUI();
+                        NetworkPlayer.Local.currentEnergy -= 1;
+                        NetworkPlayer.Local.UpdateUI();
                         break;
                     case "退场：己方全体受到一伤害":
                         BoardManager bm = FindObjectOfType<BoardManager>();
@@ -1519,7 +1519,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                         
                         break;
                     case "退场：己方玩家扣一血":
-                        Player.Instance.TakeDamage(1);
+                        NetworkPlayer.Local.TakeDamage(1);
                         break;
                 }
             }
@@ -1639,11 +1639,11 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             }
         }
         if (shouldReturn03504 && template03504 != null)
-            Player.Instance.AddCardToHandFromInstance(template03504, c3d.cardInstance);
+            NetworkPlayer.Local.AddCardToHandFromInstance(template03504, c3d.cardInstance);
         if (shouldReturn01117 && template01117 != null)
-            Player.Instance.AddCardToHandFromInstance(template01117, c3d.cardInstance);
+            NetworkPlayer.Local.AddCardToHandFromInstance(template01117, c3d.cardInstance);
         if (shouldReturn03009 && template03009 != null)
-            Player.Instance.AddCardToHandFromInstance(template03009, c3d.cardInstance);
+            NetworkPlayer.Local.AddCardToHandFromInstance(template03009, c3d.cardInstance);
         Destroy(dyingCard);
         HandManager hmDeath = FindObjectOfType<HandManager>();
         if (hmDeath != null)
@@ -1684,9 +1684,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         {
             switch (id)
             {
-                case "01106": Player.Instance.AddEnergy(3); break;
+                case "01106": NetworkPlayer.Local.AddEnergy(3); break;
                 case "01107":
-                    Player.Instance.AddEnergy(2);
+                    NetworkPlayer.Local.AddEnergy(2);
                     {
                         bool hasAlly = false;
                         BoardManager bm = FindObjectOfType<BoardManager>();
@@ -1717,7 +1717,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         {
             switch (id)
             {
-                case "01106": Player.Instance.AddEnergy(1); break;
+                case "01106": NetworkPlayer.Local.AddEnergy(1); break;
                 case "03513":
                     BoardManager bm = FindObjectOfType<BoardManager>();
                     if (bm != null)
@@ -1789,7 +1789,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         List<GameObject> spellCards = new List<GameObject>();
         List<GameObject> handSummons = new List<GameObject>();
 
-        foreach (GameObject card in Player.Instance.handCards)
+        foreach (GameObject card in NetworkPlayer.Local.handCards)
         {
             if (card == null) continue;
             CardInstance ci = card.GetComponent<CardInstance>();
@@ -1972,7 +1972,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         Debug.Log($"灾厄行者触发: 扣血{amount}");
         for (int i = 0; i < amount; i++)
         {
-            Player.Instance.DrawCardWithoutLimit();
+            NetworkPlayer.Local.DrawCardWithoutLimit();
         }
     }
     void CopyToGrave(CardInstance dest, CardInstance src)
@@ -2003,10 +2003,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     IEnumerator HeartthrobEnterEffect(CardInstance giver)
     {
         yield return null;
-        Player.Instance.handCards.RemoveAll(c => c == null);
+        NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
 
         List<GameObject> heroCards = new List<GameObject>();
-        foreach (GameObject card in Player.Instance.handCards)
+        foreach (GameObject card in NetworkPlayer.Local.handCards)
         {
             if (card == null) continue;
             CardInstance ci = card.GetComponent<CardInstance>();
@@ -2053,7 +2053,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             yield break;
         }
 
-        Player.Instance.handCards.Remove(selectedCard);
+        NetworkPlayer.Local.handCards.Remove(selectedCard);
 
         BoardSlot.isPlacingCard = true;
         BoardSlot.isStrengtheningSlot = true;
@@ -2061,7 +2061,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         yield return new WaitWhile(() => BoardSlot.isPlacingCard);
 
-        Player.Instance.handCards.Remove(selectedCard);
+        NetworkPlayer.Local.handCards.Remove(selectedCard);
     }
     IEnumerator MartyrDeathEffectCoroutine(CardInstance giver)
     {
@@ -2103,10 +2103,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     }
     IEnumerator RogueDeathEffect(CardInstance giver)
     {
-        Player.Instance.handCards.RemoveAll(c => c == null);
+        NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
 
         List<GameObject> heroCards = new List<GameObject>();
-        foreach (GameObject card in Player.Instance.handCards)
+        foreach (GameObject card in NetworkPlayer.Local.handCards)
         {
             if (card == null) continue;
             CardInstance ci = card.GetComponent<CardInstance>();
@@ -2148,7 +2148,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         if (selectedCard != null)
         {
-            Player.Instance.handCards.Remove(selectedCard);
+            NetworkPlayer.Local.handCards.Remove(selectedCard);
             BoardSlot.isPlacingCard = true;
             BoardSlot.isStrengtheningSlot = true;
             BoardSlot.cardToPlace = selectedCard;
@@ -2158,7 +2158,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             FindObjectOfType<CardDrag>()?.SetButtonsInteractable(false);
             Card3DHover.allowDiscard = false;
             yield return new WaitWhile(() => BoardSlot.isPlacingCard);
-            Player.Instance.handCards.Remove(selectedCard);
+            NetworkPlayer.Local.handCards.Remove(selectedCard);
         }
     }
     IEnumerator GreedySnakeCopyProcess(CardInstance giver, CardInstance target)
@@ -2470,7 +2470,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     IEnumerator EmperorEnterEffect(CardInstance giver)
     {
         yield return null;
-        Player.Instance.handCards.RemoveAll(c => c == null);
+        NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
 
         HandManager hm = FindObjectOfType<HandManager>();
         hm?.ShowAllCards();
@@ -2478,7 +2478,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         string layerId = SelectionManager.Instance.BeginOpenSelection(TargetType.SingleAlly, null);
 
         List<GameObject> spellCards = new List<GameObject>();
-        foreach (GameObject card in Player.Instance.handCards)
+        foreach (GameObject card in NetworkPlayer.Local.handCards)
         {
             CardInstance ci = card?.GetComponent<CardInstance>();
             if (ci != null && CardDatabase.Instance?.GetTemplate(ci.templateID)?.cardType == CardType.Spell)
@@ -2489,7 +2489,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
 
         List<GameObject> handSummons = new List<GameObject>();
-        foreach (GameObject card in Player.Instance.handCards)
+        foreach (GameObject card in NetworkPlayer.Local.handCards)
         {
             CardInstance ci = card?.GetComponent<CardInstance>();
             if (ci != null && CardDatabase.Instance?.GetTemplate(ci.templateID)?.cardType == CardType.Summon)
@@ -2556,11 +2556,11 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     }
     IEnumerator RiddlerDeathEffect(CardInstance giver)
     {
-        Player.Instance.handCards.RemoveAll(c => c == null);
+        NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
 
         // 收集手牌中的反制牌
         List<GameObject> counterCards = new List<GameObject>();
-        foreach (GameObject card in Player.Instance.handCards)
+        foreach (GameObject card in NetworkPlayer.Local.handCards)
         {
             if (card == null) continue;
             CardInstance ci = card.GetComponent<CardInstance>();
@@ -2608,7 +2608,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             // 设标记不扣费
             var counter = CounterManager.Instance?.myCounters?.LastOrDefault();
             if (counter != null) counter.noCostOnTrigger = true;
-            Player.Instance.handCards.Remove(selectedCard);
+            NetworkPlayer.Local.handCards.Remove(selectedCard);
             Destroy(selectedCard);
             HandManager hm = FindObjectOfType<HandManager>();
             hm?.RefreshLayout(true);
@@ -2719,10 +2719,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     IEnumerator ApprenticeMageEnterEffect(CardInstance giver)
     {
         yield return null;
-        Player.Instance.handCards.RemoveAll(c => c == null);
+        NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
 
         List<GameObject> spellCards = new List<GameObject>();
-        foreach (GameObject card in Player.Instance.handCards)
+        foreach (GameObject card in NetworkPlayer.Local.handCards)
         {
             if (card == null) continue;
             CardInstance ci = card.GetComponent<CardInstance>();
@@ -2776,20 +2776,20 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     CounterManager.Instance?.PlayCounter(selectedCard, true);
                     var counter = CounterManager.Instance?.myCounters?.LastOrDefault();
                     if (counter != null) counter.noCostOnTrigger = true;
-                    Player.Instance.handCards.Remove(selectedCard);
+                    NetworkPlayer.Local.handCards.Remove(selectedCard);
                     Destroy(selectedCard);
                 }
                 else if (spellTemplate.targetType == TargetType.None)
                 {
                     // 无目标法术
-                    Player.Instance.handCards.Remove(selectedCard);
+                    NetworkPlayer.Local.handCards.Remove(selectedCard);
                     Destroy(selectedCard);
                     SpellEffectExecutor.Execute(spellTemplate, null);
                 }
                 else
                 {
                     // 有目标法术
-                    Player.Instance.handCards.Remove(selectedCard);
+                    NetworkPlayer.Local.handCards.Remove(selectedCard);
                     Destroy(selectedCard);
                     SelectionManager.Instance.BeginSelection((TargetType)spellTemplate.targetType, (slot) =>
                     {
@@ -2833,9 +2833,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         {
             switch (id)
             {
-                case "01106": Player.Instance.AddEnergy(3); break;
+                case "01106": NetworkPlayer.Local.AddEnergy(3); break;
                 case "01107":
-                    Player.Instance.AddEnergy(2);
+                    NetworkPlayer.Local.AddEnergy(2);
                     {
                         bool hasAlly = false;
                         BoardManager bm = FindObjectOfType<BoardManager>();
@@ -2866,7 +2866,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         {
             switch (id)
             {
-                case "01106": Player.Instance.AddEnergy(1); break;
+                case "01106": NetworkPlayer.Local.AddEnergy(1); break;
                 case "03513":
                     BoardManager bm = FindObjectOfType<BoardManager>();
                     if (bm != null)
@@ -2897,8 +2897,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 switch (trait)
                 {
                     case "退场：减一能量":
-                        Player.Instance.currentEnergy -= 1;
-                        Player.Instance.UpdateUI();
+                        NetworkPlayer.Local.currentEnergy -= 1;
+                        NetworkPlayer.Local.UpdateUI();
                         break;
                     case "退场：己方全体受到一伤害":
                         BoardManager bm = FindObjectOfType<BoardManager>();
@@ -2912,7 +2912,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                         
                         break;
                     case "退场：己方玩家扣一血":
-                        Player.Instance.TakeDamage(1);
+                        NetworkPlayer.Local.TakeDamage(1);
                         break;
                 }
             }
@@ -2979,7 +2979,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         BoardSlot.isStrengtheningSlot = false;
 
-        Player.Instance.AddEnergy(1);
+        NetworkPlayer.Local.AddEnergy(1);
     }
     IEnumerator FanaticShamanEnterEffect(CardInstance giver)
     {
@@ -3139,12 +3139,12 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     IEnumerator AmplifierAddMechPrefix(CardInstance giver)
     {
         yield return null;
-        Player.Instance.handCards.RemoveAll(c => c == null);
+        NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
 
         string layerId = SelectionManager.Instance.BeginOpenSelection(TargetType.SingleAlly, null);
 
         List<GameObject> spellCards = new List<GameObject>();
-        foreach (GameObject card in Player.Instance.handCards)
+        foreach (GameObject card in NetworkPlayer.Local.handCards)
         {
             CardInstance ci = card?.GetComponent<CardInstance>();
             if (ci != null && CardDatabase.Instance?.GetTemplate(ci.templateID)?.cardType == CardType.Spell)
@@ -3155,7 +3155,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
 
         List<GameObject> handSummons = new List<GameObject>();
-        foreach (GameObject card in Player.Instance.handCards)
+        foreach (GameObject card in NetworkPlayer.Local.handCards)
         {
             CardInstance ci = card?.GetComponent<CardInstance>();
             if (ci != null && CardDatabase.Instance?.GetTemplate(ci.templateID)?.cardType == CardType.Summon)
@@ -3514,10 +3514,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     IEnumerator BrilliantMageEnterEffect(CardInstance giver)
     {
         yield return null;
-        Player.Instance.handCards.RemoveAll(c => c == null);
+        NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
 
         List<CardInstance> spellList = new List<CardInstance>();
-        foreach (GameObject card in Player.Instance.handCards)
+        foreach (GameObject card in NetworkPlayer.Local.handCards)
         {
             if (card == null) continue;
             CardInstance ci = card.GetComponent<CardInstance>();
@@ -3572,7 +3572,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         foreach (CardInstance ci in selected)
         {
             GameObject cardObj = null;
-            foreach (GameObject card in Player.Instance.handCards)
+            foreach (GameObject card in NetworkPlayer.Local.handCards)
             {
                 CardInstance handCI = card?.GetComponent<CardInstance>();
                 if (handCI != null && handCI.instanceID == ci.instanceID)
@@ -3588,7 +3588,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
             if ((td.spellType & SpellType.Counter) != 0)
             {
-                Player.Instance.handCards.Remove(cardObj);
+                NetworkPlayer.Local.handCards.Remove(cardObj);
                 CounterManager.Instance?.PlayCounter(cardObj, true);
                 var counter = CounterManager.Instance?.myCounters?.LastOrDefault();
                 if (counter != null) counter.noCostOnTrigger = true;
@@ -3597,7 +3597,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             }
             else if (td.targetType == TargetType.None)
             {
-                Player.Instance.handCards.Remove(cardObj);
+                NetworkPlayer.Local.handCards.Remove(cardObj);
                 CardDrag.ExecuteSpellEffect(td, null);
                 Destroy(cardObj);
                 yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
@@ -3607,11 +3607,11 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 if (!CardDrag.HasValidTargetStatic((TargetType)td.targetType))
                 {
                     Debug.Log($"辉煌法师：法术{td.cardName}无合法目标，跳过");
-                    Player.Instance.handCards.Remove(cardObj);
+                    NetworkPlayer.Local.handCards.Remove(cardObj);
                     Destroy(cardObj);
                     continue;
                 }
-                Player.Instance.handCards.Remove(cardObj);
+                NetworkPlayer.Local.handCards.Remove(cardObj);
                 bool targetDone = false;
                 SelectionManager.Instance.BeginSelection((TargetType)td.targetType, (slot) =>
                 {
@@ -3700,7 +3700,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 NetworkPlayer.Local.handCards.Remove(toRemove);
                 CardData template = CardDatabase.Instance?.GetTemplate(selected.templateID);
                 if (template != null)
-                    Player.Instance.AddCardToHand(template);
+                    NetworkPlayer.Local.AddCardToHand(template);
                 Destroy(toRemove);
             }
         }
@@ -3709,7 +3709,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     }
     IEnumerator HonorAttendantActiveExit()
     {
-        Player.Instance.AddEnergy(2);
+        NetworkPlayer.Local.AddEnergy(2);
 
         // 收集对方手牌
         List<CardInstance> enemyCards = new List<CardInstance>();

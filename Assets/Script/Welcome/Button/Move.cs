@@ -7,6 +7,6 @@ public class GoToGameScene : MonoBehaviour
 {
     public void StartGame()
     {
-        SceneManager.LoadScene("Game");
+        SceneManager.LoadScene("Lobby");
     }
 }

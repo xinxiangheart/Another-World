@@ -228,7 +228,7 @@ public class HandManager : MonoBehaviour
             if (template.baseHealth == 0 && !hasAllyTarget)
             {
                 Debug.Log("附着牌生命值为0且场上没有己方召唤物，无法打出");
-                Player.Instance.AddEnergy(sourceInstance.currentCost);
+                NetworkPlayer.Local.AddEnergy(sourceInstance.currentCost);
                 CardView cvFail = cardObject.GetComponent<CardView>();
                 if (cvFail != null) { handCards.Remove(cvFail); Destroy(cardObject); RefreshLayout(true); }
                 return;
@@ -257,7 +257,7 @@ public class HandManager : MonoBehaviour
                                     {
                                         oldInst.cardInstance.isActiveExit = false;
                                         oldInst.cardInstance.hasRevenge = false;
-                                        if (oldInst.cardInstance.templateID == "01106") Player.Instance.AddEnergy(1);
+                                        if (oldInst.cardInstance.templateID == "01106") NetworkPlayer.Local.AddEnergy(1);
                                     }
                                     BoardManager bm2 = FindObjectOfType<BoardManager>();
                                     if (bm2 != null)
@@ -359,12 +359,12 @@ public class HandManager : MonoBehaviour
             if (!hasEnemyMinion)
             {
                 Debug.Log("对方场上没有召唤物，阴阳无法打出");
-                Player.Instance.AddEnergy(sourceInstance.currentCost);
+                NetworkPlayer.Local.AddEnergy(sourceInstance.currentCost);
                 Destroy(model);
                 slot.SetCard(null);
                 CardData templateReturn = CardDatabase.Instance?.GetTemplate(sourceInstance.templateID);
                 if (templateReturn != null)
-                    Player.Instance.AddCardToHandFromInstance(templateReturn, sourceInstance);
+                    NetworkPlayer.Local.AddCardToHandFromInstance(templateReturn, sourceInstance);
                 CardView cvFail = cardObject.GetComponent<CardView>();
                 if (cvFail != null) RemoveCard(cvFail);
                 return;
@@ -910,7 +910,7 @@ public class HandManager : MonoBehaviour
                             hostCard.prefixes += " 灵能";
                     }
                 }
-                Player.Instance.AddEnergy(1);
+                NetworkPlayer.Local.AddEnergy(1);
             }
             else if (template.templateID == "01528")
             {
@@ -1026,7 +1026,7 @@ public class HandManager : MonoBehaviour
                 }
             }
             // 手牌中召唤物
-            foreach (GameObject handCard in Player.Instance.handCards)
+            foreach (GameObject handCard in NetworkPlayer.Local.handCards)
             {
                 if (handCard == null) continue;
                 CardInstance ci = handCard.GetComponent<CardInstance>();
@@ -1319,7 +1319,7 @@ public class HandManager : MonoBehaviour
     {
         BoardSlot.isStrengtheningSlot = true;
         SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, null);
-        foreach (GameObject card in Player.Instance.handCards)
+        foreach (GameObject card in NetworkPlayer.Local.handCards)
         {
             if (card != null) card.SetActive(false);
         }
@@ -1375,7 +1375,7 @@ public class HandManager : MonoBehaviour
         BoardSlot.isStrengtheningSlot = false;
         SelectionManager.Instance.ForceEndAll();
         ConfirmSelectionButton.Instance.Hide();
-        foreach (GameObject card in Player.Instance.handCards)
+        foreach (GameObject card in NetworkPlayer.Local.handCards)
         {
             if (card != null) card.SetActive(true);
         }
@@ -1384,7 +1384,7 @@ public class HandManager : MonoBehaviour
     }
     public IEnumerator HandCleanseEffect()
     {
-        Player player = Player.Instance;
+        NetworkPlayer player = NetworkPlayer.Local;
         player.handCards.RemoveAll(c => c == null);
         if (player.handCards.Count == 0) { CardDrag.CleanupSpellResources(); yield break; }
 
@@ -1453,7 +1453,7 @@ public class HandManager : MonoBehaviour
     }
     public IEnumerator ManyCardsEffect()
     {
-        Player player = Player.Instance;
+        NetworkPlayer player = NetworkPlayer.Local;
 
         // 1. 抽7张牌
         for (int i = 0; i < 7; i++)
@@ -1642,7 +1642,7 @@ public class HandManager : MonoBehaviour
             done = true;
         });
 
-        foreach (GameObject card in Player.Instance.handCards)
+        foreach (GameObject card in NetworkPlayer.Local.handCards)
         {
             if (card != null) card.SetActive(false);
         }
@@ -1652,7 +1652,7 @@ public class HandManager : MonoBehaviour
 
         yield return new WaitUntil(() => done);
         BoardSlot.isStrengtheningSlot = false;
-        foreach (GameObject card in Player.Instance.handCards)
+        foreach (GameObject card in NetworkPlayer.Local.handCards)
         {
             if (card != null) card.SetActive(true);
         }
@@ -1661,7 +1661,7 @@ public class HandManager : MonoBehaviour
     }
     public IEnumerator GreatEvolutionEffect()
     {
-        Player.Instance.handCards.RemoveAll(c => c == null);
+        NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
 
         BoardManager bm = FindObjectOfType<BoardManager>();
         bool hasFieldTarget = false;
@@ -1670,7 +1670,7 @@ public class HandManager : MonoBehaviour
             if (bm?.GetSlot(i)?.currentCard3D != null) { hasFieldTarget = true; break; }
         }
         bool hasHandTarget = false;
-        foreach (GameObject card in Player.Instance.handCards)
+        foreach (GameObject card in NetworkPlayer.Local.handCards)
         {
             if (card != null && CardDatabase.Instance?.GetTemplate(card.GetComponent<CardInstance>()?.templateID)?.cardType == CardType.Summon)
             { hasHandTarget = true; break; }
@@ -1684,7 +1684,7 @@ public class HandManager : MonoBehaviour
         string layerId = SelectionManager.Instance.BeginOpenSelection(TargetType.SingleAlly, null);
 
         List<GameObject> spellCards = new List<GameObject>();
-        foreach (GameObject card in Player.Instance.handCards)
+        foreach (GameObject card in NetworkPlayer.Local.handCards)
         {
             CardInstance ci = card?.GetComponent<CardInstance>();
             if (ci != null && CardDatabase.Instance?.GetTemplate(ci.templateID)?.cardType == CardType.Spell)
@@ -1695,7 +1695,7 @@ public class HandManager : MonoBehaviour
         }
 
         List<GameObject> handSummons = new List<GameObject>();
-        foreach (GameObject card in Player.Instance.handCards)
+        foreach (GameObject card in NetworkPlayer.Local.handCards)
         {
             CardInstance ci = card?.GetComponent<CardInstance>();
             if (ci != null && CardDatabase.Instance?.GetTemplate(ci.templateID)?.cardType == CardType.Summon)
@@ -1774,7 +1774,7 @@ public class HandManager : MonoBehaviour
         BoardSlot.isPlacingCard = true;
         BoardSlot.isStrengtheningSlot = true;
         SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, null);
-        foreach (GameObject card in Player.Instance.handCards)
+        foreach (GameObject card in NetworkPlayer.Local.handCards)
         {
             if (card != null) card.SetActive(false);
         }
@@ -1812,7 +1812,7 @@ public class HandManager : MonoBehaviour
                 }
             }
             // 附加灵能前缀：手牌中召唤物
-            foreach (GameObject handCard in Player.Instance.handCards)
+            foreach (GameObject handCard in NetworkPlayer.Local.handCards)
             {
                 if (handCard == null) continue;
                 CardInstance ci = handCard.GetComponent<CardInstance>();
@@ -1830,7 +1830,7 @@ public class HandManager : MonoBehaviour
                     }
                 }
             }
-            foreach (GameObject card in Player.Instance.handCards)
+            foreach (GameObject card in NetworkPlayer.Local.handCards)
             {
                 if (card != null) card.SetActive(true);
             }
@@ -1842,16 +1842,16 @@ public class HandManager : MonoBehaviour
     public IEnumerator CollectorEnterEffect(CardInstance giver)
     {
         yield return null;
-        Player.Instance.handCards.RemoveAll(c => c == null);
+        NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
 
-        if (Player.Instance.handCards.Count == 0)
+        if (NetworkPlayer.Local.handCards.Count == 0)
         {
             Debug.Log("收藏家：手牌为空");
             yield break;
         }
 
         List<CardInstance> displayList = new List<CardInstance>();
-        foreach (GameObject card in Player.Instance.handCards)
+        foreach (GameObject card in NetworkPlayer.Local.handCards)
         {
             if (card == null) continue;
             CardInstance ci = card.GetComponent<CardInstance>();
@@ -1873,7 +1873,7 @@ public class HandManager : MonoBehaviour
         {
             CardDisplayPanel.Instance.Hide();
             CardDisplayPanel.Instance.multiSelect = false;
-            foreach (GameObject c in Player.Instance.handCards) { if (c != null) c.SetActive(true); }
+            foreach (GameObject c in NetworkPlayer.Local.handCards) { if (c != null) c.SetActive(true); }
             SetHandAreaRaycast(true);
             RefreshLayout(true);
             FindObjectOfType<CardDrag>()?.SetButtonsInteractable(true);
@@ -1886,7 +1886,7 @@ public class HandManager : MonoBehaviour
         {
             if (ci == null) continue;
             GameObject toRemove = null;
-            foreach (GameObject card in Player.Instance.handCards)
+            foreach (GameObject card in NetworkPlayer.Local.handCards)
             {
                 CardInstance handCI = card?.GetComponent<CardInstance>();
                 if (handCI != null && handCI.instanceID == ci.instanceID)
@@ -1897,7 +1897,7 @@ public class HandManager : MonoBehaviour
             }
             if (toRemove != null)
             {
-                Player.Instance.handCards.Remove(toRemove);
+                NetworkPlayer.Local.handCards.Remove(toRemove);
                 Destroy(toRemove);
                 consumed++;
             }
@@ -1907,7 +1907,7 @@ public class HandManager : MonoBehaviour
         {
             giver.currentAttack += consumed;
             giver.baseAttack += consumed;
-            Player.Instance.AddEnergy(consumed);
+            NetworkPlayer.Local.AddEnergy(consumed);
 
             BoardManager bm = FindObjectOfType<BoardManager>();
             if (bm != null)
@@ -1931,7 +1931,7 @@ public class HandManager : MonoBehaviour
         CardDisplayPanel.Instance.Hide();
         CardDisplayPanel.Instance.multiSelect = false;
 
-        foreach (GameObject c in Player.Instance.handCards) { if (c != null) c.SetActive(true); }
+        foreach (GameObject c in NetworkPlayer.Local.handCards) { if (c != null) c.SetActive(true); }
         SetHandAreaRaycast(true);
         RefreshLayout(true);
         FindObjectOfType<CardDrag>()?.SetButtonsInteractable(true);
@@ -1944,7 +1944,7 @@ public class HandManager : MonoBehaviour
 
         CardData returnTemplate = CardDatabase.Instance?.GetTemplate(returnTarget.templateID);
 
-        Player.Instance.AddEnergy(refundTarget.currentCost);
+        NetworkPlayer.Local.AddEnergy(refundTarget.currentCost);
 
         returnTarget.isActiveExit = true;
         refundTarget.isActiveExit = true;
@@ -1959,7 +1959,7 @@ public class HandManager : MonoBehaviour
 
         returnTarget.handledReturnToHand = true;
         if (returnTemplate != null)
-            Player.Instance.AddCardToHandFromInstance(returnTemplate, returnTarget);
+            NetworkPlayer.Local.AddCardToHandFromInstance(returnTemplate, returnTarget);
 
        
     }
@@ -2095,11 +2095,11 @@ public class HandManager : MonoBehaviour
     }
    public IEnumerator DoorEffect()
     {
-        Player.Instance.TakeDamage(1);
-        Player.Instance.handCards.RemoveAll(c => c == null);
+        NetworkPlayer.Local.TakeDamage(1);
+        NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
 
         List<CardInstance> summonList = new List<CardInstance>();
-        foreach (GameObject card in Player.Instance.handCards)
+        foreach (GameObject card in NetworkPlayer.Local.handCards)
         {
             if (card == null) continue;
             CardInstance ci = card.GetComponent<CardInstance>();
@@ -2160,7 +2160,7 @@ public class HandManager : MonoBehaviour
         foreach (CardInstance ci in selected)
         {
             GameObject cardObj = null;
-            foreach (GameObject card in Player.Instance.handCards)
+            foreach (GameObject card in NetworkPlayer.Local.handCards)
             {
                 CardInstance handCI = card?.GetComponent<CardInstance>();
                 if (handCI != null && handCI.instanceID == ci.instanceID)
@@ -2174,7 +2174,7 @@ public class HandManager : MonoBehaviour
             CardData td = CardDatabase.Instance?.GetTemplate(ci.templateID);
             if (td == null) continue;
 
-            Player.Instance.handCards.Remove(cardObj);
+            NetworkPlayer.Local.handCards.Remove(cardObj);
 
             HandManager hm = FindObjectOfType<HandManager>();
             hm.HideAllCards();

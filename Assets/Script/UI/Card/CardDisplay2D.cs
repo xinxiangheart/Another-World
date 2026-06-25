@@ -51,9 +51,9 @@ public class CardDisplay2D : MonoBehaviour
         if (nameText != null) nameText.text = template.cardName;
         if (prefixText != null) prefixText.text = instance.prefixes;
         int displayCost = instance.currentCost;
-        if (instance.merchantDiscounted && Player.Instance.IsMerchantOnFieldPublic())
+        if (instance.merchantDiscounted && NetworkPlayer.Local.IsMerchantOnFieldPublic())
             displayCost = Mathf.Max(0, displayCost - 1);
-        if (instance.energyReaperDiscounted && Player.Instance.IsEnergyReaperOnFieldPublic())
+        if (instance.energyReaperDiscounted && NetworkPlayer.Local.IsEnergyReaperOnFieldPublic())
             displayCost = Mathf.Max(0, displayCost - 1);
         if (costText != null) costText.text = displayCost.ToString();
 

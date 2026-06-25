@@ -53,9 +53,9 @@ public class GetCardPanel : MonoBehaviour
 
     void GetCardByID(string instanceID)
     {
-        Player.Instance.handCards.RemoveAll(c => c == null);
+        NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
         // 1. 检查己方手牌
-        foreach (GameObject card in Player.Instance.handCards)
+        foreach (GameObject card in NetworkPlayer.Local.handCards)
         {
             CardInstance ci = card?.GetComponent<CardInstance>();
             if (ci != null && ci.instanceID == instanceID)
@@ -82,7 +82,7 @@ public class GetCardPanel : MonoBehaviour
                     slot.HandleDeath(slot.currentCard3D);
                     CardData template = CardDatabase.Instance?.GetTemplate(target.templateID);
                     if (template != null)
-                        Player.Instance.AddCardToHandFromInstance(template, target);
+                        NetworkPlayer.Local.AddCardToHandFromInstance(template, target);
                     Debug.Log($"从场上获取 {instanceID}，已加入手牌");
                     return;
                 }
@@ -103,7 +103,7 @@ public class GetCardPanel : MonoBehaviour
                     slot.HandleDeath(slot.currentCard3D);
                     CardData template = CardDatabase.Instance?.GetTemplate(target.templateID);
                     if (template != null)
-                        Player.Instance.AddCardToHandFromInstance(template, target);
+                        NetworkPlayer.Local.AddCardToHandFromInstance(template, target);
                     Debug.Log($"从敌方场上获取 {instanceID}，已加入手牌");
                     return;
                 }
@@ -122,7 +122,7 @@ public class GetCardPanel : MonoBehaviour
                     CardData template = CardDatabase.Instance?.GetTemplate(target.templateID);
                     cm.myCounters.RemoveAt(i);
                     if (template != null)
-                        Player.Instance.AddCardToHandFromInstance(template, target);
+                        NetworkPlayer.Local.AddCardToHandFromInstance(template, target);
                     Debug.Log($"从反制牌区获取 {instanceID}，已加入手牌");
                     return;
                 }
@@ -135,7 +135,7 @@ public class GetCardPanel : MonoBehaviour
                     CardData template = CardDatabase.Instance?.GetTemplate(target.templateID);
                     cm.enemyCounters.RemoveAt(i);
                     if (template != null)
-                        Player.Instance.AddCardToHandFromInstance(template, target);
+                        NetworkPlayer.Local.AddCardToHandFromInstance(template, target);
                     Debug.Log($"从敌方反制牌区获取 {instanceID}，已加入手牌");
                     return;
                 }
@@ -152,7 +152,7 @@ public class GetCardPanel : MonoBehaviour
                 {
                     CardData data = dm.mainDeck[i];
                     dm.mainDeck.RemoveAt(i);
-                    Player.Instance.AddCardToHand(data);
+                    NetworkPlayer.Local.AddCardToHand(data);
                     Debug.Log($"从牌库获取 {data.templateID}，已加入手牌");
                     return;
                 }
@@ -160,19 +160,19 @@ public class GetCardPanel : MonoBehaviour
         }
 
         // 6. 检查敌方手牌
-        if (EnemyPlayer.Instance != null)
+        if (NetworkPlayer.Remote != null)
         {
-            for (int i = EnemyPlayer.Instance.handCards.Count - 1; i >= 0; i--)
+            for (int i = NetworkPlayer.Remote.handCards.Count - 1; i >= 0; i--)
             {
-                GameObject card = EnemyPlayer.Instance.handCards[i];
+                GameObject card = NetworkPlayer.Remote.handCards[i];
                 CardInstance ci = card?.GetComponent<CardInstance>();
                 if (ci != null && ci.instanceID == instanceID)
                 {
-                    EnemyPlayer.Instance.handCards.RemoveAt(i);
+                    NetworkPlayer.Remote.handCards.RemoveAt(i);
                     Destroy(card);
                     CardData template = CardDatabase.Instance?.GetTemplate(ci.templateID);
                     if (template != null)
-                        Player.Instance.AddCardToHandFromInstance(template, ci);
+                        NetworkPlayer.Local.AddCardToHandFromInstance(template, ci);
                     Debug.Log($"从敌方手牌获取 {instanceID}，已加入己方手牌");
                     return;
                 }
@@ -207,7 +207,7 @@ public class GetCardPanel : MonoBehaviour
                         ci.currentTier = target.currentTier;
                         ci.baseTier = target.baseTier;
                         ci.prefixes = target.prefixes;
-                        Player.Instance.AddCardToHandFromInstance(template, ci);
+                        NetworkPlayer.Local.AddCardToHandFromInstance(template, ci);
                         Destroy(temp);
                     }
                     Debug.Log($"从弃牌堆获取 {instanceID}，已加入手牌");

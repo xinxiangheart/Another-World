@@ -40,12 +40,12 @@ public class Test1Panel : MonoBehaviour
         {
             string traits = BuildTraitsText(instance);
             string shieldText = instance.hasShield ? "£¨»¤¶Ü£©" : "";
-            Player.Instance.handCards.RemoveAll(c => c == null);
-            bool isOnField = !Player.Instance.handCards.Exists(c => c?.GetComponent<CardInstance>() == instance);
+            NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
+            bool isOnField = !NetworkPlayer.Local.handCards.Exists(c => c?.GetComponent<CardInstance>() == instance);
             int displayCost = instance.currentCost;
-            if (instance.merchantDiscounted && Player.Instance.IsMerchantOnFieldPublic())
+            if (instance.merchantDiscounted && NetworkPlayer.Local.IsMerchantOnFieldPublic())
                 displayCost = Mathf.Max(0, displayCost - 1);
-            if (instance.energyReaperDiscounted && Player.Instance.IsEnergyReaperOnFieldPublic())
+            if (instance.energyReaperDiscounted && NetworkPlayer.Local.IsEnergyReaperOnFieldPublic())
                 displayCost = Mathf.Max(0, displayCost - 1);
             infoText.text = $"ID: {instance.instanceID}\n" +
                             $"Ãû³Æ: {template.cardName}\n" +

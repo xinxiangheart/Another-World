@@ -57,7 +57,7 @@ public class DrawCardUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandl
 
     public void OnPointerClick(PointerEventData eventData)
     {
-        Debug.Log($"点击抽牌：remainingDraws={remainingDraws}, playerEnergy={Player.Instance.GetEnergy()}");
+        Debug.Log($"点击抽牌：remainingDraws={remainingDraws}, playerEnergy={NetworkPlayer.Local.GetEnergy()}");
 
         if (remainingDraws <= 0)
         {
@@ -65,7 +65,7 @@ public class DrawCardUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandl
             return;
         }
 
-        Player player = Player.Instance;
+        NetworkPlayer player = NetworkPlayer.Local;
         if (player != null && player.UseEnergy(1))
         {
             Debug.Log("能量足够，调用 DrawCard");

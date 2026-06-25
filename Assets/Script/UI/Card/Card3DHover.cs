@@ -236,7 +236,7 @@ public class Card3DHover : MonoBehaviour
                 return;
             case "03026":
                 int lostHealth = deadInstance.currentMaxHealth - deadInstance.currentHealth;
-                Player.Instance.AddEnergy(lostHealth);
+                NetworkPlayer.Local.AddEnergy(lostHealth);
                 Debug.Log($"投资者抛置：获得{lostHealth}能量");
                 break;
         }

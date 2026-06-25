@@ -34,9 +34,9 @@ public class SelectionManager : MonoBehaviour
             onSelected?.Invoke(slot);
             EndSelection(id);
         };
-        Player.Instance.handCards.RemoveAll(c => c == null);
-        Debug.Log($"BeginSelection “˛≤ÿ ÷≈∆: handCards.Count={Player.Instance.handCards.Count}");
-        foreach (GameObject card in Player.Instance.handCards)
+        NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
+        Debug.Log($"BeginSelection “˛≤ÿ ÷≈∆: handCards.Count={NetworkPlayer.Local.handCards.Count}");
+        foreach (GameObject card in NetworkPlayer.Local.handCards)
         {
             if (card != null) card.SetActive(false);
         }
@@ -93,7 +93,7 @@ public class SelectionManager : MonoBehaviour
 
             HandManager hm = FindObjectOfType<HandManager>();
             hm?.SetHandAreaRaycast(true);
-            foreach (GameObject card in Player.Instance.handCards)
+            foreach (GameObject card in NetworkPlayer.Local.handCards)
             {
                 if (card != null) card.SetActive(true);
             }
@@ -122,7 +122,7 @@ public class SelectionManager : MonoBehaviour
 
         HandManager hm = FindObjectOfType<HandManager>();
         hm?.SetHandAreaRaycast(true);
-        foreach (GameObject card in Player.Instance.handCards)
+        foreach (GameObject card in NetworkPlayer.Local.handCards)
         {
             if (card != null) card.SetActive(true);
         }
@@ -194,7 +194,7 @@ public class SelectionManager : MonoBehaviour
                 BoardSlot.isPlacingCard = true;
                 BoardSlot.isStrengtheningSlot = true;
                 SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, null);
-                foreach (GameObject c in Player.Instance.handCards) if (c != null) c.SetActive(false);
+                foreach (GameObject c in NetworkPlayer.Local.handCards) if (c != null) c.SetActive(false);
                 hm.SetHandAreaRaycast(false);
                 FindObjectOfType<CardDrag>()?.SetButtonsInteractable(false);
                 Card3DHover.allowDiscard = false;
@@ -219,7 +219,7 @@ public class SelectionManager : MonoBehaviour
                         SelectionManager.Instance.ForceEndAll();
                         BoardSlot.isPlacingCard = false;
                         BoardSlot.isStrengtheningSlot = false;
-                        foreach (GameObject c in Player.Instance.handCards) if (c != null) c.SetActive(true);
+                        foreach (GameObject c in NetworkPlayer.Local.handCards) if (c != null) c.SetActive(true);
                         hm.RefreshLayout(true);
                     }
                 };

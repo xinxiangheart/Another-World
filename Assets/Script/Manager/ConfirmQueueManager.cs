@@ -134,7 +134,7 @@ public class ConfirmQueueManager : MonoBehaviour
 
     public static void EnterSelectionMode()
     {
-        foreach (GameObject card in Player.Instance.handCards)
+        foreach (GameObject card in NetworkPlayer.Local.handCards)
         {
             if (card != null) card.SetActive(false);
         }
@@ -142,7 +142,7 @@ public class ConfirmQueueManager : MonoBehaviour
     }
     public static void ExitSelectionMode()
     {
-        foreach (GameObject card in Player.Instance.handCards)
+        foreach (GameObject card in NetworkPlayer.Local.handCards)
         {
             if (card != null) card.SetActive(true);
         }
@@ -154,7 +154,7 @@ public class ConfirmQueueManager : MonoBehaviour
     public static List<GameObject> FilterHandCards(Func<CardInstance, bool> condition)
     {
         List<GameObject> validCards = new List<GameObject>();
-        Player player = Player.Instance;
+        NetworkPlayer player = NetworkPlayer.Local;
         if (player == null) return validCards;
 
         foreach (GameObject card in player.handCards)
@@ -176,7 +176,7 @@ public class ConfirmQueueManager : MonoBehaviour
 
     public static void RestoreAllHandCards()
     {
-        Player player = Player.Instance;
+        NetworkPlayer player = NetworkPlayer.Local;
         if (player == null) return;
         foreach (GameObject card in player.handCards)
         {
