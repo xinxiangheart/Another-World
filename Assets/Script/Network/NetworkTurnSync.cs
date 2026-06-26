@@ -3,7 +3,7 @@ using UnityEngine;
 
 /// <summary>
 /// Server-authoritative network bridge for turn coordination.
-/// Must be placed on a GameObject with NetworkIdentity (e.g. as child of NetworkManager).
+/// Must be on a GameObject with NetworkIdentity.
 /// Host assigns first player, syncs game start, routes turn requests.
 /// </summary>
 public class NetworkTurnSync : NetworkBehaviour
@@ -18,6 +18,9 @@ public class NetworkTurnSync : NetworkBehaviour
 
     [SyncVar(hook = nameof(OnCurrentPhaseChanged))]
     public int currentPhaseId;
+
+    [SyncVar(hook = nameof(OnIsMyTurnFirstChanged))]
+    public bool isMyTurnFirst;
 
     TurnManager turnManager;
 
@@ -35,29 +38,30 @@ public class NetworkTurnSync : NetworkBehaviour
     public override void OnStartServer()
     {
         isHostFirst = Random.value > 0.5f;
-        Debug.Log($"[NetworkTurnSync] Server started. isHostFirst = {isHostFirst}");
+        isMyTurnFirst = isHostFirst;
+        Debug.Log($"[NetworkTurnSync] Server started. isHostFirst={isHostFirst}");
     }
 
     void Update()
     {
-        // Host: check if both players are ready and start the game
         if (NetworkServer.active && !gameStarted && turnManager != null)
         {
             if (NetworkPlayer.Local != null && NetworkPlayer.Remote != null)
             {
-                // Both players connected - start the game!
-                gameStarted = true;
                 Debug.Log("[NetworkTurnSync] Both players ready, starting game!");
-
-                // Host starts the game
                 turnManager.enabled = true;
-                if (!turnManager.HasGameStarted())
-                {
-                    turnManager.StartGameForClient();
-                }
 
-                // Notify remote client
-                RpcStartGame();
+                // Server runs initial draw (handles both players)
+                turnManager.StartGameForClient();
+
+                // After initial draw completes, broadcast game start
+                gameStarted = true;
+
+                // Sync initial phase to all clients
+                currentPhaseId = (int)turnManager.currentPhase;
+                RpcPhaseChange((int)turnManager.currentPhase);
+
+                Debug.Log($"[NetworkTurnSync] Game started, phase={turnManager.currentPhase}, isMyTurnFirst={isMyTurnFirst}");
             }
         }
     }
@@ -73,22 +77,20 @@ public class NetworkTurnSync : NetworkBehaviour
     void ApplyFirstPlayer()
     {
         if (turnManager == null) return;
-        if (isLocalPlayer)
-            turnManager.isMyTurnFirst = isHostFirst;
-        else
-            turnManager.isMyTurnFirst = !isHostFirst;
-        Debug.Log($"[NetworkTurnSync] isMyTurnFirst = {turnManager.isMyTurnFirst}");
+        turnManager.isMyTurnFirst = isLocalPlayer ? isMyTurnFirst : !isMyTurnFirst;
+        Debug.Log($"[NetworkTurnSync] isMyTurnFirst={turnManager.isMyTurnFirst} (local)");
     }
 
     void OnHostFirstChanged(bool oldValue, bool newValue) { ApplyFirstPlayer(); }
+    void OnIsMyTurnFirstChanged(bool oldValue, bool newValue) { ApplyFirstPlayer(); }
 
     void OnGameStartedChanged(bool oldValue, bool newValue)
     {
-        if (newValue && turnManager != null && !turnManager.HasGameStarted())
+        if (newValue && turnManager != null)
         {
             Debug.Log("[NetworkTurnSync] Game start signal received!");
             turnManager.enabled = true;
-            turnManager.StartGameForClient();
+            // Server already started via InitialDraw. Client waits for RpcPhaseChange.
         }
     }
 
@@ -119,8 +121,8 @@ public class NetworkTurnSync : NetworkBehaviour
         if (turnManager != null)
         {
             turnManager.enabled = true;
-            if (!turnManager.HasGameStarted())
-                turnManager.StartGameForClient();
+            // Initial draw already happened on server and cards were sent via TargetRpc.
+            // Phase broadcast follows via RpcPhaseChange.
         }
     }
 
@@ -129,5 +131,16 @@ public class NetworkTurnSync : NetworkBehaviour
     {
         Debug.Log($"[NetworkTurnSync] RpcPhaseChange: phase={phaseId}");
         currentPhaseId = phaseId;
+    }
+
+    /// <summary>
+    /// Server call: flip first player after battle for next phase pair.
+    /// SyncVar auto-propagates to all clients.
+    /// </summary>
+    [Server]
+    public void SwapFirstPlayer()
+    {
+        isMyTurnFirst = !isMyTurnFirst;
+        Debug.Log($"[NetworkTurnSync] Swapped first player: isMyTurnFirst={isMyTurnFirst}");
     }
 }

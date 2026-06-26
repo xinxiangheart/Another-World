@@ -2,6 +2,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+using Mirror;
 
 public class DrawCardUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler, IPointerClickHandler
 {
@@ -46,6 +47,10 @@ public class DrawCardUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandl
 
     public void OnPointerEnter(PointerEventData eventData)
     {
+        // Only allow interaction during your turn
+        TurnManager tm = FindObjectOfType<TurnManager>();
+        if (tm != null && !tm.IsMyTurn()) return;
+
         if (remainingDraws > 0)
             targetScale = originalScale * hoverScale;
     }
@@ -57,31 +62,37 @@ public class DrawCardUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandl
 
     public void OnPointerClick(PointerEventData eventData)
     {
-        Debug.Log($"点击抽牌：remainingDraws={remainingDraws}, playerEnergy={NetworkPlayer.Local.GetEnergy()}");
+        // Guard: only during your turn in online mode
+        TurnManager tm = FindObjectOfType<TurnManager>();
+        if (NetworkClient.isConnected && tm != null && !tm.IsMyTurn())
+            return;
 
         if (remainingDraws <= 0)
+            return;
+
+        NetworkPlayer player = NetworkPlayer.Local;
+        if (player == null) return;
+
+        if (NetworkClient.isConnected && !NetworkServer.active)
         {
-            Debug.Log("抽牌次数已用完");
+            // Pure client: send draw request to server
+            player.CmdRequestDraw();
+            // Server will send card back via TargetRpc and update energy via SyncVar
             return;
         }
 
-        NetworkPlayer player = NetworkPlayer.Local;
-        if (player != null && player.UseEnergy(1))
+        // Host/Server or offline: execute draw directly
+        if (player.UseEnergy(1))
         {
-            Debug.Log("能量足够，调用 DrawCard");
             player.DrawCard();
             remainingDraws--;
             UpdateDisplay();
         }
-        else
-        {
-            Debug.Log("能量不足");
-        }
     }
+
     public void UseOneDraw()
     {
         if (remainingDraws > 0)
             remainingDraws--;
     }
-   
 }

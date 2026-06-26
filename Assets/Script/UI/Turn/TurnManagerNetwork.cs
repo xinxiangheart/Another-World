@@ -19,7 +19,6 @@ public partial class TurnManager
     public void StartGameForClient()
     {
         Debug.Log("[TurnManager] StartGameForClient: starting game");
-        Debug.Log("=== Game Start ===");
         StartCoroutine(InitialDraw());
     }
 
@@ -39,12 +38,50 @@ public partial class TurnManager
         else if (phase == TurnPhase.BattlePhase)
         {
             currentPhase = TurnPhase.BattlePhase;
+            SetEndButton(false);
             StartCoroutine(BattleManager.Instance.BattleCoroutine());
         }
         else if (phase == TurnPhase.EnemyTurn)
         {
             currentPhase = TurnPhase.EnemyTurn;
             SetEndButton(false);
+        }
+        else if (phase == TurnPhase.PhaseStart)
+        {
+            currentPhase = TurnPhase.PhaseStart;
+            SetEndButton(false);
+        }
+    }
+
+    /// <summary>
+    /// Server broadcasts a phase change. For MyTurn/EnemyTurn,
+    /// each player receives a different phase based on perspective.
+    /// BattlePhase and PhaseStart are broadcast equally to both.
+    /// </summary>
+    public void BroadcastTurnPhase(TurnPhase hostPhase)
+    {
+        if (!NetworkServer.active) return;
+
+        if (hostPhase == TurnPhase.BattlePhase || hostPhase == TurnPhase.PhaseStart)
+        {
+            // Same for both players
+            NetworkPlayer.Local?.TargetSetPhase(NetworkPlayer.Local.connectionToClient, (int)hostPhase);
+            if (NetworkPlayer.Remote != null)
+                NetworkPlayer.Remote.TargetSetPhase(NetworkPlayer.Remote.connectionToClient, (int)hostPhase);
+        }
+        else if (hostPhase == TurnPhase.MyTurn)
+        {
+            // Host is active: host sees MyTurn, remote sees EnemyTurn
+            NetworkPlayer.Local?.TargetSetPhase(NetworkPlayer.Local.connectionToClient, (int)TurnPhase.MyTurn);
+            if (NetworkPlayer.Remote != null)
+                NetworkPlayer.Remote.TargetSetPhase(NetworkPlayer.Remote.connectionToClient, (int)TurnPhase.EnemyTurn);
+        }
+        else // EnemyTurn (host perspective) = Remote is active
+        {
+            // Remote is active: host sees EnemyTurn, remote sees MyTurn
+            NetworkPlayer.Local?.TargetSetPhase(NetworkPlayer.Local.connectionToClient, (int)TurnPhase.EnemyTurn);
+            if (NetworkPlayer.Remote != null)
+                NetworkPlayer.Remote.TargetSetPhase(NetworkPlayer.Remote.connectionToClient, (int)TurnPhase.MyTurn);
         }
     }
 
@@ -75,16 +112,6 @@ public partial class TurnManager
             }
 
             EndCurrentTurn();
-
-            if (NetworkServer.active)
-            {
-                NetworkTurnSync nts = FindObjectOfType<NetworkTurnSync>();
-                if (nts != null)
-                {
-                    nts.currentPhaseId = (int)currentPhase;
-                    nts.RpcPhaseChange((int)currentPhase);
-                }
-            }
         }
     }
 }

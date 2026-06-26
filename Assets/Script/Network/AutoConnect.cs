@@ -113,24 +113,38 @@ public class AutoConnect : MonoBehaviour
     {
         NetworkManager nm = FindObjectOfType<NetworkManager>();
         if (nm == null) { Debug.LogError("[AutoConnect] No NetworkManager!"); return; }
-        nm.networkAddress = LobbyConfig.ServerIP;
         FixTransport(nm);
+        nm.networkAddress = LobbyConfig.ServerIP;
+        Debug.Log($"[AutoConnect] Client: address={nm.networkAddress}, transport={nm.transport?.GetType().Name ?? "NULL"}, port={(nm.transport as kcp2k.KcpTransport)?.Port ?? 0}");
         nm.StartClient();
         SetText("正在连接 " + LobbyConfig.ServerIP + " ...");
     }
 
     void FixTransport(NetworkManager nm)
     {
-        if (nm.transport != null && nm.transport.GetType().Name.Contains("Edgegap"))
+        KcpTransport existing = nm.gameObject.GetComponent<KcpTransport>();
+        bool needsReplacement = existing != null && existing.GetType().Name.Contains("Edgegap");
+
+        if (needsReplacement)
         {
-            KcpTransport kcp = nm.gameObject.GetComponent<KcpTransport>();
-            if (kcp == null)
-            {
-                kcp = nm.gameObject.AddComponent<KcpTransport>();
-                kcp.Port = 7777;
-            }
-            nm.transport = kcp;
+            Debug.Log($"[AutoConnect] Replacing EdgegapKcpTransport with plain KcpTransport");
+            // Mirror holds static Transport.active ref — clear before destroy
+            if (Transport.active == existing)
+                Transport.active = null;
+            DestroyImmediate(existing);
+            nm.transport = null;
         }
+
+        if (nm.transport == null)
+        {
+            KcpTransport kcp = nm.gameObject.AddComponent<KcpTransport>();
+            kcp.Port = 7777;
+            nm.transport = kcp;
+            // Restore static reference so NetworkServer/NetworkClient can find it
+            Transport.active = kcp;
+        }
+
+        Debug.Log($"[AutoConnect] Transport OK: {nm.transport.GetType().Name}, port={(nm.transport as KcpTransport)?.Port ?? 7777}");
     }
 
     // ========== Network Callbacks ==========

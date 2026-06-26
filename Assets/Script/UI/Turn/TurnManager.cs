@@ -35,21 +35,57 @@ public partial class TurnManager : MonoBehaviour
         StartCoroutine(InitialDraw());
     }
 
+
     IEnumerator InitialDraw()
     {
         yield return null;
 
-        for (int i = 0; i < 2; i++)
-            NetworkPlayer.Local.DrawCard();
-
-        CardData chosenOne = ChosenOneManager.Instance?.DrawChosenOne();
-        if (chosenOne != null)
+        if (NetworkServer.active)
         {
-            NetworkPlayer.Local.AddCardToHand(chosenOne);
+            yield return StartCoroutine(ServerInitialDraw());
+            Debug.Log("[TurnManager] Server initial draw complete");
+            StartNewPhase();
+        }
+        else if (!NetworkClient.isConnected)
+        {
+            for (int i = 0; i < 2; i++)
+                NetworkPlayer.Local.DrawCard();
+            CardData chosenOne = ChosenOneManager.Instance?.DrawChosenOne();
+            if (chosenOne != null)
+                NetworkPlayer.Local.AddCardToHand(chosenOne);
+            StartNewPhase();
+        }
+    }
+
+    IEnumerator ServerInitialDraw()
+    {
+        NetworkPlayer local = NetworkPlayer.Local;
+        NetworkPlayer remote = NetworkPlayer.Remote;
+
+        for (int i = 0; i < 2; i++)
+        {
+            CardData card = DeckManager.Instance?.DrawFromMain();
+            if (card != null) local.DrawCard();
         }
 
-        Debug.Log($"开局抽牌完成，手牌：{NetworkPlayer.Local.handCards.Count} 张");
-        StartNewPhase();
+        if (remote != null)
+        {
+            for (int i = 0; i < 2; i++)
+            {
+                CardData card = DeckManager.Instance?.DrawFromMain();
+                if (card != null)
+                    remote.TargetReceiveCard(remote.connectionToClient, card.templateID);
+            }
+            CardData choRemote = ChosenOneManager.Instance?.DrawChosenOne();
+            if (choRemote != null)
+                remote.TargetReceiveCard(remote.connectionToClient, choRemote.templateID);
+        }
+
+        CardData choLocal = ChosenOneManager.Instance?.DrawChosenOne();
+        if (choLocal != null) local.AddCardToHand(choLocal);
+
+        Debug.Log(string.Format("[TurnManager] ServerInitialDraw: Host={0} cards", local.handCards.Count));
+        yield return null;
     }
 
     public void StartNewPhase()
@@ -101,7 +137,15 @@ public partial class TurnManager : MonoBehaviour
 
         currentPhase = TurnPhase.PhaseStart;
         phaseCount++;
-        isMyTurnFirst = !isMyTurnFirst;
+        if (NetworkServer.active)
+        {
+            NetworkTurnSync nts = FindObjectOfType<NetworkTurnSync>();
+            if (nts != null) nts.SwapFirstPlayer();
+        }
+        else
+        {
+            isMyTurnFirst = !isMyTurnFirst;
+        }
 
         string firstPlayer = isMyTurnFirst ? "我方" : "敌方";
         Debug.Log($"\n========== 第 {phaseCount} 阶段开始（{firstPlayer}先手）==========");
@@ -432,27 +476,51 @@ public partial class TurnManager : MonoBehaviour
             }
         }
 
-        // ===== 自己回合开始 =====
-        if (isMyTurnFirst)
+        // ===== Phase assignment =====
+        if (NetworkServer.active)
         {
-            currentPhase = TurnPhase.MyTurn;
-            SetEndButton(true);
-            NetworkPlayer.Local.AddEnergy(6);
-            FindObjectOfType<DrawCardUI>()?.ResetForNewPhase();
-            TriggerMyTurnStartEffects();
-            Debug.Log("我方先手，进入我方主回合");
+            if (isMyTurnFirst)
+            {
+                currentPhase = TurnPhase.MyTurn;
+                SetEndButton(true);
+                NetworkPlayer.Local.AddEnergy(6);
+                FindObjectOfType<DrawCardUI>()?.ResetForNewPhase();
+                TriggerMyTurnStartEffects();
+                Debug.Log("[TurnManager] Host turn (MyTurn)");
+            }
+            else
+            {
+                currentPhase = TurnPhase.EnemyTurn;
+                SetEndButton(false);
+                NetworkPlayer.Remote?.AddEnergy(6);
+                Debug.Log("[TurnManager] Remote turn (EnemyTurn)");
+            }
+            NetworkTurnSync nts = FindObjectOfType<NetworkTurnSync>();
+            if (nts != null)
+            {
+                nts.currentPhaseId = (int)currentPhase;
+                BroadcastTurnPhase(currentPhase);
+            }
         }
         else
         {
-            Debug.Log("敌方先手 → 跳过（测试模式）");
-            currentPhase = TurnPhase.EnemyTurn;
-            Debug.Log("敌方回合 → 跳过");
-            currentPhase = TurnPhase.MyTurn;
-            SetEndButton(true);
-            NetworkPlayer.Local.AddEnergy(6);
-            FindObjectOfType<DrawCardUI>()?.ResetForNewPhase();
-            TriggerMyTurnStartEffects();
-            Debug.Log("进入我方主回合");
+            if (isMyTurnFirst)
+            {
+                currentPhase = TurnPhase.MyTurn;
+                SetEndButton(true);
+                NetworkPlayer.Local.AddEnergy(6);
+                FindObjectOfType<DrawCardUI>()?.ResetForNewPhase();
+                TriggerMyTurnStartEffects();
+            }
+            else
+            {
+                currentPhase = TurnPhase.EnemyTurn;
+                currentPhase = TurnPhase.MyTurn;
+                SetEndButton(true);
+                NetworkPlayer.Local.AddEnergy(6);
+                FindObjectOfType<DrawCardUI>()?.ResetForNewPhase();
+                TriggerMyTurnStartEffects();
+            }
         }
     }
 
@@ -510,22 +578,45 @@ public partial class TurnManager : MonoBehaviour
             return;
         }
 
-        if (isMyTurnFirst)
+        if (NetworkServer.active)
         {
-            currentPhase = TurnPhase.EnemyTurn;
-            Debug.Log("敌方回合 → 跳过");
-            CounterManager.Instance?.CheckOnEnemyTurnEnd();
-            currentPhase = TurnPhase.BattlePhase;
-            StartCoroutine(BattleManager.Instance.BattleCoroutine());
+            if (isMyTurnFirst)
+            {
+                currentPhase = TurnPhase.EnemyTurn;
+                CounterManager.Instance?.CheckOnEnemyTurnEnd();
+                Debug.Log("[TurnManager] Host ended, switching to Remote");
+            }
+            else
+            {
+                CounterManager.Instance?.CheckOnEnemyTurnEnd();
+                currentPhase = TurnPhase.BattlePhase;
+                Debug.Log("[TurnManager] Remote ended, starting Battle");
+                StartCoroutine(BattleManager.Instance.BattleCoroutine());
+            }
+            NetworkTurnSync nts = FindObjectOfType<NetworkTurnSync>();
+            if (nts != null)
+            {
+                nts.currentPhaseId = (int)currentPhase;
+                BroadcastTurnPhase(currentPhase);
+            }
         }
         else
         {
-            CounterManager.Instance?.CheckOnEnemyTurnEnd();
-            currentPhase = TurnPhase.BattlePhase;
-            StartCoroutine(BattleManager.Instance.BattleCoroutine());
+            if (isMyTurnFirst)
+            {
+                currentPhase = TurnPhase.EnemyTurn;
+                CounterManager.Instance?.CheckOnEnemyTurnEnd();
+                currentPhase = TurnPhase.BattlePhase;
+                StartCoroutine(BattleManager.Instance.BattleCoroutine());
+            }
+            else
+            {
+                CounterManager.Instance?.CheckOnEnemyTurnEnd();
+                currentPhase = TurnPhase.BattlePhase;
+                StartCoroutine(BattleManager.Instance.BattleCoroutine());
+            }
         }
     }
-
     void TriggerMyTurnStartEffects()
     {
         BoardSlot[] slots = FindObjectOfType<BoardManager>()?.GetAllSlots();

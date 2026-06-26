@@ -48,11 +48,11 @@ public class NetworkPlayer : NetworkBehaviour
         currentHealth = maxHealth;
         currentEnergy = 0;
         _energyCanExceedLimit = false;
-        UpdateUI();
-        // Find UI references
+        // Scene references: auto-found at runtime, NO manual drag needed
         healthText = GameObject.Find("Health")?.GetComponent<TextMeshProUGUI>();
         energyText = GameObject.Find("Energy")?.GetComponent<TextMeshProUGUI>();
         handArea = GameObject.Find("HandArea")?.transform;
+        handManager = FindObjectOfType<HandManager>();
         UpdateUI();
     }
 
@@ -80,6 +80,16 @@ public class NetworkPlayer : NetworkBehaviour
 
     public override void OnStartClient()
     {
+        if (isLocalPlayer)
+        {
+            UpdateUI();
+            return;
+        }
+        // Remote player: auto-bind to enemy UI in scene (no manual drag needed)
+        healthText = GameObject.Find("EnemyHealthLabel")?.GetComponent<TextMeshProUGUI>();
+        energyText = GameObject.Find("EnemyEnergyLabel")?.GetComponent<TextMeshProUGUI>();
+        handArea = GameObject.Find("EnemyHandArea")?.transform;
+        handManager = FindObjectOfType<HandManager>();
         UpdateUI();
     }
 
@@ -516,5 +526,34 @@ public class NetworkPlayer : NetworkBehaviour
                 count++;
         }
         return count;
+    }
+
+    // ========== Network RPCs for card delivery ==========
+
+    /// <summary>
+    /// Server calls this on a specific client to deliver a drawn card.
+    /// The client instantiates the card in its hand locally.
+    /// </summary>
+    [TargetRpc]
+    public void TargetReceiveCard(NetworkConnectionToClient target, string templateID)
+    {
+        CardData template = CardDatabase.Instance?.GetTemplate(templateID);
+        if (template != null)
+        {
+            AddCardToHand(template);
+            Debug.Log($"[NetworkPlayer] TargetReceiveCard: {templateID}");
+        }
+    }
+
+    /// <summary>
+    /// Server tells a specific client what phase to enter from their perspective.
+    /// </summary>
+    [TargetRpc]
+    public void TargetSetPhase(NetworkConnectionToClient target, int phaseId)
+    {
+        TurnManager.TurnPhase phase = (TurnManager.TurnPhase)phaseId;
+        Debug.Log($"[NetworkPlayer] TargetSetPhase: {phase}");
+        TurnManager tm = FindObjectOfType<TurnManager>();
+        if (tm != null) tm.SetPhaseFromNetwork(phase);
     }
 }

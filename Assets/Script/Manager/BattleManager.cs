@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using static BoardSlot;
+using Mirror;
 
 public class BattleManager : MonoBehaviour
 {
@@ -40,6 +41,12 @@ public class BattleManager : MonoBehaviour
 
     public IEnumerator BattleCoroutine()
     {
+        // In online mode, only the server runs the battle. Clients wait for SyncVar results.
+        if (NetworkClient.isConnected && !NetworkServer.active)
+        {
+            Debug.Log("[BattleManager] Client: skipping battle, waiting for server");
+            yield break;
+        }
         allSlots = FindObjectOfType<BoardManager>()?.GetAllSlots();
         if (allSlots == null) yield break;
 

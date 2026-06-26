@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using Mirror;
 
 public class ChosenOneManager : MonoBehaviour
 {
@@ -11,7 +12,16 @@ public class ChosenOneManager : MonoBehaviour
     {
         if (Instance != null) { Destroy(gameObject); return; }
         Instance = this;
-        InitializeDeck();
+
+        // Only server initializes the chosen-one deck in online mode
+        if (NetworkServer.active || !NetworkClient.isConnected)
+        {
+            InitializeDeck();
+        }
+        else
+        {
+            Debug.Log("[ChosenOneManager] Client: skipping deck init, server owns the deck");
+        }
     }
 
     void InitializeDeck()
@@ -22,7 +32,7 @@ public class ChosenOneManager : MonoBehaviour
             chosenOneDeck.Add(template);
         }
         Shuffle(chosenOneDeck);
-        Debug.Log($"神选者牌堆初始化完成，共 {chosenOneDeck.Count} 张");
+        Debug.Log($"ChosenOne deck: {chosenOneDeck.Count} cards");
     }
 
     public CardData DrawChosenOne()
@@ -32,6 +42,8 @@ public class ChosenOneManager : MonoBehaviour
         chosenOneDeck.RemoveAt(0);
         return card;
     }
+
+    public int RemainingCards => chosenOneDeck.Count;
 
     void Shuffle<T>(List<T> list)
     {

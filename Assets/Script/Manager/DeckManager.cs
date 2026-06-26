@@ -1,12 +1,12 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using Mirror;
 
 public class DeckManager : MonoBehaviour
 {
     public static DeckManager Instance { get; private set; }
 
-    // 公共大牌库（所有可抽取的牌）
     public List<CardData> mainDeck = new List<CardData>();
 
     void Awake()
@@ -17,10 +17,19 @@ public class DeckManager : MonoBehaviour
             return;
         }
         Instance = this;
-        InitializeDeck();
+
+        // Only server initializes the shared deck in online mode.
+        // Clients get cards via TargetRpc from the server.
+        if (NetworkServer.active || !NetworkClient.isConnected)
+        {
+            InitializeDeck();
+        }
+        else
+        {
+            Debug.Log("[DeckManager] Client: skipping deck init, server owns the deck");
+        }
     }
 
-    // 初始化牌库：加载模板，按 copyCount 生成副本，洗牌
     void InitializeDeck()
     {
         CardData[] allCards = Resources.LoadAll<CardData>("CardData");
@@ -38,10 +47,9 @@ public class DeckManager : MonoBehaviour
             }
         }
         Shuffle(mainDeck);
-        Debug.Log($"牌库初始化完成，共 {mainDeck.Count} 张牌");
+        Debug.Log($"Deck initialized: {mainDeck.Count} cards");
     }
 
-    // 从牌库顶部抽一张牌
     public CardData DrawFromMain()
     {
         if (mainDeck.Count == 0) return null;
@@ -50,7 +58,8 @@ public class DeckManager : MonoBehaviour
         return card;
     }
 
-    // Fisher-Yates 洗牌算法
+    public int RemainingCards => mainDeck.Count;
+
     void Shuffle<T>(List<T> list)
     {
         for (int i = list.Count - 1; i > 0; i--)
