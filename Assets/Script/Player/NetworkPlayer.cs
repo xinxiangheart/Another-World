@@ -169,15 +169,7 @@ public class NetworkPlayer : NetworkBehaviour
         TurnManager tm = FindObjectOfType<TurnManager>();
         if (tm == null) return;
 
-        bool isMyTurn;
-        if (tm.currentPhase == TurnManager.TurnPhase.MyTurn)
-            isMyTurn = (this == NetworkPlayer.Local);
-        else if (tm.currentPhase == TurnManager.TurnPhase.EnemyTurn)
-            isMyTurn = (this == NetworkPlayer.Remote);
-        else
-            isMyTurn = false;
-
-        if (!isMyTurn) return;
+        if (!IsMyTurnOnServer(tm)) return;
 
         DrawCardUI drawUI = FindObjectOfType<DrawCardUI>();
         if (drawUI != null && drawUI.GetRemainingDraws() <= 0) return;
@@ -185,49 +177,89 @@ public class NetworkPlayer : NetworkBehaviour
         if (currentEnergy < 1) return;
 
         CardData data = DeckManager.Instance?.DrawFromMain();
-        if (data == null)
-        {
-            Debug.Log("[NetworkPlayer] CmdRequestDraw: deck empty");
-            return;
-        }
+        if (data == null) { Debug.Log("[NetworkPlayer] CmdRequestDraw: deck empty"); return; }
 
         currentEnergy -= 1;
         TargetReceiveCard(connectionToClient, data.templateID);
         TargetConfirmDraw(connectionToClient);
+
+        // Server-side tracking: add a lightweight card so CmdPlayCard can find it
+        AddServerSideCard(data);
     }
 
     [Command]
     public void CmdPlayCard(string templateID, int slotID)
     {
-        Debug.Log($"[NetworkPlayer] CmdPlayCard: templateID={templateID}, slotID={slotID}");
-
+        Debug.Log($"[NetworkPlayer] CmdPlayCard: templateID={templateID}, slotID={slotID}, netId={netId}");
         TurnManager tm = FindObjectOfType<TurnManager>();
         if (tm == null) return;
 
-        bool isMyTurn;
-        if (tm.currentPhase == TurnManager.TurnPhase.MyTurn)
-            isMyTurn = (this == NetworkPlayer.Local);
-        else if (tm.currentPhase == TurnManager.TurnPhase.EnemyTurn)
-            isMyTurn = (this == NetworkPlayer.Remote);
-        else
-            isMyTurn = false;
+        if (!IsMyTurnOnServer(tm)) return;
 
-        if (!isMyTurn) return;
+        CardData template = CardDatabase.Instance?.GetTemplate(templateID);
+        if (template == null) return;
 
-        foreach (GameObject card in handCards)
+        int cost = 0;
+
+        // Try to find card in server-side hand (tracking cards from AddServerSideCard)
+        handCards.RemoveAll(c => c == null);
+        GameObject serverCard = null;
+        foreach (GameObject c in handCards)
         {
-            if (card == null) continue;
-            CardInstance ci = card.GetComponent<CardInstance>();
-            if (ci != null && ci.templateID == templateID)
+            CardInstance ci = c.GetComponent<CardInstance>();
+            if (ci != null && ci.templateID == templateID) { serverCard = c; cost = ci.currentCost; break; }
+        }
+
+        // Fallback cost from template (for host where card was already removed locally)
+        if (serverCard == null) cost = template.baseCost;
+
+        if (currentEnergy < cost) return;
+
+        // Deduct energy server-side
+        currentEnergy -= cost;
+
+        // Clean up server-side tracking card (if exists; host may have already removed it)
+        if (serverCard != null)
+        {
+            handCards.Remove(serverCard);
+            Destroy(serverCard);
+            handCardCount = handCards.Count;
+        }
+
+        // Tell the requesting client to remove the card from its local hand
+        // (only needed for pure client; host already handled locally)
+        TargetRemoveCardFromHand(connectionToClient, templateID);
+
+        // Summon: broadcast 3D model to the OTHER client
+        if (template.cardType == CardType.Summon)
+        {
+            int modelSlotID = slotID;
+            if (slotID < 0)
             {
                 BoardManager bm = FindObjectOfType<BoardManager>();
-                BoardSlot slot = bm?.GetSlot(slotID);
-                if (slot != null)
-                {
-                    HandManager hm = FindObjectOfType<HandManager>();
-                    hm?.PlaceCardToSlot(slot, card);
-                }
-                break;
+                if (bm != null)
+                    for (int i = 6; i <= 11; i++)
+                    {
+                        BoardSlot s = bm.GetSlot(i);
+                        if (s != null && !s.isBlocked && !s.hasCard) { modelSlotID = i; break; }
+                    }
+            }
+
+            NetworkPlayer other = (this == NetworkPlayer.Local) ? NetworkPlayer.Remote : NetworkPlayer.Local;
+            if (other != null && other.connectionToClient != null)
+            {
+                other.TargetSpawnCard3D(other.connectionToClient, templateID, modelSlotID);
+                Debug.Log($"[NetworkPlayer] CmdPlayCard: spawned enemy model {templateID} at slot {modelSlotID} for netId={other.netId}");
+            }
+        }
+        else if (template.cardType == CardType.Spell)
+        {
+            // Counter card: spawn at mirrored position on the other client
+            NetworkPlayer other = (this == NetworkPlayer.Local) ? NetworkPlayer.Remote : NetworkPlayer.Local;
+            if (other != null && other.connectionToClient != null && template.spellPrefab3D != null)
+            {
+                other.TargetSpawnCounterCard(other.connectionToClient, templateID);
+                Debug.Log($"[NetworkPlayer] CmdPlayCard: spawned enemy counter {templateID} for netId={other.netId}");
             }
         }
     }
@@ -571,6 +603,29 @@ public class NetworkPlayer : NetworkBehaviour
     public bool IsMerchantOnFieldPublic() => IsMerchantOnField();
     public bool IsEnergyReaperOnFieldPublic() => IsEnergyReaperOnField();
 
+    // ========== Server-side card tracking helpers ==========
+
+    /// <summary>Validate this player should be acting in the current server-side phase.</summary>
+    bool IsMyTurnOnServer(TurnManager tm)
+    {
+        if (tm.currentPhase == TurnManager.TurnPhase.MyTurn)
+            return (this == NetworkPlayer.Local);
+        if (tm.currentPhase == TurnManager.TurnPhase.EnemyTurn)
+            return (this == NetworkPlayer.Remote);
+        return false;
+    }
+
+    /// <summary>Create a lightweight card object on the server for hand tracking.</summary>
+    public void AddServerSideCard(CardData data)
+    {
+        GameObject card = new GameObject($"ServerCard_{data.templateID}");
+        CardInstance ci = card.AddComponent<CardInstance>();
+        ci.InitFromTemplate(data, 0);
+        handCards.Add(card);
+        handCardCount = handCards.Count;
+        Debug.Log($"[NetworkPlayer] AddServerSideCard: {data.templateID}, handCount={handCardCount}");
+    }
+
     int GetCopyIndex(string templateID)
     {
         handCards.RemoveAll(card => card == null);
@@ -606,6 +661,86 @@ public class NetworkPlayer : NetworkBehaviour
             drawUI.UseOneDraw();
             drawUI.UpdateDisplay();
         }
+    }
+
+    /// <summary>
+    /// Server tells a client to spawn a 3D card model at a board slot.
+    /// The card is an enemy/opponent card, so it renders with opposite rotation
+    /// and SetEnemyView (no hover interaction, no discard).
+    /// </summary>
+    [TargetRpc]
+    public void TargetSpawnCard3D(NetworkConnectionToClient target, string templateID, int slotID)
+    {
+        CardData template = CardDatabase.Instance?.GetTemplate(templateID);
+        if (template?.prefab3D == null) return;
+
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return;
+        BoardSlot slot = bm.GetSlot(slotID);
+        if (slot == null) return;
+
+        HandManager hm = FindObjectOfType<HandManager>();
+        Vector3 worldPos = hm.GetSlotWorldPosition(slotID);
+
+        GameObject model = Instantiate(template.prefab3D, worldPos, Quaternion.identity);
+        model.name = templateID + "_enemy";
+        Card3DInstance c3d = model.GetComponent<Card3DInstance>();
+        if (c3d != null)
+        {
+            CardInstance ci = model.AddComponent<CardInstance>();
+            ci.InitFromTemplate(template, 0);
+            c3d.cardInstance = ci;
+            c3d.UpdateValues();
+        }
+        slot.SetCard(model);
+
+        Card3DHover hover = model.GetComponent<Card3DHover>();
+        if (hover != null) hover.SetEnemyView();
+
+        Debug.Log($"[NetworkPlayer] TargetSpawnCard3D: {templateID} at slot {slotID}");
+    }
+
+    /// <summary>
+    /// Server tells a client to spawn an enemy counter card.
+    /// Position is mirrored across the screen center axis automatically by CounterManager.
+    /// </summary>
+    [TargetRpc]
+    public void TargetSpawnCounterCard(NetworkConnectionToClient target, string templateID)
+    {
+        CardData template = CardDatabase.Instance?.GetTemplate(templateID);
+        if (template == null) return;
+
+        // Create a temporary card object for CounterManager to use
+        GameObject tempCard = new GameObject($"counter_{templateID}");
+        CardInstance ci = tempCard.AddComponent<CardInstance>();
+        ci.InitFromTemplate(template, 0);
+
+        CounterManager.Instance?.PlayCounter(tempCard, false); // isMine=false → enemy position
+
+        Destroy(tempCard);
+        Debug.Log($"[NetworkPlayer] TargetSpawnCounterCard: {templateID}");
+    }
+
+    /// <summary>Server tells a client to remove a card from its local hand by templateID.</summary>
+    [TargetRpc]
+    public void TargetRemoveCardFromHand(NetworkConnectionToClient target, string templateID)
+    {
+        handCards.RemoveAll(c => c == null);
+        foreach (GameObject card in handCards)
+        {
+            if (card == null) continue;
+            CardInstance ci = card.GetComponent<CardInstance>();
+            if (ci != null && ci.templateID == templateID)
+            {
+                Debug.Log($"[NetworkPlayer] TargetRemoveCardFromHand: removing {templateID}");
+                handCards.Remove(card);
+                Destroy(card);
+                FindObjectOfType<HandManager>()?.RefreshLayout(true);
+                handCardCount = handCards.Count;
+                return;
+            }
+        }
+        Debug.LogWarning($"[NetworkPlayer] TargetRemoveCardFromHand: card {templateID} not found in local hand");
     }
 
     [TargetRpc]

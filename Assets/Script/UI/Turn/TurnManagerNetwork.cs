@@ -44,7 +44,10 @@ public partial class TurnManager
             Debug.Log("[TurnManager] SetPhaseFromNetwork: ENTER BattlePhase");
             currentPhase = TurnPhase.BattlePhase;
             SetPlayerActionsEnabled(false);
-            StartCoroutine(BattleManager.Instance.BattleCoroutine());
+            // Server runs battle via SafeBattle in EndCurrentTurn.
+            // Client just waits for next phase broadcast (server's StartNewPhase).
+            if (!NetworkServer.active)
+                StartCoroutine(BattleManager.Instance.BattleCoroutine());
         }
         else if (phase == TurnPhase.EnemyTurn && currentPhase != TurnPhase.EnemyTurn)
         {

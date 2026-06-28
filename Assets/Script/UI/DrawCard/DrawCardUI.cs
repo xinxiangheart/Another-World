@@ -15,6 +15,17 @@ public class DrawCardUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandl
     private int remainingDraws = 5;
     private Vector3 originalScale;
     private Vector3 targetScale;
+    private CanvasGroup _canvasGroup;
+
+    void Awake()
+    {
+        _canvasGroup = GetComponent<CanvasGroup>();
+        if (_canvasGroup == null) _canvasGroup = gameObject.AddComponent<CanvasGroup>();
+        // If there's a Button on us (added by accident or from prefab), keep it
+        // but make sure it doesn't intercept our IPointerClickHandler.
+        Button btn = GetComponent<Button>();
+        if (btn != null) btn.interactable = true;
+    }
 
     void Start()
     {
@@ -111,12 +122,11 @@ public class DrawCardUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandl
             remainingDraws--;
     }
 
-    CanvasGroup _canvasGroup;
     public void SetInteractable(bool enabled)
     {
-        if (_canvasGroup == null)
-            _canvasGroup = GetComponent<CanvasGroup>() ?? gameObject.AddComponent<CanvasGroup>();
+        if (_canvasGroup == null) _canvasGroup = GetComponent<CanvasGroup>() ?? gameObject.AddComponent<CanvasGroup>();
         _canvasGroup.interactable = enabled;
         _canvasGroup.blocksRaycasts = enabled;
+        Debug.Log($"[DrawCardUI] SetInteractable({enabled})");
     }
 }

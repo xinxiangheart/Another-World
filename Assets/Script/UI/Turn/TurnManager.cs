@@ -80,6 +80,7 @@ public partial class TurnManager : MonoBehaviour
         }
 
         // Remote gets cards via TargetRpc (fires on remote client only)
+        // ALSO create server-side tracking cards so CmdPlayCard can find them
         if (remote != null)
         {
             Debug.Log($"[TurnManager] Sending {2} main + 1 chosen to Remote netId={remote.netId}");
@@ -88,15 +89,15 @@ public partial class TurnManager : MonoBehaviour
                 CardData card = DeckManager.Instance?.DrawFromMain();
                 if (card != null)
                 {
-                    Debug.Log($"[TurnManager] Remote TargetRpc: {card.templateID}");
                     remote.TargetReceiveCard(remote.connectionToClient, card.templateID);
+                    remote.AddServerSideCard(card);
                 }
             }
             CardData choRemote = ChosenOneManager.Instance?.DrawChosenOne();
             if (choRemote != null)
             {
-                Debug.Log($"[TurnManager] Remote TargetRpc (chosen): {choRemote.templateID}");
                 remote.TargetReceiveCard(remote.connectionToClient, choRemote.templateID);
+                remote.AddServerSideCard(choRemote);
             }
         }
         else
@@ -543,7 +544,7 @@ public partial class TurnManager : MonoBehaviour
 
         if (currentPhase != TurnPhase.MyTurn && currentPhase != TurnPhase.EnemyTurn) return;
 
-        Debug.Log($"玩家点击结束回合  currentPhase={currentPhase}  isMyTurnFirst={isMyTurnFirst}  isServer={NetworkServer.active}");
+        Debug.Log($"[TurnManager] EndCurrentTurn  phase={currentPhase}  isMyTurnFirst={isMyTurnFirst}  isServer={NetworkServer.active}");
         SetPlayerActionsEnabled(false);
 
         // 额外回合
@@ -568,7 +569,7 @@ public partial class TurnManager : MonoBehaviour
                 }
             }
             currentPhase = TurnPhase.BattlePhase;
-            StartCoroutine(BattleManager.Instance.BattleCoroutine());
+            StartCoroutine(SafeBattle());
             return;
         }
 
@@ -586,47 +587,91 @@ public partial class TurnManager : MonoBehaviour
 
         if (NetworkServer.active)
         {
-            // Simple alternation: MyTurn→EnemyTurn→BattlePhase.
-            // isMyTurnFirst only matters in StartNewPhase to decide who goes first next round.
             if (currentPhase == TurnPhase.MyTurn)
             {
+                // First player ends → switch to second player
                 currentPhase = TurnPhase.EnemyTurn;
                 SetPlayerActionsEnabled(false);
                 CounterManager.Instance?.CheckOnEnemyTurnEnd();
-                Debug.Log("[TurnManager] Switched to EnemyTurn");
+                Debug.Log("[TurnManager] Host ended → EnemyTurn");
             }
-            else // EnemyTurn
+            else
             {
+                // Second player ends → enter battle
                 CounterManager.Instance?.CheckOnEnemyTurnEnd();
                 NetworkTurnSync ntsSwap = FindObjectOfType<NetworkTurnSync>();
                 if (ntsSwap != null) ntsSwap.SwapFirstPlayer();
                 currentPhase = TurnPhase.BattlePhase;
                 SetPlayerActionsEnabled(false);
-                // Broadcast BattlePhase to clients so they disable their UI
                 BroadcastTurnPhase(currentPhase);
-                Debug.Log("[TurnManager] Both players ended, starting Battle");
-                StartCoroutine(BattleManager.Instance.BattleCoroutine());
-                // BattleCoroutine calls StartNewPhase at end, which will broadcast the next phase.
+                Debug.Log("[TurnManager] Both ended → BattlePhase → SafeBattle");
+                StartCoroutine(SafeBattle());
                 return;
             }
             BroadcastTurnPhase(currentPhase);
         }
         else
         {
-            // Offline: player vs AI enemy
+            // Offline — player vs AI. isMyTurnFirst alternates each round via StartNewPhase flip.
             if (currentPhase == TurnPhase.MyTurn)
             {
-                currentPhase = TurnPhase.EnemyTurn;
-                SetPlayerActionsEnabled(false);
-                CounterManager.Instance?.CheckOnEnemyTurnEnd();
-                StartCoroutine(AutoEndEnemyTurn());
+                if (isMyTurnFirst)
+                {
+                    // Player went first → enemy's turn now
+                    currentPhase = TurnPhase.EnemyTurn;
+                    SetPlayerActionsEnabled(false);
+                    CounterManager.Instance?.CheckOnEnemyTurnEnd();
+                    StartCoroutine(AutoEndEnemyTurn());
+                }
+                else
+                {
+                    // Enemy went first, player is second → go to battle
+                    CounterManager.Instance?.CheckOnEnemyTurnEnd();
+                    currentPhase = TurnPhase.BattlePhase;
+                    SetPlayerActionsEnabled(false);
+                    StartCoroutine(SafeBattle());
+                }
             }
             else // EnemyTurn
             {
-                CounterManager.Instance?.CheckOnEnemyTurnEnd();
-                currentPhase = TurnPhase.BattlePhase;
-                SetPlayerActionsEnabled(false);
-                StartCoroutine(BattleManager.Instance.BattleCoroutine());
+                if (isMyTurnFirst)
+                {
+                    // Enemy was second player → go to battle
+                    CounterManager.Instance?.CheckOnEnemyTurnEnd();
+                    currentPhase = TurnPhase.BattlePhase;
+                    SetPlayerActionsEnabled(false);
+                    StartCoroutine(SafeBattle());
+                }
+                else
+                {
+                    // Enemy went first → now it's the player's turn
+                    currentPhase = TurnPhase.MyTurn;
+                    SetPlayerActionsEnabled(true);
+                    NetworkPlayer.Local.AddEnergy(6);
+                    FindObjectOfType<DrawCardUI>()?.ResetForNewPhase();
+                    TriggerMyTurnStartEffects();
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Bulletproof battle wrapper. Guarantees StartNewPhase is called even if
+    /// BattleCoroutine fails silently.
+    /// </summary>
+    IEnumerator SafeBattle()
+    {
+        if (NetworkServer.active)
+        {
+            yield return null; // let BattlePhase broadcast reach clients first
+            BattleManager bm = BattleManager.Instance;
+            if (bm != null)
+                yield return StartCoroutine(bm.BattleCoroutine());
+            // BattleCoroutine normally calls StartNewPhase. If it didn't (e.g. allSlots null), fallback:
+            if (currentPhase == TurnPhase.BattlePhase)
+            {
+                Debug.LogWarning("[TurnManager] SafeBattle: BattleCoroutine left us in BattlePhase, forcing StartNewPhase");
+                StartNewPhase();
             }
         }
     }
@@ -965,12 +1010,18 @@ public partial class TurnManager : MonoBehaviour
     void SetEndButton(bool enabled)
     {
         EndTurnButton endBtn = FindObjectOfType<EndTurnButton>();
-        endBtn?.SetInteractable(enabled);
+        if (endBtn != null)
+            endBtn.SetInteractable(enabled);
+        else
+            Debug.LogWarning("[TurnManager] SetEndButton: EndTurnButton not found in scene!");
     }
     void SetDrawButtonInteractable(bool enabled)
     {
         DrawCardUI drawUI = FindObjectOfType<DrawCardUI>();
-        if (drawUI != null) drawUI.SetInteractable(enabled);
+        if (drawUI != null)
+            drawUI.SetInteractable(enabled);
+        else
+            Debug.LogWarning("[TurnManager] SetDrawButtonInteractable: DrawCardUI not found in scene!");
     }
 
     void SetPlayerActionsEnabled(bool enabled)

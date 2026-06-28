@@ -9,12 +9,12 @@ public class EndTurnButton : MonoBehaviour
     private Button button;
     private CanvasGroup canvasGroup;
 
-    void Start()
+    void Awake()
     {
         button = GetComponent<Button>();
-        button.onClick.AddListener(EndTurn);
         canvasGroup = GetComponent<CanvasGroup>();
         if (canvasGroup == null) canvasGroup = gameObject.AddComponent<CanvasGroup>();
+        button.onClick.AddListener(EndTurn);
     }
 
     void EndTurn()
@@ -22,31 +22,17 @@ public class EndTurnButton : MonoBehaviour
         Debug.Log($"[EndTurnButton] Click! Server={NetworkServer.active}, Client={NetworkClient.isConnected}");
 
         TurnManager turnManager = FindObjectOfType<TurnManager>();
-        if (turnManager == null)
-        {
-            Debug.LogError("[EndTurnButton] TurnManager not found!");
-            return;
-        }
+        if (turnManager == null) { Debug.LogError("[EndTurnButton] TurnManager not found!"); return; }
 
         // Client: send end-turn command to server
         if (NetworkClient.isConnected && !NetworkServer.active)
         {
-            NetworkTurnSync nts = FindObjectOfType<NetworkTurnSync>();
-            if (nts != null)
-            {
-                Debug.Log("[EndTurnButton] Sending CmdRequestEndTurn via NetworkTurnSync");
-                nts.CmdRequestEndTurn();
-            }
-            else
-            {
-                Debug.Log("[EndTurnButton] Sending CmdEndTurn directly");
-                NetworkPlayer.Local?.CmdEndTurn();
-            }
+            NetworkPlayer.Local?.CmdEndTurn();
             return;
         }
 
         // Server/Host: execute directly
-        Debug.Log($"[EndTurnButton] Direct EndCurrentTurn, currentPhase={turnManager.currentPhase}");
+        Debug.Log($"[EndTurnButton] Direct EndCurrentTurn, phase={turnManager.currentPhase}");
         turnManager.EndCurrentTurn();
     }
 

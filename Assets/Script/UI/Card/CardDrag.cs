@@ -89,14 +89,6 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
 {
     if (tempCanvas != null)
     {
-        // Network guard: only server/Host can resolve card plays
-        if (NetworkClient.isConnected && !NetworkServer.active)
-        {
-            Debug.Log("[CardDrag] Client mode - card play must go through server");
-            SetButtonsInteractable(true);
-            handManager.SetHandAreaRaycast(true);
-            return;
-        }
         Destroy(tempCanvas);
         tempCanvas = null;
     }
