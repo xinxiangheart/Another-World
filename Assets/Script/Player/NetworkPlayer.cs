@@ -35,6 +35,9 @@ public class NetworkPlayer : NetworkBehaviour
     public GameObject spellCardPrefab2D;
     public List<GameObject> handCards = new List<GameObject>();
 
+    TextMeshProUGUI _healthText;
+    TextMeshProUGUI _energyText;
+
     // ========== Mirror Lifecycle ==========
 
     public override void OnStartLocalPlayer()
@@ -46,6 +49,9 @@ public class NetworkPlayer : NetworkBehaviour
         _energyCanExceedLimit = false;
         handArea = GameObject.Find("HandArea")?.transform;
         handManager = FindObjectOfType<HandManager>();
+        _healthText = FindTMP("Health");
+        _energyText = FindTMP("Energy");
+        RefreshUI();
     }
 
     public override void OnStartServer()
@@ -104,6 +110,17 @@ public class NetworkPlayer : NetworkBehaviour
         }
         handArea = FindTransform("EnemyHandArea");
         handManager = FindObjectOfType<HandManager>();
+        _healthText = FindTMP("EnemyHealthLabel");
+        _energyText = FindTMP("EnemyEnergyLabel");
+        RefreshUI();
+    }
+
+    TextMeshProUGUI FindTMP(string name)
+    {
+        var t = GameObject.Find(name)?.GetComponent<TextMeshProUGUI>();
+        if (t == null) t = GameObject.Find(name + " ")?.GetComponent<TextMeshProUGUI>();
+        if (t == null) Debug.LogWarning($"[NetworkPlayer] FindTMP({name}) failed");
+        return t;
     }
 
     Transform FindTransform(string name)
@@ -111,6 +128,15 @@ public class NetworkPlayer : NetworkBehaviour
         var go = GameObject.Find(name);
         if (go == null) go = GameObject.Find(name + " ");
         return go?.transform;
+    }
+
+    // ========== UI ==========
+
+    void RefreshUI()
+    {
+        if (isServer && !isClient) return;
+        if (_healthText != null) _healthText.text = isLocalPlayer ? $" {currentHealth}" : currentHealth.ToString();
+        if (_energyText != null) _energyText.text = isLocalPlayer ? $" {currentEnergy}/{maxEnergy}" : $"{currentEnergy}/{maxEnergy}";
     }
 
     // ========== Debug UI ==========
@@ -126,7 +152,7 @@ public class NetworkPlayer : NetworkBehaviour
             $"isLocalPlayer: {isLocalPlayer}, handCards: {handCards.Count}");
     }
 
-    // ========== SyncVar Hooks (debug only) ==========
+    // ========== SyncVar Hooks ==========
 
     void OnHandCountChanged(int oldValue, int newValue)
     {
@@ -136,6 +162,7 @@ public class NetworkPlayer : NetworkBehaviour
     void OnHealthChanged(int oldValue, int newValue)
     {
         Debug.Log($"[NetworkPlayer] Health: {oldValue} -> {newValue}, isLocal={isLocalPlayer}, netId={netId}");
+        RefreshUI();
         if (newValue <= 0 && isServer)
             Debug.Log("[NetworkPlayer] Player died");
     }
@@ -143,6 +170,7 @@ public class NetworkPlayer : NetworkBehaviour
     void OnEnergyChanged(int oldValue, int newValue)
     {
         Debug.Log($"[NetworkPlayer] Energy: {oldValue} -> {newValue}, isLocal={isLocalPlayer}, netId={netId}");
+        RefreshUI();
     }
 
     // ========== ClientRpc ==========
@@ -357,7 +385,7 @@ public class NetworkPlayer : NetworkBehaviour
     /// No-op kept for backwards compatibility. Actual display is handled
     /// by PlayerStatsUI polling NetworkPlayer.Local/Remote every frame.
     /// </summary>
-    public void UpdateUI() { }
+    public void UpdateUI() => RefreshUI();
 
     // ========== Hand Management ==========
 
