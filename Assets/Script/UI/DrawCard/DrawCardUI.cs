@@ -62,31 +62,46 @@ public class DrawCardUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandl
 
     public void OnPointerClick(PointerEventData eventData)
     {
-        // Guard: only during your turn in online mode
+        // Guard: only during your turn (both online and offline)
         TurnManager tm = FindObjectOfType<TurnManager>();
-        if (NetworkClient.isConnected && tm != null && !tm.IsMyTurn())
+        if (tm != null && !tm.IsMyTurn())
+        {
+            Debug.Log($"[DrawCardUI] Click blocked: not MyTurn (phase={tm?.currentPhase})");
             return;
+        }
 
         if (remainingDraws <= 0)
+        {
+            Debug.Log("[DrawCardUI] Click blocked: no remaining draws");
             return;
+        }
 
         NetworkPlayer player = NetworkPlayer.Local;
-        if (player == null) return;
+        if (player == null)
+        {
+            Debug.LogError("[DrawCardUI] Click blocked: NetworkPlayer.Local is null");
+            return;
+        }
 
         if (NetworkClient.isConnected && !NetworkServer.active)
         {
             // Pure client: send draw request to server
+            Debug.Log($"[DrawCardUI] Sending CmdRequestDraw, energy={player.currentEnergy}");
             player.CmdRequestDraw();
-            // Server will send card back via TargetRpc and update energy via SyncVar
             return;
         }
 
         // Host/Server or offline: execute draw directly
+        Debug.Log($"[DrawCardUI] Direct draw, energy={player.currentEnergy}");
         if (player.UseEnergy(1))
         {
             player.DrawCard();
             remainingDraws--;
             UpdateDisplay();
+        }
+        else
+        {
+            Debug.LogWarning($"[DrawCardUI] UseEnergy(1) failed! currentEnergy={player.currentEnergy}");
         }
     }
 
@@ -94,5 +109,14 @@ public class DrawCardUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandl
     {
         if (remainingDraws > 0)
             remainingDraws--;
+    }
+
+    CanvasGroup _canvasGroup;
+    public void SetInteractable(bool enabled)
+    {
+        if (_canvasGroup == null)
+            _canvasGroup = GetComponent<CanvasGroup>() ?? gameObject.AddComponent<CanvasGroup>();
+        _canvasGroup.interactable = enabled;
+        _canvasGroup.blocksRaycasts = enabled;
     }
 }

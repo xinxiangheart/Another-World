@@ -16,7 +16,8 @@ public class NetworkTurnSync : NetworkBehaviour
     [SyncVar(hook = nameof(OnGameStartedChanged))]
     public bool gameStarted;
 
-    [SyncVar(hook = nameof(OnCurrentPhaseChanged))]
+    /// <summary>Server-authoritative phase ID. No hook — clients receive correct perspective via BroadcastTurnPhase TargetRpc.</summary>
+    [SyncVar]
     public int currentPhaseId;
 
     [SyncVar(hook = nameof(OnIsMyTurnFirstChanged))]
@@ -57,11 +58,11 @@ public class NetworkTurnSync : NetworkBehaviour
                 // After initial draw completes, broadcast game start
                 gameStarted = true;
 
-                // Sync initial phase to all clients
-                currentPhaseId = (int)turnManager.currentPhase;
-                RpcPhaseChange((int)turnManager.currentPhase);
+                // Phase sync is handled by StartNewPhase → BroadcastTurnPhase TargetRpc.
+                // currentPhaseId and RpcPhaseChange are NOT called here because at this
+                // point the coroutine hasn't run yet and turnManager.currentPhase is still PhaseStart.
 
-                Debug.Log($"[NetworkTurnSync] Game started, phase={turnManager.currentPhase}, isMyTurnFirst={isMyTurnFirst}");
+                Debug.Log($"[NetworkTurnSync] Game started, isMyTurnFirst={isMyTurnFirst}");
             }
         }
     }
@@ -77,8 +78,14 @@ public class NetworkTurnSync : NetworkBehaviour
     void ApplyFirstPlayer()
     {
         if (turnManager == null) return;
-        turnManager.isMyTurnFirst = isLocalPlayer ? isMyTurnFirst : !isMyTurnFirst;
-        Debug.Log($"[NetworkTurnSync] isMyTurnFirst={turnManager.isMyTurnFirst} (local)");
+        // NetworkTurnSync is a scene object (NOT a player object), so isLocalPlayer is always false.
+        // Use isServer instead: on the host/server, the SyncVar is the ground truth;
+        // on a pure client, negate it to get the local player's perspective.
+        // isMyTurnFirst (SyncVar) = isHostFirst = "does the host go first?"
+        // Host's TurnManager: isMyTurnFirst = isHostFirst
+        // Remote's TurnManager: isMyTurnFirst = !isHostFirst (remote goes first when host goes second)
+        turnManager.isMyTurnFirst = isServer ? isMyTurnFirst : !isMyTurnFirst;
+        Debug.Log($"[NetworkTurnSync] ApplyFirstPlayer: isMyTurnFirst={turnManager.isMyTurnFirst} (isServer={isServer}, syncVar={isMyTurnFirst})");
     }
 
     void OnHostFirstChanged(bool oldValue, bool newValue) { ApplyFirstPlayer(); }
@@ -90,15 +97,7 @@ public class NetworkTurnSync : NetworkBehaviour
         {
             Debug.Log("[NetworkTurnSync] Game start signal received!");
             turnManager.enabled = true;
-            // Server already started via InitialDraw. Client waits for RpcPhaseChange.
-        }
-    }
-
-    void OnCurrentPhaseChanged(int oldValue, int newValue)
-    {
-        if (turnManager != null)
-        {
-            turnManager.SetPhaseFromNetwork((TurnManager.TurnPhase)newValue);
+            // Host already started via InitialDraw. Phase arrives via BroadcastTurnPhase TargetRpc.
         }
     }
 

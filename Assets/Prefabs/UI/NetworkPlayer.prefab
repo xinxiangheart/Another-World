@@ -76,8 +76,8 @@ MonoBehaviour:
   _energyCanExceedLimit: 0
   handArea: {fileID: 0}
   handManager: {fileID: 0}
-  cardPrefab2D: {fileID: 1451899876978532017, guid: 433df7af0d0b28b45948cbdf892cd669, type: 3}
-  spellCardPrefab2D: {fileID: 4634673609735818748, guid: fb0d2357614cf934fa98c1d31e9bbab7, type: 3}
+  cardPrefab2D: {fileID: 1550741978800441838, guid: f160bef7ac04a49439e53967d006942d, type: 3}
+  spellCardPrefab2D: {fileID: 1550741978800441838, guid: a31740f54d99f4449b1b820e76fbd889, type: 3}
   handCards: []
   healthText: {fileID: 0}
   energyText: {fileID: 0}

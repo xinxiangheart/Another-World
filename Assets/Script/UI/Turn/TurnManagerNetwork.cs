@@ -25,31 +25,37 @@ public partial class TurnManager
     /// <summary>Called by RPC to sync current turn phase from server</summary>
     public void SetPhaseFromNetwork(TurnPhase phase)
     {
-        Debug.Log(string.Format("[TurnManager] SetPhaseFromNetwork: {0}, current={1}", phase, currentPhase));
+        Debug.Log($"[TurnManager] SetPhaseFromNetwork: phase={phase}, currentPhase={currentPhase}, isServer={NetworkServer.active}");
 
         if (phase == TurnPhase.MyTurn && currentPhase != TurnPhase.MyTurn)
         {
+            Debug.Log("[TurnManager] SetPhaseFromNetwork: ENTER MyTurn — enabling actions, +6 energy");
             currentPhase = TurnPhase.MyTurn;
-            SetEndButton(true);
+            SetPlayerActionsEnabled(true);
             if (NetworkPlayer.Local != null) NetworkPlayer.Local.AddEnergy(6);
-            FindObjectOfType<DrawCardUI>()?.ResetForNewPhase();
+            else Debug.LogError("[TurnManager] SetPhaseFromNetwork: NetworkPlayer.Local is NULL!");
+            DrawCardUI dc = FindObjectOfType<DrawCardUI>();
+            if (dc != null) dc.ResetForNewPhase();
+            else Debug.LogWarning("[TurnManager] SetPhaseFromNetwork: DrawCardUI not found!");
             TriggerMyTurnStartEffects();
         }
-        else if (phase == TurnPhase.BattlePhase)
+        else if (phase == TurnPhase.BattlePhase && currentPhase != TurnPhase.BattlePhase)
         {
+            Debug.Log("[TurnManager] SetPhaseFromNetwork: ENTER BattlePhase");
             currentPhase = TurnPhase.BattlePhase;
-            SetEndButton(false);
+            SetPlayerActionsEnabled(false);
             StartCoroutine(BattleManager.Instance.BattleCoroutine());
         }
-        else if (phase == TurnPhase.EnemyTurn)
+        else if (phase == TurnPhase.EnemyTurn && currentPhase != TurnPhase.EnemyTurn)
         {
+            Debug.Log("[TurnManager] SetPhaseFromNetwork: ENTER EnemyTurn — disabling actions");
             currentPhase = TurnPhase.EnemyTurn;
-            SetEndButton(false);
+            SetPlayerActionsEnabled(false);
         }
         else if (phase == TurnPhase.PhaseStart)
         {
             currentPhase = TurnPhase.PhaseStart;
-            SetEndButton(false);
+            SetPlayerActionsEnabled(false);
         }
     }
 
@@ -62,56 +68,72 @@ public partial class TurnManager
     {
         if (!NetworkServer.active) return;
 
+        Debug.Log($"[TurnManager] BroadcastTurnPhase: hostPhase={hostPhase}, Local={NetworkPlayer.Local?.netId}, Remote={NetworkPlayer.Remote?.netId}");
+
+        if (NetworkPlayer.Local == null)
+        {
+            Debug.LogError("[TurnManager] BroadcastTurnPhase: NetworkPlayer.Local is NULL! Cannot broadcast.");
+            return;
+        }
+
         if (hostPhase == TurnPhase.BattlePhase || hostPhase == TurnPhase.PhaseStart)
         {
             // Same for both players
-            NetworkPlayer.Local?.TargetSetPhase(NetworkPlayer.Local.connectionToClient, (int)hostPhase);
+            NetworkPlayer.Local.TargetSetPhase(NetworkPlayer.Local.connectionToClient, (int)hostPhase);
             if (NetworkPlayer.Remote != null)
                 NetworkPlayer.Remote.TargetSetPhase(NetworkPlayer.Remote.connectionToClient, (int)hostPhase);
+            else
+                Debug.LogWarning("[TurnManager] BroadcastTurnPhase: Remote is null, only Local received phase");
         }
         else if (hostPhase == TurnPhase.MyTurn)
         {
             // Host is active: host sees MyTurn, remote sees EnemyTurn
-            NetworkPlayer.Local?.TargetSetPhase(NetworkPlayer.Local.connectionToClient, (int)TurnPhase.MyTurn);
+            NetworkPlayer.Local.TargetSetPhase(NetworkPlayer.Local.connectionToClient, (int)TurnPhase.MyTurn);
             if (NetworkPlayer.Remote != null)
                 NetworkPlayer.Remote.TargetSetPhase(NetworkPlayer.Remote.connectionToClient, (int)TurnPhase.EnemyTurn);
+            else
+                Debug.LogWarning("[TurnManager] BroadcastTurnPhase: Remote is null, remote missed EnemyTurn notification");
         }
         else // EnemyTurn (host perspective) = Remote is active
         {
             // Remote is active: host sees EnemyTurn, remote sees MyTurn
-            NetworkPlayer.Local?.TargetSetPhase(NetworkPlayer.Local.connectionToClient, (int)TurnPhase.EnemyTurn);
+            NetworkPlayer.Local.TargetSetPhase(NetworkPlayer.Local.connectionToClient, (int)TurnPhase.EnemyTurn);
             if (NetworkPlayer.Remote != null)
                 NetworkPlayer.Remote.TargetSetPhase(NetworkPlayer.Remote.connectionToClient, (int)TurnPhase.MyTurn);
+            else
+                Debug.LogWarning("[TurnManager] BroadcastTurnPhase: Remote is null, remote missed MyTurn notification");
         }
     }
 
     /// <summary>
-    /// Server-authoritative end turn.
+    /// Server-authoritative end turn. Validates the requesting player
+    /// matches the current phase (MyTurn=Host, EnemyTurn=Remote from host perspective).
     /// </summary>
     public void ServerEndTurn(NetworkPlayer player)
     {
-        bool isHostTurn = isMyTurnFirst && (player == NetworkPlayer.Local);
-        bool isRemoteTurn = !isMyTurnFirst && (player == NetworkPlayer.Remote);
+        bool isValid;
+        if (currentPhase == TurnPhase.MyTurn)
+            isValid = (player == NetworkPlayer.Local);
+        else if (currentPhase == TurnPhase.EnemyTurn)
+            isValid = (player == NetworkPlayer.Remote);
+        else
+            isValid = false;
 
-        if (!isHostTurn && !isRemoteTurn)
+        if (!isValid)
         {
-            Debug.LogWarning("[TurnManager] ServerEndTurn rejected: not player's turn");
+            Debug.LogWarning($"[TurnManager] ServerEndTurn rejected: phase={currentPhase}, player netId={player?.netId}");
             return;
         }
 
-        if (currentPhase == TurnPhase.MyTurn)
-        {
-            Debug.Log("[TurnManager] ServerEndTurn: ending turn");
+        Debug.Log($"[TurnManager] ServerEndTurn accepted: netId={player?.netId}");
 
-            if (player != null)
-            {
-                player._energyCanExceedLimit = false;
-                if (player.currentEnergy > player.maxEnergy)
-                    player.currentEnergy = player.maxEnergy;
-                player.UpdateUI();
-            }
+        // Clean up the requesting player's energy BEFORE EndCurrentTurn
+        player._energyCanExceedLimit = false;
+        if (player.currentEnergy > player.maxEnergy)
+            player.currentEnergy = player.maxEnergy;
+        player.UpdateUI();
 
-            EndCurrentTurn();
-        }
+        // Server-authoritative end turn. Energy cleanup already done for the correct player.
+        EndCurrentTurn(skipEnergyCleanup: true);
     }
 }

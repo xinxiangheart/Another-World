@@ -35,10 +35,6 @@ public class NetworkPlayer : NetworkBehaviour
     public GameObject spellCardPrefab2D;
     public List<GameObject> handCards = new List<GameObject>();
 
-    [Header("UI")]
-    public TextMeshProUGUI healthText;
-    public TextMeshProUGUI energyText;
-
     // ========== Mirror Lifecycle ==========
 
     public override void OnStartLocalPlayer()
@@ -48,24 +44,29 @@ public class NetworkPlayer : NetworkBehaviour
         currentHealth = maxHealth;
         currentEnergy = 0;
         _energyCanExceedLimit = false;
-        // Scene references: auto-found at runtime, NO manual drag needed
-        healthText = GameObject.Find("Health")?.GetComponent<TextMeshProUGUI>();
-        energyText = GameObject.Find("Energy")?.GetComponent<TextMeshProUGUI>();
         handArea = GameObject.Find("HandArea")?.transform;
         handManager = FindObjectOfType<HandManager>();
-        UpdateUI();
     }
 
     public override void OnStartServer()
     {
         base.OnStartServer();
-        Debug.Log($"[NetworkPlayer] OnStartServer: netId={netId}");
-        StartCoroutine(DelayedSetRemote());
+        Debug.Log($"[NetworkPlayer] OnStartServer: netId={netId}, isLocalPlayer={isLocalPlayer}");
+
+        currentHealth = maxHealth;
+        currentEnergy = 0;
+
+        // Only the local player finds Remote, to avoid race conditions.
+        if (isLocalPlayer)
+        {
+            TrySetRemote();
+            if (Remote == null)
+                StartCoroutine(DelayedSetRemote());
+        }
     }
 
-    IEnumerator DelayedSetRemote()
+    void TrySetRemote()
     {
-        yield return new WaitForSeconds(0.3f);
         foreach (var conn in NetworkServer.connections.Values)
         {
             var player = conn.identity?.GetComponent<NetworkPlayer>();
@@ -73,32 +74,50 @@ public class NetworkPlayer : NetworkBehaviour
             {
                 Remote = player;
                 Debug.Log($"[NetworkPlayer] Remote set: netId={Remote.netId}");
-                break;
+                return;
             }
         }
     }
 
-    public override void OnStartClient()
+    IEnumerator DelayedSetRemote()
     {
-        if (isLocalPlayer)
+        float waited = 0f;
+        while (waited < 5f && Remote == null)
         {
-            UpdateUI();
-            return;
+            yield return new WaitForSeconds(0.2f);
+            waited += 0.2f;
+            TrySetRemote();
         }
-        // Remote player: auto-bind to enemy UI in scene (no manual drag needed)
-        healthText = GameObject.Find("EnemyHealthLabel")?.GetComponent<TextMeshProUGUI>();
-        energyText = GameObject.Find("EnemyEnergyLabel")?.GetComponent<TextMeshProUGUI>();
-        handArea = GameObject.Find("EnemyHandArea")?.transform;
-        handManager = FindObjectOfType<HandManager>();
-        UpdateUI();
+        if (Remote == null)
+            Debug.LogError("[NetworkPlayer] Failed to find Remote after 5s!");
     }
 
-    // ========== UI ==========
+    public override void OnStartClient()
+    {
+        if (isLocalPlayer) return;
+
+        // Non-local player = enemy. Cache as Remote for easy access.
+        if (Remote == null)
+        {
+            Remote = this;
+            Debug.Log($"[NetworkPlayer] OnStartClient: Remote set to netId={netId}");
+        }
+        handArea = FindTransform("EnemyHandArea");
+        handManager = FindObjectOfType<HandManager>();
+    }
+
+    Transform FindTransform(string name)
+    {
+        var go = GameObject.Find(name);
+        if (go == null) go = GameObject.Find(name + " ");
+        return go?.transform;
+    }
+
+    // ========== Debug UI ==========
 
     void OnGUI()
     {
         if (!isLocalPlayer) return;
-
         GUI.Label(new Rect(10, 10, 400, 30),
             $"Server active: {NetworkServer.active}, connections: {NetworkServer.connections.Count}");
         GUI.Label(new Rect(10, 40, 400, 30),
@@ -107,24 +126,23 @@ public class NetworkPlayer : NetworkBehaviour
             $"isLocalPlayer: {isLocalPlayer}, handCards: {handCards.Count}");
     }
 
-    // ========== SyncVar Hooks ==========
+    // ========== SyncVar Hooks (debug only) ==========
 
     void OnHandCountChanged(int oldValue, int newValue)
     {
-        UpdateUI();
-        Debug.Log($"[NetworkPlayer] Hand count changed: {oldValue} -> {newValue} (isLocal={isLocalPlayer})");
+        Debug.Log($"[NetworkPlayer] Hand count: {oldValue} -> {newValue}, isLocal={isLocalPlayer}");
     }
 
     void OnHealthChanged(int oldValue, int newValue)
     {
-        UpdateUI();
+        Debug.Log($"[NetworkPlayer] Health: {oldValue} -> {newValue}, isLocal={isLocalPlayer}, netId={netId}");
         if (newValue <= 0 && isServer)
             Debug.Log("[NetworkPlayer] Player died");
     }
 
     void OnEnergyChanged(int oldValue, int newValue)
     {
-        UpdateUI();
+        Debug.Log($"[NetworkPlayer] Energy: {oldValue} -> {newValue}, isLocal={isLocalPlayer}, netId={netId}");
     }
 
     // ========== ClientRpc ==========
@@ -142,20 +160,6 @@ public class NetworkPlayer : NetworkBehaviour
             tm.SetPhaseFromNetwork(TurnManager.TurnPhase.MyTurn);
     }
 
-    [ClientRpc]
-    public void RpcYourTurnStart()
-    {
-        if (!isLocalPlayer) return;
-        Debug.Log("[NetworkPlayer] Remote turn started - your turn is over");
-        TurnManager tm = FindObjectOfType<TurnManager>();
-        if (tm != null && tm.currentPhase == TurnManager.TurnPhase.EnemyTurn)
-        {
-            // Remote player's "EnemyTurn" is local player's "MyTurn" from their perspective
-            // Actually from remote's perspective: EnemyTurn means it's the other player's turn
-            tm.SetPhaseFromNetwork(TurnManager.TurnPhase.MyTurn);
-        }
-    }
-
     // ========== Commands ==========
 
     [Command]
@@ -163,15 +167,33 @@ public class NetworkPlayer : NetworkBehaviour
     {
         Debug.Log($"[NetworkPlayer] CmdRequestDraw from netId={netId}");
         TurnManager tm = FindObjectOfType<TurnManager>();
-        if (tm == null || tm.currentPhase != TurnManager.TurnPhase.MyTurn) return;
+        if (tm == null) return;
+
+        bool isMyTurn;
+        if (tm.currentPhase == TurnManager.TurnPhase.MyTurn)
+            isMyTurn = (this == NetworkPlayer.Local);
+        else if (tm.currentPhase == TurnManager.TurnPhase.EnemyTurn)
+            isMyTurn = (this == NetworkPlayer.Remote);
+        else
+            isMyTurn = false;
+
+        if (!isMyTurn) return;
 
         DrawCardUI drawUI = FindObjectOfType<DrawCardUI>();
         if (drawUI != null && drawUI.GetRemainingDraws() <= 0) return;
 
         if (currentEnergy < 1) return;
 
-        UseEnergy(1);
-        DrawCard();
+        CardData data = DeckManager.Instance?.DrawFromMain();
+        if (data == null)
+        {
+            Debug.Log("[NetworkPlayer] CmdRequestDraw: deck empty");
+            return;
+        }
+
+        currentEnergy -= 1;
+        TargetReceiveCard(connectionToClient, data.templateID);
+        TargetConfirmDraw(connectionToClient);
     }
 
     [Command]
@@ -180,9 +202,18 @@ public class NetworkPlayer : NetworkBehaviour
         Debug.Log($"[NetworkPlayer] CmdPlayCard: templateID={templateID}, slotID={slotID}");
 
         TurnManager tm = FindObjectOfType<TurnManager>();
-        if (tm == null || tm.currentPhase != TurnManager.TurnPhase.MyTurn) return;
+        if (tm == null) return;
 
-        // Find the card in the player's hand
+        bool isMyTurn;
+        if (tm.currentPhase == TurnManager.TurnPhase.MyTurn)
+            isMyTurn = (this == NetworkPlayer.Local);
+        else if (tm.currentPhase == TurnManager.TurnPhase.EnemyTurn)
+            isMyTurn = (this == NetworkPlayer.Remote);
+        else
+            isMyTurn = false;
+
+        if (!isMyTurn) return;
+
         foreach (GameObject card in handCards)
         {
             if (card == null) continue;
@@ -211,7 +242,6 @@ public class NetworkPlayer : NetworkBehaviour
 
     // ========== Health ==========
 
-    // Event for card effects that need to intercept healing
     public System.Action<int, CardInstance.HealSourceType> OnBeforePlayerHeal;
 
     public void ReceiveHeal(int amount, CardInstance.HealSourceType sourceType)
@@ -253,7 +283,11 @@ public class NetworkPlayer : NetworkBehaviour
     public void AddEnergy(int amount)
     {
         if (isServer)
+        {
             currentEnergy += amount;
+            if (!_energyCanExceedLimit && currentEnergy > maxEnergy)
+                currentEnergy = maxEnergy;
+        }
         else
             CmdAddEnergy(amount);
     }
@@ -270,7 +304,10 @@ public class NetworkPlayer : NetworkBehaviour
     {
         if (currentEnergy >= amount)
         {
-            CmdUseEnergy(amount);
+            if (isServer)
+                currentEnergy -= amount;
+            else
+                CmdUseEnergy(amount);
             return true;
         }
         return false;
@@ -283,6 +320,12 @@ public class NetworkPlayer : NetworkBehaviour
     }
 
     public int GetEnergy() => currentEnergy;
+
+    /// <summary>
+    /// No-op kept for backwards compatibility. Actual display is handled
+    /// by PlayerStatsUI polling NetworkPlayer.Local/Remote every frame.
+    /// </summary>
+    public void UpdateUI() { }
 
     // ========== Hand Management ==========
 
@@ -316,14 +359,21 @@ public class NetworkPlayer : NetworkBehaviour
             return;
         }
 
-        GameObject prefab = data.cardType == CardType.Spell ? spellCardPrefab2D : cardPrefab2D;
+        GameObject prefab = GetCardPrefab(data.cardType);
+        if (prefab == null)
+        {
+            Debug.LogError($"[NetworkPlayer] DrawCard: prefab is null for cardType={data.cardType}");
+            return;
+        }
+
         GameObject card = Instantiate(prefab, handArea);
         CardInstance instance = card.GetComponent<CardInstance>();
         if (instance != null)
             instance.InitFromTemplate(data, GetCopyIndex(data.templateID));
 
         CardDisplay2D display = card.GetComponent<CardDisplay2D>();
-        display.RefreshWithInstance(instance);
+        if (display != null)
+            display.RefreshWithInstance(instance);
 
         handCards.Add(card);
         CardView cv = card.GetComponent<CardView>();
@@ -354,14 +404,21 @@ public class NetworkPlayer : NetworkBehaviour
             return;
         }
 
-        GameObject prefab = data.cardType == CardType.Spell ? spellCardPrefab2D : cardPrefab2D;
+        GameObject prefab = GetCardPrefab(data.cardType);
+        if (prefab == null)
+        {
+            Debug.LogError($"[NetworkPlayer] DrawCardWithoutLimit: prefab is null");
+            return;
+        }
+
         GameObject card = Instantiate(prefab, handArea);
         CardInstance instance = card.GetComponent<CardInstance>();
         if (instance != null)
             instance.InitFromTemplate(data, GetCopyIndex(data.templateID));
 
         CardDisplay2D display = card.GetComponent<CardDisplay2D>();
-        display.RefreshWithInstance(instance);
+        if (display != null)
+            display.RefreshWithInstance(instance);
 
         handCards.Add(card);
         CardView cv = card.GetComponent<CardView>();
@@ -386,11 +443,24 @@ public class NetworkPlayer : NetworkBehaviour
         }
     }
 
+    GameObject GetCardPrefab(CardType cardType)
+    {
+        if (cardPrefab2D == null) cardPrefab2D = FindObjectOfType<Player>()?.cardPrefab2D;
+        if (spellCardPrefab2D == null) spellCardPrefab2D = FindObjectOfType<Player>()?.spellCardPrefab2D;
+        return cardType == CardType.Spell ? spellCardPrefab2D : cardPrefab2D;
+    }
+
     public void AddCardToHand(CardData template)
     {
         if (handCards.Count >= maxHandSize) return;
 
-        GameObject prefab = template.cardType == CardType.Spell ? spellCardPrefab2D : cardPrefab2D;
+        GameObject prefab = GetCardPrefab(template.cardType);
+        if (prefab == null)
+        {
+            Debug.LogError($"[NetworkPlayer] AddCardToHand: prefab is null for cardType={template.cardType}");
+            return;
+        }
+
         GameObject card = Instantiate(prefab, handArea);
 
         CardInstance inst = card.GetComponent<CardInstance>();
@@ -420,7 +490,13 @@ public class NetworkPlayer : NetworkBehaviour
 
         int maxSize = isEnemy ? Remote.maxHandSize : Local.maxHandSize;
         Transform targetHandArea = isEnemy ? Remote.handArea : Local.handArea;
-        GameObject prefab = isEnemy ? Remote.cardPrefab2D : cardPrefab2D;
+        GameObject prefab = isEnemy ? Remote.GetCardPrefab(template.cardType) : GetCardPrefab(template.cardType);
+
+        if (prefab == null)
+        {
+            Debug.LogError($"[NetworkPlayer] AddCardToHandFromInstance: prefab is null isEnemy={isEnemy}");
+            return;
+        }
 
         if (!isEnemy && handCards.Count >= maxSize) return;
 
@@ -472,22 +548,14 @@ public class NetworkPlayer : NetworkBehaviour
         }
     }
 
-    // ========== Helper Methods ==========
-
-    void EnableLocalInteraction(bool enabled)
-    {
-        if (handManager != null)
-            handManager.SetHandAreaRaycast(enabled);
-    }
+    // ========== Helpers ==========
 
     bool IsMerchantOnField()
     {
         var allAuras = GlobalEventManager.Instance?.GetAllAuras();
         if (allAuras == null) return false;
         foreach (var a in allAuras)
-        {
             if (a is MerchantAura && a.IsActive()) return true;
-        }
         return false;
     }
 
@@ -496,24 +564,12 @@ public class NetworkPlayer : NetworkBehaviour
         var allAuras = GlobalEventManager.Instance?.GetAllAuras();
         if (allAuras == null) return false;
         foreach (var a in allAuras)
-        {
             if (a is EnergyReaperAura && a.IsActive()) return true;
-        }
         return false;
     }
 
     public bool IsMerchantOnFieldPublic() => IsMerchantOnField();
     public bool IsEnergyReaperOnFieldPublic() => IsEnergyReaperOnField();
-
-    // ========== UI ==========
-
-    public void UpdateUI()
-    {
-        if (healthText != null)
-            healthText.text = isLocalPlayer ? $" {currentHealth}" : currentHealth.ToString();
-        if (energyText != null)
-            energyText.text = isLocalPlayer ? $" {currentEnergy}/{maxEnergy}" : $"{currentEnergy}/{maxEnergy}";
-    }
 
     int GetCopyIndex(string templateID)
     {
@@ -528,12 +584,8 @@ public class NetworkPlayer : NetworkBehaviour
         return count;
     }
 
-    // ========== Network RPCs for card delivery ==========
+    // ========== Network RPCs ==========
 
-    /// <summary>
-    /// Server calls this on a specific client to deliver a drawn card.
-    /// The client instantiates the card in its hand locally.
-    /// </summary>
     [TargetRpc]
     public void TargetReceiveCard(NetworkConnectionToClient target, string templateID)
     {
@@ -545,9 +597,17 @@ public class NetworkPlayer : NetworkBehaviour
         }
     }
 
-    /// <summary>
-    /// Server tells a specific client what phase to enter from their perspective.
-    /// </summary>
+    [TargetRpc]
+    public void TargetConfirmDraw(NetworkConnectionToClient target)
+    {
+        DrawCardUI drawUI = FindObjectOfType<DrawCardUI>();
+        if (drawUI != null)
+        {
+            drawUI.UseOneDraw();
+            drawUI.UpdateDisplay();
+        }
+    }
+
     [TargetRpc]
     public void TargetSetPhase(NetworkConnectionToClient target, int phaseId)
     {
