@@ -90,21 +90,6 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
     handManager.ShowAllCards();
     CardView.IsAnyCardDragging = false;
 
-    // Network guard: only server/Host can resolve card plays
-    if (NetworkClient.isConnected && !NetworkServer.active)
-    {
-        Debug.Log("[CardDrag] Client mode - card play must go through server");
-        Destroy(tempCanvas);
-        tempCanvas = null;
-        SetButtonsInteractable(true);
-        transform.SetParent(originalParent);
-        rectTransform.anchoredPosition = Vector2.zero;
-        transform.localScale = originalScale;
-        handManager.SetHandAreaRaycast(true);
-        handManager.RefreshLayout(true);
-        return;
-    }
-
     if (!handManager.IsPlayArea(eventData.position))
     {
         SetButtonsInteractable(true);

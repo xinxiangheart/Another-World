@@ -27,7 +27,9 @@ public class TurnPhaseDisplay : MonoBehaviour
             _                                => ""
         };
 
+        string first = tm.isMyTurnFirst ? "己方先手" : "对方先手";
+
         if (displayText != null)
-            displayText.text = $"当前回合：{phaseName}（第{tm.phaseCount}阶段）";
+            displayText.text = $"当前回合：{phaseName}（本阶段{first}）";
     }
 }

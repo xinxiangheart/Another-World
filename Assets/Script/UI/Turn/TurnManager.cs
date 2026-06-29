@@ -410,7 +410,7 @@ public partial class TurnManager : MonoBehaviour
                 if (ci != null) ci._justTransformed = false;
             }
         }
-        // ===== �׶ο�ʼ�����ĵ��� =====
+        // ===== 阶段开始触发点确认 =====
         if (slots != null)
         {
             // ����
@@ -587,28 +587,31 @@ public partial class TurnManager : MonoBehaviour
 
         if (NetworkServer.active)
         {
-            if (currentPhase == TurnPhase.MyTurn)
+            // Both must play before battle. Second-to-last player → battle.
+            bool bothPlayed = (currentPhase == TurnPhase.MyTurn && !isMyTurnFirst)
+                           || (currentPhase == TurnPhase.EnemyTurn && isMyTurnFirst);
+
+            if (bothPlayed)
             {
-                // First player ends → switch to second player
-                currentPhase = TurnPhase.EnemyTurn;
-                SetPlayerActionsEnabled(false);
-                CounterManager.Instance?.CheckOnEnemyTurnEnd();
-                Debug.Log("[TurnManager] Host ended → EnemyTurn");
-            }
-            else
-            {
-                // Second player ends → enter battle
                 CounterManager.Instance?.CheckOnEnemyTurnEnd();
                 NetworkTurnSync ntsSwap = FindObjectOfType<NetworkTurnSync>();
                 if (ntsSwap != null) ntsSwap.SwapFirstPlayer();
                 currentPhase = TurnPhase.BattlePhase;
                 SetPlayerActionsEnabled(false);
                 BroadcastTurnPhase(currentPhase);
-                Debug.Log("[TurnManager] Both ended → BattlePhase → SafeBattle");
+                Debug.Log("[TurnManager] Both played → BattlePhase");
                 StartCoroutine(SafeBattle());
                 return;
             }
-            BroadcastTurnPhase(currentPhase);
+
+            // First player ended; giving turn to second player.
+            // Broadcast BEFORE setting local currentPhase so the local TargetRpc
+            // guard (currentPhase != newPhase) passes and enables buttons + energy.
+            TurnPhase newPhase = (currentPhase == TurnPhase.MyTurn) ? TurnPhase.EnemyTurn : TurnPhase.MyTurn;
+            BroadcastTurnPhase(newPhase);
+            currentPhase = newPhase;
+            CounterManager.Instance?.CheckOnEnemyTurnEnd();
+            Debug.Log($"[TurnManager] First player ended → {newPhase}");
         }
         else
         {

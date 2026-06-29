@@ -41,12 +41,6 @@ public class BattleManager : MonoBehaviour
 
     public IEnumerator BattleCoroutine()
     {
-        // In online mode, only the server runs the battle. Clients wait for SyncVar results.
-        if (NetworkClient.isConnected && !NetworkServer.active)
-        {
-            Debug.Log("[BattleManager] Client: skipping battle, waiting for server");
-            yield break;
-        }
         allSlots = FindObjectOfType<BoardManager>()?.GetAllSlots();
         if (allSlots == null) yield break;
 
@@ -55,7 +49,8 @@ public class BattleManager : MonoBehaviour
         yield return StartCoroutine(MinionAttacksCoroutine());
         CompareSurvivors();
         FinalDamage();
-        FindObjectOfType<TurnManager>().StartNewPhase();
+        if (NetworkServer.active)
+            FindObjectOfType<TurnManager>().StartNewPhase();
     }
     IEnumerator PhaseStartCoroutine()
     {
@@ -130,8 +125,8 @@ public class BattleManager : MonoBehaviour
     {
         Debug.Log("[ս��] �׶�2����������");
         Debug.Log($"FirstStrikeCoroutine ��ʼ��allSlots[6]={allSlots[6]?.currentCard3D?.name}, allSlots[7]={allSlots[7]?.currentCard3D?.name}");
-        // ===== �׶�2.1��λ�øı� =====
-        Debug.Log("=== �׶�2.1��ʼ��ȫ�����ֵ�λ ===");
+        // ===== 阶段2.1：先手换位 =====
+        Debug.Log("=== 阶段2.1：开始全面换位 ===");
        
 
         for (int i = 0; i < 12; i++)
@@ -475,7 +470,7 @@ public class BattleManager : MonoBehaviour
             }
         }
 
-        // ===== �׶�2.3��Debuff���� =====
+        // ===== 阶段2.3：Debuff判定 =====
         for (int i = 0; i < 12; i++)
         {
             BoardSlot slot = allSlots[i];
@@ -541,7 +536,7 @@ public class BattleManager : MonoBehaviour
             }
         }
 
-        // ===== �׶�2.4���˺� =====
+        // ===== 阶段2.4：伤害处理 =====
         for (int i = 0; i < 12; i++)
         {
             BoardSlot slot = allSlots[i];
@@ -689,7 +684,7 @@ public class BattleManager : MonoBehaviour
             }
         }
 
-        // ===== �׶�2.5���ݹ��˳� =====
+        // ===== 阶段2.5：死亡递归退出 =====
         bool anyDied;
         do
         {
@@ -1482,21 +1477,21 @@ public class BattleManager : MonoBehaviour
 
     void FinalDamage()
     {
-        if (pendingDamageToMe > pendingDamageToEnemy)
+        // Player health damage: server-only (SyncVar auto-replicates to clients)
+        if (NetworkServer.active)
         {
-            int finalDamage = pendingDamageToMe - pendingDamageToEnemy;
-            NetworkPlayer.Local?.TakeDamage(finalDamage);
-            Debug.Log($"[ս��] ���տ�Ѫ�ж� �� �ҷ����� {finalDamage} ���˺�");
-        }
-        else if (pendingDamageToEnemy > pendingDamageToMe)
-        {
-            int finalDamage = pendingDamageToEnemy - pendingDamageToMe;
-            NetworkPlayer.Remote?.TakeDamage(finalDamage);
-            Debug.Log($"[ս��] ���տ�Ѫ�ж� �� �з����� {finalDamage} ���˺�");
-        }
-        else
-        {
-            Debug.Log("[ս��] ���տ�Ѫ�ж� �� ˫��������Ѫ");
+            if (pendingDamageToMe > pendingDamageToEnemy)
+            {
+                int finalDamage = pendingDamageToMe - pendingDamageToEnemy;
+                NetworkPlayer.Local?.TakeDamage(finalDamage);
+                Debug.Log($"[Battle] FinalDamage: local takes {finalDamage}");
+            }
+            else if (pendingDamageToEnemy > pendingDamageToMe)
+            {
+                int finalDamage = pendingDamageToEnemy - pendingDamageToMe;
+                NetworkPlayer.Remote?.TakeDamage(finalDamage);
+                Debug.Log($"[Battle] FinalDamage: remote takes {finalDamage}");
+            }
         }
 
         pendingDamageToMe = 0;
