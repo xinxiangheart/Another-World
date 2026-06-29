@@ -1910,10 +1910,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fdd19062f87bf644f92f609d6b531af0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  selfHealthText: {fileID: 2049773414}
-  selfEnergyText: {fileID: 1219440192}
-  enemyHealthText: {fileID: 139857042}
-  enemyEnergyText: {fileID: 1748537335}
 --- !u!4 &416624004
 Transform:
   m_ObjectHideFlags: 0
@@ -3958,6 +3954,7 @@ GameObject:
   - component: {fileID: 1061940148}
   - component: {fileID: 1061940149}
   - component: {fileID: 1061940150}
+  - component: {fileID: 1061940151}
   m_Layer: 5
   m_Name: CardCanvas
   m_TagString: Untagged
@@ -4119,6 +4116,18 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 70122f1a56986a447a6cbca2dc181031, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+--- !u!114 &1061940151
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1061940143}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6546b8a90ac565040b8150dd26c78bde, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
 --- !u!1 &1062325357

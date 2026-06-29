@@ -272,6 +272,8 @@ public class NetworkPlayer : NetworkBehaviour
             if (otherConn != null)
                 TargetSpawnCounterCard(otherConn, templateID);
         }
+
+        BoardSyncManager.Instance?.SyncHostBoard();
     }
 
     [Command]
@@ -784,5 +786,12 @@ public class NetworkPlayer : NetworkBehaviour
         Debug.Log($"[NetworkPlayer] TargetSetPhase: {phase}");
         TurnManager tm = FindObjectOfType<TurnManager>();
         if (tm != null) tm.SetPhaseFromNetwork(phase);
+    }
+
+    /// <summary>Server sends host board state to one client.</summary>
+    [TargetRpc]
+    public void TargetSyncHostBoard(NetworkConnectionToClient target, string[] hostTemplates)
+    {
+        BoardSyncManager.Instance?.ApplyHostBoard(hostTemplates);
     }
 }
