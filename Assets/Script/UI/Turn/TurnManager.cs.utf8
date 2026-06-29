@@ -1,0 +1,34 @@
+using Mirror;
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public partial class TurnManager : MonoBehaviour
+{
+    public enum TurnPhase
+    {
+        PhaseStart,
+        MyTurn,
+        EnemyTurn,
+        BattlePhase
+    }
+
+    public TurnPhase currentPhase = TurnPhase.PhaseStart;
+    public static TurnManager Instance { get; private set; }
+    void Awake() { Instance = this; }
+    [Header("锟饺猴拷锟斤拷")]
+    public bool isMyTurnFirst = true;
+
+    [Header("锟斤拷锟斤拷锟斤拷息")]
+    public int phaseCount = 0;
+
+    void Start()
+    {
+        // If coming from Lobby, wait for NetworkTurnSync to signal game start
+        if (LobbyConfig.FromLobby)
+        {
+            Debug.Log("[TurnManager] Online mode, waiting for both players...");
+            return;
+        }
+        Debug.Log("=== 娓告垙寮

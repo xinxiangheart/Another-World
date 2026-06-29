@@ -1,0 +1,225 @@
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UI;
+using UnityEngine.XR;
+using Mirror;
+
+public class HandManager : MonoBehaviour
+{
+    [Header("锟斤拷锟轿诧拷锟斤拷")]
+    public float radius = 500f;
+    public float totalArcAngle = 30f;
+    public float maxWidth = 480f;
+    public float cardWidth = 83.333f;
+    public float maxOverlapRatio = 0.92f;
+    public float hoverOffsetY = 30f;
+    public float hoverScale = 1.15f;
+    public float pushRatio = 0.7f;
+    public float animationSpeed = 15f;
+
+    private List<CardView> handCards = new List<CardView>();
+    private CardView draggingCard;
+    private int draggingIndex = -1;
+
+    void Start() { }
+
+    public void RegisterCard(CardView cv)
+    {
+        if (!handCards.Contains(cv))
+            handCards.Add(cv);
+        RefreshLayout(true);
+    }
+
+    public void RemoveCard(CardView cv)
+    {
+        if (cv == null) return;
+
+        // Notify server that card was played (spell/counter cast), so remote client sees it
+        if (NetworkClient.isConnected)
+        {
+            CardInstance ci = cv.GetComponent<CardInstance>();
+            if (ci != null)
+                NetworkPlayer.Local?.CmdPlayCard(ci.templateID, -1);
+        }
+
+        if (handCards.Contains(cv))
+            handCards.Remove(cv);
+        if (draggingCard == cv)
+            draggingCard = null;
+        handCards.RemoveAll(c => c == null);
+        if (cv.gameObject != null)
+        {
+            Destroy(cv.gameObject);
+        }
+
+        // 锟斤拷锟斤拷为0时强锟斤拷刷锟铰帮拷钮锟斤拷锟斤拷
+        if (handCards.Count == 0)
+        {
+            EndTurnButton endBtn = FindObjectOfType<EndTurnButton>();
+            if (endBtn != null)
+            {
+                CanvasGroup endCG = endBtn.GetComponent<CanvasGroup>();
+                if (endCG == null) endCG = endBtn.gameObject.AddComponent<CanvasGroup>();
+                endCG.interactable = true;
+                endCG.blocksRaycasts = true;
+            }
+            DrawCardUI drawUI = FindObjectOfType<DrawCardUI>();
+            if (drawUI != null)
+            {
+                CanvasGroup drawCG = drawUI.GetComponent<CanvasGroup>();
+                if (drawCG == null) drawCG = drawUI.gameObject.AddComponent<CanvasGroup>();
+                drawCG.interactable = true;
+                drawCG.blocksRaycasts = true;
+            }
+        }
+
+        RefreshLayout(true);
+    }
+    public void HideOtherCards(GameObject dragging)
+    {
+        for (int i = handCards.Count - 1; i >= 0; i--)
+        {
+            if (handCards[i] == null)
+            {
+                handCards.RemoveAt(i);
+                continue;
+            }
+            if (handCards[i].gameObject != dragging)
+                handCards[i].gameObject.SetActive(false);
+        }
+    }
+
+    public void ShowAllCards()
+    {
+        for (int i = handCards.Count - 1; i >= 0; i--)
+        {
+            if (handCards[i] == null)
+            {
+                handCards.RemoveAt(i);
+                continue;
+            }
+            handCards[i].gameObject.SetActive(true);
+        }
+    }
+
+    public bool IsPlayArea(Vector2 screenPos)
+    {
+        return screenPos.y > Screen.height * 0.6f;
+    }
+
+    public void OnDragStart(CardView cv)
+    {
+        draggingCard = cv;
+        draggingIndex = handCards.IndexOf(cv);
+    }
+
+    public void OnDragUpdate(Vector2 screenPos)
+    {
+        RectTransformUtility.ScreenPointToLocalPointInRectangle(
+            transform as RectTransform, screenPos, null, out Vector2 local);
+        draggingIndex = GetInsertIndex(local.x);
+        RefreshLayout(false);
+    }
+
+    public void OnDragEnd(Vector2 screenPos)
+    {
+        if (screenPos.y > Screen.height * 0.6f)
+            RemoveCard(draggingCard);
+        else
+        {
+            if (draggingCard != null && handCards.Count > 0)
+            {
+                if (draggingIndex < 0) draggingIndex = handCards.Count;
+                draggingIndex = Mathf.Clamp(draggingIndex, 0, handCards.Count - 1);
+                handCards.Remove(draggingCard);
+                handCards.Insert(draggingIndex, draggingCard);
+            }
+            draggingCard = null;
+            RefreshLayout(true);
+        }
+    }
+
+    public void RefreshLayout(bool instant)
+    {
+        if (handCards.Count == 0)
+        {
+            CanvasGroup cg = GetComponent<CanvasGroup>();
+            if (cg != null) cg.interactable = true;
+            return;
+        }
+        for (int i = handCards.Count - 1; i >= 0; i--)
+        {
+            if (handCards[i] == null || handCards[i].gameObject == null)
+                handCards.RemoveAt(i);
+        }
+
+        int count = handCards.Count;
+        if (count == 0)
+{
+    CanvasGroup cg = GetComponent<CanvasGroup>();
+    if (cg != null) cg.interactable = true;
+    return;
+}
+
+        float overlap = Mathf.Lerp(0f, maxOverlapRatio, (float)(count - 1) / 19f);
+        float step = cardWidth * (1f - overlap);
+        float totalW = step * (count - 1) + cardWidth;
+
+        if (totalW > maxWidth && count > 1)
+        {
+            step = (maxWidth - cardWidth) / (count - 1);
+            totalW = maxWidth;
+        }
+
+        float startX = -totalW / 2f + cardWidth / 2f;
+
+        for (int i = 0; i < count; i++)
+        {
+            CardView cv = handCards[i];
+            float x = startX + i * step;
+
+            if (draggingCard != null && draggingIndex >= 0 && i >= draggingIndex && cv != draggingCard)
+                x += step * pushRatio;
+
+            float normalizedX = x / (maxWidth / 2f);
+            float arcY = -Mathf.Abs(normalizedX) * radius * 0.02f;
+            Vector3 target = new Vector3(x, arcY, 0);
+            float angle = -normalizedX * totalArcAngle * 0.5f;
+            Quaternion targetRot = Quaternion.Euler(0, 0, angle);
+
+            cv.targetPos = target;
+            cv.targetRotation = targetRot;
+
+            if (instant)
+            {
+                cv.rectTransform.localPosition = target;
+                cv.rectTransform.localRotation = targetRot;
+                cv.rectTransform.localScale = Vector3.one;
+            }
+        }
+
+        for (int i = 0; i < count; i++)
+            handCards[i].transform.SetSiblingIndex(i);
+    }
+
+    int GetInsertIndex(float localX)
+    {
+        for (int i = 0; i < handCards.Count; i++)
+            if (handCards[i] != draggingCard && localX < handCards[i].targetPos.x + cardWidth / 2f)
+                return i;
+        return handCards.Count;
+    }
+
+    // HandManager.PlaceCardToSlot 锟斤拷锟斤拷锟斤拷锟斤拷
+    public void PlaceCardToSlot(BoardSlot slot, GameObject cardObject)
+    {
+        Debug.Log($"PlaceCardToSlot: cardObject={cardObject?.name}, active={cardObject?.activeSelf}");
+        CardInstance sourceInstance = cardObject.GetComponent<CardInstance>();
+        if (sourceInstance == null) return;
+
+        CardData template = CardDatabase.Instance?.GetTemplate(sourceInstance.templateID);
+        if (template?.prefab3D == null) return;
+        if (slot == null && !sourceInstance.canAttach) return;
+
+        // ========== 锟斤拷锟斤拷锟狡达拷锟斤拷锟斤拷锟

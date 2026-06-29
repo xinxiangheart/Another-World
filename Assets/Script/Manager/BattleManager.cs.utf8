@@ -1,0 +1,81 @@
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using static BoardSlot;
+using Mirror;
+
+public class BattleManager : MonoBehaviour
+{
+    public static BattleManager Instance { get; private set; }
+
+    [Header("锟斤拷锟斤拷")]
+    public bool skipBattle = false;
+
+    private BoardSlot[] allSlots;
+    private int pendingDamageToMe = 0;
+    private int pendingDamageToEnemy = 0;
+
+    void Awake()
+    {
+        if (Instance != null) { Destroy(gameObject); return; }
+        Instance = this;
+    }
+
+    public void StartBattle()
+    {
+        if (skipBattle)
+        {
+            Debug.Log("战锟斤拷锟截猴拷 锟斤拷 锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷模式锟斤拷");
+            return;
+        }
+
+        allSlots = FindObjectOfType<BoardManager>()?.GetAllSlots();
+        if (allSlots == null) return;
+
+        pendingDamageToMe = 0;
+        pendingDamageToEnemy = 0;
+
+        StartCoroutine(BattleCoroutine());
+    }
+
+    public IEnumerator BattleCoroutine()
+    {
+        allSlots = FindObjectOfType<BoardManager>()?.GetAllSlots();
+        if (allSlots == null) yield break;
+
+        yield return StartCoroutine(PhaseStartCoroutine());
+        yield return StartCoroutine(FirstStrikeCoroutine());
+        yield return StartCoroutine(MinionAttacksCoroutine());
+        CompareSurvivors();
+        FinalDamage();
+        if (NetworkServer.active)
+            FindObjectOfType<TurnManager>().StartNewPhase();
+    }
+    IEnumerator PhaseStartCoroutine()
+    {
+        if (allSlots == null) yield break;
+        foreach (BoardSlot slot in allSlots)
+        {
+            if (slot?.currentCard3D == null) continue;
+            CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci != null && ci.hasShield && ci.shieldEndAtBattleStart)
+            {
+                ci.RemoveShield();
+                slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+            }
+        }
+
+        for (int i = 6; i <= 11; i++)
+        {
+            BoardSlot slot = allSlots[i];
+            if (slot?.currentCard3D == null) continue;
+            CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci != null && ci.templateID == "01308")
+            {
+                if (!ci.CanTriggerTrait("战锟斤拷锟截合匡拷始")) continue;
+                yield return StartCoroutine(TroubleMakerEffect(ci));
+                break;
+            }
+        }
+        // 执锟斤拷之锟斤拷锟斤拷锟斤拷锟斤拷锟截合匡拷始锟斤拷锟斤拷撕锟

@@ -1,0 +1,19 @@
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
+using Mirror;
+using Unity.VisualScripting;
+using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.UI;
+using static CardData;
+
+public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler, IPointerClickHandler
+{
+    public int slotID;
+    public int opponentSlotID;
+    public bool isBlocked = false;
+    public bool hasCard = false;
+    public static System.Func<BoardSlot, bool> extraTargetFilter;
+    public int spotlightTierBoost;   // 锟桔癸拷平锟轿伙拷锟斤拷锟
