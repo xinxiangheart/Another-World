@@ -16,8 +16,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public bool isBlocked = false;
     public bool hasCard = false;
     public static System.Func<BoardSlot, bool> extraTargetFilter;
-    public int spotlightTierBoost;   // �۹�ƽ�λ����
-    public bool hasSpotlight;        // �Ƿ��о۹��Ч��
+    public int spotlightTierBoost;   // 聚光灯阶位增幅
+    public bool hasSpotlight;        // 是否有聚光灯效果
     private static float lastClickTime = 0f;
     public int plagueRoundCount;
     public bool hasPlague;
@@ -60,10 +60,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public int slotTempAttackBoost;
     private GameObject _currentCard;
     public static bool isStrengtheningSlot = false;
-    public bool prisonBlocked;      // ���η���
-    public bool prisonAllowYuan;    // ��������Ԩǰ׺�ٻ���������������ӣ�
-    public int deepSeaAttackDebuff; // ���ӹ���������
-    public bool deepSeaHealthDebuff; // ����ÿ�׶ο�Ѫ���
+    public bool prisonBlocked;      // 囚牢封锁
+    public bool prisonAllowYuan;    // 允许放置渊前缀召唤物（仅己方封锁格子）
+    public int deepSeaAttackDebuff; // 格子攻击力减益
+    public bool deepSeaHealthDebuff; // 格子每阶段扣血标记
     public static int ignoreNextClickSlot = -1;
     void Start()
     {
@@ -72,7 +72,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         originalScale = transform.localScale;
         normalColor = slotImage.color;
     }
-    // �˳�Ч�����ݰ���������CardInstance��֧���ӳٴ�����
+    // 从CardInstance提取数据包
     public class DeathEffectData
     {
       
@@ -140,7 +140,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
   
     }
 
-    // ��CardInstance��ȡ���ݰ�
+    // 从CardInstance提取数据包
     public static DeathEffectData ExtractDeathData(CardInstance ci)
     {
         if (ci == null) return null;
@@ -203,7 +203,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             instanceID = ci.instanceID,
             damageSourceInstanceIDs = ci.damageSourceInstanceIDs != null ? new List<string>(ci.damageSourceInstanceIDs) : null,
             isFullySilenced = GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(ci),
-            isDeathBlocked = GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsTraitBlocked(ci, "�˳�"),
+            isDeathBlocked = GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsTraitBlocked(ci, "退场"),
         };
     }
     public void OnPointerEnter(PointerEventData eventData)
@@ -354,7 +354,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 CardInstance inst = currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
                 CardData template = CardDatabase.Instance?.GetTemplate(inst?.templateID);
 
-                // �ƻ�֮���ض�������ֵ��Ϊ1
+                // 蛊惑之音重定向：生命值降为1
                 if (GlobalEventManager.Instance != null && GlobalEventManager.Instance.PendingEnterRedirectTemplate != null
                     && template == GlobalEventManager.Instance.PendingEnterRedirectTemplate)
                 {
@@ -389,7 +389,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     StartOnEnterEffect(template, inst);
                 }
 
-                // �����ض�����
+                // 清理重定向标记
                 if (GlobalEventManager.Instance != null && GlobalEventManager.Instance.PendingEnterRedirectTemplate == template)
                 {
                     GlobalEventManager.Instance.PendingEnterRedirectTemplate = null;
@@ -501,12 +501,12 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
        
         Debug.Log($"StartOnEnterEffect: template={template?.cardName}, templateID={template?.templateID}");
         if (template == null || string.IsNullOrEmpty(template.templateID)) return;
-        if (GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsTraitBlocked(inst, "����"))
+        if (GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsTraitBlocked(inst, "进场"))
         {
             CleanupAfterPlacement();
             return;
         }
-        // �����ض�������
+                // 清理重定向标记
         if (GlobalEventManager.Instance?.PendingEnterRedirectInstance == inst)
         {
             CardData redirectTemplate = GlobalEventManager.Instance.PendingEnterRedirectTemplate;
@@ -588,7 +588,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 CleanupAfterPlacement();
                 return;
             case "03511":
-                Debug.Log("�ֶ����߽�����׼������");
+            Debug.Log("妖精护盾选择前");
                 GlobalEventManager.Instance.OnPlayerDamaged += OnDisasterWalkerDamage;
                 inst._disasterWalkerHandler = OnDisasterWalkerDamage;
                 CleanupAfterPlacement();
@@ -668,13 +668,13 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             case "01317":
                 if (inst.greedySnakeEnterCount >= 3)
                 {
-                    Debug.Log("̰��֮�ߣ������Ѵ�3�Σ���Ч��");
+                    Debug.Log("贪欲之蛇：进场已达3次，无效果");
                     CleanupAfterPlacement();
                     return;
                 }
                 if (!HasEnemyTarget())
                 {
-                    Debug.Log("̰��֮�ߣ��з����ٻ���");
+            Debug.Log("妖精护盾选择前");
                     CleanupAfterPlacement();
                     return;
                 }
@@ -744,11 +744,11 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             case "01348":
                 if (CounterManager.Instance == null || CounterManager.Instance.enemyCounters.Count == 0)
                 {
-                    Debug.Log("��ı�ҽ������Է��޷�����");
+            Debug.Log("妖精护盾选择前");
                     CleanupAfterPlacement();
                     return;
                 }
-                GenericChoicePanel.Instance.Show("ѡ��ǿ��", new List<string> { "+3+0", "+0+3" }, (index) =>
+                GenericChoicePanel.Instance.Show("选择强化", new List<string> { "+3+0", "+0+3" }, (index) =>
                 {
                     if (index == 0)
                     {
@@ -908,11 +908,11 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     if (s?.currentCard3D != null)
                     {
                         CardInstance ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                        if (ci != null && ci.prefixes.Contains("���黭��") && ci != inst)
+                        if (ci != null && ci.prefixes.Contains("神灵画卷") && ci != inst)
                             scrollCount++;
                     }
                 }
-                Debug.Log($"����֮�˽���: scrollCount={scrollCount}");
+                Debug.Log($"画卷之核进场: scrollCount={scrollCount}");
                 if (scrollCount >= 2)
                 {
                     for (int i = 0; i <= 5; i++)
@@ -920,7 +920,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                         BoardSlot s = bmCore?.GetSlot(i);
                         if (s?.currentCard3D != null)
                         {
-                            Debug.Log($"����֮�����λ{s.slotID}�˳�");
+                            Debug.Log($"画卷之核令槽位{s.slotID}退场");
                             CardInstance ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
                             if (ci != null)
                             {
@@ -941,7 +941,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     CardInstance ci = card.GetComponent<CardInstance>();
                     if (ci == null) continue;
                     CardData td = CardDatabase.Instance?.GetTemplate(ci.templateID);
-                    if (td != null && td.cardType == CardType.Summon && ci.prefixes.Contains("����") && !ci.energyReaperDiscounted)
+                    if (td != null && td.cardType == CardType.Summon && ci.prefixes.Contains("灵能") && !ci.energyReaperDiscounted)
                     {
                         ci.energyReaperDiscounted = true;
                         card.GetComponent<CardDisplay2D>()?.Refresh();
@@ -1030,7 +1030,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             }
         } while (anyDied);
 
-        // ��������X��ֵ��λ
+        // 更新所有X数值单位
         HandManager hm = FindObjectOfType<HandManager>();
         if (hm != null)
         {
@@ -1054,9 +1054,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         c3d.cardInstance.lifePriestBlessingSource = null;
         string templateID = c3d.cardInstance.templateID;
         bool isActiveExit = c3d.cardInstance.isActiveExit;  
-        // ȫ���˳��¼����
+                // 清理重定向标记
         GlobalDeathEventHandler.Trigger(c3d.cardInstance, slotID, c3d.cardInstance.damageSourceInstanceIDs, isActiveExit);
-        // ��Ĺ�˵��µ��˳��������˳�Ч��
+                // 清理重定向标记
         if (c3d.cardInstance != null)
         {
             foreach (string sourceID in c3d.cardInstance.damageSourceInstanceIDs)
@@ -1082,14 +1082,14 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 }
             }
         }
-        // �˳���������
-        if (GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsTraitBlocked(c3d.cardInstance, "�˳�"))
+                // 清理重定向标记
+        if (GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsTraitBlocked(c3d.cardInstance, "退场"))
         {
             c3d.cardInstance.hasOnDeath = false;
             c3d.cardInstance.hasActiveExit = false;
         }
-        // δ��֮�ˣ��˳���Ϊ�����˳�
-        Debug.Log($"δ��֮�˼��: templateID={templateID}, hasOnDeath={c3d.cardInstance.hasOnDeath}, hasActiveExit={c3d.cardInstance.hasActiveExit}, isActiveExit={isActiveExit}");
+                // 清理重定向标记
+        Debug.Log($"未弃之人检测: templateID={templateID}, hasOnDeath={c3d.cardInstance.hasOnDeath}, hasActiveExit={c3d.cardInstance.hasActiveExit}, isActiveExit={isActiveExit}");
         if (c3d.cardInstance != null)
         {
             BoardManager bm = FindObjectOfType<BoardManager>();
@@ -1105,7 +1105,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                         c3d.cardInstance.isActiveExit = true;
                         c3d.cardInstance.hasOnDeath = false;
                         isActiveExit = true;
-                        Debug.Log("δ��֮�� ִ���滻");
+                        Debug.Log("未弃之人 执行替换");
                     }
                     break;
                 }
@@ -1154,7 +1154,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         if (templateID == "01107" && isActiveExit)
         {
-            Debug.Log("��������ѡ��ǰ");
+            Debug.Log("妖精护盾选择前");
             NetworkPlayer.Local.AddEnergy(2);
             bool hasAlly = false;
             BoardManager bm = FindObjectOfType<BoardManager>();
@@ -1162,13 +1162,13 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             {
                 if (bm?.GetSlot(i)?.currentCard3D != null) { hasAlly = true; break; }
             }
-            Debug.Log($"���� hasAlly={hasAlly}");
+            Debug.Log($"妖精 hasAlly={hasAlly}");
             if (hasAlly)
             {
-                Debug.Log("���� BeginSelection ����");
+                Debug.Log("妖精 BeginSelection 返回");
                 SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (target) =>
                 {
-                    Debug.Log($"����ѡ��ص�: target={target?.slotID}");
+                    Debug.Log($"妖精选择回调: target={target?.slotID}");
                     if (target?.currentCard3D != null)
                     {
                         CardInstance ti = target.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
@@ -1179,7 +1179,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                         }
                     }
                 });
-                Debug.Log("���� BeginSelection ����");
+                Debug.Log("妖精 BeginSelection 调用");
             }
         }
 
@@ -1264,7 +1264,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
         if (templateID == "01311" && isActiveExit)
         {
-            // ѡ�����ٻ����˳���˫��+��������
+            // 选择任意召唤物退场：双倍+返还费用
             if (HasAllyTargetExceptSelf())
             {
                 SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (targetSlot) =>
@@ -1287,12 +1287,12 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         {
             if (isActiveExit)
             {
-                // �����˳����ӶԷ�������ѡһ�Ż��
+                // 清理重定向标记
                 StartCoroutine(ThiefActiveExitEffect());
             }
             else
             {
-                // ��ͨ�˳�����������
+                // 清理重定向标记
                 NetworkPlayer.Local.DrawCardWithoutLimit();
                 NetworkPlayer.Local.DrawCardWithoutLimit();
             }
@@ -1310,7 +1310,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 totalCost += data.baseCost;
                 drawnCount++;
             }
-            Debug.Log($"ħ��ʦ�˳�������{drawnCount}�ţ��ܻ�������{totalCost}");
+            Debug.Log($"魔术师退场：摸{drawnCount}张，总基础费用{totalCost}");
         }
         if (templateID == "01321")
         {
@@ -1363,12 +1363,12 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         {
             if (isActiveExit)
             {
-                // �����˳���+2������չʾ�Է����Ʋ�����а����
+                // 主动退场：+2能量，展示对方手牌并弃掉邪恶法术
                 StartCoroutine(HonorAttendantActiveExit());
             }
             else
             {
-                // ��ͨ�˳����ԶԷ�һ�ٻ������2�˺�
+        // 检查目标排是否有至少2个可操作的格子
                 if (HasEnemyTarget())
                 {
                     SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (target) =>
@@ -1509,11 +1509,11 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             {
                 switch (trait)
                 {
-                    case "�˳�����һ����":
+                    case "退场：摸一张牌":
                         NetworkPlayer.Local.currentEnergy -= 1;
                         NetworkPlayer.Local.UpdateUI();
                         break;
-                    case "�˳�������ȫ���ܵ�һ�˺�":
+                    case "退场：己方全体受一点伤害":
                         BoardManager bm = FindObjectOfType<BoardManager>();
                         if (bm != null)
                             for (int i = 6; i <= 11; i++)
@@ -1531,7 +1531,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                             }
                         
                         break;
-                    case "�˳���������ҿ�һѪ":
+                    case "退场：己方玩家扣一血":
                         NetworkPlayer.Local.TakeDamage(1);
                         break;
                 }
@@ -1546,7 +1546,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
         if (templateID == "01522")
         {
-            // �˳�Ч������������������ͨ
+                // 清理重定向标记
             StartCoroutine(MartyrDeathEffectCoroutine(c3d.cardInstance));
         }
         if (c3d.cardInstance.tempHealthBoost > 0)
@@ -1581,7 +1581,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         entry.deathPhase = TurnManager.Instance.phaseCount;
         GraveyardManager.Instance.AddToGraveyard(entry);
      
-        // ָ�Ӽ�˫���˳�
+                // 清理重定向标记
         if (c3d.cardInstance._conductorDoubleDeath)
         {
             c3d.cardInstance._conductorDoubleDeath = false;
@@ -1589,7 +1589,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             data.slotID = this.slotID;
             StartCoroutine(ConductorDoubleDeathEffect(data));
         }
-        // ���Ͼ��飺�����˳������¸���
+                // 清理重定向标记
         if (c3d.cardInstance != null && c3d.cardInstance.isAttached == false)
         {
             BoardManager bm = FindObjectOfType<BoardManager>();
@@ -1605,7 +1605,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
             foreach (GameObject fairy in fairies)
             {
-                // �ȴ��б��Ƴ��������ظ�
+                // 清理重定向标记
                 bm.attachedModels.Remove(fairy);
 
                 bool hasOtherAlly = false;
@@ -1622,7 +1622,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 if (hasOtherAlly)
                 {
                     StartCoroutine(AncientFairyReattach(fairy, slotID));
-                    Debug.Log($"���Ͼ���Э������: fairy={fairy.name}, oldHost={slotID}");
+                    Debug.Log($"古老精灵协程启动: fairy={fairy.name}, oldHost={slotID}");
                 }
                 else
                 {
@@ -1637,7 +1637,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
         SetCard(null);
 
-        // �������ԭ���ٻ��ӱ�
+                // 清理重定向标记
         if (c3d.cardInstance._rebornSummon)
         {
             CardData soldierTemplate = CardDatabase.Instance?.GetTemplate("03004");
@@ -1861,11 +1861,11 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
         if (targetCI != null)
         {
-            if (!targetCI.prefixes.Contains("����"))
+            if (!targetCI.prefixes.Contains("灵能"))
             {
-                if (string.IsNullOrEmpty(targetCI.prefixes) || targetCI.prefixes == "��")
-                    targetCI.prefixes = "����";
-                else targetCI.prefixes += " ����";
+                if (string.IsNullOrEmpty(targetCI.prefixes) || targetCI.prefixes == "无")
+                    targetCI.prefixes = "灵能";
+                else targetCI.prefixes += " 灵能";
             }
             Card3DInstance c3d = target.GetComponent<Card3DInstance>();
             c3d?.UpdateValues();
@@ -1893,7 +1893,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 oldInst.cardInstance.isActiveExit = false;
                 oldInst.cardInstance.hasRevenge = false;
 
-                // �ֶ�����ȫ���˳����
+                // 清理重定向标记
                 GlobalDeathEventHandler.Trigger(oldInst.cardInstance, targetSlot.slotID,
                     oldInst.cardInstance.damageSourceInstanceIDs, false);
             }
@@ -1909,7 +1909,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     { bm.attachedModels.RemoveAt(i); Destroy(obj); }
                 }
 
-            // �����ɿ���������HandleDeath������SetCard����¿���
+            // 旧模型可以销毁，HandleDeath会在SetCard后触发新卡
             GraveEntry entry = new GraveEntry
             {
                 templateID = oldInst.cardInstance.templateID,
@@ -1982,7 +1982,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     }
     void OnDisasterWalkerDamage(int amount)
     {
-        Debug.Log($"�ֶ����ߴ���: ��Ѫ{amount}");
+        Debug.Log($"灾厄行者触发: 扣血{amount}");
         for (int i = 0; i < amount; i++)
         {
             NetworkPlayer.Local.DrawCardWithoutLimit();
@@ -2031,7 +2031,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         if (heroCards.Count == 0)
         {
-            Debug.Log("�����ԣ�������Ӣ��");
+            Debug.Log("妖精护盾选择前");
             CleanupAfterPlacement();
             yield break;
         }
@@ -2131,7 +2131,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         if (heroCards.Count == 0)
         {
-            Debug.Log("�����˳���������Ӣ��");
+            Debug.Log("妖精护盾选择前");
             yield break;
         }
 
@@ -2178,28 +2178,28 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     {
         List<(string key, string fullText)> traits = new List<(string, string)>();
 
-        // ����
+        // 反击
         if (target.hasFirstStrike)
         {
-            string text = GetTraitFullText(target, "����");
-            traits.Add(("����", text));
+            string text = GetTraitFullText(target, "反击");
+            traits.Add(("反击", text));
         }
-        // �˳�
+                // 清理重定向标记
         if (target.hasOnDeath)
         {
-            string text = GetTraitFullText(target, "�˳�");
-            traits.Add(("�˳�", text));
+            string text = GetTraitFullText(target, "先手");
+            traits.Add(("先手", text));
         }
-        // ����
+                // 清理重定向标记
         if (target.hasRevenge)
         {
-            string text = GetTraitFullText(target, "����");
-            traits.Add(("����", text));
+            string text = GetTraitFullText(target, "先手");
+            traits.Add(("先手", text));
         }
 
         if (traits.Count == 0)
         {
-            Debug.Log("̰��֮�ߣ�Ŀ���޿ɸ�������");
+            Debug.Log("妖精护盾选择前");
             CleanupAfterPlacement();
             yield break;
         }
@@ -2215,7 +2215,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         {
             bool chosen = false;
             bool thisDone = false;
-            ConfirmPanel.Instance.Show($"�Ƿ���{fullText}��",
+            ConfirmPanel.Instance.Show($"是否复制{fullText}？",
                 () => { chosen = true; thisDone = true; },
                 () => { thisDone = true; }
             );
@@ -2233,17 +2233,17 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
     string GetTraitFullText(CardInstance ci, string traitKey)
     {
-        // 1. �Ӹ���������в���
+        // 1. 从赋予的特性中查找
         foreach (string gt in ci.grantedTraitTexts)
         {
             if (gt.Contains(traitKey)) return gt;
         }
 
-        // 2. ������ revengeEffect
-        if (traitKey == "����" && !string.IsNullOrEmpty(ci.revengeEffect))
-            return $"������{ci.revengeEffect}";
+        // 2. 反击从 revengeEffect
+        if (traitKey == "反击" && !string.IsNullOrEmpty(ci.revengeEffect))
+            return $"反击：{ci.revengeEffect}";
 
-        // 3. ��ģ�������ı��в��Ҷ�Ӧ��
+        // 3. 从模板特性文本中查找对应行
         CardData td = CardDatabase.Instance?.GetTemplate(ci.templateID);
         if (td != null && !string.IsNullOrEmpty(td.traits))
         {
@@ -2262,7 +2262,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         string fullText = GetTraitFullText(target, key);
         giver.GrantTrait(fullText);
         giver.greedySnakeEnterCount++;
-        Debug.Log($"̰��֮�߸�����{key}����������={giver.greedySnakeEnterCount}");
+        Debug.Log($"贪欲之蛇复制了{key}，进场次数={giver.greedySnakeEnterCount}");
     }
   
     IEnumerator RemnantEnterEffect(CardInstance giver)
@@ -2280,12 +2280,12 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         if (allyMinions.Count < 2)
         {
-            Debug.Log("��ƪ�������ٻ��ﲻ��2��");
+            Debug.Log("残篇：己方召唤物不足2个");
             CleanupAfterPlacement();
             yield break;
         }
 
-        // ѡ���һ��
+                // 清理重定向标记
         CardInstance firstTarget = null;
         bool firstDone = false;
         SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (slot) =>
@@ -2303,7 +2303,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         yield return new WaitUntil(() => firstDone);
         if (firstTarget == null) { CleanupAfterPlacement(); yield break; }
 
-        // ѡ��ڶ������ų���ѡ��
+                // 清理重定向标记
         CardInstance secondTarget = null;
         bool secondDone = false;
         BoardSlot.extraTargetFilter = (slot) =>
@@ -2328,12 +2328,12 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         BoardSlot.extraTargetFilter = null;
         if (secondTarget == null) { CleanupAfterPlacement(); yield break; }
 
-        // ����ѡ���ĸ�����
-        GenericChoicePanel.Instance.Show("ѡ��һ����������",
+                // 清理重定向标记
+        GenericChoicePanel.Instance.Show("选择一个返回手牌",
       new List<string>
       {
-        CardDatabase.Instance?.GetTemplate(firstTarget.templateID)?.cardName ?? "�ٻ���1",
-        CardDatabase.Instance?.GetTemplate(secondTarget.templateID)?.cardName ?? "�ٻ���2"
+        CardDatabase.Instance?.GetTemplate(firstTarget.templateID)?.cardName ?? "召唤物1",
+        CardDatabase.Instance?.GetTemplate(secondTarget.templateID)?.cardName ?? "召唤物2"
       },
       (index) =>
       {
@@ -2355,7 +2355,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         int rowStart = mySlot < 9 ? 0 : 3;
 
-        // ���Ŀ�����Ƿ�������2���ɲ����ĸ���
+        // 检查目标排是否有至少2个可操作的格子
         int validCount = 0;
         for (int j = rowStart; j < rowStart + 3; j++)
         {
@@ -2549,7 +2549,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         if (ci == null) { Card3DInstance c3d = target.GetComponent<Card3DInstance>(); if (c3d != null) ci = c3d.cardInstance; }
         if (ci != null && !ci.prefixes.Contains("Ԩ"))
         {
-            if (string.IsNullOrEmpty(ci.prefixes) || ci.prefixes == "��")
+            if (string.IsNullOrEmpty(ci.prefixes) || ci.prefixes == "无")
                 ci.prefixes = "Ԩ";
             else ci.prefixes += " Ԩ";
             Card3DInstance c3d = target.GetComponent<Card3DInstance>();
@@ -2571,7 +2571,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     {
         NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
 
-        // �ռ������еķ�����
+                // 清理重定向标记
         List<GameObject> counterCards = new List<GameObject>();
         foreach (GameObject card in NetworkPlayer.Local.handCards)
         {
@@ -2585,11 +2585,11 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         if (counterCards.Count == 0)
         {
-            Debug.Log("�������˳��������޷�����");
+            Debug.Log("妖精护盾选择前");
             yield break;
         }
 
-        // ����ѡ��
+                // 清理重定向标记
         ConfirmQueueManager.EnterSelectionMode();
         var validCards = ConfirmQueueManager.FilterHandCards(ci =>
         {
@@ -2616,9 +2616,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         if (selectedCard != null)
         {
-            // ���������
+                // 清理重定向标记
             CounterManager.Instance?.PlayCounter(selectedCard, true);
-            // ���ǲ��۷�
+                // 清理重定向标记
             var counter = CounterManager.Instance?.myCounters?.LastOrDefault();
             if (counter != null) counter.noCostOnTrigger = true;
             NetworkPlayer.Local.handCards.Remove(selectedCard);
@@ -2657,7 +2657,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         {
             target.isBlocked = true;
             target.slotImage.color = Color.black;
-            Debug.Log($"���������÷�����λ{target.slotID}");
+            Debug.Log($"封锁者永久封锁槽位{target.slotID}");
         }
 
         CleanupAfterPlacement();
@@ -2679,7 +2679,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         if (allies.Count == 0) { CleanupAfterPlacement(); yield break; }
 
-        // ����˳�
+        // 数量加成
         foreach (CardInstance ci in allies)
         {
             ci.isActiveExit = true;
@@ -2695,7 +2695,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         giver.currentHealth += 1;
         giver.currentMaxHealth += 1;
         giver.currentAttack += 1;
-        // �����ӳ�
+                // 清理重定向标记
         int count = allies.Count;
         giver.currentHealth += count - 1;
         giver.currentMaxHealth += count - 1;
@@ -2747,7 +2747,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         if (spellCards.Count == 0)
         {
-            Debug.Log("��ѧħ��ʦ�������޷���");
+            Debug.Log("妖精护盾选择前");
             CleanupAfterPlacement();
             yield break;
         }
@@ -2785,7 +2785,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             {
                 if ((spellTemplate.spellType & SpellType.Counter) != 0)
                 {
-                    // ������
+                    // 有目标法术
                     CounterManager.Instance?.PlayCounter(selectedCard, true);
                     var counter = CounterManager.Instance?.myCounters?.LastOrDefault();
                     if (counter != null) counter.noCostOnTrigger = true;
@@ -2794,14 +2794,14 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 }
                 else if (spellTemplate.targetType == TargetType.None)
                 {
-                    // ��Ŀ�귨��
+                // 清理重定向标记
                     NetworkPlayer.Local.handCards.Remove(selectedCard);
                     Destroy(selectedCard);
                     SpellEffectExecutor.Execute(spellTemplate, null);
                 }
                 else
                 {
-                    // ��Ŀ�귨��
+                // 清理重定向标记
                     NetworkPlayer.Local.handCards.Remove(selectedCard);
                     Destroy(selectedCard);
                     SelectionManager.Instance.BeginSelection((TargetType)spellTemplate.targetType, (slot) =>
@@ -2820,9 +2820,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
         if (data != null)
         {
-            // ���¼���Ĭ�ͽ�ֹ�˳�����һ�δ�����״̬���ܱ��ˣ�
-            data.isFullySilenced = GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(null); // ʵ�������٣��޷����
-                                                                                                                             // ���ñ���ı��
+    // 基于数据包触发退场效果
+            data.isFullySilenced = GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(null); // 实际逻辑后补，暂时放这里
+        // 全局退场事件检测
             if (!data.isFullySilenced && !data.isDeathBlocked)
             {
                 TriggerDeathEffectFromData(data);
@@ -2831,12 +2831,12 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
     }
 
-    // �������ݰ������˳�Ч��
+                // 清理重定向标记
     void TriggerDeathEffectFromData(DeathEffectData data)
     {
         if (data == null) return;
 
-        // ȫ���˳��¼����
+                // 清理重定向标记
         GlobalDeathEventHandler.Trigger(null, data.slotID, data.damageSourceInstanceIDs, data.isActiveExit);
 
         if (data.isFullySilenced) return;
@@ -2901,7 +2901,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             }
         }
 
-        // ���Ѹ�����˫���˳�
+                // 清理重定向标记
         if (id == "01117" && data.giveableDeathTraits != null)
         {
             bool shouldReturn = !data.isActiveExit;
@@ -2909,11 +2909,11 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             {
                 switch (trait)
                 {
-                    case "�˳�����һ����":
+                    case "退场：摸一张牌":
                         NetworkPlayer.Local.currentEnergy -= 1;
                         NetworkPlayer.Local.UpdateUI();
                         break;
-                    case "�˳�������ȫ���ܵ�һ�˺�":
+                    case "退场：己方全体受一点伤害":
                         BoardManager bm = FindObjectOfType<BoardManager>();
                         if (bm != null)
                             for (int i = 6; i <= 11; i++)
@@ -2924,7 +2924,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                             }
                         
                         break;
-                    case "�˳���������ҿ�һѪ":
+                    case "退场：己方玩家扣一血":
                         NetworkPlayer.Local.TakeDamage(1);
                         break;
                 }
@@ -2934,7 +2934,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 CardData template = CardDatabase.Instance?.GetTemplate(data.templateID);
                 if (template != null)
                 {
-                    // �����߼����������ݰ����ܻ��֣�ʵ�������١��������ݰ����ں�����չ
+                // 清理重定向标记
                 }
             }
         }
@@ -2972,7 +2972,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     {
         BoardSlot.isStrengtheningSlot = true;
 
-        // ѡ��һ������
+                // 清理重定向标记
         BoardSlot first = null;
         bool firstDone = false;
         SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (s) =>
@@ -2981,7 +2981,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         });
         yield return new WaitUntil(() => firstDone);
 
-        // ѡ�ڶ�������
+                // 清理重定向标记
         BoardSlot second = null;
         bool secondDone = false;
         SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (s) =>
@@ -3011,7 +3011,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         {
             CardInstance ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
             CardData td = CardDatabase.Instance?.GetTemplate(ci?.templateID);
-            Debug.Log($"�������: templateID={ci?.templateID}, hasOnEnter={td?.hasOnEnter}, td={td != null}");
+            Debug.Log($"萨满检测: templateID={ci?.templateID}, hasOnEnter={td?.hasOnEnter}, td={td != null}");
             if (td != null && td.hasOnEnter && ci != null)
             {
                 s.StartOnEnterEffect(td, ci);
@@ -3076,10 +3076,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     {
         yield return null;
         yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
-        Debug.Log($"Ӱ���߽���: shadowLimit before={CardInstance.shadowLimit}");
+        Debug.Log($"影舞者进场: shadowLimit before={CardInstance.shadowLimit}");
         CardInstance.shadowLimit++;
         CardInstance.shadowMasterAlive = true;
-        Debug.Log($"Ӱ���߽���: shadowLimit after={CardInstance.shadowLimit}");
+        Debug.Log($"影舞者进场: shadowLimit after={CardInstance.shadowLimit}");
         yield return StartCoroutine(SummonAllShadows());
         CleanupAfterPlacement();
     }
@@ -3116,7 +3116,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     }
     IEnumerator AmplifierEnterEffect(CardInstance giver)
     {
-        // 2a. �ٻ������ӱ�
+        // 2a. 召唤两名杂兵
         CardData soldierTemplate = CardDatabase.Instance?.GetTemplate("03004");
         if (soldierTemplate?.prefab3D != null)
         {
@@ -3144,7 +3144,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             }
         }
 
-        // 2b. ѡ�񼺷����ϻ�����һ�ٻ��︽�ӻ�еǰ׺
+        // 2b. 选择己方场上或手牌一召唤物附加机械前缀
         yield return StartCoroutine(AmplifierAddMechPrefix(giver));
         CleanupAfterPlacement();
     }
@@ -3213,24 +3213,24 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         if (target == null) return;
         CardInstance ci = target.GetComponent<CardInstance>();
         if (ci == null) { Card3DInstance c3d = target.GetComponent<Card3DInstance>(); if (c3d != null) ci = c3d.cardInstance; }
-        if (ci != null && !ci.prefixes.Contains("��е"))
+        if (ci != null && !ci.prefixes.Contains("渊"))
         {
-            if (string.IsNullOrEmpty(ci.prefixes) || ci.prefixes == "��")
-                ci.prefixes = "��е";
-            else ci.prefixes += " ��е";
+            if (string.IsNullOrEmpty(ci.prefixes) || ci.prefixes == "无")
+                ci.prefixes = "渊";
+            else ci.prefixes += " 渊";
             Card3DInstance c3d = target.GetComponent<Card3DInstance>();
             c3d?.UpdateValues();
             CardDisplay2D d2d = target.GetComponent<CardDisplay2D>();
             d2d?.Refresh();
 
-            // ���������û�еǰ׺+1+0
+            // 旧伤未愈：还未登录前缀+1+0
             CardInstance reborn = FindRebornOnField();
             if (reborn != null && (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(reborn)))
             {
-                Debug.Log($"������������ǰ: health={reborn.currentHealth}, maxHealth={reborn.currentMaxHealth}");
+                Debug.Log($"复生造物增幅前: health={reborn.currentHealth}, maxHealth={reborn.currentMaxHealth}");
                 reborn.currentHealth += 1;
                 reborn.currentMaxHealth += 1;
-                Debug.Log($"��������������: health={reborn.currentHealth}, maxHealth={reborn.currentMaxHealth}");
+                Debug.Log($"复生造物增幅前: health={reborn.currentHealth}, maxHealth={reborn.currentMaxHealth}");
                 UpdateRebornDisplay(reborn);
             }
         }
@@ -3271,11 +3271,11 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 }
                 else
                 {
-                    continue; // ��λ>=3����
+                    continue; // 阶位>=3跳过
                 }
             }
 
-            // ������
+                // 清理重定向标记
             Vector3 pos = FindObjectOfType<HandManager>().GetSlotWorldPosition(i);
             GameObject model = Instantiate(wolfTemplate.prefab3D, pos, Quaternion.Euler(0, 180, 0));
             Card3DInstance c3d = model.GetComponent<Card3DInstance>();
@@ -3312,7 +3312,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         BoardManager bm = FindObjectOfType<BoardManager>();
         List<GameObject> diedThisRound = new List<GameObject>();
 
-        // ��¼����ǰ�Է����������ٻ���
+                // 清理重定向标记
         HashSet<string> beforeEnter = new HashSet<string>();
         for (int i = 0; i <= 5; i++)
         {
@@ -3324,7 +3324,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             }
         }
 
-        // ��һ��AOE
+        // 第一次AOE
         for (int i = 0; i <= 5; i++)
         {
             BoardSlot s = bm?.GetSlot(i);
@@ -3342,19 +3342,19 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         yield return null;
         yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
 
-        // ����Ƿ������˳��ģ����ڽ���ǰ�б��еģ�
+                // 清理重定向标记
         bool anyDied = false;
         for (int i = 0; i <= 5; i++)
         {
             BoardSlot s = bm?.GetSlot(i);
             if (s?.currentCard3D == null && beforeEnter.Count > 0)
             {
-                // �в�λ����ˣ�˵���˳���
+                // 清理重定向标记
                 anyDied = true;
                 break;
             }
         }
-        // ��׼ȷ���Ƚ�ǰ��instanceID
+        // 准备确认并校验当前instanceID
         HashSet<string> afterEnter = new HashSet<string>();
         for (int i = 0; i <= 5; i++)
         {
@@ -3367,7 +3367,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
         anyDied = beforeEnter.Count > afterEnter.Count || !beforeEnter.SetEquals(afterEnter);
 
-        // ���ʹ�κ��ٻ����˳����ٴ���һ��
+                // 清理重定向标记
         while (anyDied)
         {
             beforeEnter = new HashSet<string>(afterEnter);
@@ -3408,7 +3408,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     {
         yield return null;
         yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
-        Debug.Log($"AncientFairyReattach ����");
+        Debug.Log($"AncientFairyReattach 进入");
         CardInstance fairyCI = fairy.GetComponent<Card3DInstance>()?.cardInstance;
         if (fairyCI == null) yield break;
 
@@ -3483,13 +3483,13 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 BoardSlot secondSlot = selected;
                 GameObject c1 = firstSlot.currentCard3D;
                 GameObject c2 = secondSlot.currentCard3D;
-                Debug.Log($"��λǰ c1 active={c1?.activeSelf}, c2 active={c2?.activeSelf}");
+                Debug.Log($"换位前 c1 active={c1?.activeSelf}, c2 active={c2?.activeSelf}");
                 Vector3 p1 = FindObjectOfType<HandManager>().GetSlotWorldPosition(firstSlot.slotID);
                 Vector3 p2 = FindObjectOfType<HandManager>().GetSlotWorldPosition(secondSlot.slotID);
                 firstSlot.SetCard(null); secondSlot.SetCard(null);
                 if (c2 != null) { c2.transform.position = p1; firstSlot.SetCard(c2); }
                 if (c1 != null) { c1.transform.position = p2; secondSlot.SetCard(c1); }
-                Debug.Log($"��λ�� c1 active={c1?.activeSelf}, c2 active={c2?.activeSelf}");
+                Debug.Log($"换位前 c1 active={c1?.activeSelf}, c2 active={c2?.activeSelf}");
                 BoardManager bm = FindObjectOfType<BoardManager>();
                 if (bm != null)
                     foreach (GameObject obj in bm.attachedModels)
@@ -3521,7 +3521,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         foreach (var a in allAuras)
         {
             if (a is MistHiderAura mist)
-                mist.IsActive(); // ����ͬ��
+                mist.IsActive(); // 触发同步
         }
     }
     IEnumerator BrilliantMageEnterEffect(CardInstance giver)
@@ -3542,7 +3542,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         if (spellList.Count == 0)
         {
-            Debug.Log("�Իͷ�ʦ�������޷���");
+            Debug.Log("妖精护盾选择前");
             CleanupAfterPlacement();
             yield break;
         }
@@ -3552,7 +3552,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         CardDisplayPanel.Instance.ShowWithCallback(spellList, ci => true, () =>
         {
             confirmed = true;
-        }, "���");
+        }, "打出");
 
         yield return new WaitUntil(() => confirmed);
 
@@ -3575,7 +3575,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         if (totalCost > 8)
         {
-            Debug.Log($"�Իͷ�ʦ���������ú�={totalCost}������8");
+            Debug.Log($"辉煌法师：法术费用和={totalCost}，限制为8");
             CardDisplayPanel.Instance.Hide();
             CardDisplayPanel.Instance.multiSelect = false;
             CleanupAfterPlacement();
@@ -3619,7 +3619,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             {
                 if (!CardDrag.HasValidTargetStatic((TargetType)td.targetType))
                 {
-                    Debug.Log($"�Իͷ�ʦ������{td.cardName}�޺Ϸ�Ŀ�꣬����");
+                Debug.Log($"辉煌法师：打出{td.cardName}无合法目标，跳过");
                     NetworkPlayer.Local.handCards.Remove(cardObj);
                     Destroy(cardObj);
                     continue;
@@ -3680,7 +3680,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         if (enemyCards.Count == 0)
         {
-            Debug.Log("���������˳����Է�������");
+            Debug.Log("妖精护盾选择前");
             yield break;
         }
 
@@ -3692,7 +3692,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         {
             selected = CardDisplayPanel.Instance.GetSelectedCard();
             confirmed = true;
-        }, "���");
+        }, "打出");
 
         yield return new WaitUntil(() => confirmed);
 
@@ -3724,7 +3724,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     {
         NetworkPlayer.Local.AddEnergy(2);
 
-        // �ռ��Է�����
+                // 清理重定向标记
         List<CardInstance> enemyCards = new List<CardInstance>();
         foreach (GameObject card in NetworkPlayer.Local.handCards)
         {
@@ -3735,19 +3735,19 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         if (enemyCards.Count == 0)
         {
-            Debug.Log("�������ߣ��Է�������");
+            Debug.Log("妖精护盾选择前");
             yield break;
         }
 
-        // �󵯴�չʾ��������ѡ��ȷ�ϰ�ť����ʾ
+                // 清理重定向标记
         CardDisplayPanel.Instance.multiSelect = false;
         bool confirmed = false;
         CardDisplayPanel.Instance.ShowWithCallback(enemyCards, ci => true, () =>
         {
             confirmed = true;
-        }, "ȷ��");
+        }, "打出");
 
-        // ǿ����ʾȷ�ϰ�ť
+                // 清理重定向标记
         ConfirmSelectionButton.Instance?.gameObject.SetActive(true);
         ConfirmSelectionButton.Instance?.Show(() =>
         {
@@ -3756,7 +3756,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         yield return new WaitUntil(() => confirmed);
 
-        // ��������а����
+                // 清理重定向标记
         List<GameObject> toRemove = new List<GameObject>();
         foreach (GameObject card in NetworkPlayer.Local.handCards)
         {
@@ -3776,7 +3776,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             Destroy(card);
         }
 
-        Debug.Log($"������������{toRemove.Count}��а����");
+        Debug.Log($"荣誉侍者弃掉{toRemove.Count}张邪恶法术");
 
         CardDisplayPanel.Instance.Hide();
     }
@@ -3785,7 +3785,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         List<CounterCard> enemyCounters = CounterManager.Instance?.enemyCounters;
         if (enemyCounters == null || enemyCounters.Count == 0)
         {
-            Debug.Log("��η�ߣ��Է��޷�����");
+            Debug.Log("妖精护盾选择前");
             CleanupAfterPlacement();
             yield break;
         }
@@ -3831,12 +3831,12 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
 
-        // 1. �����Ѹ��Ƶ���������
+        // 1. 从赋予的特性中查找
         foreach (string trait in giver.mindScholarCopiedTraits)
         {
-            if (trait.Contains("����") && !giver.mindScholarEnterTriggeredThisPhase)
+            if (trait.Contains("进场") && !giver.mindScholarEnterTriggeredThisPhase)
             {
-                // �������ƵĽ���Ч��������ԭʼ���ƻ�ȡ��ִ��
+                // 清理重定向标记
                 string originalTemplateID = ExtractTemplateIDFromTrait(trait);
                 if (!string.IsNullOrEmpty(originalTemplateID))
                 {
@@ -3854,12 +3854,12 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
         giver.mindScholarEnterTriggeredThisPhase = true;
 
-        // �����Ѹ��Ƶ�����
+                // 清理重定向标记
         if (giver.HasDiscard && !giver.mindScholarDiscardTriggeredThisPhase)
         {
             foreach (string trait in giver.mindScholarCopiedTraits)
             {
-                if (trait.Contains("����"))
+                if (trait.Contains("抛置"))
                 {
                     giver.mindScholarDiscardTriggeredThisPhase = true;
                     TriggerDiscardEffectFromTrait(giver, trait);
@@ -3870,14 +3870,14 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             }
         }
 
-        // 2. �������4�������ٸ���
+        // 2. 限制最多4张，太少退回去
         if (giver.mindScholarCopyCount >= 4)
         {
             CleanupAfterPlacement();
             yield break;
         }
 
-        // 3. ѡ��Է���������1��3���ٻ���
+        // 3. 选择对方基础费用1或3的召唤物
         List<CardInstance> targets = new List<CardInstance>();
         for (int i = 0; i <= 5; i++)
         {
@@ -3911,17 +3911,17 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         yield return new WaitUntil(() => done);
         if (selected == null) { CleanupAfterPlacement(); yield break; }
 
-        // 4. ѡ���ƽ�����������
+        // 4. 选择复制进场还是抛置
         List<string> copyable = new List<string>();
         CardData selTD = CardDatabase.Instance?.GetTemplate(selected.templateID);
-        if (selTD != null && selTD.hasOnEnter) copyable.Add("����");
-        if (selected.HasDiscard) copyable.Add("����");
+        if (selTD != null && selTD.hasOnEnter) copyable.Add("进场");
+        if (selected.HasDiscard) copyable.Add("抛置");
 
         string chosenTrait = copyable.Count == 1 ? copyable[0] : null;
         if (copyable.Count == 2)
         {
             bool choiceDone = false;
-            GenericChoicePanel.Instance.Show("ѡ��������", copyable, (index) =>
+            GenericChoicePanel.Instance.Show("选择复制特性", copyable, (index) =>
             {
                 chosenTrait = copyable[index];
                 choiceDone = true;
@@ -3931,14 +3931,14 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         if (chosenTrait == null) { CleanupAfterPlacement(); yield break; }
 
-        // 5. ���Ʋ�����
+        // 5. 复制并触发
         giver.mindScholarCopyCount++;
         string traitText = GetTraitFullText(selected, chosenTrait);
         string recordText = $"{selected.templateID}:{chosenTrait}:{traitText}";
         giver.mindScholarCopiedTraits.Add(recordText);
         giver.GrantTrait(traitText);
 
-        if (chosenTrait == "����")
+        if (chosenTrait == "进场")
         {
             CardData originalTD = CardDatabase.Instance?.GetTemplate(selected.templateID);
             if (originalTD != null && originalTD.hasOnEnter)
@@ -3948,7 +3948,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     mySlot.StartOnEnterEffect(originalTD, giver);
             }
         }
-        else if (chosenTrait == "����")
+        else if (chosenTrait == "抛置")
         {
             if (!giver.mindScholarDiscardTriggeredThisPhase)
             {
@@ -3970,10 +3970,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         string templateID = ExtractTemplateIDFromTrait(recordText);
         if (string.IsNullOrEmpty(templateID)) return;
 
-        // ����ԭ���Ƶ�templateID��������Ч��
+        // 根据原卡牌的templateID触发抛置效果
         switch (templateID)
         {
-            case "01343": // ���ȶ�ʵ��Ʒ���ԶԷ�һ�ٻ�����ɹ�������ֵ���˺�
+            case "01343": // 不稳定实验品：对对方一召唤物造成攻击力数值的伤害
                 if (HasEnemyTarget())
                 {
                     BoardSlot mySlot = FindSlotOf(ci);
@@ -3993,7 +3993,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     });
                 }
                 break;
-            case "01136": // ���񣺶ԶԷ�һ�ٻ������1�˺�
+            case "01136": // 难民：对对方一召唤物造成1伤害
                 if (HasEnemyTarget())
                 {
                     BoardSlot mySlot = FindSlotOf(ci);
@@ -4013,7 +4013,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     });
                 }
                 break;
-            case "01346": // ʿ����Ϊ����һ�ٻ���ָ�3����ֵ
+            case "01346": // 士兵：为己方一召唤物恢复3生命值
                 if (HasAllyTarget())
                 {
                     BoardSlot mySlot = FindSlotOf(ci);
@@ -4029,7 +4029,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     });
                 }
                 break;
-            case "01344": // ����Ů�ף�ʹ�Է�һ�ٻ��﹥��������-2
+            case "01344": // 诅咒女巫：使对方攻击力永久-2
                 if (HasEnemyTarget())
                 {
                     BoardSlot mySlot = FindSlotOf(ci);
@@ -4049,7 +4049,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     });
                 }
                 break;
-            case "01135": // ��ˣ��ʦ���������������ٻ���
+            case "01135": // 杂耍大师：交换己方两召唤物
                 if (HasAllyTarget())
                 {
                     HandManager hm = FindObjectOfType<HandManager>();
@@ -4068,7 +4068,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     }
 
     /// <summary>
-    /// ����ר��ѡ�񷽷����Զ��������õ���Ĳ�λ
+    /// 弃牌专用选择方法，自动排除掉自己的槽位
     /// </summary>
     public static void StartDiscardSelection(TargetType targetType, int ignoreSlotID, Action<BoardSlot> onSelected)
 {

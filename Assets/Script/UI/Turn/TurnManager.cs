@@ -17,10 +17,10 @@ public partial class TurnManager : MonoBehaviour
     public TurnPhase currentPhase = TurnPhase.PhaseStart;
     public static TurnManager Instance { get; private set; }
     void Awake() { Instance = this; }
-    [Header("�Ⱥ���")]
+    [Header("调试信息")]
     public bool isMyTurnFirst = true;
 
-    [Header("������Ϣ")]
+    [Header("调试信息")]
     public int phaseCount = 0;
 
     void Start()
@@ -178,7 +178,7 @@ public partial class TurnManager : MonoBehaviour
                 if (s?.currentCard3D != null)
                 {
                     CardInstance ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                    if (ci != null && ci.prefixes.Contains("��е")) mechCount++;
+                    if (ci != null && ci.prefixes.Contains("机械")) mechCount++;
                 }
             }
             if (mechCount >= 3)
@@ -221,7 +221,7 @@ public partial class TurnManager : MonoBehaviour
                 }
             }
         }
-        // ׷���ߣ�ÿ�׶ο�ʼΪ����+0+1
+        // 追随者：每阶段开始为宿主+0+1
         if (slots != null)
         {
             BoardManager bmFollow = FindObjectOfType<BoardManager>();
@@ -234,7 +234,7 @@ public partial class TurnManager : MonoBehaviour
                     if (c3dFollow?.cardInstance?.templateID == "03001" && c3dFollow.cardInstance.isAttached)
                     {
                        
-                        if (!c3dFollow.cardInstance.CanTriggerTrait("�׶ο�ʼ")) continue;
+                        if (!c3dFollow.cardInstance.CanTriggerTrait("阶段开始")) continue;
                         int hostSlotID = c3dFollow.cardInstance.hostSlotID;
                         BoardSlot hostSlot = bmFollow.GetSlot(hostSlotID);
                         if (hostSlot?.currentCard3D != null)
@@ -250,7 +250,7 @@ public partial class TurnManager : MonoBehaviour
                 }
             }
         }
-        // �۹�ƣ�ÿ�׶ο�ʼ�ָ�2����ֵ
+        // 聚光灯：每阶段开始恢复2生命值
         if (slots != null)
         {
             for (int i = 6; i <= 11; i++)
@@ -265,7 +265,7 @@ public partial class TurnManager : MonoBehaviour
                 }
             }
         } 
-        // ��Ƶ���½׶ο�ʼ�۳���������ֵ������ֵ
+        // 检测是否触发额外回合
         if (slots != null)
         {
             for (int i = 0; i < 12; i++)
@@ -279,7 +279,7 @@ public partial class TurnManager : MonoBehaviour
                     if (ci.currentHealth < 0) ci.currentHealth = 0;
                     slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
                     ci.overclocked = false;
-                    Debug.Log($"��Ƶ�ͷ���{ci.instanceID} �۳�{ci.currentAttack}����ֵ");
+                    Debug.Log($"超频惩罚：{ci.instanceID} 扣除{ci.currentAttack}生命值");
                 }
             }
             BoardSlot.CheckAndHandleDeaths();
@@ -316,7 +316,7 @@ public partial class TurnManager : MonoBehaviour
             }
         }
 
-        // ����ÿ�׶ο�ʼ��1����ֵ
+        // 深海恶物：每阶段开始扣1生命值
         if (slots != null)
         {
             for (int i = 0; i < 12; i++)
@@ -335,7 +335,7 @@ public partial class TurnManager : MonoBehaviour
             }
             BoardSlot.CheckAndHandleDeaths();
         }
-        // ���ˣ��½׶ο�ʼ�Զ��˳�
+        // 检测是否触发额外回合
         if (slots != null)
         {
             for (int i = 6; i <= 11; i++)
@@ -351,7 +351,7 @@ public partial class TurnManager : MonoBehaviour
                 }
             }
         }
-        // С�Ŷ�������
+        // 检测是否触发额外回合
         if (slots != null)
         {
             for (int i = 6; i <= 11; i++)
@@ -382,7 +382,7 @@ public partial class TurnManager : MonoBehaviour
                 }
             }
         }
-        // ���Ŷ����˳�
+        // 检测是否触发额外回合
         if (slots != null)
         {
             for (int i = 6; i <= 11; i++)
@@ -399,7 +399,7 @@ public partial class TurnManager : MonoBehaviour
                 }
             }
         }
-        // �����˳���������
+        // 检测是否触发额外回合
         if (slots != null)
         {
             for (int i = 6; i <= 11; i++)
@@ -413,15 +413,15 @@ public partial class TurnManager : MonoBehaviour
         // ===== 阶段开始触发点确认 =====
         if (slots != null)
         {
-            // ����
+        // 检测是否触发额外回合
             for (int i = 6; i <= 11; i++)
             {
                 if (slots[i]?.currentCard3D == null) continue;
                 CardInstance ci = slots[i].currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
                 if (ci != null && ci.templateID == "01525")
                 {
-                    if (!ci.CanTriggerTrait("�׶ο�ʼ")) continue;
-                    ConfirmQueueManager.Instance.EnqueueConfirm("�Ƿ������ٻ��������������",
+                    if (!ci.CanTriggerTrait("回合开始")) continue;
+            ConfirmQueueManager.Instance.EnqueueConfirm("是否与己方一召唤物互换位置？",
                         onYes: (done) =>
                         {
                             StartCoroutine(IronSmithSelectCard(done));
@@ -431,7 +431,7 @@ public partial class TurnManager : MonoBehaviour
                     break;
                 }
             }
-            // ִ��֮��
+        // 检测是否触发额外回合
             for (int i = 6; i <= 11; i++)
             {
                 BoardSlot slot = slots[i];
@@ -439,7 +439,7 @@ public partial class TurnManager : MonoBehaviour
                 CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
                 if (ci != null && ci.templateID == "01535")
                 {
-                    ConfirmQueueManager.Instance.EnqueueConfirm("�Ƿ����ķ�������ִ��֮����",
+            ConfirmQueueManager.Instance.EnqueueConfirm("是否与己方一召唤物互换位置？",
                         onYes: (done) =>
                         {
                             StartCoroutine(ExecutionSwordSelectSpell(ci, done));
@@ -453,7 +453,7 @@ public partial class TurnManager : MonoBehaviour
                     break;
                 }
             }
-            // ������
+        // 检测是否触发额外回合
             for (int i = 6; i <= 11; i++)
             {
                 BoardSlot slot = FindObjectOfType<BoardManager>()?.GetSlot(i);
@@ -462,11 +462,11 @@ public partial class TurnManager : MonoBehaviour
                 if (c3d?.cardInstance?.templateID == "01526")
                 {
                     CardInstance rebelCI = c3d.cardInstance;
-                    if (!rebelCI.CanTriggerTrait("�׶ο�ʼ")) continue;
+                    if (!rebelCI.CanTriggerTrait("阶段开始")) continue;
                     BoardSlot rebelSlot = slot;
                     Card3DInstance rebel3D = c3d;
 
-                    ConfirmQueueManager.Instance.EnqueueConfirm("�Ƿ������ٻ���������ߣ�",
+            ConfirmQueueManager.Instance.EnqueueConfirm("是否与己方一召唤物互换位置？",
                         onYes: (done) =>
                         {
                             ConfirmQueueManager.EnterSelectionMode();
@@ -510,7 +510,7 @@ public partial class TurnManager : MonoBehaviour
                 Debug.Log("[TurnManager] Phase start: Remote turn first (EnemyTurn from host view)");
             }
             BroadcastTurnPhase(currentPhase);
-            BoardSyncManager.Instance?.SyncHostBoard();
+            BoardSyncManager.Instance?.SyncAll();
         }
         else
         {
@@ -681,8 +681,8 @@ public partial class TurnManager : MonoBehaviour
             BattleManager bm = BattleManager.Instance;
             if (bm != null)
                 yield return StartCoroutine(bm.BattleCoroutine());
-            // Sync full board to all clients after battle
-            BoardSyncManager.Instance?.SyncFullBoard();
+            // Sync host board to client after battle
+            BoardSyncManager.Instance?.SyncHostBoard();
             // BattleCoroutine normally calls StartNewPhase. If it didn't (e.g. allSlots null), fallback:
             if (currentPhase == TurnPhase.BattlePhase)
             {
@@ -708,7 +708,7 @@ public partial class TurnManager : MonoBehaviour
                 slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
             }
         }
-        // �غϿ�ʼ�˳�+2�����������غϿ�ʼ��֧�У�
+        // 回合开始退场+2能量（己方回合开始分支中）
         for (int i = 6; i <= 11; i++)
         {
             BoardSlot slot = slots[i];
@@ -748,7 +748,7 @@ public partial class TurnManager : MonoBehaviour
                 Card3DInstance c3d = slot.currentCard3D.GetComponent<Card3DInstance>();
                 if (c3d?.cardInstance?.templateID == "01302")
                 {
-                    if (!c3d.cardInstance.CanTriggerTrait("�غϿ�ʼ")) continue;
+                    if (!c3d.cardInstance.CanTriggerTrait("回合开始")) continue;
                     int myRow = i < 9 ? 0 : 3;
                     int rowStart = 6 + myRow;
                     int rowEnd = rowStart + 3;
@@ -778,7 +778,7 @@ public partial class TurnManager : MonoBehaviour
                 Card3DInstance c3d = slots[i].currentCard3D.GetComponent<Card3DInstance>();
                 if (c3d?.cardInstance != null && c3d.cardInstance.templateID == "01105")
                 {
-                    if (!c3d.cardInstance.CanTriggerTrait("�غϿ�ʼ")) continue;
+                    if (!c3d.cardInstance.CanTriggerTrait("回合开始")) continue;
                     NetworkPlayer.Local.DrawCard();
                 }
             }
@@ -795,7 +795,7 @@ public partial class TurnManager : MonoBehaviour
                 CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
                 if (ci != null && ci.templateID == "01113")
                 {
-                    if (!ci.CanTriggerTrait("�غϿ�ʼ")) continue;
+                    if (!ci.CanTriggerTrait("回合开始")) continue;
                     hasTeleporter = true;
                     teleporterSlot = slot;
                     break;
@@ -804,7 +804,7 @@ public partial class TurnManager : MonoBehaviour
         }
         if (hasTeleporter)
         {
-            ConfirmQueueManager.Instance.EnqueueConfirm("�Ƿ��뼺��һ�ٻ��ﻥ��λ�ã�",
+            ConfirmQueueManager.Instance.EnqueueConfirm("是否与己方一召唤物互换位置？",
                 onYes: (done) =>
                 {
                     SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (target) =>
@@ -828,7 +828,7 @@ public partial class TurnManager : MonoBehaviour
                 CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
                 if (ci != null && ci.templateID == "01315")
                 {
-                    if (!ci.CanTriggerTrait("�غϿ�ʼ")) continue;
+                    if (!ci.CanTriggerTrait("回合开始")) continue;
                     NetworkPlayer.Local.AddEnergy(1);
                     NetworkPlayer.Local.DrawCardWithoutLimit();
                 }
@@ -904,7 +904,7 @@ public partial class TurnManager : MonoBehaviour
 
             bool confirmDone = false;
             bool confirmed = false;
-            ConfirmPanel.Instance.Show("�Ƿ�ȷ�����ģ�",
+            ConfirmPanel.Instance.Show("是否确认消耗？",
                 () => { confirmed = true; confirmDone = true; },
                 () => { confirmDone = true; }
             );
@@ -926,13 +926,13 @@ public partial class TurnManager : MonoBehaviour
 
             ironSmithInst.ironSmithTotalConsumedCount++;
 
-            // ÿ����3���ٻ��ǿ��һ����λ
+            // 每消耗3个召唤物，强化一个槽位
             if (ironSmithInst.ironSmithTotalConsumedCount % 3 == 0)
             {
                 yield return StartCoroutine(StrengthenSlot());
             }
 
-            // 1���ٻ�����׶���൯��2�μ�������
+            // 1费召唤物：本阶段最多弹出2次继续弹窗
             if (cost == 1)
             {
                 ironSmithInst.ironSmithOneCostConsumedCount++;
@@ -940,7 +940,7 @@ public partial class TurnManager : MonoBehaviour
                 {
                     bool continueDone = false;
                     bool continueSelect = false;
-                    ConfirmPanel.Instance.Show("�Ƿ�������Ļ�������Ϊ1���ٻ��",
+                    ConfirmPanel.Instance.Show("是否继续消耗基础费用为1的召唤物？",
                         () => { continueSelect = true; continueDone = true; },
                         () => { continueDone = true; }
                     );

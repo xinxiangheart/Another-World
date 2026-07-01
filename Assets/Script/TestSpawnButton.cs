@@ -40,6 +40,6 @@ public class TestSpawnButton : MonoBehaviour
         }
 
         slot.SetCard(model);
-        Debug.Log($"²âÊÔÕÙ»½Îï {data.cardName} Éú³ÉÔÚµĞ·½²ÛÎ» 1");
+        Debug.Log($"æµ‹è¯•å¬å”¤ç‰© {data.cardName} ç”Ÿæˆåœ¨æ•Œæ–¹æ§½ä½ 1");
     }
 }

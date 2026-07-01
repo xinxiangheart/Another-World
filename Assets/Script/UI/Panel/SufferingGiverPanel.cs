@@ -8,7 +8,7 @@ public class SufferingGiverPanel : MonoBehaviour
 {
     public static SufferingGiverPanel Instance { get; private set; }
 
-    [Header("UI×é¼ş")]
+    [Header("UIç»„ä»¶")]
     public GameObject panelRoot;
     public TextMeshProUGUI titleText;
     public Button[] traitButtons;
@@ -29,9 +29,9 @@ public class SufferingGiverPanel : MonoBehaviour
         currentTraits = traits;
         onTraitSelected = onSelected;
 
-        titleText.text = "Ñ¡Ôñ¸øÓèÌØĞÔ";
+        titleText.text = "é€‰æ‹©ç»™äºˆç‰¹æ€§";
 
-        // Òş²ØËùÓĞ°´Å¥
+        // éšè—æ‰€æœ‰æŒ‰é’®
         for (int i = 0; i < traitButtons.Length; i++)
         {
             if (i < traits.Count)

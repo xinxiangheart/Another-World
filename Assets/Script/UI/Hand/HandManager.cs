@@ -7,7 +7,7 @@ using Mirror;
 
 public class HandManager : MonoBehaviour
 {
-    [Header("���β���")]
+    [Header("弧形布局")]
     public float radius = 500f;
     public float totalArcAngle = 30f;
     public float maxWidth = 480f;
@@ -49,7 +49,7 @@ public class HandManager : MonoBehaviour
             Destroy(cv.gameObject);
         }
 
-        // ����Ϊ0ʱǿ��ˢ�°�ť����
+        // 手牌为0时强制刷新按钮交互
         if (handCards.Count == 0)
         {
             EndTurnButton endBtn = FindObjectOfType<EndTurnButton>();
@@ -214,7 +214,7 @@ public class HandManager : MonoBehaviour
         return handCards.Count;
     }
 
-    // HandManager.PlaceCardToSlot ��������
+    // HandManager.PlaceCardToSlot 完整方法
     public void PlaceCardToSlot(BoardSlot slot, GameObject cardObject)
     {
         Debug.Log($"PlaceCardToSlot: cardObject={cardObject?.name}, active={cardObject?.activeSelf}");
@@ -225,7 +225,7 @@ public class HandManager : MonoBehaviour
         if (template?.prefab3D == null) return;
         if (slot == null && !sourceInstance.canAttach) return;
 
-        // ========== �����ƴ������ ==========
+        // ========== 附着牌打出处理 ==========
         if (sourceInstance.canAttach)
         {
             bool hasAllyTarget = false;
@@ -237,10 +237,10 @@ public class HandManager : MonoBehaviour
                     if (bm.GetSlot(i)?.currentCard3D != null) { hasAllyTarget = true; break; }
                 }
             }
-            Debug.Log($"�����ƴ�����: baseHealth={template.baseHealth}, hasAllyTarget={hasAllyTarget}");
+            Debug.Log($"附着牌打出检查: baseHealth={template.baseHealth}, hasAllyTarget={hasAllyTarget}");
             if (template.baseHealth == 0 && !hasAllyTarget)
             {
-                Debug.Log("����������ֵΪ0�ҳ���û�м����ٻ���޷����");
+                Debug.Log("附着牌生命值为0且场上没有己方召唤物，无法打出");
                 NetworkPlayer.Local.AddEnergy(sourceInstance.currentCost);
                 CardView cvFail = cardObject.GetComponent<CardView>();
                 if (cvFail != null) { handCards.Remove(cvFail); Destroy(cardObject); RefreshLayout(true); }
@@ -353,7 +353,7 @@ public class HandManager : MonoBehaviour
 
         slot.SetCard(model);
         if (instance3D != null) instance3D.UpdateValues();
-        // ��������������
+        // 阴阳独立打出检查
         if (sourceInstance.isXValue && sourceInstance.templateID == "03012")
         {
             bool hasEnemyMinion = false;
@@ -371,7 +371,7 @@ public class HandManager : MonoBehaviour
             }
             if (!hasEnemyMinion)
             {
-                Debug.Log("�Է�����û���ٻ�������޷����");
+                Debug.Log("对方场上没有召唤物，阴阳无法打出");
                 NetworkPlayer.Local.AddEnergy(sourceInstance.currentCost);
                 Destroy(model);
                 slot.SetCard(null);
@@ -383,7 +383,7 @@ public class HandManager : MonoBehaviour
                 return;
             }
         }
-        // ===== ��/���ϳɼ�� + �ٻ����� =====
+        // ===== 阴/阳合成检测 + 召唤限制 =====
         if (sourceInstance.isXValue && (sourceInstance.templateID == "01306" || sourceInstance.templateID == "01307"))
         {
            
@@ -400,13 +400,13 @@ public class HandManager : MonoBehaviour
                     break;
                 }
             }
-            // HandManager.PlaceCardToSlot �ϳɶ������滻
+    // HandManager.PlaceCardToSlot 完整方法
             if (otherSlot != null)
             {
-                // ת�Ƹ����ﵽ������Ĳ�λ
+                // 转移附着物到后进场的槽位
                 TransferAttachments(otherSlot, slot);
 
-                // ����������
+                // 销毁阴和阳
                 Destroy(otherSlot.currentCard3D);
                 otherSlot.SetCard(null);
                 Destroy(model);
@@ -447,14 +447,14 @@ public class HandManager : MonoBehaviour
             UpdateXValues(sourceInstance);
         }
 
-        // ===== ��ˣ��ʦǿ��ͬ�� =====
+        // ===== 杂耍大师强制同步 =====
         if (sourceInstance != null && sourceInstance.templateID == "01135")
         {
             sourceInstance.hasDiscard = template.hasDiscard;
         }
         if (sourceInstance.isXValue && instance3D?.cardInstance != null)
             UpdateXValues(instance3D.cardInstance);
-        // ɾ������
+        // 删除手牌
         CardView cv = cardObject?.GetComponent<CardView>();
         if (cv != null)
         {
@@ -489,7 +489,7 @@ public class HandManager : MonoBehaviour
 
         BoardManager.SyncAttachedModels(newSlot);
     }
-    // ����Ĭ����Ƿ��ڳ�
+    // 检测缄默神官是否在场
     private bool IsSuppressorOnField()
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
@@ -505,7 +505,7 @@ public class HandManager : MonoBehaviour
         return false;
     }
 
-    // BoardSlot.HandleDeath ��������
+    // BoardSlot.HandleDeath 完整方法
 
     void ApplySageAura(CardInstance card, int slotID)
     {
@@ -615,7 +615,7 @@ public class HandManager : MonoBehaviour
         if (sourceInstance.isXValue && instance3D?.cardInstance != null)
             UpdateXValues(instance3D.cardInstance);
 
-        // ɾ������
+        // 删除手牌
         CardView cv = cardObject?.GetComponent<CardView>();
         if (cv != null)
         {
@@ -637,7 +637,7 @@ public class HandManager : MonoBehaviour
     }
     private void PlaceAttachedCard(BoardSlot slot, CardInstance sourceInstance, CardData template, BoardSlot hostSlot, GameObject cardObject)
     {
-        // ���㸽��ƫ��
+        // 计算附着偏移
         int attachOrder = 0;
         BoardManager bm = FindObjectOfType<BoardManager>();
         if (bm != null)
@@ -667,7 +667,7 @@ public class HandManager : MonoBehaviour
             cardInst.attachOrder = attachOrder;
             instance3D.cardInstance = cardInst;
         }
-        // ���ظ��������������
+        // 隐藏附着物的所有文字
         CardDisplay3D display = model.GetComponent<CardDisplay3D>();
         if (display != null)
         {
@@ -677,10 +677,10 @@ public class HandManager : MonoBehaviour
             if (display.healthText != null) display.healthText.gameObject.SetActive(false);
             if (display.costText != null) display.costText.gameObject.SetActive(false);
         }
-        // �������������ı���������������
+        // 解析附着特性文本，给宿主加增益
         if (!string.IsNullOrEmpty(template.traits))
         {
-            // �����壺+2+1
+            // 凝聚体：+2+1
             if (template.templateID == "01126")
             {
                 CardInstance hostCard = hostSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
@@ -694,7 +694,7 @@ public class HandManager : MonoBehaviour
                     hostCard.currentAttack += 1;
                 }
             }
-            // �����ߣ�����ʱ+1+1
+            // 超数故障：附着时+2+0
             else if (template.templateID == "01127")
             {
                 CardInstance hostCard = hostSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
@@ -715,7 +715,7 @@ public class HandManager : MonoBehaviour
                 {
                     hostCard.currentHealth += 1;
                     hostCard.currentMaxHealth += 1;
-                    if (hostCard.prefixes.Contains("����"))
+                    if (hostCard.prefixes.Contains("灵能"))
                     {
                         hostCard.currentHealth += 3;
                         hostCard.currentMaxHealth += 3;
@@ -733,7 +733,7 @@ public class HandManager : MonoBehaviour
                     hostCard.currentAttack += 1;
                 }
             }
-            // �������飺+1+1����λ+1
+            // 脆弱精灵：+1+1，阶位+1
             else if (template.templateID == "01112")
             {
                 CardInstance hostCard = hostSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
@@ -748,7 +748,7 @@ public class HandManager : MonoBehaviour
                     hostCard.currentTier += 1;
                 }
             }
-            // ׷���ߣ�ÿ�׶ο�ʼ��+0+1
+            // 超数故障：附着时+2+0
             else if (template.templateID == "03001")
             {
                 CardInstance hostCard = hostSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
@@ -757,22 +757,22 @@ public class HandManager : MonoBehaviour
                     hostCard.currentAttack += 0;
                 }
             }
-            // ��ָͬ�����ʱ���ӻ�еǰ׺��ÿ���л�е��λ+1+1���������+2+2������������
+            // 认同指令：附着时添加机械前缀，每另有机械单位+1+1（单次最多+2+2，不含宿主）
             else if (template.templateID == "01119")
             {
                 CardInstance hostCard = hostSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
                 if (hostCard != null)
                 {
-                    // ���ӻ�еǰ׺�����ظ���
-                    if (!hostCard.prefixes.Contains("��е"))
+                    // 添加机械前缀（不重复）
+                    if (!hostCard.prefixes.Contains("灵能"))
                     {
-                        if (string.IsNullOrEmpty(hostCard.prefixes) || hostCard.prefixes == "��")
-                            hostCard.prefixes = "��е";
+                        if (string.IsNullOrEmpty(hostCard.prefixes) || hostCard.prefixes == "无")
+                            hostCard.prefixes = "灵能";
                         else
-                            hostCard.prefixes += " ��е";
+                            hostCard.prefixes += " 灵能";
                     }
 
-                    // ͳ��������е��λ���������������Լ���
+                    // 统计其他机械单位数量（不含宿主自己）
                     int mechCount = 0;
                     BoardManager bm2 = FindObjectOfType<BoardManager>();
                     if (bm2 != null)
@@ -783,7 +783,7 @@ public class HandManager : MonoBehaviour
                             if (mechSlot?.currentCard3D == null) continue;
                             if (mechSlot == hostSlot) continue;
                             CardInstance ci = mechSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                            if (ci != null && ci.prefixes.Contains("��е"))
+                            if (ci != null && ci.prefixes.Contains("机械"))
                                 mechCount++;
                         }
                     }
@@ -806,7 +806,7 @@ public class HandManager : MonoBehaviour
                     hostCard.currentAttack += 3;
                 }
             }
-            // ����������ʱ+4+3
+            // 超数故障：附着时+2+0
             else if (template.templateID == "01333")
             {
                 CardInstance hostCard = hostSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
@@ -826,9 +826,9 @@ public class HandManager : MonoBehaviour
                 CardInstance hostCard = hostSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
                 if (hostCard != null)
                 {
-                    if (hostCard.prefixes.Contains("����"))
+                    if (hostCard.prefixes.Contains("灵能"))
                     {
-                        // ����ȫ��+2+1
+                        // 己方全体+2+1
                         BoardManager bmCluster = FindObjectOfType<BoardManager>();
                         for (int i = 6; i <= 11; i++)
                         {
@@ -851,7 +851,7 @@ public class HandManager : MonoBehaviour
                     }
                     else
                     {
-                        // ��������+2+1if
+                        // 仅附着者+2+1if
                         if (!hostCard.cannotHealOrGainMaxHP)
                         {
                             hostCard.currentHealth += 2;
@@ -879,13 +879,13 @@ public class HandManager : MonoBehaviour
                 CardInstance hostCard = hostSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
                 if (hostCard != null)
                 {
-                    if (hostCard.prefixes.Contains("����"))
+                    if (hostCard.prefixes.Contains("灵能"))
                     {
-                        hostCard.GrantTrait("���֣��ԶԷ�ǰ���ٻ������2�˺����Ժ������1�˺�");
+                        hostCard.GrantTrait("先手：对对方前排召唤物造成2伤害，对后排造成1伤害");
                     }
                     else
                     {
-                        hostCard.GrantTrait("���֣��ԶԷ�ǰ���ٻ������1�˺�");
+                        hostCard.GrantTrait("先手：对对方前排召唤物造成1伤害");
                     }
                     hostCard.hasFirstStrike = true;
                 }
@@ -902,7 +902,7 @@ public class HandManager : MonoBehaviour
                     }
                 }
             }
-            // ����֮Ӱ������ʱ+6+5��+1��������������ǰ׺
+            // 消逝之影：附着时+6+5，+1能量，附加灵能前缀
             else if (template.templateID == "01527")
             {
                 CardInstance hostCard = hostSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
@@ -915,12 +915,12 @@ public class HandManager : MonoBehaviour
                     }
                     hostCard.currentAttack += 5;
 
-                    if (!hostCard.prefixes.Contains("����"))
+                    if (!hostCard.prefixes.Contains("灵能"))
                     {
-                        if (string.IsNullOrEmpty(hostCard.prefixes) || hostCard.prefixes == "��")
-                            hostCard.prefixes = "����";
+                        if (string.IsNullOrEmpty(hostCard.prefixes) || hostCard.prefixes == "无")
+                            hostCard.prefixes = "灵能";
                         else
-                            hostCard.prefixes += " ����";
+                            hostCard.prefixes += " 灵能";
                     }
                 }
                 NetworkPlayer.Local.AddEnergy(1);
@@ -938,7 +938,7 @@ public class HandManager : MonoBehaviour
                     hostCard.currentAttack += 3;
                 }
             }
-            // �������ϣ�����ʱ+2+0
+            // 超数故障：附着时+2+0
             else if (template.templateID == "01128")
             {
                 CardInstance hostCard = hostSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
@@ -951,12 +951,12 @@ public class HandManager : MonoBehaviour
                     }
                 }
             }
-            // ͳһˢ��������ʾ
+            // 统一刷新宿主显示
             hostSlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
         }
         bm.attachedModels.Add(model);
 
-        // ɾ������
+        // 删除手牌
         CardView cv = cardObject?.GetComponent<CardView>();
         if (cv != null)
         {
@@ -973,7 +973,7 @@ public class HandManager : MonoBehaviour
     }
     private void ProcessAuras(BoardSlot slot, CardInstance sourceInstance)
     {
-        // �������������⻷
+        // 智者自身进场光环
         if (sourceInstance != null && sourceInstance.templateID == "03503")
         {
             BoardManager bm = FindObjectOfType<BoardManager>();
@@ -999,14 +999,14 @@ public class HandManager : MonoBehaviour
             }
         }
 
-        // ��Ӣ�۽������߹⻷
+        // 新英雄进场：如果是渊前缀且皇帝在场，+1+1
         if (sourceInstance != null && sourceInstance.summonType == SummonType.Hero)
         {
             CardInstance placedCI = slot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
             if (placedCI != null)
                 ApplySageAura(placedCI, slot.slotID);
         }
-        // ��Ӣ�۽�����Ĭ��ٹ⻷
+        // 无赖：进场获得护盾（攻击回合开始消失）
         if (sourceInstance != null && sourceInstance.summonType == SummonType.Hero)
         {
             if (IsSuppressorOnField())
@@ -1019,26 +1019,26 @@ public class HandManager : MonoBehaviour
                 }
             }
         }
-        // ���ࣺ�ڳ�ʱΪ����ȫ����������ٻ��︽������ǰ׺
+        // 无赖：进场获得护盾（攻击回合开始消失）
         if (sourceInstance != null && sourceInstance.templateID == "03027")
         {
             BoardManager bm = FindObjectOfType<BoardManager>();
-            // ���ϼ���ȫ��
+        bool hasValid = false;
             for (int i = 6; i <= 11; i++)
             {
                 BoardSlot coreSlot = bm?.GetSlot(i);
                 if (slot?.currentCard3D == null) continue;
                 CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                if (ci != null && !ci.prefixes.Contains("����"))
+                if (ci != null && !ci.prefixes.Contains("灵能"))
                 {
-                    if (string.IsNullOrEmpty(ci.prefixes) || ci.prefixes == "��")
-                        ci.prefixes = "����";
+                        if (string.IsNullOrEmpty(ci.prefixes) || ci.prefixes == "无")
+                            ci.prefixes = "灵能";
                     else
-                        ci.prefixes += " ����";
+                            ci.prefixes += " 灵能";
                     slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
                 }
             }
-            // �������ٻ���
+            // 附加灵能前缀：手牌中召唤物
             foreach (GameObject handCard in NetworkPlayer.Local.handCards)
             {
                 if (handCard == null) continue;
@@ -1046,19 +1046,19 @@ public class HandManager : MonoBehaviour
                 if (ci != null)
                 {
                     CardData cd = CardDatabase.Instance?.GetTemplate(ci.templateID);
-                    if (cd != null && cd.cardType == CardType.Summon && !ci.prefixes.Contains("����"))
+                    if (cd != null && cd.cardType == CardType.Summon && !ci.prefixes.Contains("灵能"))
                     {
-                        if (string.IsNullOrEmpty(ci.prefixes) || ci.prefixes == "��")
-                            ci.prefixes = "����";
+                        if (string.IsNullOrEmpty(ci.prefixes) || ci.prefixes == "无")
+                            ci.prefixes = "灵能";
                         else
-                            ci.prefixes += " ����";
+                            ci.prefixes += " 灵能";
                         CardDisplay2D d2d = handCard.GetComponent<CardDisplay2D>();
                         d2d?.Refresh();
                     }
                 }
             }
         }
-        // ��Ԩ�ʵ�����������������Ԩǰ׺Ӣ��+1+1
+        // 无赖：进场获得护盾（攻击回合开始消失）
         if (sourceInstance != null && sourceInstance.templateID == "01501")
         {
             if (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(sourceInstance))
@@ -1086,7 +1086,7 @@ public class HandManager : MonoBehaviour
             }
         }
 
-        // ��Ӣ�۽����������Ԩǰ׺�һʵ��ڳ���+1+1
+        // 新英雄进场：如果是渊前缀且皇帝在场，+1+1
         if (sourceInstance != null && sourceInstance.prefixes.Contains("Ԩ"))
         {
             CardInstance placedCI = slot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
@@ -1120,20 +1120,20 @@ public class HandManager : MonoBehaviour
                 }
             }
         }
-        // ���������е����+1+0
-        if (sourceInstance != null && sourceInstance.prefixes.Contains("��е") && sourceInstance.templateID != "01513")
+        // 无赖：进场获得护盾（攻击回合开始消失）
+        if (sourceInstance != null && sourceInstance.prefixes.Contains("机械") && sourceInstance.templateID != "01513")
         {
             CardInstance reborn = FindRebornOnField();
             if (reborn != null && (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(reborn)))
             {
-                Debug.Log($"������������ǰ: health={reborn.currentHealth}, maxHealth={reborn.currentMaxHealth}");
+                Debug.Log($"复生造物增幅前: health={reborn.currentHealth}, maxHealth={reborn.currentMaxHealth}");
                 reborn.currentHealth += 1;
                 reborn.currentMaxHealth += 1;
-                Debug.Log($"��������������: health={reborn.currentHealth}, maxHealth={reborn.currentMaxHealth}");
+                Debug.Log($"复生造物增幅前: health={reborn.currentHealth}, maxHealth={reborn.currentMaxHealth}");
                 UpdateRebornDisplay(reborn);
             }
         }
-        // ������������û��ܣ������غϿ�ʼ��ʧ��
+        // 无赖：进场获得护盾（攻击回合开始消失）
         if (sourceInstance != null && sourceInstance.templateID == "01309")
         {
             CardInstance placedCI = slot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
@@ -1142,7 +1142,7 @@ public class HandManager : MonoBehaviour
                 placedCI.GrantShield(false, true, false);
             }
         }
-        // X��ֵͬ��
+        // X数值同步
         BoardManager bmSync = FindObjectOfType<BoardManager>();
         if (bmSync != null)
         {
@@ -1263,7 +1263,7 @@ public class HandManager : MonoBehaviour
         return null;
     }
     /// <summary>
-    /// ��ʱ��ʾָ�����������ƣ��������࣬���һ�ź�ص�
+    /// 临时显示指定条件的手牌，隐藏其余，点击一张后回调
     /// </summary>
     public void ShowFilteredHand(System.Predicate<CardInstance> filter, System.Action<CardInstance> onSelected, System.Action onCancel)
     {
@@ -1316,7 +1316,7 @@ public class HandManager : MonoBehaviour
     IEnumerator WaitForCancel(System.Action onCancel)
     {
         yield return new WaitForSeconds(0.5f);
-        // ���ESC���Ҽ�ȡ��
+        // 检测ESC或右键取消
         while (true)
         {
             if (Input.GetKeyDown(KeyCode.Escape) || Input.GetMouseButtonDown(1))
@@ -1451,13 +1451,13 @@ public class HandManager : MonoBehaviour
             BoardSlot.isStrengtheningSlot = true;
             BoardSlot.cardToPlace = null;
 
-            // ������ʱ�����������ٻ�����
+            // 创建临时手牌走正常召唤流程
             GameObject temp = new GameObject("TempSpawn");
             CardInstance ti = temp.AddComponent<CardInstance>();
             ti.InitFromTemplate(template, round);
             BoardSlot.cardToPlace = temp;
 
-            // ����ҵ��λ��OnPointerClick �ķ��÷�֧�ᴦ��
+            // 等玩家点槽位，OnPointerClick 的放置分支会处理
             yield return new WaitWhile(() => BoardSlot.isPlacingCard);
 
             Destroy(temp);
@@ -1469,7 +1469,7 @@ public class HandManager : MonoBehaviour
     {
         NetworkPlayer player = NetworkPlayer.Local;
 
-        // 1. ��7����
+        // 1. 抽7张牌
         for (int i = 0; i < 7; i++)
         {
             player.DrawCardWithoutLimit();
@@ -1482,7 +1482,7 @@ public class HandManager : MonoBehaviour
             yield break;
         }
 
-        // 2. ѡ4������
+        bool done = false;
         SelectionManager.Instance.BeginOpenSelection(TargetType.None, null);
         int maxDiscard = 4;
         List<GameObject> selectedCards = new List<GameObject>();
@@ -1516,7 +1516,7 @@ public class HandManager : MonoBehaviour
         ConfirmSelectionButton.Instance.Show(() => confirmed = true);
         yield return new WaitUntil(() => confirmed);
 
-        // 3. ����ѡ�е��ƣ���������
+        // 3. 弃掉选中的牌，计算能量
         int energyGain = 0;
         foreach (GameObject card in selectedCards)
         {
@@ -1533,7 +1533,7 @@ public class HandManager : MonoBehaviour
         }
         player.AddEnergy(energyGain);
 
-        // 4. ����
+        // 4. 清理
         foreach (GameObject card in validCards)
         {
             if (card == null) continue;
@@ -1559,7 +1559,7 @@ public class HandManager : MonoBehaviour
         {
             if (selected == null) return;
 
-            // �������ô�͸�ĵ��
+            // 忽略抛置穿透的点击
             if (selected.slotID == Card3DHover.ignoreSlotID)
             {
                 Card3DHover.ignoreSlotID = -1;
@@ -1769,7 +1769,7 @@ public class HandManager : MonoBehaviour
             c3d?.UpdateValues();
             CardDisplay2D d2d = target.GetComponent<CardDisplay2D>();
             d2d?.Refresh();
-            Debug.Log($"ΰ�������{ci.instanceID} ��λ����+3");
+            Debug.Log($"伟大进化：{ci.instanceID} 阶位永久+3");
         }
     }
 
@@ -1810,22 +1810,22 @@ public class HandManager : MonoBehaviour
             BoardSlot.isPlacingCard = false;
             BoardSlot.isStrengtheningSlot = false;
 
-            // ��������ǰ׺�����ϼ���ȫ��
+        CardInstance watcher = null;
             for (int i = 6; i <= 11; i++)
             {
                 BoardSlot slot = bm.GetSlot(i);
                 if (slot?.currentCard3D == null) continue;
                 CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                if (ci != null && !ci.prefixes.Contains("����"))
+                if (ci != null && !ci.prefixes.Contains("灵能"))
                 {
-                    if (string.IsNullOrEmpty(ci.prefixes) || ci.prefixes == "��")
-                        ci.prefixes = "����";
+                        if (string.IsNullOrEmpty(ci.prefixes) || ci.prefixes == "无")
+                            ci.prefixes = "灵能";
                     else
-                        ci.prefixes += " ����";
+                            ci.prefixes += " 灵能";
                     slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
                 }
             }
-            // ��������ǰ׺���������ٻ���
+            // 附加灵能前缀：手牌中召唤物
             foreach (GameObject handCard in NetworkPlayer.Local.handCards)
             {
                 if (handCard == null) continue;
@@ -1833,12 +1833,12 @@ public class HandManager : MonoBehaviour
                 if (ci != null)
                 {
                     CardData cd = CardDatabase.Instance?.GetTemplate(ci.templateID);
-                    if (cd != null && cd.cardType == CardType.Summon && !ci.prefixes.Contains("����"))
+                    if (cd != null && cd.cardType == CardType.Summon && !ci.prefixes.Contains("灵能"))
                     {
-                        if (string.IsNullOrEmpty(ci.prefixes) || ci.prefixes == "��")
-                            ci.prefixes = "����";
+                        if (string.IsNullOrEmpty(ci.prefixes) || ci.prefixes == "无")
+                            ci.prefixes = "灵能";
                         else
-                            ci.prefixes += " ����";
+                            ci.prefixes += " 灵能";
                         CardDisplay2D d2d = handCard.GetComponent<CardDisplay2D>();
                         d2d?.Refresh();
                     }
@@ -1860,7 +1860,7 @@ public class HandManager : MonoBehaviour
 
         if (NetworkPlayer.Local.handCards.Count == 0)
         {
-            Debug.Log("�ղؼң�����Ϊ��");
+                Debug.Log("对方场上没有召唤物，阴阳无法打出");
             yield break;
         }
 
@@ -1877,7 +1877,7 @@ public class HandManager : MonoBehaviour
         CardDisplayPanel.Instance.ShowWithCallback(displayList, ci => true, () =>
         {
             confirmed = true;
-        }, "����");
+        }, "召唤");
 
         yield return new WaitUntil(() => confirmed);
 
@@ -2126,7 +2126,7 @@ public class HandManager : MonoBehaviour
 
         if (summonList.Count == 0)
         {
-            Debug.Log("�ţ��������ٻ���");
+                Debug.Log("对方场上没有召唤物，阴阳无法打出");
             CardDrag.CleanupSpellResources();
             yield break;
         }
@@ -2138,13 +2138,13 @@ public class HandManager : MonoBehaviour
         CardDisplayPanel.Instance.ShowWithCallback(summonList, ci => true, () =>
         {
             confirmed = true;
-        }, "�ٻ�");
+        }, "召唤");
 
-        Debug.Log($"�� multiSelect={CardDisplayPanel.Instance.multiSelect}");
+        Debug.Log($"门 multiSelect={CardDisplayPanel.Instance.multiSelect}");
 
         yield return new WaitUntil(() => confirmed);
 
-        Debug.Log($"�� confirmed, selected.Count={CardDisplayPanel.Instance.GetSelectedCards().Count}");
+        Debug.Log($"门 confirmed, selected.Count={CardDisplayPanel.Instance.GetSelectedCards().Count}");
 
         List<CardInstance> selected = CardDisplayPanel.Instance.GetSelectedCards();
 
@@ -2165,7 +2165,7 @@ public class HandManager : MonoBehaviour
 
         if (totalCost > 8)
         {
-            Debug.Log($"�ţ��ٻ����ú�={totalCost}������8");
+            Debug.Log($"门：召唤费用和={totalCost}，超过8");
             CardDisplayPanel.Instance.Hide();
             CardDisplayPanel.Instance.multiSelect = false;
             CardDrag.CleanupSpellResources();
@@ -2209,7 +2209,7 @@ public class HandManager : MonoBehaviour
     }
     public IEnumerator PlagueEffect()
     {
-        // ��һ�Σ���������
+        // 第一次：隐藏手牌
         BoardSlot first = null;
         bool firstDone = false;
         SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (s) =>
@@ -2220,7 +2220,7 @@ public class HandManager : MonoBehaviour
         yield return new WaitUntil(() => firstDone);
         if (first == null) { CardDrag.CleanupSpellResources(); yield break; }
 
-        // �ڶ��Σ���������
+        // 第二次：隐藏手牌
         BoardSlot second = null;
         bool secondDone = false;
         BoardSlot.extraTargetFilter = (s) => s != first;
@@ -2299,12 +2299,12 @@ public class HandManager : MonoBehaviour
         List<CounterCard> enemyCounters = CounterManager.Instance?.enemyCounters;
         if (enemyCounters == null || enemyCounters.Count == 0)
         {
-            Debug.Log("���ƿ��ǣ��Է��޷�����");
+                Debug.Log("对方场上没有召唤物，阴阳无法打出");
             CardDrag.CleanupSpellResources();
             yield break;
         }
 
-        // ���öԷ�������3Dģ�͵ĵ��
+        // 清理按钮
         foreach (var cc in enemyCounters)
         {
             if (cc.model != null)
@@ -2319,7 +2319,7 @@ public class HandManager : MonoBehaviour
         selectedCK = null;
         yield return new WaitUntil(() => selectedCK != null);
 
-        // ������ť
+        // 清理按钮
         foreach (var cc in enemyCounters)
         {
             if (cc.model != null)
@@ -2334,10 +2334,10 @@ public class HandManager : MonoBehaviour
             CounterCard cc = selectedCK;
             CardData template = cc.template;
 
-            // ��Ч�������Է������ƣ������۷ѣ�
+            // 无效果触发对方反制牌（正常扣费）
             CounterManager.Instance.TriggerEnemyCounterNoEffect(cc);
 
-            // �����������Ʒ������ʱ��1����
+            // 己方打出复制品，触发时扣1能量
             CounterManager.Instance.PlayCounterWithReducedCost(template, 1);
         }
 
@@ -2404,7 +2404,7 @@ public class HandManager : MonoBehaviour
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
 
-        // ���Է������Ƿ��п�λ
+        // 检查对方区域是否有空位
         bool hasEmpty = false;
         for (int i = 0; i <= 5; i++)
         {
@@ -2415,7 +2415,7 @@ public class HandManager : MonoBehaviour
 
         if (!hasEmpty)
         {
-            Debug.Log("���ѣ��Է���������Ա");
+                Debug.Log("对方场上没有召唤物，阴阳无法打出");
             CardDrag.CleanupSpellResources();
             yield break;
         }
@@ -2423,7 +2423,7 @@ public class HandManager : MonoBehaviour
         CardData traitorTemplate = CardDatabase.Instance?.GetTemplate("03025");
         if (traitorTemplate?.prefab3D == null) { CardDrag.CleanupSpellResources(); yield break; }
 
-        // ѡ��Է���λ
+        // 选择对方空位
         BoardSlot.isPlacingCard = true;
         BoardSlot.isStrengtheningSlot = true;
         bool placed = false;
@@ -2439,7 +2439,7 @@ public class HandManager : MonoBehaviour
             hm.PlaceCardToSlot(selectedSlot, temp);
             Destroy(temp);
 
-            // �з���λ����
+            // 敌方单位朝向
             selectedSlot.currentCard3D.transform.rotation = Quaternion.Euler(0, 180, 0);
 
             placed = true;

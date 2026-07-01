@@ -10,22 +10,22 @@ public class CardData : ScriptableObject
     public CardType cardType;
     public int copyCount = 3;
 
-    [Header("ÕÙ»½ÎïÊôĞÔ")]
-    public bool addToMainDeck = true; // ÊÇ·ñ¼ÓÈëÖ÷ÅÆ¿â
+    [Header("å¬å”¤ç‰©å±æ€§")]
+    public bool addToMainDeck = true; // æ˜¯å¦åŠ å…¥ä¸»ç‰Œåº“
     public SummonType summonType;
     public int baseCost;
     public int baseTier = 1;
-    public string prefix = "ÎŞ";
+    public string prefix = "æ— ";
     public int baseHealth;
     public int baseAttack;
-    [Header("ÌØĞÔ±ê¼Ç")]
-    public bool hasFirstStrike;      // ÏÈÊÖ
-    public bool hasOnEnter;          // ½ø³¡
-    public bool hasOnDeath;          // ÍË³¡
-    public bool hasActiveExit;       // Ö÷¶¯ÍË³¡
-    public bool hasRevenge;          // ·´»÷
-    public bool hasDiscard;          // Å×ÖÃ
-    public bool canAttach; // ÊÇ·ñÓµÓĞ¸½×ÅÌØĞÔ
+    [Header("ç‰¹æ€§æ ‡è®°")]
+    public bool hasFirstStrike;      // å…ˆæ‰‹
+    public bool hasOnEnter;          // è¿›åœº
+    public bool hasOnDeath;          // é€€åœº
+    public bool hasActiveExit;       // ä¸»åŠ¨é€€åœº
+    public bool hasRevenge;          // åå‡»
+    public bool hasDiscard;          // æŠ›ç½®
+    public bool canAttach; // æ˜¯å¦æ‹¥æœ‰é™„ç€ç‰¹æ€§
     public CounterTriggerTiming counterTiming;
     public string counterTriggerCondition;
     public string counterEffect;
@@ -35,18 +35,18 @@ public class CardData : ScriptableObject
     public bool xAttackReadsHighest;
     public bool attacksFrontRow;
     public bool attacksBackRow;
-    [TextArea] public string revengeEffect; // ·´»÷Ğ§¹ûÎÄ±¾
+    [TextArea] public string revengeEffect; // åå‡»æ•ˆæœæ–‡æœ¬
     [TextArea] public string traits;
 
-    [Header("·¨ÊõÊôĞÔ")]
+    [Header("æ³•æœ¯å±æ€§")]
     public SpellType spellType;
     [TextArea] public string effect;
 
-    [Header("±íÏÖ²ã")]
+    [Header("è¡¨ç°å±‚")]
     public Sprite cardSprite2D;
     public GameObject prefab3D;
     public GameObject spellPrefab3D;
     
-    [Header("Ä¿±êÑ¡Ôñ")]
+    [Header("ç›®æ ‡é€‰æ‹©")]
     public TargetType targetType = TargetType.None;
 }

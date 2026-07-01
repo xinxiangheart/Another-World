@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.EventSystems;
-using Mirror;
 using UnityEngine.UI;
 using static CardData;
 
@@ -103,7 +102,7 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
 
     CardInstance inst = GetComponent<CardInstance>();
     CardData template = CardDatabase.Instance?.GetTemplate(inst?.templateID);
-    NetworkPlayer player = NetworkPlayer.Local;
+    Player player = Player.Instance;
         if (template == null)
         {
             SetButtonsInteractable(true);
@@ -114,7 +113,7 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
             handManager.RefreshLayout(true);
             return;
         }
-		if (template.effect == "1.ѡ���ٻ��Ͻ׶����ƶ��е�һ���ٻ���")
+		if (template.effect == "1.选择召唤上阶段弃牌堆中的一名召唤物")
 		{
 			SelectionManager.Instance.RunCoroutine(SelectionManager.Instance.OvertimeEffect());
 			CardView cv = GetComponent<CardView>();
@@ -127,35 +126,35 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
 			return;
 		}
 		
-		// ����ƴ�ˣ�����ֵ<=3ʱ����ѡ���Ƿ�����
-		if (template.effect.Contains("�������������ֵ<=3ʱ�����������Ʋ���һ����"))
+		// 和你拼了：生命值<=3时弹窗选择是否弃牌
+		if (template.effect.Contains("当己方玩家生命值<=3时允许弃掉该牌并抽一张牌"))
         {
-            if (NetworkPlayer.Local.currentHealth <= 3)
+            if (Player.Instance.currentHealth <= 3)
             {
                 player.AddEnergy(inst.currentCost);
 
-                ConfirmPanel.Instance.Show("�Ƿ��������Ʋ���һ���ƣ�",
+                ConfirmPanel.Instance.Show("是否弃掉该牌并抽一张牌？",
                     () =>
                     {
-                        // ѡ�ǣ����Ƴ���
+                        // 选是：弃牌抽牌
                         CardView cv = GetComponent<CardView>();
                         HandManager hm = FindObjectOfType<HandManager>();
                         if (cv != null) hm?.RemoveCard(cv);
-                        NetworkPlayer.Local.DrawCardWithoutLimit();
+                        Player.Instance.DrawCardWithoutLimit();
                         SetButtonsInteractable(true);
                         handManager.SetHandAreaRaycast(true);
-                        Debug.Log("����ƴ�ˣ����Ʋ���һ����");
+                        Debug.Log("和你拼了：弃牌并抽一张牌");
                     },
                     () =>
                     {
-                        // ѡ�񣺻�����
+                        // 选否：回手牌
                         SetButtonsInteractable(true);
                         transform.SetParent(originalParent);
                         rectTransform.anchoredPosition = Vector2.zero;
                         transform.localScale = originalScale;
                         handManager.SetHandAreaRaycast(true);
                         handManager.RefreshLayout(true);
-                        Debug.Log("����ƴ�ˣ�ȡ������");
+                        Debug.Log("和你拼了：取消弃牌");
                     }
                 );
                 return;
@@ -182,7 +181,7 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
 
         if (template.cardType == CardType.Spell && (template.spellType & SpellType.Counter) != 0)
         {
-            Debug.Log("���뷴���Ʒ�֧");
+            Debug.Log("进入反制牌分支");
             CounterManager.Instance?.PlayCounter(this.gameObject, true);
             CardView cv = GetComponent<CardView>();
             if (cv != null) handManager.RemoveCard(cv);
@@ -193,7 +192,7 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
             return;
         }
 
-        // ����ֵΪ0�ĸ����ƣ������޼����ٻ���ʱ�޷����
+        // 生命值为0的附着牌，场上无己方召唤物时无法打出
         if (inst != null && inst.canAttach && inst.baseHealth == 0)
         {
             bool hasAllyTarget = false;
@@ -207,7 +206,7 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
             }
             if (!hasAllyTarget)
             {
-                Debug.Log("����û�м����ٻ���޷����");
+                Debug.Log("场上没有己方召唤物，无法打出");
                 SetButtonsInteractable(true);
                 transform.SetParent(originalParent);
                 rectTransform.anchoredPosition = Vector2.zero;
@@ -219,11 +218,11 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
         }
 
         int actualCost = inst.currentCost;
-        if (inst.merchantDiscounted && NetworkPlayer.Local.IsMerchantOnFieldPublic())
+        if (inst.merchantDiscounted && Player.Instance.IsMerchantOnFieldPublic())
             actualCost = Mathf.Max(0, actualCost - 1);
         if (player == null || !player.UseEnergy(actualCost))
         {
-            Debug.Log("�������㣡");
+            Debug.Log("能量不足！");
             SetButtonsInteractable(true);
             transform.SetParent(originalParent);
             rectTransform.anchoredPosition = Vector2.zero;
@@ -233,13 +232,13 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
             return;
         }
         inst.currentCost = actualCost;
-        // ������Ч����
+        // 卡牌无效拦截
         if (GlobalEventManager.Instance != null && GlobalEventManager.Instance.NextCardNullified)
         {
             GlobalEventManager.Instance.NextCardNullified = false;
             CardInstance nullInst = GetComponent<CardInstance>();
             if (nullInst != null) nullInst.ClearAllTraits();
-            player.AddEnergy(inst.currentCost); // �˻�����
+            player.AddEnergy(inst.currentCost); // 退还费用
             SetButtonsInteractable(true);
             transform.SetParent(originalParent);
             rectTransform.anchoredPosition = Vector2.zero;
@@ -252,7 +251,7 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
     {
         if (!CheckSpellCondition(template))
         {
-            Debug.Log("�����㷨���ͷ�������");
+            Debug.Log("不满足法术释放条件！");
             player.AddEnergy(inst.currentCost);
             SetButtonsInteractable(true);
             transform.SetParent(originalParent);
@@ -276,7 +275,7 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
 
         if (!HasValidTarget((TargetType)template.targetType))
         {
-            Debug.Log("û�кϷ�Ŀ�꣬�����޷������");
+            Debug.Log("没有合法目标，法术无法打出！");
             player.AddEnergy(inst.currentCost);
             SetButtonsInteractable(true);
             transform.SetParent(originalParent);
@@ -289,7 +288,7 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
             if (!BoardSlot.isTargetingMode)
             {
                 BoardSlot.extraTargetFilter = null;
-                if (template.effect.Contains("����ֵ>=4"))
+                if (template.effect.Contains("生命值>=4"))
                 {
                     BoardSlot.extraTargetFilter = (slot) =>
                     {
@@ -300,7 +299,7 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
 
                     if (!HasValidTarget((TargetType)template.targetType))
                     {
-                        Debug.Log("û�кϷ�Ŀ�꣬�޷����");
+                        Debug.Log("没有合法目标，无法打出");
                         player.AddEnergy(inst.currentCost);
                         SetButtonsInteractable(true);
                         transform.SetParent(originalParent);
@@ -312,14 +311,14 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
                         return;
                     }
                 }
-                if (template.effect.Contains("��������һ�ٻ���"))
+                if (template.effect.Contains("场上任意一召唤物"))
                 {
                     BoardSlot.extraTargetFilter = (slot) =>
                     {
                         return slot?.currentCard3D != null;
                     };
                 }
-                if (template.effect.Contains("���ܶԸ�����ʹ��"))
+                if (template.effect.Contains("不能对附着物使用"))
                 {
                     BoardSlot.extraTargetFilter = (slot) =>
                     {
@@ -364,7 +363,7 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
             }
             if (!hasEnemyMinion)
             {
-                Debug.Log("�Է�����û���ٻ����/��/�����޷����");
+                Debug.Log("对方场上没有召唤物，阴/阳/阴阳无法打出");
                 player.AddEnergy(inst.currentCost);
                 SetButtonsInteractable(true);
                 transform.SetParent(originalParent);
@@ -406,11 +405,11 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
 }
   public void ResolveSpellEffect(CardData template, BoardSlot targetSlot)
     {
-        Debug.Log($"ResolveSpellEffect ���룺effect=\"{template.effect}\"");
+        Debug.Log($"ResolveSpellEffect 进入：effect=\"{template.effect}\"");
 
-        if (template.effect.Contains("ʹ����һ�ٻ����˳�") && template.effect.Contains("��1����"))
+        if (template.effect.Contains("使己方一召唤物退场") && template.effect.Contains("摸1张牌"))
         {
-            Debug.Log($"Ч��ִ�У�targetSlot={targetSlot?.slotID}");
+            Debug.Log($"效果执行：targetSlot={targetSlot?.slotID}");
             if (targetSlot != null && targetSlot.currentCard3D != null)
             {
                 Card3DInstance target3D = targetSlot.currentCard3D.GetComponent<Card3DInstance>();
@@ -420,15 +419,15 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
                 }
                 targetSlot.HandleDeath(targetSlot.currentCard3D);
             }
-            NetworkPlayer.Local.DrawCard();
+            Player.Instance.DrawCard();
             CardDrag.CleanupSpellResources();
             return;
         }
 
         switch (template.effect)
         {
-            case "1.������>=8ʱ�������\n2.��������":
-                NetworkPlayer player = NetworkPlayer.Local;
+            case "1.当能量>=8时允许打出\n2.摸两张牌":
+                Player player = Player.Instance;
                 if (player != null)
                 {
                     player.DrawCard();
@@ -437,16 +436,16 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
                 CardDrag.CleanupSpellResources();
                 break;
 
-            case "1.�ԶԷ�������1�˺�":
-                NetworkPlayer.Remote?.TakeDamage(1);
+            case "1.对对方玩家造成1伤害":
+                EnemyPlayer.Instance?.TakeDamage(1);
                 CardDrag.CleanupSpellResources();
                 break;
 
-            case "1.Ϊ�������ƻ���һ�ٻ��︽��Ԩǰ׺\n2.��1����":
+            case "1.为己方手牌或场上一召唤物附加渊前缀\n2.摸1张牌":
                 SelectionManager.Instance.StartSafeCoroutine(EmperorsApprovalEffectCoroutine());
                 break;
 
-            case "1.�ָ�����һ�ٻ���3����ֵ":
+            case "1.恢复己方一召唤物3生命值":
                 if (targetSlot != null && targetSlot.currentCard3D != null)
                 {
                     Card3DInstance t3d = targetSlot.currentCard3D.GetComponent<Card3DInstance>();
@@ -455,52 +454,52 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
                 }
                 CleanupSpellResources();
                 break;
-            case "1.������һ�Ž�/ľ/ˮ/��/��Ԫ��":
+            case "1.随机获得一张金/木/水/火/土元素":
                 string[] elementIDs = { "03015", "03016", "03017", "03018", "03019" };
                 string randomID = elementIDs[Random.Range(0, elementIDs.Length)];
                 CardData element = CardDatabase.Instance?.GetTemplate(randomID);
                 if (element != null)
                 {
-                    NetworkPlayer.Local.AddCardToHand(element);
-                    Debug.Log($"Ʈ��Ԫ�أ���� {element.cardName}");
+                    Player.Instance.AddCardToHand(element);
+                    Debug.Log($"飘荡元素：获得 {element.cardName}");
                 }
                 CleanupSpellResources();
                 break;
-            case "1.�ڶԷ������ٻ�һ��ͽ��������Ա���޷��ٻ�":
+            case "1.在对方区域召唤一叛徒，若已满员则无法召唤":
                 HandManager hmBetray = FindObjectOfType<HandManager>();
                 hmBetray.StartCoroutine(hmBetray.BetrayalEffect());
                 break;
-            case "1.���һ��׷����":
+            case "1.获得一张追随者":
                 CardData followerTemplate = CardDatabase.Instance?.GetTemplate("03001");
                 if (followerTemplate != null)
                 {
-                    NetworkPlayer.Local.AddCardToHand(followerTemplate);
-                    Debug.Log("����С�ӣ����׷���߼�������");
+                    Player.Instance.AddCardToHand(followerTemplate);
+                    Debug.Log("勇者小队：获得追随者加入手牌");
                 }
                 CardDrag.CleanupSpellResources();
                 break;
 
-            case "1.������������һ�ٻ���Ľ���":
+            case "1.触发己方场上一召唤物的进场":
                 if (targetSlot != null && targetSlot.currentCard3D != null)
                 {
                     Card3DInstance t3d = targetSlot.currentCard3D.GetComponent<Card3DInstance>();
                     CardInstance targetCI = t3d?.cardInstance;
                     CardData targetTemplate = CardDatabase.Instance?.GetTemplate(targetCI?.templateID);
-                    Debug.Log($"ѹեǱ�ܴ�������: templateID={targetTemplate?.templateID}, hasOnEnter={targetTemplate?.hasOnEnter}, inst={targetCI != null}");
+                    Debug.Log($"压榨潜能触发进场: templateID={targetTemplate?.templateID}, hasOnEnter={targetTemplate?.hasOnEnter}, inst={targetCI != null}");
 
                     if (targetTemplate != null && targetTemplate.hasOnEnter)
                     {
-                        Debug.Log($"ѹեǱ�ܵ��� StartOnEnterEffect");
+                        Debug.Log($"压榨潜能调用 StartOnEnterEffect");
                         targetSlot.StartOnEnterEffect(targetTemplate, targetCI);
                     }
                     else
                     {
-                        Debug.Log($"ѹեǱ�ܣ�Ŀ�� {targetTemplate?.cardName} û�н���Ч��");
+                        Debug.Log($"压榨潜能：目标 {targetTemplate?.cardName} 没有进场效果");
                     }
                 }
                 CleanupSpellResources();
                 break;
-            case "1.�ԶԷ�һ�ٻ������3�˺�":
+            case "1.对对方一召唤物造成3伤害":
                 if (targetSlot != null && targetSlot.currentCard3D != null)
                 {
                     Card3DInstance target3D = targetSlot.currentCard3D.GetComponent<Card3DInstance>();
@@ -508,33 +507,33 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
                     {
                         BattleManager.Instance.ApplyDamageToMinionPublic(target3D.cardInstance, 3, null);
                         target3D.UpdateValues();
-                        Debug.Log($"����һ���� {target3D.cardInstance.instanceID} ���3�˺�");
+                        Debug.Log($"致命一击对 {target3D.cardInstance.instanceID} 造成3伤害");
                     }
                 }
                 BoardSlot.CheckAndHandleDeaths();
                 CardDrag.CleanupSpellResources();
                 break;
-            case "1.���������ٻ����λ��":
+            case "1.调整己方召唤物的位置":
                 HandManager hm = FindObjectOfType<HandManager>();
                 hm.StartCoroutine(hm.ReformFormationEffect(this));
                 break;
-            case "1.�ٻ�������е���ӱ�":
+            case "1.召唤两名机械：杂兵":
                 HandManager hmSummon = FindObjectOfType<HandManager>();
                 hmSummon.StartCoroutine(hmSummon.SummonTwoMinions());
                 break;
-            case "1.�ָ����2����ֵ":
-                NetworkPlayer.Local.ReceiveHeal(2, CardInstance.HealSourceType.Spell);
+            case "1.恢复玩家2生命值":
+                Player.Instance.ReceiveHeal(2, CardInstance.HealSourceType.Spell);
                 CleanupSpellResources();
                 break;
-            case "1.�ָ����4����ֵ":
-                NetworkPlayer.Local.ReceiveHeal(4, CardInstance.HealSourceType.Spell);
+            case "1.恢复玩家4生命值":
+                Player.Instance.ReceiveHeal(4, CardInstance.HealSourceType.Spell);
                 CleanupSpellResources();
                 break;
-            case "1.��ౣ��4�����ƣ�������������������":
+            case "1.最多保留4张手牌，其余弃掉并摸等量牌":
                 HandManager hmHandCleanse = FindObjectOfType<HandManager>();
                 hmHandCleanse.StartCoroutine(hmHandCleanse.HandCleanseEffect());
                 break;
-            case "1.�Լ���һ������ֵ>=4���ٻ������4�˺���+4����":
+            case "1.对己方一名生命值>=4的召唤物造成4伤害并+4能量":
                 if (targetSlot != null && targetSlot.currentCard3D != null)
                 {
                     Card3DInstance t3d = targetSlot.currentCard3D.GetComponent<Card3DInstance>();
@@ -542,18 +541,18 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
                     {
                         BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, 4, null);
                         t3d.UpdateValues();
-                        NetworkPlayer.Local.AddEnergy(4);
+                        Player.Instance.AddEnergy(4);
                         BoardSlot.CheckAndHandleDeaths();
                     }
                 }
                 BoardSlot.extraTargetFilter = null;
                 CleanupSpellResources();
                 break;
-            case "1.��7����Ȼ����4���ƣ�ÿ��һ�Ż���ʹ�÷���Ϊ5����+1����":
+            case "1.抽7张牌然后弃4张牌，每弃一张基础使用费用为5的牌+1能量":
                 HandManager hmMany = FindObjectOfType<HandManager>();
                 hmMany.StartCoroutine(hmMany.ManyCardsEffect());
                 break;
-            case "1.�ԶԷ�ȫ�����2�˺������˺������Ӳ��Ƴ�����":
+            case "1.对对方全体造成2伤害，该伤害将无视并破除护盾":
                 BoardManager bm = FindObjectOfType<BoardManager>();
                 if (bm != null)
                 {
@@ -565,12 +564,12 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
                             Card3DInstance c3d = slot.currentCard3D.GetComponent<Card3DInstance>();
                             if (c3d?.cardInstance != null)
                             {
-                                // ���������
+                                // 先清除护盾
                                 if (c3d.cardInstance.hasShield)
                                 {
                                     c3d.cardInstance.RemoveShield();
                                 }
-                                // ����ͳһ�˺�����
+                                // 再走统一伤害流程
                                 BattleManager.Instance.ApplyDamageToMinionPublic(c3d.cardInstance, 2, null);
                                 c3d.UpdateValues();
                             }
@@ -580,29 +579,29 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
                 BoardSlot.CheckAndHandleDeaths();
                 CleanupSpellResources();
                 break;
-            case "1.���һ��Ͷ����":
+            case "1.获得一名投资者":
                 CardData investorTemplate = CardDatabase.Instance?.GetTemplate("03026");
                 if (investorTemplate != null)
                 {
-                    NetworkPlayer.Local.AddCardToHand(investorTemplate);
-                    Debug.Log("����Ͷ�ʣ����Ͷ���߼�������");
+                    Player.Instance.AddCardToHand(investorTemplate);
+                    Debug.Log("风险投资：获得投资者加入手牌");
                 }
                 CleanupSpellResources();
                 break;
-            case "1.���һ������":
+            case "1.获得一名猎人":
                 CardData hunterTemplate = CardDatabase.Instance?.GetTemplate("03014");
                 if (hunterTemplate != null)
                 {
-                    NetworkPlayer.Local.AddCardToHand(hunterTemplate);
-                    Debug.Log("�����ӵ���������˼�������");
+                    Player.Instance.AddCardToHand(hunterTemplate);
+                    Debug.Log("猎人子弹：获得猎人加入手牌");
                 }
                 CleanupSpellResources();
                 break;
-            case "1.ѡ������һ���ӣ��ø������ٻ����λ��ʱ+2��ÿ�׶ο�ʼ�ָ�2����ֵ����Ч�����ɵ���":
+            case "1.选定己方一格子，该格子上召唤物阶位临时+2，每阶段开始恢复2生命值，该效果不可叠加":
                 HandManager hmSpot = FindObjectOfType<HandManager>();
                 hmSpot.StartCoroutine(hmSpot.SpotlightEffect());
                 break;
-            case "1.ʹ��������һ�ٻ��ﵱǰ����ֵ�����ޣ��͵�ǰ�����������ޣ�����":
+            case "1.使场上任意一召唤物当前生命值（上限）和当前攻击力（上限）互换":
                 if (targetSlot != null && targetSlot.currentCard3D != null)
                 {
                     Card3DInstance t3d = targetSlot.currentCard3D.GetComponent<Card3DInstance>();
@@ -627,7 +626,7 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
                 }
                 CleanupSpellResources();
                 break;
-            case "1.ʹ��������һ�ٻ��﹥������Ϊ1������������������ֵ�����������ޣ�����ͬʱ������":
+            case "1.使场上任意一召唤物攻击力将为1，降低量增加至生命值（若超过上限，上限同时提升）":
                 if (targetSlot != null && targetSlot.currentCard3D != null)
                 {
                     Card3DInstance t3d = targetSlot.currentCard3D.GetComponent<Card3DInstance>();
@@ -646,7 +645,7 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
                 }
                 CleanupSpellResources();
                 break;
-            case "1.ʹ����һ�ٻ���ת��Ϊ��е�������ߣ�����Ϊ�˳������ܶԸ�����ʹ��":
+            case "1.使任意一召唤物转变为机械：飞升者，不视为退场，不能对附着物使用":
                 if (targetSlot != null && targetSlot.currentCard3D != null)
                 {
                     Card3DInstance t3d = targetSlot.currentCard3D.GetComponent<Card3DInstance>();
@@ -655,11 +654,11 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
                         CardData ascensionTemplate = CardDatabase.Instance?.GetTemplate("03005");
                         if (ascensionTemplate?.prefab3D != null)
                         {
-                            // ���پ�ģ��
+                            // 销毁旧模型
                             Destroy(targetSlot.currentCard3D);
                             targetSlot.SetCard(null);
 
-                            // ����������
+                            // 创建飞升者
                             Vector3 pos = FindObjectOfType<HandManager>().GetSlotWorldPosition(targetSlot.slotID);
                             GameObject model = Instantiate(ascensionTemplate.prefab3D, pos, Quaternion.Euler(0, 180, 0));
                             Card3DInstance new3D = model.GetComponent<Card3DInstance>();
@@ -671,13 +670,13 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
                                 new3D.UpdateValues();
                             }
                             targetSlot.SetCard(model);
-                            Debug.Log($"��е��������λ{targetSlot.slotID}ת��Ϊ������");
+                            Debug.Log($"机械飞升：槽位{targetSlot.slotID}转变为飞升者");
                         }
                     }
                 }
                 CleanupSpellResources();
                 break;
-            case "1.ʹ����һ�ٻ���ת��ΪԨ���������ߣ�����Ϊ�˳������ܶԸ�����ʹ��":
+            case "1.使任意一召唤物转变为渊：被腐化者，不视为退场，不能对附着物使用":
                 if (targetSlot != null && targetSlot.currentCard3D != null)
                 {
                     Card3DInstance t3d = targetSlot.currentCard3D.GetComponent<Card3DInstance>();
@@ -700,18 +699,18 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
                                 new3D.UpdateValues();
                             }
                             targetSlot.SetCard(model);
-                            Debug.Log($"��Ԩ֮Ϣ����λ{targetSlot.slotID}ת��Ϊ��������");
+                            Debug.Log($"深渊之息：槽位{targetSlot.slotID}转变为被腐化者");
                         }
                     }
                 }
                 CleanupSpellResources();
                 break;
-            case "1.�ۼ������3����ֵ��+5����\n2.�������������ֵ<=3ʱ�����������Ʋ���һ����":
-                NetworkPlayer.Local.TakeDamage(3);
-                NetworkPlayer.Local.AddEnergy(5);
+            case "1.扣己方玩家3生命值，+5能量\n2.当己方玩家生命值<=3时允许弃掉该牌并抽一张牌":
+                Player.Instance.TakeDamage(3);
+                Player.Instance.AddEnergy(5);
                 CleanupSpellResources();
                 break;
-            case "1.ʹ����һ�ٻ����˳����ص����ƣ���һ����":
+            case "1.使己方一召唤物退场并回到手牌，摸一张牌":
                 if (targetSlot != null && targetSlot.currentCard3D != null)
                 {
                     Card3DInstance t3d = targetSlot.currentCard3D.GetComponent<Card3DInstance>();
@@ -722,17 +721,17 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
                         CardData returnTemplate = CardDatabase.Instance?.GetTemplate(t3d.cardInstance.templateID);
                         targetSlot.HandleDeath(targetSlot.currentCard3D);
                         if (returnTemplate != null)
-                            NetworkPlayer.Local.AddCardToHandFromInstance(returnTemplate, t3d.cardInstance);
-                        NetworkPlayer.Local.DrawCardWithoutLimit();
+                            Player.Instance.AddCardToHandFromInstance(returnTemplate, t3d.cardInstance);
+                        Player.Instance.DrawCardWithoutLimit();
                     }
                 }
                 CleanupSpellResources();
                 break;
-            case "1.�ٻ�һ�����ܣ����࣬Ϊ����ȫ����������ٻ��︽������ǰ׺":
+            case "1.召唤一名灵能：中枢，为己方全体和手牌中召唤物附加灵能前缀":
                 HandManager hmCore = FindObjectOfType<HandManager>();
                 hmCore.StartCoroutine(hmCore.SummonCoreEffect());
                 break;
-            case "1.�ԶԷ�һ�ŵ��ٻ������2�˺���λ���м�Ķ���+1":
+            case "1.对对方一排的召唤物造成2伤害，位于中间的额外+1":
                 if (targetSlot != null)
                 {
                     int rowStart = targetSlot.slotID < 3 ? 0 : 3;
@@ -756,19 +755,19 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
                 }
                 CleanupSpellResources();
                 break;
-            case "1.ѡ��������һ�ٻ�����ι����غϹ����˺�����x2�����½׶ο�ʼ�۳���������ֵ������ֵ":
+            case "1.选择场上任意一召唤物，本次攻击回合攻击伤害修正x2，在下阶段开始扣除攻击力数值的生命值":
                 if (targetSlot != null && targetSlot.currentCard3D != null)
                 {
                     Card3DInstance t3d = targetSlot.currentCard3D.GetComponent<Card3DInstance>();
                     if (t3d?.cardInstance != null)
                     {
                         t3d.cardInstance.overclocked = true;
-                        Debug.Log($"��Ƶ��{t3d.cardInstance.instanceID} ���׶��˺�x2");
+                        Debug.Log($"超频：{t3d.cardInstance.instanceID} 本阶段伤害x2");
                     }
                 }
                 CleanupSpellResources();
                 break;
-            case "1.ʹ����ȫ���ٻ����˳����������κΣ��������˳��������ٻ�����":
+            case "1.使己方全体召唤物退场并不触发任何（主动）退场，返还召唤费用":
                 BoardManager bmTableFlip = FindObjectOfType<BoardManager>();
                 if (bmTableFlip != null)
                 {
@@ -788,7 +787,7 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
                         }
                     }
 
-                    // �ȱ�����У���ͳһ�˳�
+                    // 先标记所有，再统一退场
                     foreach (BoardSlot slot in toRemove)
                     {
                         CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
@@ -806,23 +805,23 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
                     {
                         slot.HandleDeath(slot.currentCard3D);
                     }
-                    NetworkPlayer.Local.AddEnergy(totalRefund);
+                    Player.Instance.AddEnergy(totalRefund);
                 }
                 CleanupSpellResources();
                 break;
-            case "1.ʹ�������ϻ�������һ�ٻ����λ����+3":
+            case "1.使己方场上或手牌中一召唤物阶位永久+3":
                 HandManager hmEvo = FindObjectOfType<HandManager>();
                 hmEvo.StartCoroutine(hmEvo.GreatEvolutionEffect());
                 break;
-            case "1.��Ч�������Է�����һ�ŷ������Լ�����÷��ƣ��÷��ƴ���ʱֻ��1����":
+            case "1.无效果触发对方场上一张反制且自己打出该反制，该反制触发时只扣1能量":
                 HandManager hmCK = FindObjectOfType<HandManager>();
                 hmCK.StartCoroutine(hmCK.CounterKillerEffect());
                 break;
-            case "1.ʹ����һ���ٻ���Զ�λ�ٻ�����ɹ�������ֵ���˺���Ȼ��+0-1":
+            case "1.使己方一排召唤物对对位召唤物造成攻击力数值的伤害，然后+0-1":
                 HandManager hmCharge = FindObjectOfType<HandManager>();
                 hmCharge.StartCoroutine(hmCharge.ChargeHornEffect());
                 break;
-            case "1.Ϊ����ȫ���ٻ��︽�ӻ��ܣ��û��ܿ�һֱ���У���+1+0���ָ�����һ�ٻ���2����ֵ":
+            case "1.为己方全体召唤物附加护盾，该护盾可一直持有，并+1+0，恢复己方一召唤物2生命值":
                 BoardManager bmBlood = FindObjectOfType<BoardManager>();
                 if (bmBlood != null)
                 {
@@ -853,37 +852,37 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
                 }
                 CleanupSpellResources();
                 break;
-            case "1.ָ���������ӣ��ø������ٻ�����ڹ����غϿ�ʼ�ܵ�λ�ڸø��ӻغ������˺�����������-1������":
+            case "1.指定两个格子，该格子上召唤物会在攻击回合开始受到位于该格子回合数的伤害，并且永久-1攻击力":
                 HandManager hmPlague = FindObjectOfType<HandManager>();
                 hmPlague.StartCoroutine(hmPlague.PlagueEffect());
                 break;
-            case "1.���һ��ʯͷ��":
+            case "1.获得一张石头人":
                 CardData stoneGolem = CardDatabase.Instance?.GetTemplate("03020");
                 if (stoneGolem != null)
-                    NetworkPlayer.Local.AddCardToHand(stoneGolem);
+                    Player.Instance.AddCardToHand(stoneGolem);
                 CleanupSpellResources();
                 break;
-            case "1.���һ�Ŵ��ˣ���ѡ�ߣ�":
+            case "1.获得一张打工人（神选者）":
                 CardData worker = CardDatabase.Instance?.GetTemplate("03009");
                 if (worker != null)
-                    NetworkPlayer.Local.AddCardToHand(worker);
+                    Player.Instance.AddCardToHand(worker);
                 CleanupSpellResources();
                 break;
-            case "1.�ٻ�һ��С�Ŷ���":
+            case "1.召唤一名小团恶念":
                 HandManager hmEvil = FindObjectOfType<HandManager>();
                 hmEvil.StartCoroutine(hmEvil.SummonSmallEvilEffect());
                 break;
-            case "1.�ۼ���1�������ֵ���ٻ������е��ٻ���ٻ�����֮��<=8":
+            case "1.扣己方1玩家生命值，召唤手牌中的召唤物，召唤费用之和<=8":
                 HandManager hmDoor = FindObjectOfType<HandManager>();
                 hmDoor.StartCoroutine(hmDoor.DoorEffect());
                 break;
-            case "1.�ۼ���2�������ֵ�����¸��Է��غϽ����󼺷���ø���һ�ж��غϣ�����غϽ���Ϊ����ȫ���ٻ���ָ�2����ֵ":
-                NetworkPlayer.Local.TakeDamage(2);
+            case "1.扣己方2玩家生命值，在下个对方回合结束后己方获得格外一行动回合，额外回合结束为己方全体召唤物恢复2生命值":
+                Player.Instance.TakeDamage(2);
                 TimeWarpManager.Instance.Activate();
                 CleanupSpellResources();
                 break;
             default:
-                Debug.Log($"δʵ�ֵķ���Ч����{template.effect}");
+                Debug.Log($"未实现的法术效果：{template.effect}");
                 CardDrag.CleanupSpellResources();
                 break;
         }
@@ -901,8 +900,8 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
                         CardInstance cardInst = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
                         if (cardInst != null && cardInst.templateID == "03503")
                         {
-                            NetworkPlayer.Local.TakeDamage(1);
-                            Debug.Log("����Ч�����Է����а��������1Ѫ");
+                            Player.Instance.TakeDamage(1);
+                            Debug.Log("智者效果：对方打出邪恶法术，扣1血");
                         }
                     }
                 }
@@ -936,7 +935,7 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
 
     bool HasValidTarget(TargetType type)
     {
-        Debug.Log($"HasValidTarget �����ã�type={type}");
+        Debug.Log($"HasValidTarget 被调用：type={type}");
         BoardManager bm = FindObjectOfType<BoardManager>();
         if (bm == null) return false;
 
@@ -955,7 +954,7 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
                 for (int id = 6; id <= 11; id++)
                 {
                     BoardSlot slot = bm.GetSlot(id);
-                    Debug.Log($"����λ{id}��slot={slot != null}, hasCard={slot?.hasCard}, isBlocked={slot?.isBlocked}");
+                    Debug.Log($"检查槽位{id}：slot={slot != null}, hasCard={slot?.hasCard}, isBlocked={slot?.isBlocked}");
                     if (slot != null && !slot.isBlocked && slot.hasCard)
                         return true;
                 }
@@ -1017,14 +1016,14 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
 
     bool CheckSpellCondition(CardData template)
     {
-        if (template.effect.Contains("ʹ����һ�ٻ����˳�") && template.effect.Contains("��1����"))
+        if (template.effect.Contains("使己方一召唤物退场") && template.effect.Contains("摸1张牌"))
             return true;
 
         switch (template.effect)
         {
-            case "1.������>=8ʱ�������\n2.��������":
-                return NetworkPlayer.Local.GetEnergy() >= 8;
-            case "1.�ۼ������3����ֵ��+5����\n2.�������������ֵ<=3ʱ�����������Ʋ���һ����":
+            case "1.当能量>=8时允许打出\n2.摸两张牌":
+                return Player.Instance.GetEnergy() >= 8;
+            case "1.扣己方玩家3生命值，+5能量\n2.当己方玩家生命值<=3时允许弃掉该牌并抽一张牌":
                 return true;
             default:
                 return true;
@@ -1039,7 +1038,7 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
         {
             BoardSlot slot = bm.GetSlot(i);
             if (slot == null) continue;
-            // ֻҪ��һ����λû��������û������˵��û��
+            // 只要有一个槽位没被封锁且没卡，就说明没满
             if (!slot.isBlocked && !slot.hasCard)
                 return false;
         }
@@ -1050,12 +1049,12 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
     }
     IEnumerator EmperorsApprovalEffectCoroutine()
     {
-        NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
-        // ���������ƣ�ֱ�ӽ���ѡ��ģʽ�����ƺͳ��϶�����ѡ��
+        Player.Instance.handCards.RemoveAll(c => c == null);
+        // 不隐藏手牌，直接进入选择模式（手牌和场上都可以选）
         SelectionManager.Instance.BeginOpenSelection(TargetType.SingleAlly, null);
 
         List<GameObject> spellCards = new List<GameObject>();
-        foreach (GameObject card in NetworkPlayer.Local.handCards)
+        foreach (GameObject card in Player.Instance.handCards)
         {
             CardInstance ci = card?.GetComponent<CardInstance>();
             if (ci != null)
@@ -1072,7 +1071,7 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
         BoardSlot.currentTargetType = TargetType.SingleAlly;
 
         List<GameObject> handSummons = new List<GameObject>();
-        foreach (GameObject card in NetworkPlayer.Local.handCards)
+        foreach (GameObject card in Player.Instance.handCards)
         {
             CardInstance ci = card?.GetComponent<CardInstance>();
             if (ci != null && CardDatabase.Instance?.GetTemplate(ci.templateID)?.cardType == CardType.Summon)
@@ -1112,12 +1111,12 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
 
         if (targetCI != null)
         {
-            if (!targetCI.prefixes.Contains("Ԩ"))
+            if (!targetCI.prefixes.Contains("渊"))
             {
-                if (string.IsNullOrEmpty(targetCI.prefixes) || targetCI.prefixes == "��")
-                    targetCI.prefixes = "Ԩ";
+                if (string.IsNullOrEmpty(targetCI.prefixes) || targetCI.prefixes == "无")
+                    targetCI.prefixes = "渊";
                 else
-                    targetCI.prefixes += " Ԩ";
+                    targetCI.prefixes += " 渊";
             }
 
             Card3DInstance c3d = target.GetComponent<Card3DInstance>();
@@ -1125,7 +1124,7 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
             CardDisplay2D display2D = target.GetComponent<CardDisplay2D>();
             display2D?.Refresh();
 
-            NetworkPlayer.Local.DrawCard();
+            Player.Instance.DrawCard();
         }
 
         foreach (GameObject card in hiddenSpells)

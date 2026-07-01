@@ -103,7 +103,7 @@ public class FanaticShamanAura : AuraBase
             return false;
         int targetSlot = GetSlotOf(target);
         if (targetSlot >= 6) return false;
-        return traitType == "½ø³¡" || traitType == "Å×ÖÃ";
+        return traitType == "è¿›åœº" || traitType == "æŠ›ç½®";
     }
 }
 
@@ -118,7 +118,7 @@ public class JudgeAura : AuraBase
             return false;
         int targetSlot = GetSlotOf(target);
         if (targetSlot >= 6) return false;
-        return traitType == "ÍË³¡";
+        return traitType == "é€€åœº";
     }
 }
 

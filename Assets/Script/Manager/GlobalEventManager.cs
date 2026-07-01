@@ -8,11 +8,11 @@ public class GlobalEventManager : MonoBehaviour
 
     void Awake() { if (Instance != null) { Destroy(gameObject); return; } Instance = this; }
 
-    // ===== 事件 =====
-    public event Action<CardInstance> OnMinionEntered;        // 进场完成
-    public event Action<CardInstance> OnMinionDying;          // 退场前
-    public event Action<CardInstance> OnMinionDied;           // 退场后
-    public event Action<CardData> OnCardPlayedAndResolved;    // 卡牌结算完成
+    // ===== 浜嬩欢 =====
+    public event Action<CardInstance> OnMinionEntered;        // 杩涘満瀹屾垚
+    public event Action<CardInstance> OnMinionDying;          // 閫�鍦哄墠
+    public event Action<CardInstance> OnMinionDied;           // 閫�鍦哄悗
+    public event Action<CardData> OnCardPlayedAndResolved;    // 鍗＄墝缁撶畻瀹屾垚
     public event Action OnBattlePhaseStart;
     public event Action OnBattlePhaseEnd;
     public event Action<CardInstance, string> OnTraitGranted;
@@ -27,15 +27,15 @@ public class GlobalEventManager : MonoBehaviour
     public void TriggerTraitGranted(CardInstance ci, string t) => OnTraitGranted?.Invoke(ci, t);
     public void TriggerTraitRemoved(CardInstance ci, string t) => OnTraitRemoved?.Invoke(ci, t);
 
-    // ===== 效果拦截 =====
-    /// <summary>下一张打出的牌是否被无效</summary>
+    // ===== 鏁堟灉鎷︽埅 =====
+    /// <summary>涓嬩竴寮犳墦鍑虹殑鐗屾槸鍚﹁鏃犳晥</summary>
     public bool NextCardNullified;
 
-    /// <summary>待重定向的进场效果（对方召唤物被反制后，进场由己方触发）</summary>
+    /// <summary>寰呴噸瀹氬悜鐨勮繘鍦烘晥鏋滐紙瀵规柟鍙敜鐗╄鍙嶅埗鍚庯紝杩涘満鐢卞繁鏂硅Е鍙戯級</summary>
     public CardData PendingEnterRedirectTemplate;
     public CardInstance PendingEnterRedirectInstance;
 
-    // ===== 光环管理 =====
+    // ===== 鍏夌幆绠＄悊 =====
     private List<AuraBase> auras = new List<AuraBase>();
     public void RegisterAura(AuraBase a) => auras.Add(a);
     public void UnregisterAura(AuraBase a) => auras.Remove(a);
@@ -57,7 +57,7 @@ public class GlobalEventManager : MonoBehaviour
     {
         auras.RemoveAll(a => a.source == source);
     }
-    /// <summary>己方玩家受到伤害时触发，参数为伤害量</summary>
+    /// <summary>宸辨柟鐜╁鍙楀埌浼ゅ鏃惰Е鍙戯紝鍙傛暟涓轰激瀹抽噺</summary>
     public event Action<int> OnPlayerDamaged;
     public void TriggerPlayerDamaged(int amount)
     {

@@ -3,7 +3,7 @@ using TMPro;
 
 public class CardDisplay3D : MonoBehaviour
 {
-    [Header("3DÎÄ×Ö")]
+    [Header("3Dæ–‡å­—")]
     public TextMeshPro attackText;
     public TextMeshPro healthText;
     public TextMeshPro nameText;
@@ -19,20 +19,20 @@ public class CardDisplay3D : MonoBehaviour
 
         if (nameText != null) nameText.text = template?.cardName ?? "";
         if (prefixText != null) prefixText.text = instance.prefixes;
-        // ·¨ÊõÅÆÏÔÊ¾Ğ§¹ûÎÄ±¾
+        // æ³•æœ¯ç‰Œæ˜¾ç¤ºæ•ˆæœæ–‡æœ¬
         if (template.cardType == CardType.Spell && effectText != null)
         {
             effectText.text = template.effect ?? "";
         }
 
-        // ·¨ÊõÅÆÒş²Ø¹¥»÷Á¦ºÍÉúÃüÖµ
+        // æ³•æœ¯ç‰Œéšè—æ”»å‡»åŠ›å’Œç”Ÿå‘½å€¼
         if (template.cardType == CardType.Spell)
         {
             if (attackText != null) attackText.gameObject.SetActive(false);
             if (healthText != null) healthText.gameObject.SetActive(false);
         }
         if (costText != null)
-            costText.text = $"{instance.currentCost}·Ñ({instance.currentTier}½×)";
+            costText.text = $"{instance.currentCost}è´¹({instance.currentTier}é˜¶)";
 
         if (attackText != null) attackText.text = instance.Attack.ToString();
         if (healthText != null)
@@ -57,7 +57,7 @@ public class CardDisplay3D : MonoBehaviour
         return false;
     }
     /// <summary>
-     /// Òş²ØËùÓĞ3DÎÄ×ÖºÍĞÅÏ¢£¨¶Ô·½ÊÓ½ÇÓÃ£©
+     /// éšè—æ‰€æœ‰3Dæ–‡å­—å’Œä¿¡æ¯ï¼ˆå¯¹æ–¹è§†è§’ç”¨ï¼‰
      /// </summary>
     public void HideAllInfo()
     {
@@ -70,7 +70,7 @@ public class CardDisplay3D : MonoBehaviour
     }
 
     /// <summary>
-    /// ÏÔÊ¾ËùÓĞ3DÎÄ×ÖºÍĞÅÏ¢£¨¼º·½ÊÓ½ÇÓÃ£©
+    /// æ˜¾ç¤ºæ‰€æœ‰3Dæ–‡å­—å’Œä¿¡æ¯ï¼ˆå·±æ–¹è§†è§’ç”¨ï¼‰
     /// </summary>
     public void ShowAllInfo()
     {

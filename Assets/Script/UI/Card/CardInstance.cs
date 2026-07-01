@@ -17,7 +17,7 @@ public class CardInstance : MonoBehaviour
     public int currentTier;
     public string prefixes = "";
    
-    [Header("ÌØĞÔ±ê¼Ç")]
+    [Header("ç‰¹æ€§æ ‡è®°")]
     public bool hasOnEnter;
     public bool hasFirstStrike;
     public bool hasOnDeath;
@@ -25,7 +25,7 @@ public class CardInstance : MonoBehaviour
     public bool hasRevenge;
     public bool hasDiscard;
     public string revengeEffect;
-    public int deathPhase; // ÍË³¡Ê±ËùÔÚµÄ½×¶ÎÊı
+    public int deathPhase; // é€€åœºæ—¶æ‰€åœ¨çš„é˜¶æ®µæ•°
     public bool isXValue;
     public bool xAttackReadsHighest;
     public bool xHealthReadsHighest;
@@ -34,59 +34,59 @@ public class CardInstance : MonoBehaviour
     public bool buffedBySage;
     public SummonType summonType; 
     public bool enteredWithZeroCost;
-    public int scrollCorePhaseCount; // »­¾íÖ®ºËÔÚÊÖÅÆÖĞ¾­¹ıµÄ½×¶ÎÊı
-    public bool _conductorDoubleDeath; // Ö¸»Ó¼ÒË«±¶ÍË³¡±ê¼Ç
+    public int scrollCorePhaseCount; // ç”»å·ä¹‹æ ¸åœ¨æ‰‹ç‰Œä¸­ç»è¿‡çš„é˜¶æ®µæ•°
+    public bool _conductorDoubleDeath; // æŒ‡æŒ¥å®¶åŒå€é€€åœºæ ‡è®°
     public bool energyReaperDiscounted;
-    public bool poisoned; // ±¾½×¶ÎÎŞ·¨»ñµÃ»¤¶Ü£¬ÊÜµ½ÈÎºÎÉËº¦¡Á2
+    public bool poisoned; // æœ¬é˜¶æ®µæ— æ³•è·å¾—æŠ¤ç›¾ï¼Œå—åˆ°ä»»ä½•ä¼¤å®³Ã—2
     public int originalAttackBeforeDebuff;
     public int greedySnakeEnterCount;
-    public int tempAttackBoost;   // ÁÙÊ±¹¥»÷Á¦Ôö·ù£¨¹¥»÷»ØºÏ½áÊøÇåÁã£©
-    public int tempHealthBoost;   // ÁÙÊ±ÉúÃüÖµÔö·ù£¨¹¥»÷»ØºÏ½áÊøÇåÁã£©
+    public int tempAttackBoost;   // ä¸´æ—¶æ”»å‡»åŠ›å¢å¹…ï¼ˆæ”»å‡»å›åˆç»“æŸæ¸…é›¶ï¼‰
+    public int tempHealthBoost;   // ä¸´æ—¶ç”Ÿå‘½å€¼å¢å¹…ï¼ˆæ”»å‡»å›åˆç»“æŸæ¸…é›¶ï¼‰
     public int xInitialHealth;
     public bool buffedByEmperor; 
     public bool merchantDiscounted;
-    public string braveTemplateID; // ÓÂÕß±ê¼Ç£¬ÓÃÓÚÅĞ¶ÏÊÇ·ñ¿É±»×·ËæÕßµÖµ²
+    public string braveTemplateID; // å‹‡è€…æ ‡è®°ï¼Œç”¨äºåˆ¤æ–­æ˜¯å¦å¯è¢«è¿½éšè€…æŠµæŒ¡
     public bool _justTransformed;
-    public bool attacksBackRow;   // ¹¥»÷ºóÅÅ¶ÔÎ»
-    public bool attacksFrontRow;  // ¹¥»÷Ç°ÅÅ¶ÔÎ»
-    public int ironSmithTotalConsumedCount;   // ×Ü¹²ÏûºÄÕÙ»½ÎïÊı£¨¿ç½×¶Î±£Áô£¬ÓÃÓÚ´¥·¢Ç¿»¯£©
-    public int ironSmithOneCostConsumedCount; // ÏûºÄ1·ÑÕÙ»½ÎïÊı£¨Ã¿½×¶ÎÇåÁã£¬ÓÃÓÚ1·Ñ¼ÌĞøµ¯´°£©
-    public bool isShadow; // Ó°×Ó±ê¼Ç
-    public static int shadowLimit = 0; // È«¾ÖÓ°×ÓÉÏÏŞ
-    public static int shadowAtkBonus = 0; // È«¾ÖÓ°×Ó¹¥»÷Á¦ÓÀ¾Ã¼Ó³É
-    public static int shadowTierBonus = 0; // È«¾ÖÓ°×Ó½×Î»ÓÀ¾Ã¼Ó³É
-    public static bool shadowMasterAlive = false; // Ó°ÎèÕßÊÇ·ñÔÚ³¡
+    public bool attacksBackRow;   // æ”»å‡»åæ’å¯¹ä½
+    public bool attacksFrontRow;  // æ”»å‡»å‰æ’å¯¹ä½
+    public int ironSmithTotalConsumedCount;   // æ€»å…±æ¶ˆè€—å¬å”¤ç‰©æ•°ï¼ˆè·¨é˜¶æ®µä¿ç•™ï¼Œç”¨äºè§¦å‘å¼ºåŒ–ï¼‰
+    public int ironSmithOneCostConsumedCount; // æ¶ˆè€—1è´¹å¬å”¤ç‰©æ•°ï¼ˆæ¯é˜¶æ®µæ¸…é›¶ï¼Œç”¨äº1è´¹ç»§ç»­å¼¹çª—ï¼‰
+    public bool isShadow; // å½±å­æ ‡è®°
+    public static int shadowLimit = 0; // å…¨å±€å½±å­ä¸Šé™
+    public static int shadowAtkBonus = 0; // å…¨å±€å½±å­æ”»å‡»åŠ›æ°¸ä¹…åŠ æˆ
+    public static int shadowTierBonus = 0; // å…¨å±€å½±å­é˜¶ä½æ°¸ä¹…åŠ æˆ
+    public static bool shadowMasterAlive = false; // å½±èˆè€…æ˜¯å¦åœ¨åœº
     public string wolfKingInstanceID;
-    public int totalDamageTaken; // ÀÛ¼Æ¿Û¹ıµÄÉúÃüÖµ£¨ÓÀ¾Ã£¬Ö»Ôö²»¼õ£©
-    public bool isAncientFairy; // ¹ÅÀÏ¾«Áé±ê¼Ç
-    public int savedAttackForDiscard; // ²»ÎÈ¶¨ÊµÑéÆ·Å×ÖÃÓÃ£¬±£´æµã»÷Ê±µÄ¹¥»÷Á¦
-    public bool isWatcher; // ÊØÍûÕß±ê¼Ç
-    public int consumedSpellCost; // Ö´ĞĞÖ®½£ÏûºÄµÄ·¨Êõ·ÑÓÃ
+    public int totalDamageTaken; // ç´¯è®¡æ‰£è¿‡çš„ç”Ÿå‘½å€¼ï¼ˆæ°¸ä¹…ï¼Œåªå¢ä¸å‡ï¼‰
+    public bool isAncientFairy; // å¤è€ç²¾çµæ ‡è®°
+    public int savedAttackForDiscard; // ä¸ç¨³å®šå®éªŒå“æŠ›ç½®ç”¨ï¼Œä¿å­˜ç‚¹å‡»æ—¶çš„æ”»å‡»åŠ›
+    public bool isWatcher; // å®ˆæœ›è€…æ ‡è®°
+    public int consumedSpellCost; // æ‰§è¡Œä¹‹å‰‘æ¶ˆè€—çš„æ³•æœ¯è´¹ç”¨
     public bool _rebornSummon;
     public List<string> enemyDamageSourceIDs = new List<string>();
     public bool _outlawPlayerDamageThisTurn;
     public bool cannotHealOrGainMaxHP;
     public List<string> damageSourceInstanceIDs = new List<string>();
-    public bool hasLifePriestBlessing; // ÉúÃü¼ÀË¾×£¸£±ê¼Ç
-    public CardInstance lifePriestBlessingSource; // ×£¸£À´Ô´£¨¼ÀË¾£©
-    public bool _nourisherHost; // ÊÇ·ñÊÇ×ÌÑøÕßµÄËŞÖ÷
-    public string _nourisherInstanceID; // ×ÌÑøÕßµÄÊµÀıID
-    public bool _nourisherAttached; // ×ÌÑøÕßÊÇ·ñÒÑ¸½×Å
-    public bool ignoreAllCounters; // ÎŞÎ·Õß£º²»´¥·¢ÈÎºÎ·´ÖÆÅÆ
+    public bool hasLifePriestBlessing; // ç”Ÿå‘½ç¥­å¸ç¥ç¦æ ‡è®°
+    public CardInstance lifePriestBlessingSource; // ç¥ç¦æ¥æºï¼ˆç¥­å¸ï¼‰
+    public bool _nourisherHost; // æ˜¯å¦æ˜¯æ»‹å…»è€…çš„å®¿ä¸»
+    public string _nourisherInstanceID; // æ»‹å…»è€…çš„å®ä¾‹ID
+    public bool _nourisherAttached; // æ»‹å…»è€…æ˜¯å¦å·²é™„ç€
+    public bool ignoreAllCounters; // æ— ç•è€…ï¼šä¸è§¦å‘ä»»ä½•ååˆ¶ç‰Œ
     public bool _conquerorTriggered;
     public int mindScholarCopyCount;
-    public List<string> mindScholarCopiedTraits; // ÍêÕûµÄÌØĞÔÎÄ±¾
+    public List<string> mindScholarCopiedTraits; // å®Œæ•´çš„ç‰¹æ€§æ–‡æœ¬
     public bool mindScholarEnterTriggeredThisPhase;
     public bool mindScholarDiscardTriggeredThisPhase;
     public int _conquerorTotalDamageThisBattle;
     public bool _conquerorPendingCheck;
     public GameObject _conquerorTargetEnemyCard;
     public bool immuneToEnemySpell;
-    // ¶¯Ì¬¸³ÓèµÄÌØĞÔÎÄ±¾
+    // åŠ¨æ€èµ‹äºˆçš„ç‰¹æ€§æ–‡æœ¬
     public List<string> grantedTraitTexts = new List<string>();
-    // ¿àÄÑ¸øÓèÕß×¨ÓÃ
+    // è‹¦éš¾ç»™äºˆè€…ä¸“ç”¨
     public List<string> giveableDeathTraits = new List<string>();
-    // Ä£°åÔ­Ê¼ÌØĞÔ¼ÇÂ¼
+    // æ¨¡æ¿åŸå§‹ç‰¹æ€§è®°å½•
     public bool hasOriginalFirstStrike;
     public bool hasOriginalOnEnter;
     public bool hasOriginalOnDeath;
@@ -96,49 +96,49 @@ public class CardInstance : MonoBehaviour
     public bool hasOriginalAttach;
     public bool hasOriginalAttacksFrontRow;
     public bool hasOriginalAttacksBackRow;
-    // ÍË³¡×Ô¶¯»ØÊÖ×¨ÓÃ£º±ê¼Ç±¾´ÎÍË³¡ÊÇ·ñÒÑ±»×Ô¶¯»ØÊÖĞ§¹û´¦Àí¹ı
+    // é€€åœºè‡ªåŠ¨å›æ‰‹ä¸“ç”¨ï¼šæ ‡è®°æœ¬æ¬¡é€€åœºæ˜¯å¦å·²è¢«è‡ªåŠ¨å›æ‰‹æ•ˆæœå¤„ç†è¿‡
     public bool handledReturnToHand;
     public bool silencedThisPhase;
-    public bool isActiveExit; // ±¾´ÎÍË³¡ÊÇ·ñÎªÖ÷¶¯ÍË³¡
-    // »¤¶Ü
+    public bool isActiveExit; // æœ¬æ¬¡é€€åœºæ˜¯å¦ä¸ºä¸»åŠ¨é€€åœº
+    // æŠ¤ç›¾
     public bool hasShield;
-    public bool shieldIsPermanent;        // ÓÀ¾Ã³ÖÓĞ£¨²»±»¶¥Ìæ£¬²»ÊÜÊ±¼äÏŞÖÆ£©
-    public bool shieldEndAtBattleStart;   // ¹¥»÷»ØºÏ¿ªÊ¼ÏûÊ§
-    public bool shieldEndAtBattleEnd;     // ¹¥»÷»ØºÏ½áÊøÏûÊ§
+    public bool shieldIsPermanent;        // æ°¸ä¹…æŒæœ‰ï¼ˆä¸è¢«é¡¶æ›¿ï¼Œä¸å—æ—¶é—´é™åˆ¶ï¼‰
+    public bool shieldEndAtBattleStart;   // æ”»å‡»å›åˆå¼€å§‹æ¶ˆå¤±
+    public bool shieldEndAtBattleEnd;     // æ”»å‡»å›åˆç»“æŸæ¶ˆå¤±
     public bool isRevenge;
-    // ¸½×ÅÏµÍ³
-    public bool canAttach;          // ÊÇ·ñÓµÓĞ¸½×ÅÌØĞÔ£¨´ÓÄ£°å¶ÁÈ¡£©
-    public bool isAttached;         // µ±Ç°ÊÇ·ñ¸½×ÅÔÚÆäËûÕÙ»½ÎïÉÏ
-    public int hostSlotID = -1;     // ËŞÖ÷µÄ²ÛÎ»ID£¨-1±íÊ¾Î´¸½×Å£©
-    public int attachOrder;         // ¸ÃËŞÖ÷ÉÏµÄµÚ¼¸¸ö¸½×ÅÎï£¨0¿ªÊ¼£©
-    // ¸³Óè»¤¶Ü
+    // é™„ç€ç³»ç»Ÿ
+    public bool canAttach;          // æ˜¯å¦æ‹¥æœ‰é™„ç€ç‰¹æ€§ï¼ˆä»æ¨¡æ¿è¯»å–ï¼‰
+    public bool isAttached;         // å½“å‰æ˜¯å¦é™„ç€åœ¨å…¶ä»–å¬å”¤ç‰©ä¸Š
+    public int hostSlotID = -1;     // å®¿ä¸»çš„æ§½ä½IDï¼ˆ-1è¡¨ç¤ºæœªé™„ç€ï¼‰
+    public int attachOrder;         // è¯¥å®¿ä¸»ä¸Šçš„ç¬¬å‡ ä¸ªé™„ç€ç‰©ï¼ˆ0å¼€å§‹ï¼‰
+    // èµ‹äºˆæŠ¤ç›¾
     public enum CounterTriggerTiming
     {
-        OnCardPlayed,       // ¶Ô·½´ò³öÌØ¶¨¿¨ÅÆÊ±
-        OnPhaseEnd,         // ½×¶Î½áÊøÊ±
-        OnBattleEnd,        // ¹¥»÷»ØºÏ½áÊøÊ±
-        OnEnemyTurnEnd      // ¶Ô·½»ØºÏ½áÊøÊ±
+        OnCardPlayed,       // å¯¹æ–¹æ‰“å‡ºç‰¹å®šå¡ç‰Œæ—¶
+        OnPhaseEnd,         // é˜¶æ®µç»“æŸæ—¶
+        OnBattleEnd,        // æ”»å‡»å›åˆç»“æŸæ—¶
+        OnEnemyTurnEnd      // å¯¹æ–¹å›åˆç»“æŸæ—¶
     }
-    /// <summary>ÎŞ·¨»Ö¸´ÉúÃüÖµ</summary>
+    /// <summary>æ— æ³•æ¢å¤ç”Ÿå‘½å€¼</summary>
     public bool cannotHeal;
 
-    /// <summary>ÊÜµ½µÄÖÎÁÆÁ¿ĞŞÕı£¨ÕıÊıÎªÔöÇ¿£¬¸ºÊıÎªÏ÷Èõ£¬0ÎªÕı³££©</summary>
+    /// <summary>å—åˆ°çš„æ²»ç–—é‡ä¿®æ­£ï¼ˆæ­£æ•°ä¸ºå¢å¼ºï¼Œè´Ÿæ•°ä¸ºå‰Šå¼±ï¼Œ0ä¸ºæ­£å¸¸ï¼‰</summary>
     public float healModifier = 1f;
 
-    /// <summary>ÖÎÁÆÀ´Ô´ÀàĞÍ</summary>
+    /// <summary>æ²»ç–—æ¥æºç±»å‹</summary>
     public enum HealSourceType { Spell, Minion, Any }
 
-    /// <summary>ÊÜµ½ÖÎÁÆÊ±´¥·¢£¬·µ»ØÊµ¼ÊÖÎÁÆÁ¿¡£²ÎÊı£º(Ä¿±ê, Ô­Ê¼ÖÎÁÆÁ¿, À´Ô´ÀàĞÍ)</summary>
+    /// <summary>å—åˆ°æ²»ç–—æ—¶è§¦å‘ï¼Œè¿”å›å®é™…æ²»ç–—é‡ã€‚å‚æ•°ï¼š(ç›®æ ‡, åŸå§‹æ²»ç–—é‡, æ¥æºç±»å‹)</summary>
     public static event System.Func<CardInstance, int, HealSourceType, int> OnBeforeHeal;
-    // ·´ÖÆÅÆÏà¹Ø
+    // ååˆ¶ç‰Œç›¸å…³
     public CounterTriggerTiming counterTiming;
-    public string counterTriggerCondition;  // ´¥·¢Ìõ¼şÃèÊö
-    public string counterEffect;            // ´¥·¢Ğ§¹ûÃèÊö
-    public int counterDuration;             // ÓĞĞ§½×¶ÎÊı£¨-1±íÊ¾ÓÀ¾ÃÖ±µ½´¥·¢£©
-    public bool isYinYang; // ÒõÑô±ê¼Ç£¬ÊÜµ½ÉËº¦-1
+    public string counterTriggerCondition;  // è§¦å‘æ¡ä»¶æè¿°
+    public string counterEffect;            // è§¦å‘æ•ˆæœæè¿°
+    public int counterDuration;             // æœ‰æ•ˆé˜¶æ®µæ•°ï¼ˆ-1è¡¨ç¤ºæ°¸ä¹…ç›´åˆ°è§¦å‘ï¼‰
+    public bool isYinYang; // é˜´é˜³æ ‡è®°ï¼Œå—åˆ°ä¼¤å®³-1
     public bool overclocked;
     public System.Action<int> _disasterWalkerHandler;
-    // ÊÜ³ÁÄ¬¿ØÖÆµÄÌØĞÔÊôĞÔ
+    // å—æ²‰é»˜æ§åˆ¶çš„ç‰¹æ€§å±æ€§
     public bool HasOnEnter => hasOnEnter && !IsSilenced();
     public bool HasOnDeath => hasOnDeath && !IsSilenced();
     public bool HasActiveExit => hasActiveExit && !IsSilenced();
@@ -169,7 +169,7 @@ public class CardInstance : MonoBehaviour
     public void GrantShield(bool isPermanent, bool endAtBattleStart, bool endAtBattleEnd)
     {
         if (poisoned) return;
-        // ÒÑÓĞÓÀ¾Ã»¤¶Ü£¬²»ÄÜ±»·ÇÓÀ¾Ã»¤¶Ü¶¥Ìæ
+        // å·²æœ‰æ°¸ä¹…æŠ¤ç›¾ï¼Œä¸èƒ½è¢«éæ°¸ä¹…æŠ¤ç›¾é¡¶æ›¿
         if (hasShield && shieldIsPermanent && !isPermanent)
             return;
 
@@ -179,7 +179,7 @@ public class CardInstance : MonoBehaviour
         shieldEndAtBattleEnd = endAtBattleEnd;
     }
 
-    // ÒÆ³ı»¤¶Ü
+    // ç§»é™¤æŠ¤ç›¾
     public void RemoveShield()
     {
         hasShield = false;
@@ -209,15 +209,15 @@ public class CardInstance : MonoBehaviour
         {
             giveableDeathTraits = new List<string>
         {
-            "ÍË³¡£º¼õÒ»ÄÜÁ¿",
-            "ÍË³¡£º¼º·½È«ÌåÊÜµ½Ò»ÉËº¦",
-            "ÍË³¡£º¼º·½Íæ¼Ò¿ÛÒ»Ñª"
+            "é€€åœºï¼šå‡ä¸€èƒ½é‡",
+            "é€€åœºï¼šå·±æ–¹å…¨ä½“å—åˆ°ä¸€ä¼¤å®³",
+            "é€€åœºï¼šå·±æ–¹ç©å®¶æ‰£ä¸€è¡€"
         };
             grantedTraitTexts = new List<string>
         {
-            "ÍË³¡£º¼õÒ»ÄÜÁ¿",
-            "ÍË³¡£º¼º·½È«ÌåÊÜµ½Ò»ÉËº¦",
-            "ÍË³¡£º¼º·½Íæ¼Ò¿ÛÒ»Ñª"
+            "é€€åœºï¼šå‡ä¸€èƒ½é‡",
+            "é€€åœºï¼šå·±æ–¹å…¨ä½“å—åˆ°ä¸€ä¼¤å®³",
+            "é€€åœºï¼šå·±æ–¹ç©å®¶æ‰£ä¸€è¡€"
         };
         }
         if (templateID == "01319")
@@ -360,15 +360,15 @@ public class CardInstance : MonoBehaviour
     {
         switch (trait)
         {
-            case "ÏÈÊÖ": hasFirstStrike = true; break;
-            case "½ø³¡": hasOnEnter = true; break;
-            case "ÍË³¡": hasOnDeath = true; break;
-            case "Ö÷¶¯ÍË³¡": hasActiveExit = true; break;
-            case "·´»÷": hasRevenge = true; break;
-            case "Å×ÖÃ": hasDiscard = true; break;
-            case "¸½×Å": canAttach = true; break;
-            case "¹¥»÷Ç°ÅÅ": attacksFrontRow = true; attacksBackRow = false; break;
-            case "¹¥»÷ºóÅÅ": attacksBackRow = true; attacksFrontRow = false; break;
+            case "å…ˆæ‰‹": hasFirstStrike = true; break;
+            case "è¿›åœº": hasOnEnter = true; break;
+            case "é€€åœº": hasOnDeath = true; break;
+            case "ä¸»åŠ¨é€€åœº": hasActiveExit = true; break;
+            case "åå‡»": hasRevenge = true; break;
+            case "æŠ›ç½®": hasDiscard = true; break;
+            case "é™„ç€": canAttach = true; break;
+            case "æ”»å‡»å‰æ’": attacksFrontRow = true; attacksBackRow = false; break;
+            case "æ”»å‡»åæ’": attacksBackRow = true; attacksFrontRow = false; break;
         }
     }
 
@@ -376,13 +376,13 @@ public class CardInstance : MonoBehaviour
     {
         switch (trait)
         {
-            case "ÏÈÊÖ": hasFirstStrike = false; break;
-            case "½ø³¡": hasOnEnter = false; break;
-            case "ÍË³¡": hasOnDeath = false; break;
-            case "Ö÷¶¯ÍË³¡": hasActiveExit = false; break;
-            case "·´»÷": hasRevenge = false; break;
-            case "Å×ÖÃ": hasDiscard = false; break;
-            case "¸½×Å":
+            case "å…ˆæ‰‹": hasFirstStrike = false; break;
+            case "è¿›åœº": hasOnEnter = false; break;
+            case "é€€åœº": hasOnDeath = false; break;
+            case "ä¸»åŠ¨é€€åœº": hasActiveExit = false; break;
+            case "åå‡»": hasRevenge = false; break;
+            case "æŠ›ç½®": hasDiscard = false; break;
+            case "é™„ç€":
                 canAttach = false;
                 if (isAttached)
                 {
@@ -406,8 +406,8 @@ public class CardInstance : MonoBehaviour
                     attachOrder = 0;
                 }
                 break;
-            case "¹¥»÷Ç°ÅÅ": attacksFrontRow = false; break;
-            case "¹¥»÷ºóÅÅ": attacksBackRow = false; break;
+            case "æ”»å‡»å‰æ’": attacksFrontRow = false; break;
+            case "æ”»å‡»åæ’": attacksBackRow = false; break;
         }
     }
     public void GrantTrait(string fullTraitText)
@@ -415,30 +415,30 @@ public class CardInstance : MonoBehaviour
         if (grantedTraitTexts.Contains(fullTraitText)) return;
         grantedTraitTexts.Add(fullTraitText);
 
-        if (fullTraitText.Contains("ÏÈÊÖ")) hasFirstStrike = true;
-        if (fullTraitText.Contains("½ø³¡")) hasOnEnter = true;
-        if (fullTraitText.Contains("ÍË³¡")) hasOnDeath = true;
-        if (fullTraitText.Contains("Ö÷¶¯ÍË³¡")) hasActiveExit = true;
-        if (fullTraitText.Contains("·´»÷")) hasRevenge = true;
-        if (fullTraitText.Contains("Å×ÖÃ")) hasDiscard = true;
-        if (fullTraitText.Contains("¸½×Å")) canAttach = true;
-        if (fullTraitText.Contains("¹¥»÷Ç°ÅÅ")) { attacksFrontRow = true; attacksBackRow = false; }
-        if (fullTraitText.Contains("¹¥»÷ºóÅÅ")) { attacksBackRow = true; attacksFrontRow = false; }
+        if (fullTraitText.Contains("å…ˆæ‰‹")) hasFirstStrike = true;
+        if (fullTraitText.Contains("è¿›åœº")) hasOnEnter = true;
+        if (fullTraitText.Contains("é€€åœº")) hasOnDeath = true;
+        if (fullTraitText.Contains("ä¸»åŠ¨é€€åœº")) hasActiveExit = true;
+        if (fullTraitText.Contains("åå‡»")) hasRevenge = true;
+        if (fullTraitText.Contains("æŠ›ç½®")) hasDiscard = true;
+        if (fullTraitText.Contains("é™„ç€")) canAttach = true;
+        if (fullTraitText.Contains("æ”»å‡»å‰æ’")) { attacksFrontRow = true; attacksBackRow = false; }
+        if (fullTraitText.Contains("æ”»å‡»åæ’")) { attacksBackRow = true; attacksFrontRow = false; }
     }
 
     public void RemoveGrantedTrait(string fullTraitText)
     {
         grantedTraitTexts.Remove(fullTraitText);
 
-        bool stillHasFirstStrike = grantedTraitTexts.Exists(t => t.Contains("ÏÈÊÖ"));
-        bool stillHasOnEnter = grantedTraitTexts.Exists(t => t.Contains("½ø³¡"));
-        bool stillHasOnDeath = grantedTraitTexts.Exists(t => t.Contains("ÍË³¡"));
-        bool stillHasActiveExit = grantedTraitTexts.Exists(t => t.Contains("Ö÷¶¯ÍË³¡"));
-        bool stillHasRevenge = grantedTraitTexts.Exists(t => t.Contains("·´»÷"));
-        bool stillHasDiscard = grantedTraitTexts.Exists(t => t.Contains("Å×ÖÃ"));
-        bool stillHasAttach = grantedTraitTexts.Exists(t => t.Contains("¸½×Å"));
-        bool stillHasAttackFront = grantedTraitTexts.Exists(t => t.Contains("¹¥»÷Ç°ÅÅ"));
-        bool stillHasAttackBack = grantedTraitTexts.Exists(t => t.Contains("¹¥»÷ºóÅÅ"));
+        bool stillHasFirstStrike = grantedTraitTexts.Exists(t => t.Contains("å…ˆæ‰‹"));
+        bool stillHasOnEnter = grantedTraitTexts.Exists(t => t.Contains("è¿›åœº"));
+        bool stillHasOnDeath = grantedTraitTexts.Exists(t => t.Contains("é€€åœº"));
+        bool stillHasActiveExit = grantedTraitTexts.Exists(t => t.Contains("ä¸»åŠ¨é€€åœº"));
+        bool stillHasRevenge = grantedTraitTexts.Exists(t => t.Contains("åå‡»"));
+        bool stillHasDiscard = grantedTraitTexts.Exists(t => t.Contains("æŠ›ç½®"));
+        bool stillHasAttach = grantedTraitTexts.Exists(t => t.Contains("é™„ç€"));
+        bool stillHasAttackFront = grantedTraitTexts.Exists(t => t.Contains("æ”»å‡»å‰æ’"));
+        bool stillHasAttackBack = grantedTraitTexts.Exists(t => t.Contains("æ”»å‡»åæ’"));
 
         if (!stillHasFirstStrike) hasFirstStrike = hasOriginalFirstStrike;
         if (!stillHasOnEnter) hasOnEnter = hasOriginalOnEnter;
@@ -451,15 +451,15 @@ public class CardInstance : MonoBehaviour
         if (!stillHasAttackBack && !stillHasAttackFront) attacksBackRow = hasOriginalAttacksBackRow;
     }
     /// <summary>
-    /// Ë¢ĞÂ¸ÃÊµÀıµÄ2D/3DÏÔÊ¾
+    /// åˆ·æ–°è¯¥å®ä¾‹çš„2D/3Dæ˜¾ç¤º
     /// </summary>
     public void RefreshDisplay()
     {
-        // Ë¢ĞÂ2DÊÖÅÆÏÔÊ¾
+        // åˆ·æ–°2Dæ‰‹ç‰Œæ˜¾ç¤º
         CardDisplay2D display2D = GetComponent<CardDisplay2D>();
         if (display2D != null) display2D.Refresh();
 
-        // Ë¢ĞÂ3DÕ½³¡ÏÔÊ¾
+        // åˆ·æ–°3Dæˆ˜åœºæ˜¾ç¤º
         BoardManager bm = FindObjectOfType<BoardManager>();
         if (bm != null)
         {
@@ -478,20 +478,20 @@ public class CardInstance : MonoBehaviour
             }
         }
     }
-    /// <summary>¶ÔÕÙ»½Îï½øĞĞÖÎÁÆ£¨Í³Ò»Èë¿Ú£©</summary>
+    /// <summary>å¯¹å¬å”¤ç‰©è¿›è¡Œæ²»ç–—ï¼ˆç»Ÿä¸€å…¥å£ï¼‰</summary>
     public void ReceiveHeal(int amount, HealSourceType sourceType)
     {
         if (cannotHeal) return;
         if (isAttached) return;
 
-        // ÊÂ¼şÀ¹½Ø/ĞŞÕı
+        // äº‹ä»¶æ‹¦æˆª/ä¿®æ­£
         if (OnBeforeHeal != null)
         {
             amount = OnBeforeHeal(this, amount, sourceType);
         }
         if (amount <= 0) return;
 
-        // Ó¦ÓÃÖÎÁÆĞŞÕı
+        // åº”ç”¨æ²»ç–—ä¿®æ­£
         amount = Mathf.RoundToInt(amount * healModifier);
         if (amount <= 0) return;
         if (templateID == "01512") amount = Mathf.Min(amount, 1);
@@ -537,18 +537,18 @@ public class CardInstance : MonoBehaviour
     {
         switch (keyword)
         {
-            case "ÏÈÊÖ": if (hasFirstStrike) return true; break;
-            case "½ø³¡": if (hasOnEnter) return true; break;
-            case "ÍË³¡": if (hasOnDeath) return true; break;
-            case "Ö÷¶¯ÍË³¡": if (hasActiveExit) return true; break;
-            case "·´»÷": if (hasRevenge) return true; break;
-            case "Å×ÖÃ": if (hasDiscard) return true; break;
-            case "¸½×Å": if (canAttach) return true; break;
-            case "¹¥»÷Ç°ÅÅ": if (attacksFrontRow) return true; break;
-            case "¹¥»÷ºóÅÅ": if (attacksBackRow) return true; break;
-            case "½×¶Î¿ªÊ¼": if (templateID == "01525" || templateID == "01526" || templateID == "03001") return true; break;
-            case "»ØºÏ¿ªÊ¼": if (templateID == "01113" || templateID == "01315" || templateID == "01302" || templateID == "01105") return true; break;
-            case "Õ½¶·»ØºÏ¿ªÊ¼": if (templateID == "01308") return true; break;
+            case "å…ˆæ‰‹": if (hasFirstStrike) return true; break;
+            case "è¿›åœº": if (hasOnEnter) return true; break;
+            case "é€€åœº": if (hasOnDeath) return true; break;
+            case "ä¸»åŠ¨é€€åœº": if (hasActiveExit) return true; break;
+            case "åå‡»": if (hasRevenge) return true; break;
+            case "æŠ›ç½®": if (hasDiscard) return true; break;
+            case "é™„ç€": if (canAttach) return true; break;
+            case "æ”»å‡»å‰æ’": if (attacksFrontRow) return true; break;
+            case "æ”»å‡»åæ’": if (attacksBackRow) return true; break;
+            case "é˜¶æ®µå¼€å§‹": if (templateID == "01525" || templateID == "01526" || templateID == "03001") return true; break;
+            case "å›åˆå¼€å§‹": if (templateID == "01113" || templateID == "01315" || templateID == "01302" || templateID == "01105") return true; break;
+            case "æˆ˜æ–—å›åˆå¼€å§‹": if (templateID == "01308") return true; break;
         }
 
         if (grantedTraitTexts.Exists(t => t.Contains(keyword))) return true;

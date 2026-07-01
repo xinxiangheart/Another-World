@@ -13,7 +13,7 @@ public class EnemyPlayer : MonoBehaviour
     public int currentHealth;
     public int currentEnergy;
 
-    [Header("ÊÖÅÆ")]
+    [Header("æ‰‹ç‰Œ")]
     public Transform handArea;
     public GameObject cardPrefab2D;
     public GameObject spellCardPrefab2D;
@@ -37,7 +37,7 @@ public class EnemyPlayer : MonoBehaviour
     {
         currentHealth -= amount;
         UpdateUI();
-        if (currentHealth <= 0) Debug.Log("µÐ·½Íæ¼ÒËÀÍö");
+        if (currentHealth <= 0) Debug.Log("æ•Œæ–¹çŽ©å®¶æ­»äº¡");
     }
 
     public void Heal(int amount)

@@ -9,7 +9,7 @@ public class BattleManager : MonoBehaviour
 {
     public static BattleManager Instance { get; private set; }
 
-    [Header("����")]
+    [Header("调试")]
     public bool skipBattle = false;
 
     private BoardSlot[] allSlots;
@@ -26,7 +26,7 @@ public class BattleManager : MonoBehaviour
     {
         if (skipBattle)
         {
-            Debug.Log("ս���غ� �� ����������ģʽ��");
+            Debug.Log("战斗回合 → 跳过（测试模式）");
             return;
         }
 
@@ -73,12 +73,12 @@ public class BattleManager : MonoBehaviour
             CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
             if (ci != null && ci.templateID == "01308")
             {
-                if (!ci.CanTriggerTrait("ս���غϿ�ʼ")) continue;
+                if (!ci.CanTriggerTrait("战斗回合开始")) continue;
                 yield return StartCoroutine(TroubleMakerEffect(ci));
                 break;
             }
         }
-        // ִ��֮���������غϿ�ʼ����˺�
+        // 检查对方是否有合法目标
         for (int i = 6; i <= 11; i++)
         {
             BoardSlot slot = allSlots[i];
@@ -102,7 +102,7 @@ public class BattleManager : MonoBehaviour
                 break;
             }
         }
-        // �߲��������غϿ�ʼ��Ѫ+������-1
+        // 疫病：攻击回合开始扣血+攻击力-1
         for (int i = 0; i < 12; i++)
         {
             BoardSlot slot = allSlots[i];
@@ -119,12 +119,12 @@ public class BattleManager : MonoBehaviour
             slot.plagueRoundCount++;
         }
         BoardSlot.CheckAndHandleDeaths();
-        Debug.Log("[ս��] �׶�1��ս���غϿ�ʼ����");
+        Debug.Log("[战斗] 阶段1：战斗回合开始特性");
     }
     IEnumerator FirstStrikeCoroutine()
     {
-        Debug.Log("[ս��] �׶�2����������");
-        Debug.Log($"FirstStrikeCoroutine ��ʼ��allSlots[6]={allSlots[6]?.currentCard3D?.name}, allSlots[7]={allSlots[7]?.currentCard3D?.name}");
+        Debug.Log("[战斗] 阶段2：先手特性");
+        Debug.Log($"FirstStrikeCoroutine 开始，allSlots[6]={allSlots[6]?.currentCard3D?.name}, allSlots[7]={allSlots[7]?.currentCard3D?.name}");
         // ===== 阶段2.1：先手换位 =====
         Debug.Log("=== 阶段2.1：开始全面换位 ===");
        
@@ -136,7 +136,7 @@ public class BattleManager : MonoBehaviour
             CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
             if (ci == null || !ci.hasFirstStrike) continue;
          
-            // ���ߣ�ǰ���Ż���
+        // 检查对方是否有合法目标
             if (ci.templateID == "01124")
             {
                 int mySlotIndex = i;
@@ -168,7 +168,7 @@ public class BattleManager : MonoBehaviour
                     targetSlot.SetCard(myCard);
                 }
 
-                // ���¸�����������λ
+        // 检查对方是否有合法目标
                 BoardManager bm = FindObjectOfType<BoardManager>();
                 if (bm != null)
                 {
@@ -185,7 +185,7 @@ public class BattleManager : MonoBehaviour
                     }
                 }
 
-                // ��ֹͬһ�׶��ظ���λ
+        // 检查对方是否有合法目标
                 ci.hasFirstStrike = false;
 
                 if (mySlot.currentCard3D != null)
@@ -193,9 +193,9 @@ public class BattleManager : MonoBehaviour
                 if (targetSlot.currentCard3D != null)
                     BoardManager.SyncAttachedModels(targetSlot);
 
-                Debug.Log($"���߻�λ��ɣ�{mySlotIndex}->{targetSlotIndex}");
+                Debug.Log($"舞者换位完成：{mySlotIndex}->{targetSlotIndex}");
             }
-            // �ӱ��������ڸ��ӻ���λ��
+        // 检查对方是否有合法目标
             if (ci.templateID == "01312")
             {
                 int mySlot = i;
@@ -214,7 +214,7 @@ public class BattleManager : MonoBehaviour
 
                 bool confirmed = false;
                 bool choseYes = false;
-                ConfirmPanel.Instance.Show("�Ƿ������ڸ��ӻ���λ�ã�",
+                ConfirmPanel.Instance.Show("是否与相邻格子互换位置？",
                     () => { choseYes = true; confirmed = true; },
                     () => { confirmed = true; }
                 );
@@ -283,7 +283,7 @@ public class BattleManager : MonoBehaviour
                     BoardManager.SyncAttachedModels(allSlots[mySlot]);
                     BoardManager.SyncAttachedModels(targetSlot);
 
-                    // ��ֹͬһ�׶��ظ���λ
+        // 检查对方是否有合法目标
                     ci.hasFirstStrike = false;
                 }
 
@@ -301,7 +301,7 @@ public class BattleManager : MonoBehaviour
             }
         }
 
-        // �׶�2.2������Buff�ͻ��ܸ���
+        // 阶段2.2：有利Buff和护盾附加
         for (int i = 0; i < 12; i++)
         {
             BoardSlot slot = allSlots[i];
@@ -309,7 +309,7 @@ public class BattleManager : MonoBehaviour
             CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
             if (ci == null || !ci.hasFirstStrike) continue;
 
-            // ������ʹ��������һ�ٻ���ϵ͵���ֵ��ʱ���ڽϸߵ���ֵ
+        // 检查对方是否有合法目标
             if (ci.templateID == "03012")
             {
                 bool yinYangDone = false;
@@ -337,7 +337,7 @@ public class BattleManager : MonoBehaviour
                 ci.GrantShield(false, false, true);
                 slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
             }
-            // ��α֮�������˳���������һ�ٻ��︽�ӻ��ܣ������غϽ�����ʧ��
+        // 检查对方是否有合法目标
             if (ci.templateID == "01115")
             {
                 ci.isActiveExit = false;
@@ -363,7 +363,7 @@ public class BattleManager : MonoBehaviour
                 slot.HandleDeath(slot.currentCard3D);
                 continue;
             }
-            // ��ɱ�ߣ���������ʱ���ӶԷ�������߽�λ
+        // 检查对方是否有合法目标
             if (ci.templateID == "01324")
             {
                 int highestTier = 0;
@@ -380,10 +380,10 @@ public class BattleManager : MonoBehaviour
                 if (highestTier > 0)
                 {
                     ci.AddTempAttack(highestTier);
-                    Debug.Log($"��ɱ�߹�������ʱ+{highestTier}");
+                    Debug.Log($"猎杀者攻击力临时+{highestTier}");
                 }
             }
-            // �ػ���ʿ��Ϊ���������ٻ���ѡ�񸽼ӻ���
+        // 检查对方是否有合法目标
             if (ci.templateID == "01519")
             {
                 List<BoardSlot> candidates = new List<BoardSlot>();
@@ -398,8 +398,8 @@ public class BattleManager : MonoBehaviour
                     }
                 }
 
-                Debug.Log($"�ػ���ʿ candidates.Count={candidates.Count}");
-                foreach (var cs in candidates) Debug.Log($"��ѡ: ��λ{cs.slotID}");
+                Debug.Log($"守护骑士 candidates.Count={candidates.Count}");
+                foreach (var cs in candidates) Debug.Log($"候选: 槽位{cs.slotID}");
 
                 if (candidates.Count == 0) continue;
 
@@ -412,7 +412,7 @@ public class BattleManager : MonoBehaviour
                         {
                             c.GrantShield(false, false, true);
                             s.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
-                            Debug.Log($"�ػ���ʿֱ�Ӹ���λ{s.slotID}���ӻ���");
+                                Debug.Log($"守护骑士选择给槽位{s.slotID}附加护盾");
                         }
                     }
                     continue;
@@ -449,7 +449,7 @@ public class BattleManager : MonoBehaviour
                                 c.GrantShield(false, false, true);
                                 s.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
                                 s.SetHighlightColor(s.GetNormalColor());
-                                Debug.Log($"�ػ���ʿѡ�����λ{s.slotID}���ӻ���");
+                                Debug.Log($"守护骑士选择给槽位{s.slotID}附加护盾");
                             }
                         }
                         SelectionManager.Instance.EndSelection(layerId);
@@ -478,7 +478,7 @@ public class BattleManager : MonoBehaviour
             CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
             if (ci == null || !ci.hasFirstStrike) continue;
 
-            // ���ף��������+�ж�
+            // 毒巫：清除护盾+中毒
             if (ci.templateID == "03502")
             {
                 bool hasEnemy = false;
@@ -502,7 +502,7 @@ public class BattleManager : MonoBehaviour
                 });
                 while (!poisonDone) yield return null;
             }
-            // �����⾧��ѡ������һ�ٻ����������ʱ��Ϊ1
+        // 万象镜面：单次伤害最高为1
             if (ci.templateID == "01318")
             {
                 bool anyTarget = false;
@@ -529,7 +529,7 @@ public class BattleManager : MonoBehaviour
                 });
                 yield return new WaitUntil(() => done);
             }
-            // �����ԣ�����+1����
+            // 万人迷：对手+1能量
             if (ci.templateID == "01314")
             {
                 NetworkPlayer.Remote.AddEnergy(1);
@@ -544,7 +544,7 @@ public class BattleManager : MonoBehaviour
             CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
             if (ci == null || !ci.hasFirstStrike) continue;
 
-            // ������
+        // 检查对方是否有合法目标
             if (ci.templateID == "03506")
             {
                 int[] targets = { 2, 0, 4 };
@@ -563,7 +563,7 @@ public class BattleManager : MonoBehaviour
                 }
             }
 
-            // ������
+        // 检查对方是否有合法目标
             if (ci.templateID == "03513")
             {
                 int[] targets = { 1, 5, 3 };
@@ -581,7 +581,7 @@ public class BattleManager : MonoBehaviour
                     }
                 }
             }
-            // �������ԶԷ�ȫ���ٻ������1�˺�
+            // 麻烦制造者赋予的先手：扣对方玩家1生命值
             if (ci.templateID == "01310")
             {
                 for (int j = 0; j <= 5; j++)
@@ -598,7 +598,7 @@ public class BattleManager : MonoBehaviour
                     }
                 }
             }
-            // �����ߣ����ֶԶԷ�ǰ�����1�˺�
+            // 麻烦制造者赋予的先手：扣对方玩家1生命值
             if (ci.templateID == "03005")
             {
                 int[] frontRow = { 0, 1, 2 };
@@ -616,7 +616,7 @@ public class BattleManager : MonoBehaviour
                     }
                 }
             }
-            // �������ߣ����ֶԶԷ��������1�˺�
+            // 麻烦制造者赋予的先手：扣对方玩家1生命值
             if (ci.templateID == "03003")
             {
                 int[] backRow = { 3, 4, 5 };
@@ -638,8 +638,8 @@ public class BattleManager : MonoBehaviour
             {
                 NetworkPlayer.Remote.TakeDamage(1);
             }
-            // �����߸�������֣��ԶԷ�ǰ�����1�˺�
-            if (ci.grantedTraitTexts.Exists(t => t.Contains("���֣��ԶԷ�ǰ���ٻ������1�˺�")))
+            // 麻烦制造者赋予的先手：扣对方玩家1生命值
+            if (ci.grantedTraitTexts.Exists(t => t.Contains("先手：对对方前排召唤物造成1伤害")))
             {
                 int[] frontRow = { 0, 1, 2 };
                 foreach (int id in frontRow)
@@ -656,8 +656,8 @@ public class BattleManager : MonoBehaviour
                     }
                 }
             }
-            // �����߸�������֣����ܰ棩����ǰ��2�˺�������1�˺�
-            if (ci.grantedTraitTexts.Exists(t => t.Contains("���֣��ԶԷ�ǰ���ٻ������2�˺����Ժ������1�˺�")))
+            // 修正者赋予的先手（灵能版）：对前排2伤害，后排1伤害
+            if (ci.grantedTraitTexts.Exists(t => t.Contains("先手：对对方前排召唤物造成2伤害，对后排造成1伤害")))
             {
                 for (int j = 0; j <= 5; j++)
                 {
@@ -674,8 +674,8 @@ public class BattleManager : MonoBehaviour
                     }
                 }
             }
-            // �鷳�����߸�������֣��۶Է����1����ֵ
-            if (ci.HasFirstStrike && ci.grantedTraitTexts.Contains("���֣��ۼ������1����ֵ"))
+            // 麻烦制造者赋予的先手：扣对方玩家1生命值
+            if (ci.HasFirstStrike && ci.grantedTraitTexts.Contains("先手：扣己方玩家1生命值"))
             {
                 if (slot.slotID >= 6)
                     NetworkPlayer.Local.TakeDamage(1);
@@ -722,7 +722,7 @@ public class BattleManager : MonoBehaviour
     }
     IEnumerator MinionAttacksCoroutine()
     {
-        Debug.Log("[ս��] �׶�3���ٻ��﹥��");
+        Debug.Log("[战斗] 阶段3：召唤物攻击");
 
         List<(GameObject target, int damage, GameObject source)> damageList = new List<(GameObject, int, GameObject)>();
 
@@ -733,9 +733,9 @@ public class BattleManager : MonoBehaviour
         }
 
 
-        yield return StartCoroutine(ApplyDamageLoop(damageList, "����"));
+        yield return StartCoroutine(ApplyDamageLoop(damageList, "攻击"));
 
-        // �����ˣ�������ʹ��λ�ٻ���ǰ���Ż���λ��
+        // 检查对方是否有合法目标
         for (int i = 6; i <= 11; i++)
         {
             BoardSlot mySlot = allSlots[i];
@@ -781,7 +781,7 @@ public class BattleManager : MonoBehaviour
             BoardManager.SyncAttachedModels(targetEnemySlot);
         }
         BoardSlot.CheckAndHandleDeaths();
-        // �ָ������⾧�Ĺ�����
+        // 检查对方是否有合法目标
         for (int i = 0; i < 12; i++)
         {
             BoardSlot slot = allSlots[i];
@@ -807,7 +807,7 @@ public class BattleManager : MonoBehaviour
 
         bool mySilenced = myInst != null && GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(myInst);
 
-        // �ҷ�����
+        // 检查对方是否有合法目标
         if (myCard != null && myInst != null && !myInst.silencedThisPhase)
         {
             int targetEnemySlotIndex;
@@ -848,9 +848,9 @@ public class BattleManager : MonoBehaviour
             }
             else if (myInst.templateID == "01336" && !myInst.isAttached)
             {
-                targetEnemySlotIndex = enemySlotIndex % 3; // ����ǰ�Ŷ�λ
+                targetEnemySlotIndex = enemySlotIndex % 3; // 攻击前排对位
 
-                // ����Ŀ���������ٻ���
+        // 检查对方是否有合法目标
                 int rowStart = (targetEnemySlotIndex < 3) ? 0 : 3;
                 for (int j = rowStart; j < rowStart + 3; j++)
                 {
@@ -862,7 +862,7 @@ public class BattleManager : MonoBehaviour
                         damageList.Add((otherCard, 1, myCard));
                     }
                 }
-                // ��Ŀ�깥��������ͳһ����
+        // 检查对方是否有合法目标
             }
             else if (myInst.attacksBackRow)
             {
@@ -889,13 +889,13 @@ public class BattleManager : MonoBehaviour
                 {
                     myAtk += mySlot.slotTempAttackBoost;
                 }
-                // ��ͽ���������л��ܵ��ٻ������۳�2����ֵ
+            // 亡命之徒：攻击对方召唤物扣对方玩家2血
                 if (myInst.templateID == "01114" && targetEnemyInst.hasShield)
                 {
                     targetEnemyInst.currentHealth -= 2;
                     targetEnemyInst.GetComponent<Card3DInstance>()?.UpdateValues();
                 }
-                // �Ʒ��߹⻷��������������Ŀ������2Ѫ
+            // 亡命之徒：攻击对方召唤物扣对方玩家2血
                 if (targetEnemyInst != null && targetEnemyInst.hasShield)
                 {
                     bool breakerOnField = false;
@@ -919,7 +919,7 @@ public class BattleManager : MonoBehaviour
                         targetEnemyInst.GetComponent<Card3DInstance>()?.UpdateValues();
                     }
                 }
-                // ��Ȯ���������˳��������˳����Ե��ٻ����˺�+2
+                // 投机者：攻击有先手或进场特性的召唤物伤害+2
                 if (myInst.templateID == "01118")
                 {
                     if (targetEnemyInst.HasOnDeath || targetEnemyInst.HasActiveExit)
@@ -927,7 +927,7 @@ public class BattleManager : MonoBehaviour
                         myAtk += 2;
                     }
                 }
-                // Ͷ���ߣ����������ֻ�������Ե��ٻ����˺�+2
+                // 投机者：攻击有先手或进场特性的召唤物伤害+2
                 if (myInst.templateID == "01125")
                 {
                     if (targetEnemyInst.HasFirstStrike || targetEnemyInst.HasOnEnter)
@@ -942,7 +942,7 @@ public class BattleManager : MonoBehaviour
                     if (myInst.currentHealth < 0) myInst.currentHealth = 0;
                     mySlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
                 }
-                // �����ߣ���������������
+        // 检查对方是否有合法目标
                 if (myInst.templateID == "01508" && !myInst._conquerorTriggered
                     && (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(myInst)))
                 {
@@ -950,7 +950,7 @@ public class BattleManager : MonoBehaviour
                     myInst._conquerorTargetEnemyCard = targetEnemyCard;
                 }
             }
-            // ����֮ͽ�������Է��ٻ���۶Է����2Ѫ
+            // 亡命之徒：攻击对方召唤物扣对方玩家2血
             if (myInst.templateID == "01531" && targetEnemyInst != null && !myInst._outlawPlayerDamageThisTurn
                 && (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(myInst)))
             {
@@ -961,7 +961,7 @@ public class BattleManager : MonoBehaviour
             {
                 if (enemySlot.prisonBlocked || enemySlot.isBlocked)
                 {
-                    // ���մ�
+        // 检查对方是否有合法目标
                 }
                 else if (IsShadowHost(myInst))
                 {
@@ -1009,7 +1009,7 @@ public class BattleManager : MonoBehaviour
             }
         }
 
-        // �з�������ʼ��Ĭ�϶�λ��
+        // 检查对方是否有合法目标
         bool enemySilenced = enemyInst != null && GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(enemyInst);
         if (enemyCard != null && enemyInst != null && !enemyInst.silencedThisPhase)
         {
@@ -1070,11 +1070,11 @@ public class BattleManager : MonoBehaviour
                         }
                     }
 
-                    // �����棺�����˺����Ϊ1
+        // 万象镜面：单次伤害最高为1
                     if (inst.cardInstance.templateID == "01512" && (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(inst.cardInstance)))
                         actualDamage = Mathf.Min(actualDamage, 1);
 
-                    // ��������е��˺�
+        // 检查对方是否有合法目标
                     CardInstance lord = FindLordOnField();
                     if (lord != null && inst.cardInstance != lord && IsAllyUnit(inst.cardInstance) && (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(lord)))
                     {
@@ -1083,7 +1083,7 @@ public class BattleManager : MonoBehaviour
                         continue;
                     }
 
-                    // ���������˺���׷���ߵֵ�
+        // 检查对方是否有合法目标
                     if (inst.cardInstance.braveTemplateID == "01514" && inst.cardInstance.currentHealth - actualDamage <= 0)
                     {
                         if (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(inst.cardInstance))
@@ -1124,7 +1124,7 @@ public class BattleManager : MonoBehaviour
                         }
                     }
 
-                    // ������˾ף�����ֵ������˺�
+        // 检查对方是否有合法目标
                     if (inst.cardInstance.hasLifePriestBlessing && inst.cardInstance.currentHealth - actualDamage <= 0)
                     {
                         CardInstance priest = inst.cardInstance.lifePriestBlessingSource;
@@ -1153,7 +1153,7 @@ public class BattleManager : MonoBehaviour
                         inst.cardInstance.totalDamageTaken += Mathf.Min(actualDamage, inst.cardInstance.currentHealth);
                     inst.cardInstance.currentHealth -= actualDamage;
 
-                    // �������ۼ��˺��������ƣ�
+        // 检查对方是否有合法目标
                     if (inst.cardInstance.templateID == "01508" && (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(inst.cardInstance)))
                         inst.cardInstance._conquerorTotalDamageThisBattle += actualDamage;
 
@@ -1162,7 +1162,7 @@ public class BattleManager : MonoBehaviour
             }
             pending.Clear();
 
-            // �����ߴ����ж������ռ�����֮ǰ��
+        // 检查对方是否有合法目标
             CheckConquerorTrigger();
 
             List<GameObject> died = new List<GameObject>();
@@ -1208,8 +1208,8 @@ public class BattleManager : MonoBehaviour
                     }
                 }
 
-                // ����ҪĿ��ķ���Ч����ͬ���ھ�ʱҲ�ܴ�����
-                if (deadInst != null && deadInst.revengeEffect != null && deadInst.revengeEffect.Contains("�Է���������"))
+        // 检查对方是否有合法目标
+                if (deadInst != null && deadInst.revengeEffect != null && deadInst.revengeEffect.Contains("对方摸两张牌"))
                 {
                     for (int j = 0; j < 2; j++)
                     {
@@ -1218,11 +1218,11 @@ public class BattleManager : MonoBehaviour
                             NetworkPlayer.Remote.AddCardToHand(data);
                     }
                 }
-                else if (deadInst != null && deadInst.revengeEffect != null && deadInst.revengeEffect.Contains("+1����"))
+                else if (deadInst != null && deadInst.revengeEffect != null && deadInst.revengeEffect.Contains("+1能量"))
                 {
                     NetworkPlayer.Local.AddEnergy(1);
                 }
-                else if (deadInst != null && deadInst.revengeEffect != null && deadInst.revengeEffect.Contains("ѡ��һ�����ӣ��ø����ϵ��ٻ�����ʱ+0-1������Ϊ0������ÿ�׶ο�ʼ��һ����ֵ"))
+                else if (deadInst != null && deadInst.revengeEffect != null && deadInst.revengeEffect.Contains("选定一个格子，该格子上的召唤物临时+0-1（最少为0）并且每阶段开始扣一生命值"))
                 {
                     yield return StartCoroutine(WaitForSelection((onDone) =>
                     {
@@ -1247,7 +1247,7 @@ public class BattleManager : MonoBehaviour
                         BoardSlot.isStrengtheningSlot = true;
                     }));
                 }
-                else if (deadInst != null && deadInst.revengeEffect != null && deadInst.revengeEffect.Contains("Ϊ����һ�ٻ���+2+1"))
+                else if (deadInst != null && deadInst.revengeEffect != null && deadInst.revengeEffect.Contains("为己方一召唤物+2+1"))
                 {
                     yield return StartCoroutine(WaitForSelection((onDone) =>
                     {
@@ -1276,7 +1276,7 @@ public class BattleManager : MonoBehaviour
                         else onDone();
                     }));
                 }
-                // ��ҪĿ��ķ���Ч����Ŀ������ǻ�ɱ�ߣ�ͬ���ھ�ʱĿ�������٣���������
+        // 检查对方是否有合法目标
                 else if (deadInst != null && !string.IsNullOrEmpty(deadInst.revengeEffect))
                 {
                     List<GameObject> revengeTargets = marker?.GetMinionDamageSources();
@@ -1306,7 +1306,7 @@ public class BattleManager : MonoBehaviour
     {
         Debug.Log($"ResolveRevengeEffect: effect={effect}");
 
-        if (effect.Contains("�Ի�ɱ�����ٻ������3�˺�"))
+        if (effect.Contains("对击杀它的召唤物造成3伤害"))
         {
             foreach (GameObject target in targets)
             {
@@ -1319,7 +1319,7 @@ public class BattleManager : MonoBehaviour
                 }
             }
         }
-        else if (effect.Contains("�Ի�ɱ�����ٻ������999�˺�"))
+        else if (effect.Contains("对击杀它的召唤物造成999伤害"))
         {
             foreach (GameObject target in targets)
             {
@@ -1332,7 +1332,7 @@ public class BattleManager : MonoBehaviour
                 }
             }
         }
-        else if (effect.Contains("��ɱ�����ٻ��﹥�������ü�һ"))
+        else if (effect.Contains("对方摸两张牌"))
         {
             foreach (GameObject target in targets)
             {
@@ -1345,7 +1345,7 @@ public class BattleManager : MonoBehaviour
                 }
             }
         }
-        else if (effect.Contains("Ϊ����һ�ٻ���+2+1"))
+        else if (effect.Contains("为己方一召唤物+2+1"))
         {
             yield return StartCoroutine(WaitForSelection((onDone) =>
             {
@@ -1381,7 +1381,7 @@ public class BattleManager : MonoBehaviour
                 }
             }));
         }
-        else if (effect.Contains("�Է���������"))
+        else if (effect.Contains("对方摸两张牌"))
         {
             for (int j = 0; j < 2; j++)
             {
@@ -1390,7 +1390,7 @@ public class BattleManager : MonoBehaviour
                     NetworkPlayer.Remote.AddCardToHand(data);
             }
         }
-        else if (effect.Contains("ѡ��һ�����ӣ��ø����ϵ��ٻ�����ʱ+0-1������Ϊ0������ÿ�׶ο�ʼ��һ����ֵ"))
+        else if (effect.Contains("选定一个格子，该格子上的召唤物临时+0-1（最少为0）并且每阶段开始扣一生命值"))
         {
             yield return StartCoroutine(WaitForSelection((onDone) =>
             {
@@ -1415,13 +1415,13 @@ public class BattleManager : MonoBehaviour
                 BoardSlot.isStrengtheningSlot = true;
             }));
         }
-        else if (effect.Contains("+1����"))
+        else if (effect.Contains("+1能量"))
         {
             NetworkPlayer.Local.AddEnergy(1);
         }
         else
         {
-            Debug.Log($"δʵ�ֵķ���Ч����{effect}");
+            Debug.Log($"未实现的反击效果：{effect}");
         }
     }
 
@@ -1436,7 +1436,7 @@ public class BattleManager : MonoBehaviour
                 enemy++;
         }
 
-        // �������ϣ������������+1
+        // 超数故障：己方存活人数+1
         BoardManager bm = FindObjectOfType<BoardManager>();
         if (bm != null)
         {
@@ -1453,7 +1453,7 @@ public class BattleManager : MonoBehaviour
                 }
             }
             bm.attachedModels.RemoveAll(a => a == null || a.transform == null);
-            // Ҳ��鸽�����еĳ�������
+        // 检查对方是否有合法目标
             foreach (GameObject obj in bm.attachedModels)
             {
                 CardInstance ci = obj?.GetComponent<Card3DInstance>()?.cardInstance;
@@ -1472,7 +1472,7 @@ public class BattleManager : MonoBehaviour
         else if (diff < 0)
             pendingDamageToMe += -diff;
 
-        Debug.Log($"[ս��] ���Ա� ��{my} vs ��{enemy} ��{Mathf.Abs(diff)}");
+        Debug.Log($"[战斗] 存活对比 己{my} vs 敌{enemy} 差{Mathf.Abs(diff)}");
     }
 
     void FinalDamage()
@@ -1531,7 +1531,7 @@ public class BattleManager : MonoBehaviour
                 ci.xAccumulatedDamage = 0;
             }
 
-            // �����ʱ����
+        // 检查对方是否有合法目标
             if (ci.tempHealthBoost > 0)
             {
                 ci.currentHealth -= ci.tempHealthBoost;
@@ -1543,7 +1543,7 @@ public class BattleManager : MonoBehaviour
             ci.tempAttackBoost = 0;
             ci.tempHealthBoost = 0;
         }
-        // Ӱ���ߣ�ս���غϽ������
+        // 检查对方是否有合法目标
         bool hasShadow = false;
         for (int i = 6; i <= 11; i++)
         {
@@ -1558,7 +1558,7 @@ public class BattleManager : MonoBehaviour
         {
             CardInstance.shadowTierBonus += 1;
             CardInstance.shadowAtkBonus += 2;
-            // ��������Ӱ������Ӧ������
+        // 检查对方是否有合法目标
             for (int i = 6; i <= 11; i++)
             {
                 BoardSlot s = allSlots[i];
@@ -1585,7 +1585,7 @@ public class BattleManager : MonoBehaviour
             CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
             if (ci != null && ci.templateID == "03501")
             {
-                // �⻷Դ����Ĭʱ����
+        // 检查对方是否有合法目标
                 if (GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(ci))
                     continue;
                 return true;
@@ -1633,11 +1633,11 @@ public class BattleManager : MonoBehaviour
             }
         }
 
-        // �����棺�����˺����Ϊ1
+        // 万象镜面：单次伤害最高为1
         if (target.templateID == "01512" && (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(target)))
             actualDamage = Mathf.Min(actualDamage, 1);
 
-        // ��������е��˺�
+        // 检查对方是否有合法目标
         CardInstance lord = FindLordOnField();
         if (lord != null && target != lord && IsAllyUnit(target) && (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(lord)))
         {
@@ -1646,7 +1646,7 @@ public class BattleManager : MonoBehaviour
             return;
         }
 
-        // ���������˺���׷���ߵֵ�
+        // 检查对方是否有合法目标
         if (target.braveTemplateID == "01514" && target.currentHealth - actualDamage <= 0)
         {
             if (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(target))
@@ -1687,7 +1687,7 @@ public class BattleManager : MonoBehaviour
             }
         }
 
-        // ������˾ף�����ֵ������˺�
+        // 检查对方是否有合法目标
         if (target.hasLifePriestBlessing && target.currentHealth - actualDamage <= 0)
         {
             CardInstance priest = target.lifePriestBlessingSource;
@@ -1717,7 +1717,7 @@ public class BattleManager : MonoBehaviour
         target.currentHealth -= actualDamage;
 
     
-        // �������ۼ��˺��������ƣ�
+        // 检查对方是否有合法目标
         if (target.templateID == "01508" && (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(target)))
             target._conquerorTotalDamageThisBattle += actualDamage;
 
@@ -1729,14 +1729,14 @@ public class BattleManager : MonoBehaviour
     }
     IEnumerator TroubleMakerEffect(CardInstance giver)
     {
-        // ���Է������Ƿ����и���������
+        // 检查对方是否有合法目标
         bool alreadyHas = false;
         for (int i = 0; i <= 5; i++)
         {
             BoardSlot slot = allSlots[i];
             if (slot?.currentCard3D == null) continue;
             CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-            if (ci != null && ci.grantedTraitTexts.Contains("���֣��ۼ������1����ֵ"))
+            if (ci != null && ci.grantedTraitTexts.Contains("先手：扣己方玩家1生命值"))
             {
                 alreadyHas = true;
                 break;
@@ -1744,11 +1744,11 @@ public class BattleManager : MonoBehaviour
         }
         if (alreadyHas)
         {
-            Debug.Log("�鷳�����ߣ��Է��������и��������ԣ�����");
+            Debug.Log("麻烦制造者：对方场上无召唤物，跳过");
             yield break;
         }
 
-        // ���Է��Ƿ��кϷ�Ŀ��
+        // 检查对方是否有合法目标
         bool hasEnemy = false;
         for (int i = 0; i <= 5; i++)
         {
@@ -1756,7 +1756,7 @@ public class BattleManager : MonoBehaviour
         }
         if (!hasEnemy)
         {
-            Debug.Log("�鷳�����ߣ��Է��������ٻ������");
+            Debug.Log("麻烦制造者：对方场上无召唤物，跳过");
             yield break;
         }
 
@@ -1768,10 +1768,10 @@ public class BattleManager : MonoBehaviour
                 CardInstance targetCI = targetSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
                 if (targetCI != null)
                 {
-                    targetCI.GrantTrait("���֣��ۼ������1����ֵ");
+                    targetCI.GrantTrait("先手：扣己方玩家1生命值");
                     targetCI.hasFirstStrike = true;
                     targetSlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
-                    Debug.Log($"�鷳�����߸����������Ը���λ{targetSlot.slotID}");
+                    Debug.Log($"麻烦制造者赋予先手特性给槽位{targetSlot.slotID}");
                 }
             }
             done = true;
@@ -1933,7 +1933,7 @@ public class BattleManager : MonoBehaviour
         {
             if (slot?.currentCard3D == null) return false;
             CardInstance c = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-            return c != null && c.prefixes.Contains("��е");
+            return c != null && c.prefixes.Contains("机械");
         };
         SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, null);
 

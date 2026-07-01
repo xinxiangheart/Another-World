@@ -18,8 +18,8 @@ public enum TargetType
     EnemyBackRow,
     AllyFrontRow,
     AllyBackRow,
-    EnemyAnyRow,    // µĞ·½ÈÎÒâÒ»ÅÅ
-    AllyAnyRow,     // ¼º·½ÈÎÒâÒ»ÅÅ
+    EnemyAnyRow,    // æ•Œæ–¹ä»»æ„ä¸€æ’
+    AllyAnyRow,     // å·±æ–¹ä»»æ„ä¸€æ’
     AllEnemies,
     AllAllies,
     AllMinions
@@ -32,5 +32,5 @@ public enum CounterTriggerTiming
     OnPhaseEnd,
     OnBattleEnd,
     OnEnemyTurnEnd,
-    OnPlayerDying  // ĞÂÔö£ºÍæ¼ÒÉúÃüÖµ<=0Ê±
+    OnPlayerDying  // æ–°å¢ï¼šç©å®¶ç”Ÿå‘½å€¼<=0æ—¶
 }

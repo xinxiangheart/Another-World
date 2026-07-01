@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
+using static UnityEditor.Timeline.TimelinePlaybackControls;
 
 public class Test1Panel : MonoBehaviour
 {
@@ -31,34 +32,34 @@ public class Test1Panel : MonoBehaviour
         if (template.cardType == CardType.Spell)
         {
             infoText.text = $"ID: {instance.instanceID}\n" +
-                            $"Ãû³Æ: {template.cardName}\n" +
-                            $"ÀàĞÍ: {template.cardType} ({template.spellType})\n" +
-                            $"·ÑÓÃ: {instance.currentCost} (»ù´¡ {template.baseCost})\n" +
-                            $"Ğ§¹û: {template.effect}";
+                            $"åç§°: {template.cardName}\n" +
+                            $"ç±»å‹: {template.cardType} ({template.spellType})\n" +
+                            $"è´¹ç”¨: {instance.currentCost} (åŸºç¡€ {template.baseCost})\n" +
+                            $"æ•ˆæœ: {template.effect}";
         }
         else
         {
             string traits = BuildTraitsText(instance);
-            string shieldText = instance.hasShield ? "£¨»¤¶Ü£©" : "";
-            NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
-            bool isOnField = !NetworkPlayer.Local.handCards.Exists(c => c?.GetComponent<CardInstance>() == instance);
+            string shieldText = instance.hasShield ? "ï¼ˆæŠ¤ç›¾ï¼‰" : "";
+            Player.Instance.handCards.RemoveAll(c => c == null);
+            bool isOnField = !Player.Instance.handCards.Exists(c => c?.GetComponent<CardInstance>() == instance);
             int displayCost = instance.currentCost;
-            if (instance.merchantDiscounted && NetworkPlayer.Local.IsMerchantOnFieldPublic())
+            if (instance.merchantDiscounted && Player.Instance.IsMerchantOnFieldPublic())
                 displayCost = Mathf.Max(0, displayCost - 1);
-            if (instance.energyReaperDiscounted && NetworkPlayer.Local.IsEnergyReaperOnFieldPublic())
+            if (instance.energyReaperDiscounted && Player.Instance.IsEnergyReaperOnFieldPublic())
                 displayCost = Mathf.Max(0, displayCost - 1);
             infoText.text = $"ID: {instance.instanceID}\n" +
-                            $"Ãû³Æ: {template.cardName}\n" +
-                            $"ÀàĞÍ: {template.cardType} ({template.summonType})\n" +
-                            $"Ç°×º: {instance.prefixes}\n" +
-                            $"·ÑÓÃ: {displayCost} (»ù´¡ {template.baseCost})\n" +
-                            $"ÉúÃü: {instance.currentHealth}/{instance.currentMaxHealth} (»ù´¡ {instance.baseHealth}){shieldText}\n" +
-                            $"¹¥»÷: {instance.Attack} (»ù´¡ {instance.baseAttack})\n" +
-                            $"½×Î»: {instance.currentTier} (»ù´¡ {instance.baseTier})\n" +
-                            $"ÌØĞÔ: {traits}";
+                            $"åç§°: {template.cardName}\n" +
+                            $"ç±»å‹: {template.cardType} ({template.summonType})\n" +
+                            $"å‰ç¼€: {instance.prefixes}\n" +
+                            $"è´¹ç”¨: {displayCost} (åŸºç¡€ {template.baseCost})\n" +
+                            $"ç”Ÿå‘½: {instance.currentHealth}/{instance.currentMaxHealth} (åŸºç¡€ {instance.baseHealth}){shieldText}\n" +
+                            $"æ”»å‡»: {instance.Attack} (åŸºç¡€ {instance.baseAttack})\n" +
+                            $"é˜¶ä½: {instance.currentTier} (åŸºç¡€ {instance.baseTier})\n" +
+                            $"ç‰¹æ€§: {traits}";
         }
 
-        // ÏÔÊ¾¸½×ÅÎïĞÅÏ¢
+        // æ˜¾ç¤ºé™„ç€ç‰©ä¿¡æ¯
         if (!instance.isAttached)
         {
             BoardManager bm = FindObjectOfType<BoardManager>();
@@ -88,7 +89,7 @@ public class Test1Panel : MonoBehaviour
                             CardData attachTemplate = CardDatabase.Instance?.GetTemplate(ci.templateID);
                             if (attachTemplate != null && !string.IsNullOrEmpty(attachTemplate.traits))
                             {
-                                infoText.text += $"\n¸½×ÅÎï£º{attachTemplate.cardName}£º{attachTemplate.traits}";
+                                infoText.text += $"\né™„ç€ç‰©ï¼š{attachTemplate.cardName}ï¼š{attachTemplate.traits}";
                             }
                         }
                     }
@@ -103,31 +104,31 @@ public class Test1Panel : MonoBehaviour
         CardData template = CardDatabase.Instance?.GetTemplate(ci.templateID);
         List<string> traits = new List<string>();
 
-        // ¿àÄÑ¸øÓèÕßÌØÊâ´¦Àí
+        // è‹¦éš¾ç»™äºˆè€…ç‰¹æ®Šå¤„ç†
         if (ci.templateID == "01117")
         {
-            traits.Add("½ø³¡£ºÓÀ¾Ã¸øÓè¶Ô·½Ò»ÕÙ»½ÎïÒ»¸ö×Ô¼ºµÄÍË³¡£¨×Ô¼ºµÄÍË³¡¸øÓèºóÏûÊ§£©");
-            traits.Add("ÍË³¡£º»Øµ½ÊÖÅÆ£¨¸ÃÍË³¡ÎŞ·¨¸øÓè£©");
+            traits.Add("è¿›åœºï¼šæ°¸ä¹…ç»™äºˆå¯¹æ–¹ä¸€å¬å”¤ç‰©ä¸€ä¸ªè‡ªå·±çš„é€€åœºï¼ˆè‡ªå·±çš„é€€åœºç»™äºˆåæ¶ˆå¤±ï¼‰");
+            traits.Add("é€€åœºï¼šå›åˆ°æ‰‹ç‰Œï¼ˆè¯¥é€€åœºæ— æ³•ç»™äºˆï¼‰");
             foreach (string t in ci.giveableDeathTraits)
             {
                 traits.Add(t);
             }
-            return string.Join("\n", traits); // Ö±½Ó·µ»Ø£¬²»×ßÍ¨ÓÃ¸³Óè
+            return string.Join("\n", traits); // ç›´æ¥è¿”å›ï¼Œä¸èµ°é€šç”¨èµ‹äºˆ
         }
 
-        // ÆÕÍ¨¿¨ÅÆ£ºÏÔÊ¾Ä£°åÌØĞÔ
-        if (template != null && !string.IsNullOrEmpty(template.traits) && template.traits != "ÎŞ")
+        // æ™®é€šå¡ç‰Œï¼šæ˜¾ç¤ºæ¨¡æ¿ç‰¹æ€§
+        if (template != null && !string.IsNullOrEmpty(template.traits) && template.traits != "æ— ")
         {
             traits.Add(template.traits);
         }
 
-        // Í¨ÓÃ£º¶¯Ì¬¸³ÓèµÄÌØĞÔ
+        // é€šç”¨ï¼šåŠ¨æ€èµ‹äºˆçš„ç‰¹æ€§
         foreach (string granted in ci.grantedTraitTexts)
         {
-            traits.Add($"(¸³Óè){granted}");
+            traits.Add($"(èµ‹äºˆ){granted}");
         }
 
-        return traits.Count > 0 ? string.Join("\n", traits) : "ÎŞ";
+        return traits.Count > 0 ? string.Join("\n", traits) : "æ— ";
     }
     public void Hide() => panelRoot.SetActive(false);
 }

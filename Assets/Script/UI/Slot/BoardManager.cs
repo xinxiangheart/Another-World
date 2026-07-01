@@ -4,32 +4,32 @@ using UnityEngine.UI;
 
 public class BoardManager : MonoBehaviour
 {
-    [Header("²ÛÎ»Ô¤ÖÆÌå")]
+    [Header("æ§½ä½é¢„åˆ¶ä½“")]
     public GameObject slotPrefab;
 
-    [Header("µĞ·½Ç°ÅÅ")]
+    [Header("æ•Œæ–¹å‰æ’")]
     public Vector2 enemyFrontRight = new Vector2(109, 146f);
     public Vector2 enemyFrontCenter = new Vector2(0, 146f);
     public Vector2 enemyFrontLeft = new Vector2(-109, 146f);
 
-    [Header("µĞ·½ºóÅÅ")]
+    [Header("æ•Œæ–¹åæ’")]
     public Vector2 enemyBackRight = new Vector2(109, 129.3f);
     public Vector2 enemyBackCenter = new Vector2(0, 129.3f);
     public Vector2 enemyBackLeft = new Vector2(-109, 129.3f);
 
-    [Header("¼º·½Ç°ÅÅ")]
+    [Header("å·±æ–¹å‰æ’")]
     public Vector2 myFrontRight = new Vector2(109, -46f);
     public Vector2 myFrontCenter = new Vector2(0, -46f);
     public Vector2 myFrontLeft = new Vector2(-109, -46f);
 
-    [Header("¼º·½ºóÅÅ")]
+    [Header("å·±æ–¹åæ’")]
     public Vector2 myBackRight = new Vector2(109, -129.8f);
     public Vector2 myBackCenter = new Vector2(0, -129.8f);
     public Vector2 myBackLeft = new Vector2(-109, -129.8f);
 
     private BoardSlot[] allSlots = new BoardSlot[12];
     private Transform slotCanvasTransform;
-    // ¸½×ÅÎïÁĞ±í£¨²»Õ¼²ÛÎ»£¬ÓÃÓÚÈ«¾Ö²éÕÒ£©
+    // é™„ç€ç‰©åˆ—è¡¨ï¼ˆä¸å æ§½ä½ï¼Œç”¨äºå…¨å±€æŸ¥æ‰¾ï¼‰
     public List<GameObject> attachedModels = new List<GameObject>();
     void Start()
     {
@@ -37,7 +37,7 @@ public class BoardManager : MonoBehaviour
 
         GameObject slotCanvasObj = new GameObject("SlotCanvas");
         slotCanvasObj.transform.SetParent(transform);
-        slotCanvasObj.transform.SetAsFirstSibling(); // ÅÅ×îÇ°Ãæ = äÖÈ¾×îµ×²ã
+        slotCanvasObj.transform.SetAsFirstSibling(); // æ’æœ€å‰é¢ = æ¸²æŸ“æœ€åº•å±‚
 
         RectTransform rt = slotCanvasObj.AddComponent<RectTransform>();
         rt.anchorMin = Vector2.zero;
@@ -59,22 +59,22 @@ public class BoardManager : MonoBehaviour
 
     void GenerateSlots()
     {
-        // µĞ·½Ç°ÅÅ 0-2
+        // æ•Œæ–¹å‰æ’ 0-2
         CreateSlot(0, enemyFrontRight, 6);
         CreateSlot(1, enemyFrontCenter, 7);
         CreateSlot(2, enemyFrontLeft, 8);
 
-        // µĞ·½ºóÅÅ 3-5
+        // æ•Œæ–¹åæ’ 3-5
         CreateSlot(3, enemyBackRight, 9);
         CreateSlot(4, enemyBackCenter, 10);
         CreateSlot(5, enemyBackLeft, 11);
 
-        // ¼º·½Ç°ÅÅ 6-8
+        // å·±æ–¹å‰æ’ 6-8
         CreateSlot(6, myFrontRight, 0);
         CreateSlot(7, myFrontCenter, 1);
         CreateSlot(8, myFrontLeft, 2);
 
-        // ¼º·½ºóÅÅ 9-11
+        // å·±æ–¹åæ’ 9-11
         CreateSlot(9, myBackRight, 3);
         CreateSlot(10, myBackCenter, 4);
         CreateSlot(11, myBackLeft, 5);

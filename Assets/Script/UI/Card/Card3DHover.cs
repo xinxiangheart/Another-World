@@ -25,32 +25,32 @@ public class Card3DHover : MonoBehaviour
 
     void OnMouseEnter()
     {
-        Debug.Log($"OnMouseEnter �����ã�hasDiscard={cardInstance?.hasDiscard}, isMyTurn={FindObjectOfType<TurnManager>()?.IsMyTurn()}, isPlacingCard={BoardSlot.isPlacingCard}, isTargetingMode={BoardSlot.isTargetingMode}, isAttachSelectMode={BoardSlot.isAttachSelectMode}");
+        Debug.Log($"OnMouseEnter 被调用：hasDiscard={cardInstance?.hasDiscard}, isMyTurn={FindObjectOfType<TurnManager>()?.IsMyTurn()}, isPlacingCard={BoardSlot.isPlacingCard}, isTargetingMode={BoardSlot.isTargetingMode}, isAttachSelectMode={BoardSlot.isAttachSelectMode}");
         if (CanDiscard())
         {
-            // 1. ��ʱ�ر� HandArea �������赲
+        // 1. 恢复 HandArea 的射线阻挡
             HandManager hm = FindObjectOfType<HandManager>();
             if (hm != null) hm.SetHandAreaRaycast(false);
 
-            // 2. ��������������������Ʋ�΢΢�Ŵ�
+        // 2. 恢复颜色和大小
             MeshRenderer renderer = GetComponent<MeshRenderer>();
             if (renderer != null)
                 renderer.material.color = Color.yellow;
             transform.localScale = originalScale * 1.05f;
         }
 
-        // �����Ƿ�����ã�����ʾ�������
+        // 抛置后强制恢复交互
         if (Test1Panel.Instance != null && cardInstance != null)
             Test1Panel.Instance.Show(cardInstance);
     }
 
     void OnMouseExit()
     {
-        // 1. �ָ� HandArea �������赲
+        // 1. 恢复 HandArea 的射线阻挡
         HandManager hm = FindObjectOfType<HandManager>();
         if (hm != null) hm.SetHandAreaRaycast(true);
 
-        // 2. �ָ���ɫ�ʹ�С
+        // 2. 恢复颜色和大小
         MeshRenderer renderer = GetComponent<MeshRenderer>();
         if (renderer != null)
             renderer.material.color = Color.white;
@@ -92,7 +92,7 @@ public class Card3DHover : MonoBehaviour
         BoardSlot slot = GetMySlot();
         if (slot == null || slot.slotID < 6) return false;
         if (cardInstance.templateID == "01534" && cardInstance.totalDamageTaken == 0) return false;
-        if (GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsTraitBlocked(cardInstance, "����"))
+        if (GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsTraitBlocked(cardInstance, "抛置"))
             return false;
         return true;
     }
@@ -199,7 +199,7 @@ public class Card3DHover : MonoBehaviour
                             Card3DInstance t3d = target.currentCard3D.GetComponent<Card3DInstance>();
                             if (t3d?.cardInstance != null)
                             {
-                                // ʹ�ñ���Ĺ�����
+        // 抛置后强制恢复交互
                                 BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, deadInstance.savedAttackForDiscard, null);
                                 t3d.UpdateValues();
                             }
@@ -245,11 +245,11 @@ public class Card3DHover : MonoBehaviour
             case "03026":
                 int lostHealth = deadInstance.currentMaxHealth - deadInstance.currentHealth;
                 NetworkPlayer.Local.AddEnergy(lostHealth);
-                Debug.Log($"Ͷ�������ã����{lostHealth}����");
+                Debug.Log($"投资者抛置：获得{lostHealth}能量");
                 break;
         }
 
-        // ���ú�ǿ�ƻָ�����
+        // 抛置后强制恢复交互
         HandManager hm = FindObjectOfType<HandManager>();
         hm?.SetHandAreaRaycast(true);
         hm?.ShowAllCards();
@@ -257,10 +257,10 @@ public class Card3DHover : MonoBehaviour
         BoardSlot.isTargetingMode = false;
     }
 
-    // Card3DHover.SwapTwoAllies �����滻
+    // Card3DHover.SwapTwoAllies 完整替换
   
     /// <summary>
-    /// ��Ϊ�Է��ӽǣ�������ͣ���顢ֻ��ʾ�Ʊ�
+    /// 设为己方视角：启用悬停详情、显示牌面
     /// </summary>
     public void SetEnemyView()
     {
@@ -269,7 +269,7 @@ public class Card3DHover : MonoBehaviour
     }
 
     /// <summary>
-    /// ��Ϊ�����ӽǣ�������ͣ���顢��ʾ����
+    /// 设为己方视角：启用悬停详情、显示牌面
     /// </summary>
     public void SetMyView()
     {

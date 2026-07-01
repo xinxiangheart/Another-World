@@ -2,10 +2,9 @@ using Mirror;
 using UnityEngine;
 
 /// <summary>
-/// Syncs server's 12-slot board state to the non-host client.
-/// Server: 0-5=remote/host's-enemy, 6-11=host/host's-own
-/// Client: 0-5=client's-enemy(sync from server's 6-11), 6-11=client's-own(sync from server's 0-5)
-/// Full stats synced after battle and at phase start.
+/// Syncs host-side slots 6-11 (with full stats) to the remote client's enemy view (0-5).
+/// Remote reports its own 6-11 back to server via CmdReportMyBoard.
+/// Client's own 6-11 are NEVER touched by sync.
 /// </summary>
 public class BoardSyncManager : MonoBehaviour
 {
@@ -18,63 +17,30 @@ public class BoardSyncManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Server: pack only host-side cards (6-11) for the client's enemy view (0-5).
-    /// Fast sync used after individual card plays.
+    /// Server: pack slots 6-11 with full stats, send to remote client.
     /// </summary>
-    public void SyncHostBoard()
+    public void SyncAll()
     {
         if (!NetworkServer.active) return;
 
         BoardManager bm = FindObjectOfType<BoardManager>();
         if (bm == null) return;
 
-        string[] hostData = PackSix(6);
-
-        foreach (var kv in NetworkServer.connections)
-        {
-            if (kv.Value != NetworkPlayer.Local?.connectionToClient)
-            {
-                NetworkPlayer.Local?.TargetSyncHostBoard(kv.Value, hostData);
-                return;
-            }
-        }
-    }
-
-    /// <summary>
-    /// Server: pack ALL 12 slots and send to the other client.
-    /// Full sync used after battle and at phase start.
-    /// </summary>
-    public void SyncFullBoard()
-    {
-        if (!NetworkServer.active) return;
-
-        BoardManager bm = FindObjectOfType<BoardManager>();
-        if (bm == null) return;
-
-        string[] hostSide = PackSix(6);
-        string[] enemySide = PackSix(0);
-
-        foreach (var kv in NetworkServer.connections)
-        {
-            if (kv.Value != NetworkPlayer.Local?.connectionToClient)
-            {
-                NetworkPlayer.Local?.TargetSyncFullBoard(kv.Value, hostSide, enemySide);
-                return;
-            }
-        }
-    }
-
-    string[] PackSix(int startSlot)
-    {
-        BoardManager bm = FindObjectOfType<BoardManager>();
-        string[] d = new string[6];
+        string[] data = new string[6];
         for (int i = 0; i < 6; i++)
+            data[i] = Pack(bm.GetSlot(i + 6)?.currentCard3D);
+
+        foreach (var kv in NetworkServer.connections)
         {
-            BoardSlot slot = bm?.GetSlot(startSlot + i);
-            d[i] = Pack(slot?.currentCard3D);
+            if (kv.Value != NetworkPlayer.Local?.connectionToClient)
+            {
+                NetworkPlayer.Local?.TargetSyncHostBoard(kv.Value, data);
+                return;
+            }
         }
-        return d;
     }
+
+    public void SyncHostBoard() => SyncAll();
 
     static string Pack(GameObject obj)
     {
@@ -85,14 +51,12 @@ public class BoardSyncManager : MonoBehaviour
             ci.templateID ?? "",
             ci.currentHealth, ci.currentAttack, ci.currentMaxHealth,
             ci.currentCost, ci.currentTier,
-            ci.hasShield ? "1" : "0",
-            ci.silencedThisPhase ? "1" : "0",
-            ci.isAttached ? "1" : "0",
-            ci.poisoned ? "1" : "0",
+            ci.hasShield ? "1" : "0", ci.silencedThisPhase ? "1" : "0",
+            ci.isAttached ? "1" : "0", ci.poisoned ? "1" : "0",
             ci.prefixes ?? "");
     }
 
-    void Apply(CardInstance ci, string raw)
+    void UnpackTo(CardInstance ci, string raw)
     {
         if (ci == null) return;
         string[] p = raw.Split('|');
@@ -109,72 +73,92 @@ public class BoardSyncManager : MonoBehaviour
         if (p.Length > 10) ci.prefixes = p[10];
     }
 
-    void SyncSlots(string[] data, int startSlot)
+    /// <summary>
+    /// Client: server 6-11 → client enemy slots 0-5.
+    /// Only touches 0-5. Client's own 6-11 are NEVER modified.
+    /// </summary>
+    /// <summary>
+    /// Client: server 6-11 → client enemy slots 0-5.
+    /// Handles model create/destroy + stats.
+    /// </summary>
+    public void ApplyHostBoard(string[] data)
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
         HandManager hm = FindObjectOfType<HandManager>();
+        if (bm == null) return;
 
         for (int i = 0; i < 6; i++)
         {
-            int slotIdx = startSlot + i;
-            BoardSlot slot = bm?.GetSlot(slotIdx);
+            int sid = i;
+            BoardSlot slot = bm.GetSlot(sid);
             if (slot == null) continue;
 
             string raw = (i < data.Length) ? data[i] : "";
-            string wantTID = "";
-            if (!string.IsNullOrEmpty(raw)) wantTID = raw.Split('|')[0];
+            string tid = string.IsNullOrEmpty(raw) ? "" : raw.Split('|')[0];
 
-            CardInstance existing = null;
-            if (slot.currentCard3D != null)
-                existing = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+            CardInstance cur = slot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
 
-            if (string.IsNullOrEmpty(wantTID))
+            if (string.IsNullOrEmpty(tid))
             {
-                if (existing != null) { Destroy(slot.currentCard3D); slot.SetCard(null); }
+                if (cur != null) { Destroy(slot.currentCard3D); slot.SetCard(null); }
                 continue;
             }
 
-            if (existing == null || existing.templateID != wantTID)
+            if (cur != null && cur.templateID != tid)
             {
-                if (existing != null) { Destroy(slot.currentCard3D); slot.SetCard(null); }
-                CardData tpl = CardDatabase.Instance?.GetTemplate(wantTID);
+                Destroy(slot.currentCard3D);
+                slot.SetCard(null);
+                cur = null;
+            }
+
+            if (cur == null)
+            {
+                CardData tpl = CardDatabase.Instance?.GetTemplate(tid);
                 if (tpl?.prefab3D != null && hm != null)
                 {
-                    GameObject m = Instantiate(tpl.prefab3D, hm.GetSlotWorldPosition(slotIdx), Quaternion.Euler(0, 180, 0));
+                    var m = Instantiate(tpl.prefab3D, hm.GetSlotWorldPosition(sid), Quaternion.Euler(0, 180, 0));
                     var c3d = m.GetComponent<Card3DInstance>();
                     if (c3d != null) { var ci = m.AddComponent<CardInstance>(); ci.InitFromTemplate(tpl, 0); c3d.cardInstance = ci; }
                     slot.SetCard(m);
-                    existing = c3d?.cardInstance;
+                    cur = c3d?.cardInstance;
                 }
             }
 
-            if (existing != null && existing.templateID == wantTID)
+            if (cur != null && cur.templateID == tid)
             {
-                Apply(existing, raw);
-                var u = slot.currentCard3D?.GetComponent<Card3DInstance>();
-                if (u != null) u.UpdateValues();
+                UnpackTo(cur, raw);
+                slot.currentCard3D?.GetComponent<Card3DInstance>()?.UpdateValues();
             }
         }
     }
 
     /// <summary>
-    /// Client: host-side sync. Server 6-11 → client enemy 0-5.
+    /// Client: full bidir sync after battle.
+    /// server upper (6-11=host cards) → client enemy 0-5 (model+stats)
+    /// server lower (0-5=remote cards) → client own 6-11 (STATS ONLY, no model create/destroy)
     /// </summary>
-    public void ApplyHostBoard(string[] hostData)
+    public void ApplyBattleSync(string[] hostData, string[] remoteData)
     {
-        SyncSlots(hostData, 0);
+        ApplyHostBoard(hostData); // host cards → client enemy
+
+        // Stats-only update for client's own cards from server's remote-card data
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return;
+        for (int i = 0; i < 6; i++)
+        {
+            int ownSlot = i + 6;
+            BoardSlot slot = bm.GetSlot(ownSlot);
+            string raw = (i < remoteData.Length) ? remoteData[i] : "";
+            string tid = string.IsNullOrEmpty(raw) ? "" : raw.Split('|')[0];
+            var cur = slot?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (cur != null && cur.templateID == tid)
+            {
+                UnpackTo(cur, raw);
+                slot.currentCard3D?.GetComponent<Card3DInstance>()?.UpdateValues();
+            }
+        }
     }
 
-    /// <summary>
-    /// Client: full sync with perspective remapping.
-    /// server 0-5 (remote cards) → client 6-11 (my cards)
-    /// server 6-11 (host cards) → client 0-5 (enemy cards)
-    /// </summary>
-    public void ApplyFullBoard(string[] serverEnemy, string[] serverHost)
-    {
-        // server 0-5 → client 6-11 (my own cards)
-        SyncSlots(serverEnemy, 6);
-        // server 6-11 → client 0-5 (enemy cards)
-        SyncSlots(serverHost, 0);
-    }
+    // No-ops for old callers
+    public void RpcApply(string[] _, string[] __) { }
 }
