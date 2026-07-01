@@ -510,7 +510,7 @@ public partial class TurnManager : MonoBehaviour
                 Debug.Log("[TurnManager] Phase start: Remote turn first (EnemyTurn from host view)");
             }
             BroadcastTurnPhase(currentPhase);
-            BoardSyncManager.Instance?.SyncAll();
+            BoardSyncManager.MarkDirty();
         }
         else
         {
@@ -682,7 +682,7 @@ public partial class TurnManager : MonoBehaviour
             if (bm != null)
                 yield return StartCoroutine(bm.BattleCoroutine());
             // Sync host board to client after battle
-            BoardSyncManager.Instance?.SyncHostBoard();
+            BoardSyncManager.MarkDirty();
             // BattleCoroutine normally calls StartNewPhase. If it didn't (e.g. allSlots null), fallback:
             if (currentPhase == TurnPhase.BattlePhase)
             {

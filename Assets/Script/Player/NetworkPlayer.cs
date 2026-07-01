@@ -785,18 +785,18 @@ public class NetworkPlayer : NetworkBehaviour
         if (tm != null) tm.SetPhaseFromNetwork(phase);
     }
 
-    /// <summary>Server syncs all 12 slots (both sides) to one client with perspective remap.</summary>
+    /// <summary>Server syncs full 12-slot board to client with perspective remap.</summary>
     [TargetRpc]
-    public void RpcSyncBoard(NetworkConnectionToClient target, string[] server0, string[] server1)
+    public void RpcSyncBoard(NetworkConnectionToClient target, string[] allSlots)
     {
-        BoardSyncManager.Instance?.RpcApply(server0, server1);
+        BoardSyncManager.Instance?.ApplySync(allSlots);
     }
 
     /// <summary>Server → client: host slots 6-11 with full stats mapped to client enemy 0-5.</summary>
     [TargetRpc]
     public void TargetSyncHostBoard(NetworkConnectionToClient target, string[] data)
     {
-        BoardSyncManager.Instance?.ApplyHostBoard(data);
+        BoardSyncManager.Instance?.ApplySync(data);
     }
 
     /// <summary>Client → server: report my 6-11 stats, server updates its 0-5 then re-syncs.</summary>
@@ -834,6 +834,6 @@ public class NetworkPlayer : NetworkBehaviour
                 }
             }
         }
-        BoardSyncManager.Instance?.SyncHostBoard();
+        BoardSyncManager.MarkDirty();
     }
 }

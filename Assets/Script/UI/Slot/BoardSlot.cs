@@ -401,7 +401,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             if (NetworkClient.isConnected && !string.IsNullOrEmpty(playTemplateID))
             {
                 NetworkPlayer.Local?.CmdPlayCard(playTemplateID, slotID);
-                BoardSyncManager.Instance?.SyncHostBoard();
+                BoardSyncManager.MarkDirty();
             }
 
             CleanupAfterPlacement();
@@ -1043,6 +1043,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     hm.UpdateXValues(ci);
             }
         }
+        BoardSyncManager.MarkDirty();
     }
 
     public void HandleDeath(GameObject dyingCard)

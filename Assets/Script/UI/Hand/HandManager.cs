@@ -74,7 +74,7 @@ public class HandManager : MonoBehaviour
         if (NetworkClient.isConnected && !string.IsNullOrEmpty(removedTemplateID))
         {
             NetworkPlayer.Local?.CmdPlayCard(removedTemplateID, -1);
-            BoardSyncManager.Instance?.SyncHostBoard();
+            BoardSyncManager.MarkDirty();
         }
 
         RefreshLayout(true);
@@ -352,6 +352,7 @@ public class HandManager : MonoBehaviour
         }
 
         slot.SetCard(model);
+        BoardSyncManager.MarkDirty();
         if (instance3D != null) instance3D.UpdateValues();
         // 阴阳独立打出检查
         if (sourceInstance.isXValue && sourceInstance.templateID == "03012")
@@ -606,9 +607,10 @@ public class HandManager : MonoBehaviour
         }
 
         slot.SetCard(model);
+        BoardSyncManager.MarkDirty();
         if (instance3D != null) instance3D.UpdateValues();
 
-       
+
         ProcessAuras(slot, sourceInstance);
 
      
@@ -1023,7 +1025,6 @@ public class HandManager : MonoBehaviour
         if (sourceInstance != null && sourceInstance.templateID == "03027")
         {
             BoardManager bm = FindObjectOfType<BoardManager>();
-        bool hasValid = false;
             for (int i = 6; i <= 11; i++)
             {
                 BoardSlot coreSlot = bm?.GetSlot(i);
@@ -1162,7 +1163,7 @@ public class HandManager : MonoBehaviour
         FindObjectOfType<CardDrag>()?.SetButtonsInteractable(true);
         SetHandAreaRaycast(true);
         ShowAllCards();
-        BoardSyncManager.Instance?.SyncHostBoard();
+        BoardSyncManager.MarkDirty();
     }
     private bool IsBoardFull()
     {
@@ -1482,7 +1483,6 @@ public class HandManager : MonoBehaviour
             yield break;
         }
 
-        bool done = false;
         SelectionManager.Instance.BeginOpenSelection(TargetType.None, null);
         int maxDiscard = 4;
         List<GameObject> selectedCards = new List<GameObject>();
@@ -1810,7 +1810,6 @@ public class HandManager : MonoBehaviour
             BoardSlot.isPlacingCard = false;
             BoardSlot.isStrengtheningSlot = false;
 
-        CardInstance watcher = null;
             for (int i = 6; i <= 11; i++)
             {
                 BoardSlot slot = bm.GetSlot(i);
@@ -2058,7 +2057,7 @@ public class HandManager : MonoBehaviour
         ShowAllCards();
         FindObjectOfType<CardDrag>()?.SetButtonsInteractable(true);
         Card3DHover.allowDiscard = true;
-        BoardSyncManager.Instance?.SyncHostBoard();
+        BoardSyncManager.MarkDirty();
     }
 
     void PlaceHorror(BoardSlot slot, CardData template, int baseHP, int baseAtk, int index)
