@@ -72,13 +72,14 @@ public class Card3DHover : MonoBehaviour
 
         bool shouldTriggerDiscard = cardInstance.hasDiscard;
 
-        // ���ؼ��޸ġ��� HandleDeath �����ʱ����ǰ���湥����
         cardInstance.savedAttackForDiscard = cardInstance.currentAttack;
 
         slot.HandleDeath(gameObject);
 
         if (shouldTriggerDiscard)
             HandleDiscardEffect(cardInstance, savedSlotID);
+
+        BoardSyncManager.Instance?.SyncHostBoard();
     }
     private bool CanDiscard()
     {
@@ -153,6 +154,7 @@ public class Card3DHover : MonoBehaviour
                             }
                         }
                         BoardSlot.CheckAndHandleDeaths();
+                        BoardSyncManager.Instance?.SyncHostBoard();
                     });
                     return;
                 }
@@ -172,6 +174,7 @@ public class Card3DHover : MonoBehaviour
                             t3d?.cardInstance?.ReceiveHeal(3, CardInstance.HealSourceType.Minion);
                             t3d?.UpdateValues();
                         }
+                        BoardSyncManager.Instance?.SyncHostBoard();
                     });
                     return;
                 }
@@ -202,6 +205,7 @@ public class Card3DHover : MonoBehaviour
                             }
                         }
                         BoardSlot.CheckAndHandleDeaths();
+                        BoardSyncManager.Instance?.SyncHostBoard();
                     });
                     return;
                 }
@@ -225,6 +229,7 @@ public class Card3DHover : MonoBehaviour
                                 t3d.UpdateValues();
                             }
                         }
+                        BoardSyncManager.Instance?.SyncHostBoard();
                     });
                     return;
                 }

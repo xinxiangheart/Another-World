@@ -35,13 +35,9 @@ public class HandManager : MonoBehaviour
     {
         if (cv == null) return;
 
-        // Notify server that card was played (spell/counter cast), so remote client sees it
-        if (NetworkClient.isConnected)
-        {
-            CardInstance ci = cv.GetComponent<CardInstance>();
-            if (ci != null)
-                NetworkPlayer.Local?.CmdPlayCard(ci.templateID, -1);
-        }
+        string removedTemplateID = "";
+        CardInstance ciRemove = cv.GetComponent<CardInstance>();
+        if (ciRemove != null) removedTemplateID = ciRemove.templateID;
 
         if (handCards.Contains(cv))
             handCards.Remove(cv);
@@ -72,6 +68,13 @@ public class HandManager : MonoBehaviour
                 drawCG.interactable = true;
                 drawCG.blocksRaycasts = true;
             }
+        }
+
+        // Sync to remote client after spell/counter cast is fully processed
+        if (NetworkClient.isConnected && !string.IsNullOrEmpty(removedTemplateID))
+        {
+            NetworkPlayer.Local?.CmdPlayCard(removedTemplateID, -1);
+            BoardSyncManager.Instance?.SyncHostBoard();
         }
 
         RefreshLayout(true);
@@ -1159,6 +1162,7 @@ public class HandManager : MonoBehaviour
         FindObjectOfType<CardDrag>()?.SetButtonsInteractable(true);
         SetHandAreaRaycast(true);
         ShowAllCards();
+        BoardSyncManager.Instance?.SyncHostBoard();
     }
     private bool IsBoardFull()
     {
@@ -2054,6 +2058,7 @@ public class HandManager : MonoBehaviour
         ShowAllCards();
         FindObjectOfType<CardDrag>()?.SetButtonsInteractable(true);
         Card3DHover.allowDiscard = true;
+        BoardSyncManager.Instance?.SyncHostBoard();
     }
 
     void PlaceHorror(BoardSlot slot, CardData template, int baseHP, int baseAtk, int index)

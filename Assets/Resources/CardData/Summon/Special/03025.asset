@@ -16,7 +16,7 @@ MonoBehaviour:
   cardName: "\u53DB\u5F92"
   cardType: 0
   copyCount: 3
-  addToMainDeck: 1
+  addToMainDeck: 0
   summonType: 2
   baseCost: 0
   baseTier: 0

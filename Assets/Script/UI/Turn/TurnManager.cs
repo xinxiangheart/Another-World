@@ -510,6 +510,7 @@ public partial class TurnManager : MonoBehaviour
                 Debug.Log("[TurnManager] Phase start: Remote turn first (EnemyTurn from host view)");
             }
             BroadcastTurnPhase(currentPhase);
+            BoardSyncManager.Instance?.SyncHostBoard();
         }
         else
         {
@@ -605,12 +606,22 @@ public partial class TurnManager : MonoBehaviour
             }
 
             // First player ended; giving turn to second player.
-            // Broadcast BEFORE setting local currentPhase so the local TargetRpc
-            // guard (currentPhase != newPhase) passes and enables buttons + energy.
             TurnPhase newPhase = (currentPhase == TurnPhase.MyTurn) ? TurnPhase.EnemyTurn : TurnPhase.MyTurn;
             BroadcastTurnPhase(newPhase);
             currentPhase = newPhase;
             CounterManager.Instance?.CheckOnEnemyTurnEnd();
+            // Host manually sets its own state — TargetRpc is async and may miss the guard
+            if (newPhase == TurnPhase.MyTurn)
+            {
+                SetPlayerActionsEnabled(true);
+                NetworkPlayer.Local?.AddEnergy(6);
+                FindObjectOfType<DrawCardUI>()?.ResetForNewPhase();
+                TriggerMyTurnStartEffects();
+            }
+            else
+            {
+                SetPlayerActionsEnabled(false);
+            }
             Debug.Log($"[TurnManager] First player ended → {newPhase}");
         }
         else
@@ -670,6 +681,8 @@ public partial class TurnManager : MonoBehaviour
             BattleManager bm = BattleManager.Instance;
             if (bm != null)
                 yield return StartCoroutine(bm.BattleCoroutine());
+            // Sync full board to all clients after battle
+            BoardSyncManager.Instance?.SyncFullBoard();
             // BattleCoroutine normally calls StartNewPhase. If it didn't (e.g. allSlots null), fallback:
             if (currentPhase == TurnPhase.BattlePhase)
             {

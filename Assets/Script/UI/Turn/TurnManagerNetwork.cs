@@ -38,16 +38,16 @@ public partial class TurnManager
             if (dc != null) dc.ResetForNewPhase();
             else Debug.LogWarning("[TurnManager] SetPhaseFromNetwork: DrawCardUI not found!");
             TriggerMyTurnStartEffects();
+            // Send updated stats to server so other client sees phase-start effects
+            if (NetworkClient.isConnected)
+                ReportMyBoard();
         }
         else if (phase == TurnPhase.BattlePhase && currentPhase != TurnPhase.BattlePhase)
         {
             Debug.Log("[TurnManager] SetPhaseFromNetwork: ENTER BattlePhase");
             currentPhase = TurnPhase.BattlePhase;
             SetPlayerActionsEnabled(false);
-            // Server runs battle via SafeBattle in EndCurrentTurn.
-            // Client just waits for next phase broadcast (server's StartNewPhase).
-            if (!NetworkServer.active)
-                StartCoroutine(BattleManager.Instance.BattleCoroutine());
+            // Client does NOT run battle — server calculates everything, then syncs results.
         }
         else if (phase == TurnPhase.EnemyTurn && currentPhase != TurnPhase.EnemyTurn)
         {
@@ -138,5 +138,32 @@ public partial class TurnManager
 
         // Server-authoritative end turn. Energy cleanup already done for the correct player.
         EndCurrentTurn(skipEnergyCleanup: true);
+    }
+
+    /// <summary>
+    /// Call after TriggerMyTurnStartEffects on any client.
+    /// Packs slots 6-11 and sends to server for relay.
+    /// </summary>
+    static void ReportMyBoard()
+    {
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return;
+        string[] my = new string[6];
+        for (int i = 0; i < 6; i++)
+        {
+            var c3d = bm.GetSlot(i + 6)?.currentCard3D?.GetComponent<Card3DInstance>();
+            var ci = c3d?.cardInstance;
+            if (ci == null) { my[i] = ""; continue; }
+            my[i] = string.Join("|",
+                ci.templateID ?? "",
+                ci.currentHealth, ci.currentAttack, ci.currentMaxHealth,
+                ci.currentCost, ci.currentTier,
+                ci.hasShield ? "1" : "0",
+                ci.silencedThisPhase ? "1" : "0",
+                ci.isAttached ? "1" : "0",
+                ci.poisoned ? "1" : "0",
+                ci.prefixes ?? "");
+        }
+        NetworkPlayer.Local?.CmdReportMyBoard(my);
     }
 }

@@ -226,24 +226,19 @@ public class NetworkPlayer : NetworkBehaviour
         CardData template = CardDatabase.Instance?.GetTemplate(templateID);
         if (template == null) return;
 
-        // Find the OTHER connection — not the sender
-        NetworkConnectionToClient otherConn = null;
-        foreach (var kv in NetworkServer.connections)
-            if (kv.Value != connectionToClient) { otherConn = kv.Value; break; }
-
         if (template.cardType == CardType.Summon)
         {
-            // Server model: host's card already exists at slotID (6-11) from shared PlaceCardToSlot.
-            // Remote's card needs model at enemy side (0-5) for BattleCoroutine.
             if (this != NetworkPlayer.Local)
             {
+                // Remote's card — spawn on server for BattleCoroutine. Host=server, no TargetRpc needed.
                 int enemySlot = (slotID >= 6 && slotID <= 11) ? slotID - 6 : slotID;
                 if (template.prefab3D != null)
                 {
                     BoardManager bm = FindObjectOfType<BoardManager>();
                     BoardSlot slot = bm?.GetSlot(enemySlot);
-                    if (slot != null && !slot.hasCard)
+                    if (slot != null)
                     {
+                        if (slot.currentCard3D != null) Destroy(slot.currentCard3D);
                         Vector3 pos = FindObjectOfType<HandManager>().GetSlotWorldPosition(enemySlot);
                         GameObject model = Instantiate(template.prefab3D, pos, Quaternion.Euler(0, 180, 0));
                         Card3DInstance c3d = model.GetComponent<Card3DInstance>();
@@ -255,25 +250,27 @@ public class NetworkPlayer : NetworkBehaviour
                             c3d.UpdateValues();
                         }
                         slot.SetCard(model);
-                        Debug.Log($"[NetworkPlayer] CmdPlayCard: server spawn {templateID} at enemySlot={enemySlot}");
                     }
                 }
             }
-
-            // Broadcast to the other client
-            if (otherConn != null)
+            else
             {
-                TargetSpawnCard3D(otherConn, templateID, slotID);
-                Debug.Log($"[NetworkPlayer] CmdPlayCard: broadcast spawn {templateID} slot={slotID} to conn={otherConn.connectionId}");
+                // Host's card — broadcast to other client so they see the opponent model
+                NetworkConnectionToClient other = null;
+                foreach (var kv in NetworkServer.connections)
+                    if (kv.Value != connectionToClient) { other = kv.Value; break; }
+                if (other != null)
+                    TargetSpawnCard3D(other, templateID, slotID);
             }
         }
         else if (template.cardType == CardType.Spell)
         {
-            if (otherConn != null)
-                TargetSpawnCounterCard(otherConn, templateID);
+            NetworkConnectionToClient other = null;
+            foreach (var kv in NetworkServer.connections)
+                if (kv.Value != connectionToClient) { other = kv.Value; break; }
+            if (other != null)
+                TargetSpawnCounterCard(other, templateID);
         }
-
-        BoardSyncManager.Instance?.SyncHostBoard();
     }
 
     [Command]
@@ -694,9 +691,9 @@ public class NetworkPlayer : NetworkBehaviour
         BoardSlot slot = bm.GetSlot(enemySlot);
         if (slot == null) return;
 
-        // Clean up any existing model in this slot (prevents leaks on re-spawn)
+        // Skip if slot already has this card (BoardSyncManager already handled it)
         if (slot.currentCard3D != null)
-            Destroy(slot.currentCard3D);
+            return;
 
         Vector3 pos = FindObjectOfType<HandManager>().GetSlotWorldPosition(enemySlot);
         GameObject model = Instantiate(template.prefab3D, pos, Quaternion.Euler(0, 180, 0));
@@ -793,5 +790,50 @@ public class NetworkPlayer : NetworkBehaviour
     public void TargetSyncHostBoard(NetworkConnectionToClient target, string[] hostTemplates)
     {
         BoardSyncManager.Instance?.ApplyHostBoard(hostTemplates);
+    }
+
+    /// <summary>Server sends full 12-slot board to one client with perspective remap.</summary>
+    [TargetRpc]
+    public void TargetSyncFullBoard(NetworkConnectionToClient target, string[] serverEnemy, string[] serverHost)
+    {
+        BoardSyncManager.Instance?.ApplyFullBoard(serverEnemy, serverHost);
+    }
+
+    /// <summary>Client reports its slot 6-11 stats to server, which relays to the other client.</summary>
+    [Command]
+    public void CmdReportMyBoard(string[] myStats)
+    {
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return;
+        for (int i = 0; i < 6 && i < myStats.Length; i++)
+        {
+            string raw = myStats[i];
+            if (string.IsNullOrEmpty(raw)) continue;
+            string tid = raw.Split('|')[0];
+            if (string.IsNullOrEmpty(tid)) continue;
+            BoardSlot slot = bm.GetSlot(i); // server 0-5 = reporting client
+            if (slot?.currentCard3D != null)
+            {
+                var ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                if (ci != null && ci.templateID == tid)
+                {
+                    string[] p = raw.Split('|');
+                    int hp2, atk2, mh2, cost2, tier2;
+                    if (p.Length > 1 && int.TryParse(p[1], out hp2)) ci.currentHealth = hp2;
+                    if (p.Length > 2 && int.TryParse(p[2], out atk2)) ci.currentAttack = atk2;
+                    if (p.Length > 3 && int.TryParse(p[3], out mh2)) ci.currentMaxHealth = mh2;
+                    if (p.Length > 4 && int.TryParse(p[4], out cost2)) ci.currentCost = cost2;
+                    if (p.Length > 5 && int.TryParse(p[5], out tier2)) ci.currentTier = tier2;
+                    if (p.Length > 6) ci.hasShield = (p[6] == "1");
+                    if (p.Length > 7) ci.silencedThisPhase = (p[7] == "1");
+                    if (p.Length > 8) ci.isAttached = (p[8] == "1");
+                    if (p.Length > 9) ci.poisoned = (p[9] == "1");
+                    if (p.Length > 10) ci.prefixes = p[10];
+                    var u = slot.currentCard3D.GetComponent<Card3DInstance>();
+                    if (u != null) u.UpdateValues();
+                }
+            }
+        }
+        BoardSyncManager.Instance?.SyncHostBoard();
     }
 }

@@ -342,13 +342,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             }
             ignoreNextClickSlot = -1;
 
-            // Notify server of placement so remote client sees the 3D model
-            if (NetworkClient.isConnected)
-            {
-                CardInstance ciPlay = cardToPlace?.GetComponent<CardInstance>();
-                if (ciPlay != null)
-                    NetworkPlayer.Local?.CmdPlayCard(ciPlay.templateID, slotID);
-            }
+            string playTemplateID = "";
+            CardInstance ciPre = cardToPlace?.GetComponent<CardInstance>();
+            if (ciPre != null) playTemplateID = ciPre.templateID;
 
             HandManager hm = FindObjectOfType<HandManager>();
             if (hm != null)
@@ -400,6 +396,14 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     GlobalEventManager.Instance.PendingEnterRedirectInstance = null;
                 }
             }
+
+            // Sync to remote client after placement is fully complete
+            if (NetworkClient.isConnected && !string.IsNullOrEmpty(playTemplateID))
+            {
+                NetworkPlayer.Local?.CmdPlayCard(playTemplateID, slotID);
+                BoardSyncManager.Instance?.SyncHostBoard();
+            }
+
             CleanupAfterPlacement();
             return;
         }
