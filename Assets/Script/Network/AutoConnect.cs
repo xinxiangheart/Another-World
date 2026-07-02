@@ -74,14 +74,20 @@ public class AutoConnect : MonoBehaviour
     // ── Host ──
     void StartAsHost()
     {
-        // Fetch public IP so we can put it in lobby data
         StartCoroutine(FetchPublicIP(ip =>
         {
-            _myPublicIP = ip;
+            // If the IP looks like a LAN address, ignore it — the real public IP
+            // is behind a NAT we can't read. Don't put bad IP in lobby data.
+            if (ip.StartsWith("127.") || ip.StartsWith("10.") || ip.StartsWith("192.168.") || ip.StartsWith("172."))
+                _myPublicIP = "";
+            else
+                _myPublicIP = ip;
+
             if (!SteamManager.Initialized)
             {
-                // Steam not available → fallback: show IP for manual sharing
-                SetText("Steam 未初始化\n主机已启动\n你的IP: " + ip + "\n请让对方直接输入此IP连接");
+                SetText(string.IsNullOrEmpty(_myPublicIP)
+                    ? "主机已启动\nSteam 未初始化\n请手动分享你的 IP 给对方"
+                    : "主机已启动\nSteam 未初始化\n你的IP: " + _myPublicIP);
                 _nm.StartHost();
                 return;
             }
@@ -95,13 +101,16 @@ public class AutoConnect : MonoBehaviour
     {
         if (r.m_eResult != EResult.k_EResultOK)
         {
-            SetText("创建房间失败\n主机已启动\nIP: " + _myPublicIP);
+            SetText(string.IsNullOrEmpty(_myPublicIP)
+                ? "创建房间失败\n主机已启动\n请手动分享你的 IP 给对方"
+                : "主机已启动\nIP: " + _myPublicIP);
             _nm.StartHost();
             return;
         }
         var lid = new CSteamID(r.m_ulSteamIDLobby);
         SteamMatchmaking.SetLobbyData(lid, "game", "anotherworld");
-        SteamMatchmaking.SetLobbyData(lid, "host_ip", _myPublicIP);
+        if (!string.IsNullOrEmpty(_myPublicIP))
+            SteamMatchmaking.SetLobbyData(lid, "host_ip", _myPublicIP);
         SteamMatchmaking.SetLobbyData(lid, "host_port", "7777");
         SetText("房间已创建\n等待对手加入...");
         _nm.StartHost();
