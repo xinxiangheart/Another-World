@@ -1,10 +1,10 @@
 using UnityEngine;
 using Mirror;
-using kcp2k;
 using TMPro;
+using Steamworks;
 
 /// <summary>
-/// Reads LobbyConfig, starts Host or Client using Game scene's NetworkManager,
+/// Reads LobbyConfig, starts Host or Client using FizzySteamworks,
 /// shows waiting overlay, and enables TurnManager when both players are ready.
 /// </summary>
 [DefaultExecutionOrder(-100)]
@@ -13,6 +13,11 @@ public class AutoConnect : MonoBehaviour
     private TurnManager _turnManager;
     private NetworkTurnSync _turnSync;
     private GameObject _waitingUI;
+    private Callback<LobbyCreated_t> _lobbyCreatedCallback;
+    private Callback<LobbyEnter_t> _lobbyEnterCallback;
+    private Callback<GameLobbyJoinRequested_t> _gameLobbyJoinRequestedCallback;
+    private bool _lobbyReady;
+    private ulong _myLobbyID;
 
     void Awake()
     {
@@ -23,7 +28,6 @@ public class AutoConnect : MonoBehaviour
 
         if (!LobbyConfig.FromLobby)
         {
-            // Standalone / Editor manual mode
             if (_waitingUI != null) _waitingUI.SetActive(false);
             Debug.Log("[AutoConnect] Standalone mode");
             return;
@@ -34,12 +38,10 @@ public class AutoConnect : MonoBehaviour
 
         if (LobbyConfig.IsHost)
         {
-            Debug.Log("[AutoConnect] Starting Host...");
             Invoke(nameof(StartAsHost), 0.1f);
         }
         else
         {
-            Debug.Log("[AutoConnect] Starting Client -> " + LobbyConfig.ServerIP);
             Invoke(nameof(StartAsClient), 0.1f);
         }
     }
@@ -51,6 +53,20 @@ public class AutoConnect : MonoBehaviour
             _turnManager.enabled = false;
             Debug.Log("[AutoConnect] TurnManager disabled, waiting for both players");
         }
+    }
+
+    void OnEnable()
+    {
+        _lobbyCreatedCallback = Callback<LobbyCreated_t>.Create(OnLobbyCreated);
+        _lobbyEnterCallback = Callback<LobbyEnter_t>.Create(OnLobbyEnter);
+        _gameLobbyJoinRequestedCallback = Callback<GameLobbyJoinRequested_t>.Create(OnGameLobbyJoinRequested);
+    }
+
+    void OnDisable()
+    {
+        _lobbyCreatedCallback?.Dispose();
+        _lobbyEnterCallback?.Dispose();
+        _gameLobbyJoinRequestedCallback?.Dispose();
     }
 
     // ========== Waiting UI ==========
@@ -78,7 +94,7 @@ public class AutoConnect : MonoBehaviour
         GameObject txt = new GameObject("Text");
         txt.transform.SetParent(_waitingUI.transform, false);
         var tmp = txt.AddComponent<TextMeshProUGUI>();
-        tmp.text = "正在连接服务器...";
+        tmp.text = "正在连接 Steam...";
         tmp.fontSize = 36;
         tmp.color = Color.white;
         tmp.alignment = TextAlignmentOptions.Center;
@@ -98,53 +114,73 @@ public class AutoConnect : MonoBehaviour
         if (tmp != null) tmp.text = msg;
     }
 
-    // ========== Start Network ==========
+    // ========== Steam Lobby ==========
 
     void StartAsHost()
     {
-        NetworkManager nm = FindObjectOfType<NetworkManager>();
-        if (nm == null) { Debug.LogError("[AutoConnect] No NetworkManager!"); return; }
-        FixTransport(nm);
-        nm.StartHost();
-        SetText("已创建房间\n等待对手加入...");
+        if (!SteamManager.Initialized)
+        {
+            SetText("等待 Steam 初始化...");
+            Invoke(nameof(StartAsHost), 0.5f);
+            return;
+        }
+        SetText("正在创建 Steam 大厅...");
+        SteamMatchmaking.CreateLobby(ELobbyType.k_ELobbyTypePublic, 2);
     }
 
     void StartAsClient()
     {
-        NetworkManager nm = FindObjectOfType<NetworkManager>();
-        if (nm == null) { Debug.LogError("[AutoConnect] No NetworkManager!"); return; }
-        FixTransport(nm);
-        nm.networkAddress = LobbyConfig.ServerIP;
-        Debug.Log($"[AutoConnect] Client: address={nm.networkAddress}, transport={nm.transport?.GetType().Name ?? "NULL"}, port={(nm.transport as kcp2k.KcpTransport)?.Port ?? 0}");
-        nm.StartClient();
-        SetText("正在连接 " + LobbyConfig.ServerIP + " ...");
+        SetText("按 Shift+Tab 打开 Steam 好友列表\n右键好友 → 加入游戏\n\n或等主机邀请你");
     }
 
-    void FixTransport(NetworkManager nm)
+    void OnLobbyCreated(LobbyCreated_t result)
     {
-        KcpTransport existing = nm.gameObject.GetComponent<KcpTransport>();
-        bool needsReplacement = existing != null && existing.GetType().Name.Contains("Edgegap");
-
-        if (needsReplacement)
+        if (result.m_eResult != EResult.k_EResultOK)
         {
-            Debug.Log($"[AutoConnect] Replacing EdgegapKcpTransport with plain KcpTransport");
-            // Mirror holds static Transport.active ref — clear before destroy
-            if (Transport.active == existing)
-                Transport.active = null;
-            DestroyImmediate(existing);
-            nm.transport = null;
+            SetText("创建大厅失败: " + result.m_eResult);
+            Debug.LogError("[AutoConnect] Lobby creation failed: " + result.m_eResult);
+            return;
         }
 
-        if (nm.transport == null)
+        _myLobbyID = result.m_ulSteamIDLobby;
+        CSteamID lobbyID = new CSteamID(_myLobbyID);
+        Debug.Log($"[AutoConnect] Lobby created: {_myLobbyID}");
+        SetText("大厅已创建！\n按 Shift+Tab 邀请好友加入");
+
+        // Set joinable
+        SteamMatchmaking.SetLobbyData(lobbyID, "game", "anotherworld");
+
+        // Start Mirror host
+        NetworkManager nm = FindObjectOfType<NetworkManager>();
+        if (nm != null) nm.StartHost();
+
+        _lobbyReady = true;
+    }
+
+    void OnLobbyEnter(LobbyEnter_t result)
+    {
+        if (LobbyConfig.IsHost) return; // host already started
+
+        Debug.Log($"[AutoConnect] Entered lobby {result.m_ulSteamIDLobby}");
+        _myLobbyID = result.m_ulSteamIDLobby;
+
+        // Client joined lobby → start Mirror client
+        NetworkManager nm = FindObjectOfType<NetworkManager>();
+        if (nm != null)
         {
-            KcpTransport kcp = nm.gameObject.AddComponent<KcpTransport>();
-            kcp.Port = 7777;
-            nm.transport = kcp;
-            // Restore static reference so NetworkServer/NetworkClient can find it
-            Transport.active = kcp;
+            SetText("已加入大厅！\n正在连接...");
+            nm.StartClient();
         }
 
-        Debug.Log($"[AutoConnect] Transport OK: {nm.transport.GetType().Name}, port={(nm.transport as KcpTransport)?.Port ?? 7777}");
+        _lobbyReady = true;
+    }
+
+    void OnGameLobbyJoinRequested(GameLobbyJoinRequested_t result)
+    {
+        Debug.Log($"[AutoConnect] Friend invited to lobby {result.m_steamIDLobby}");
+        LobbyConfig.IsHost = false;
+        LobbyConfig.FromLobby = true;
+        SteamMatchmaking.JoinLobby(result.m_steamIDLobby);
     }
 
     // ========== Network Callbacks ==========
@@ -166,6 +202,11 @@ public class AutoConnect : MonoBehaviour
     {
         NetworkClient.OnConnectedEvent -= OnConnected;
         NetworkClient.OnDisconnectedEvent -= OnDisconnected;
+
+        if (_myLobbyID != 0 && NetworkServer.active)
+        {
+            SteamMatchmaking.LeaveLobby(new CSteamID(_myLobbyID));
+        }
     }
 
     // ========== Update: hide waiting UI when TurnManager starts ==========

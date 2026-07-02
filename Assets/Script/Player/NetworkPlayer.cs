@@ -88,14 +88,14 @@ public class NetworkPlayer : NetworkBehaviour
     IEnumerator DelayedSetRemote()
     {
         float waited = 0f;
-        while (waited < 5f && Remote == null)
+        while (waited < 60f && Remote == null)
         {
             yield return new WaitForSeconds(0.2f);
             waited += 0.2f;
             TrySetRemote();
         }
         if (Remote == null)
-            Debug.LogError("[NetworkPlayer] Failed to find Remote after 5s!");
+            Debug.LogError("[NetworkPlayer] Failed to find Remote after 60s!");
     }
 
     public override void OnStartClient()
@@ -242,17 +242,14 @@ public class NetworkPlayer : NetworkBehaviour
                         Vector3 pos = FindObjectOfType<HandManager>().GetSlotWorldPosition(enemySlot);
                         GameObject model = Instantiate(template.prefab3D, pos, Quaternion.Euler(0, 180, 0));
                         Card3DInstance c3d = model.GetComponent<Card3DInstance>();
-                        CardInstance ci = null;
                         if (c3d != null)
                         {
-                            ci = model.AddComponent<CardInstance>();
+                            CardInstance ci = model.AddComponent<CardInstance>();
                             ci.InitFromTemplate(template, 0);
                             c3d.cardInstance = ci;
                             c3d.UpdateValues();
                         }
                         slot.SetCard(model);
-                        if (template.hasOnEnter && ci != null)
-                            slot.StartOnEnterEffect(template, ci);
                     }
                 }
             }

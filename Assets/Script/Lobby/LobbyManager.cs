@@ -8,11 +8,12 @@ public static class LobbyConfig
     public static bool IsHost { get; set; }
     public static string ServerIP { get; set; } = "127.0.0.1";
     public static bool FromLobby { get; set; }
+    /// <summary>Steam Lobby ID for the client to join.</summary>
+    public static ulong SteamLobbyID { get; set; }
 }
 
 /// <summary>
-/// Lobby is a pure UI scene. Sets LobbyConfig, then loads Game.
-/// Game scene's AutoConnect reads LobbyConfig and handles all networking.
+/// Lobby UI — create/join rooms via Steam Matchmaking.
 /// </summary>
 public class LobbyManager : MonoBehaviour
 {
@@ -32,6 +33,8 @@ public class LobbyManager : MonoBehaviour
     {
         if (createRoomButton != null) createRoomButton.onClick.AddListener(CreateRoom);
         if (joinRoomButton != null) joinRoomButton.onClick.AddListener(JoinRoom);
+        if (viewCardsButton != null) viewCardsButton.onClick.AddListener(() => SetStatus("卡牌浏览功能开发中"));
+        if (gameIntroButton != null) gameIntroButton.onClick.AddListener(() => SetStatus("游戏介绍功能开发中"));
         SetStatus("欢迎来到异界");
     }
 
@@ -39,21 +42,15 @@ public class LobbyManager : MonoBehaviour
     {
         LobbyConfig.FromLobby = true;
         LobbyConfig.IsHost = true;
-        LobbyConfig.ServerIP = "127.0.0.1";
-        SetStatus("正在进入游戏房间...");
+        SetStatus("正在创建 Steam 大厅...");
         SceneManager.LoadScene("Game");
     }
 
     public void JoinRoom()
     {
-        string ip = "127.0.0.1";
-        if (ipInputField != null && !string.IsNullOrEmpty(ipInputField.text.Trim()))
-            ip = ipInputField.text.Trim();
-
         LobbyConfig.FromLobby = true;
         LobbyConfig.IsHost = false;
-        LobbyConfig.ServerIP = ip;
-        SetStatus("正在加入游戏房间...");
+        SetStatus("正在搜索 Steam 大厅...");
         SceneManager.LoadScene("Game");
     }
 
