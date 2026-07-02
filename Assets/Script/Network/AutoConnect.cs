@@ -211,7 +211,19 @@ public class AutoConnect : MonoBehaviour
     void OnLobbyEnter(LobbyEnter_t result)
     {
         if (LobbyConfig.IsHost) return;
-        FindObjectOfType<NetworkManager>()?.StartClient();
+        Debug.Log($"[AutoConnect] LobbyEnter — starting client in 1s. LobbyID={result.m_ulSteamIDLobby}");
+        SetText("已进入大厅\n正在连接...");
+        Invoke(nameof(StartMirrorClient), 1f);
+    }
+
+    void StartMirrorClient()
+    {
+        NetworkManager nm = FindObjectOfType<NetworkManager>();
+        if (nm != null)
+        {
+            Debug.Log($"[AutoConnect] StartMirrorClient — transport={nm.transport?.GetType().Name}");
+            nm.StartClient();
+        }
     }
 
     void OnGameLobbyJoinRequested(GameLobbyJoinRequested_t result)
