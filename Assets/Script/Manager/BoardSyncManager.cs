@@ -20,12 +20,18 @@ public class BoardSyncManager : MonoBehaviour
         BoardManager bm = FindObjectOfType<BoardManager>();
         if (bm == null) return;
 
-        // 12 slots: templateID or empty
-        string[] tids = new string[12];
+        // 12 slots: "tid|data"
+        string[] s = new string[12];
         for (int i = 0; i < 12; i++)
-            tids[i] = Tid(bm.GetSlot(i)?.currentCard3D);
+        {
+            BoardSlot slot = bm.GetSlot(i);
+            string card = Tid(slot?.currentCard3D);
+            string flags = slot == null ? "" :
+                $"{(slot.isBlocked?1:0)}{(slot.prisonBlocked?1:0)}{(slot.hasPlague?1:0)}" +
+                $"{(slot.hasSpotlight?1:0)}|{slot.plagueRoundCount}|{slot.spotlightTierBoost}|{slot.slotTempAttackBoost}";
+            s[i] = $"{card}|{flags}";
+        }
 
-        // attachments
         bm.attachedModels.RemoveAll(a => a == null);
         var al = new System.Collections.Generic.List<string>();
         foreach (var o in bm.attachedModels)
@@ -37,27 +43,29 @@ public class BoardSyncManager : MonoBehaviour
 
         foreach (var kv in NetworkServer.connections)
             if (kv.Value != NetworkPlayer.Local?.connectionToClient)
-            { NetworkPlayer.Local?.RpcSyncBoard(kv.Value, tids, ab); return; }
+            { NetworkPlayer.Local?.RpcSyncBoard(kv.Value, s, ab); return; }
     }
 
     static string Tid(GameObject o)
     {
         if (o == null) return "";
-        return o.GetComponent<Card3DInstance>()?.cardInstance?.templateID ?? "";
+        var ci = o.GetComponent<Card3DInstance>()?.cardInstance;
+        if (ci == null) return "";
+        return $"{ci.templateID}|{ci.currentHealth}|{ci.currentAttack}|{ci.currentMaxHealth}|{ci.currentCost}|{ci.currentTier}|{(ci.hasShield?1:0)}|{(ci.silencedThisPhase?1:0)}|{(ci.isAttached?1:0)}|{(ci.poisoned?1:0)}|{ci.prefixes??""}";
     }
 
     // ============= Client =============
 
-    public void ApplySync(string[] tids, string attachBlock)
+    public void ApplySync(string[] s, string attachBlock)
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
         HandManager hm = FindObjectOfType<HandManager>();
-        if (bm == null || tids == null || tids.Length < 12) return;
+        if (bm == null || s == null || s.Length < 12) return;
 
         for (int i = 0; i < 6; i++)
         {
-            EnsureSlot(i + 6, tids[i], bm, hm);     // server 0-5 → client 6-11
-            EnsureSlot(i, tids[i + 6], bm, hm);     // server 6-11 → client 0-5
+            ApplySlot(i + 6, s[i], bm, hm);     // server 0-5 → client 6-11
+            ApplySlot(i, s[i + 6], bm, hm);     // server 6-11 → client 0-5
         }
 
         // attachments
@@ -90,23 +98,78 @@ public class BoardSyncManager : MonoBehaviour
         }
     }
 
-    void EnsureSlot(int idx, string wantTid, BoardManager bm, HandManager hm)
+    void ApplySlot(int idx, string raw, BoardManager bm, HandManager hm)
     {
         BoardSlot slot = bm.GetSlot(idx);
         if (slot == null) return;
-        string curTid = Tid(slot.currentCard3D);
-        if (curTid == wantTid) return;
-        if (slot.currentCard3D != null) { SafeDestroy(slot.currentCard3D); slot.SetCard(null); }
-        if (!string.IsNullOrEmpty(wantTid) && hm != null)
+
+        // Parse: "cardPart|flagsPart" where cardPart = everything before last "|slotTempAttackBoost|...?"
+        // Actually: "templateID|hp|atk|maxHp|cost|tier|shield|silenced|attached|poisoned|prefixes|isBlocked.isPrison.isPlague.isSpotlight|slotTempAttackBoost"
+        // Split carefully: the card part has 11 fields, then flags have 3 fields
+        string[] parts = raw.Split('|');
+        if (parts.Length == 0) { EnsureEmpty(idx, slot, bm); return; }
+
+        // Card part: first 11 tokens (or fewer if empty)
+        string tid = parts[0];
+        if (string.IsNullOrEmpty(tid)) { EnsureEmpty(idx, slot, bm); return; }
+
+        EnsureCard(idx, parts, slot, bm, hm);
+
+        // Slot flags: last 4 tokens = "BBBB" | plagueRoundCount | spotlightTierBoost | slotTempAttackBoost
+        if (parts.Length >= 14)
         {
-            var t = CardDatabase.Instance?.GetTemplate(wantTid);
+            string f = parts[parts.Length - 4];
+            if (f.Length >= 4)
+            {
+                slot.isBlocked = f[0] == '1';
+                slot.prisonBlocked = f[1] == '1';
+                slot.hasPlague = f[2] == '1';
+                slot.hasSpotlight = f[3] == '1';
+            }
+            if (int.TryParse(parts[parts.Length - 3], out int prc)) slot.plagueRoundCount = prc;
+            if (int.TryParse(parts[parts.Length - 2], out int stb)) slot.spotlightTierBoost = stb;
+            if (int.TryParse(parts[parts.Length - 1], out int boost)) slot.slotTempAttackBoost = boost;
+        }
+    }
+
+    void EnsureEmpty(int idx, BoardSlot slot, BoardManager bm)
+    {
+        if (slot.currentCard3D != null) { SafeDestroy(slot.currentCard3D); slot.SetCard(null); }
+        slot.isBlocked = false; slot.prisonBlocked = false; slot.hasPlague = false; slot.hasSpotlight = false;
+        slot.plagueRoundCount = 0; slot.spotlightTierBoost = 0; slot.slotTempAttackBoost = 0;
+    }
+
+    void EnsureCard(int idx, string[] parts, BoardSlot slot, BoardManager bm, HandManager hm)
+    {
+        string tid = parts[0];
+        var cur = slot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+        if (cur != null && cur.templateID != tid) { SafeDestroy(slot.currentCard3D); slot.SetCard(null); cur = null; }
+        if (cur == null && hm != null)
+        {
+            var t = CardDatabase.Instance?.GetTemplate(tid);
             if (t?.prefab3D != null)
             {
                 var m = Instantiate(t.prefab3D, hm.GetSlotWorldPosition(idx), Quaternion.Euler(0, 180, 0));
                 var c = m.GetComponent<Card3DInstance>();
                 if (c != null) { var n = m.AddComponent<CardInstance>(); n.InitFromTemplate(t, 0); c.cardInstance = n; c.UpdateValues(); }
                 slot.SetCard(m);
+                cur = c?.cardInstance;
             }
+        }
+        if (cur != null && cur.templateID == tid && parts.Length >= 11)
+        {
+            var p = parts; int v;
+            if (int.TryParse(p[1], out v)) cur.currentHealth = v;
+            if (int.TryParse(p[2], out v)) cur.currentAttack = v;
+            if (int.TryParse(p[3], out v)) cur.currentMaxHealth = v;
+            if (int.TryParse(p[4], out v)) cur.currentCost = v;
+            if (int.TryParse(p[5], out v)) cur.currentTier = v;
+            cur.hasShield = (p[6] == "1");
+            cur.silencedThisPhase = (p[7] == "1");
+            cur.isAttached = (p[8] == "1");
+            cur.poisoned = (p[9] == "1");
+            cur.prefixes = p[10];
+            slot.currentCard3D?.GetComponent<Card3DInstance>()?.UpdateValues();
         }
     }
 
