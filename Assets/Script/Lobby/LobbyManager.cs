@@ -6,10 +6,9 @@ using UnityEngine.SceneManagement;
 public static class LobbyConfig
 {
     public static bool IsHost { get; set; }
-    public static string ServerIP { get; set; } = "127.0.0.1";
+    public static string ServerIP { get; set; } = "";
     public static bool FromLobby { get; set; }
-    /// <summary>Steam Lobby ID for the client to join.</summary>
-    public static ulong SteamLobbyID { get; set; }
+    public static bool IsDirectIP { get; set; }
 }
 
 /// <summary>
@@ -42,6 +41,7 @@ public class LobbyManager : MonoBehaviour
     {
         LobbyConfig.FromLobby = true;
         LobbyConfig.IsHost = true;
+        LobbyConfig.IsDirectIP = false;
         SetStatus("正在创建 Steam 大厅...");
         SceneManager.LoadScene("Game");
     }
@@ -51,15 +51,15 @@ public class LobbyManager : MonoBehaviour
         LobbyConfig.FromLobby = true;
         LobbyConfig.IsHost = false;
 
-        // If IP is filled → direct KCP connection. If empty → Steam matchmaking.
         if (ipInputField != null && !string.IsNullOrEmpty(ipInputField.text.Trim()))
         {
+            LobbyConfig.IsDirectIP = true;
             LobbyConfig.ServerIP = ipInputField.text.Trim();
             SetStatus("正在连接 " + LobbyConfig.ServerIP + " ...");
         }
         else
         {
-            LobbyConfig.ServerIP = "127.0.0.1"; // placeholder, Steam path ignores this
+            LobbyConfig.IsDirectIP = false;
             SetStatus("正在搜索 Steam 大厅...");
         }
         SceneManager.LoadScene("Game");

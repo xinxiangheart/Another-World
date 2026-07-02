@@ -27,8 +27,8 @@ public class AutoConnect : MonoBehaviour
             return;
         }
 
-        // If IP is localhost, use KCP direct connection — no Steam needed
-        _useSteam = (LobbyConfig.ServerIP != "127.0.0.1");
+        // IsDirectIP = manually typed IP → KCP. Otherwise → Steam matchmaking.
+        _useSteam = !LobbyConfig.IsDirectIP;
 
         NetworkClient.OnConnectedEvent += OnConnected;
         NetworkClient.OnDisconnectedEvent += OnDisconnected;
@@ -150,9 +150,10 @@ public class AutoConnect : MonoBehaviour
         }
         else
         {
-            SetText("正在连接本地主机...");
+            string ip = string.IsNullOrEmpty(LobbyConfig.ServerIP) ? "127.0.0.1" : LobbyConfig.ServerIP;
+            SetText("正在连接 " + ip + " ...");
             EnsureKcpTransport(nm, 7777);
-            nm.networkAddress = "127.0.0.1";
+            nm.networkAddress = ip;
             nm.StartClient();
         }
     }
