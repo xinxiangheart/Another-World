@@ -41,8 +41,10 @@ public class LobbyManager : MonoBehaviour
     {
         LobbyConfig.FromLobby = true;
         LobbyConfig.IsHost = true;
-        LobbyConfig.IsDirectIP = false;
-        SetStatus("正在创建 Steam 大厅...");
+        ApplyIP();
+        SetStatus(LobbyConfig.IsDirectIP
+            ? "正在创建本地房间..."
+            : "正在创建 Steam 大厅...");
         SceneManager.LoadScene("Game");
     }
 
@@ -50,19 +52,24 @@ public class LobbyManager : MonoBehaviour
     {
         LobbyConfig.FromLobby = true;
         LobbyConfig.IsHost = false;
+        ApplyIP();
+        SetStatus(LobbyConfig.IsDirectIP
+            ? "正在连接 " + LobbyConfig.ServerIP + " ..."
+            : "正在搜索 Steam 大厅...");
+        SceneManager.LoadScene("Game");
+    }
 
+    void ApplyIP()
+    {
         if (ipInputField != null && !string.IsNullOrEmpty(ipInputField.text.Trim()))
         {
             LobbyConfig.IsDirectIP = true;
             LobbyConfig.ServerIP = ipInputField.text.Trim();
-            SetStatus("正在连接 " + LobbyConfig.ServerIP + " ...");
         }
         else
         {
             LobbyConfig.IsDirectIP = false;
-            SetStatus("正在搜索 Steam 大厅...");
         }
-        SceneManager.LoadScene("Game");
     }
 
     void SetStatus(string msg)
