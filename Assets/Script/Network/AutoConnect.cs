@@ -54,15 +54,21 @@ public class AutoConnect : MonoBehaviour
     void EnsureKcpTransport()
     {
         if (_nm == null) return;
+        // Remove ALL transports — Edgegap, Fizzy, old KCP, everything
         var all = _nm.gameObject.GetComponents<Transport>();
-        foreach (var t in all) { if (!(t is KcpTransport)) DestroyImmediate(t as Object); }
-        if (_nm.transport is KcpTransport) return;
+        foreach (var t in all)
+        {
+            Debug.Log($"[AutoConnect] Removing transport: {t.GetType().FullName}");
+            DestroyImmediate(t);
+        }
         _nm.transport = null;
         Transport.active = null;
+
         var kcp = _nm.gameObject.AddComponent<KcpTransport>();
         kcp.Port = 7777;
         _nm.transport = kcp;
         Transport.active = kcp;
+        Debug.Log("[AutoConnect] Clean KcpTransport ready");
     }
 
     // ── Host ──
