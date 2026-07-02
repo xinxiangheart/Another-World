@@ -87,6 +87,15 @@ public class CounterManager : MonoBehaviour
         if (isMine)
     {
         myCounters.Add(counter);
+        // Copy CardInstance data to 3D model so CardDisplay3D shows text
+        Card3DInstance c3d = model.GetComponent<Card3DInstance>();
+        if (c3d != null)
+        {
+            CardInstance copy = model.AddComponent<CardInstance>();
+            copy.CopyFrom(inst);
+            c3d.cardInstance = copy;
+            c3d.UpdateValues();
+        }
         Card3DHover hover = model.GetComponent<Card3DHover>();
         if (hover != null) hover.SetMyView();
     }
