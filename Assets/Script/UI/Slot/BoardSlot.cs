@@ -981,6 +981,14 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         hasCard = card3D != null;
     }
 
+    /// <summary>Force-refresh slot visual after syncing flags from server.</summary>
+    public void SyncVisual()
+    {
+        if (isBlocked) slotImage.color = Color.gray;
+        else if (prisonBlocked) slotImage.color = new Color(0.6f, 0.2f, 0.8f);
+        else slotImage.color = normalColor;
+    }
+
     bool HasEnemyTarget()
     {
         BoardManager bm = FindObjectOfType<BoardManager>();

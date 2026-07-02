@@ -130,6 +130,7 @@ public class BoardSyncManager : MonoBehaviour
             if (int.TryParse(parts[parts.Length - 2], out int stb)) slot.spotlightTierBoost = stb;
             if (int.TryParse(parts[parts.Length - 1], out int boost)) slot.slotTempAttackBoost = boost;
         }
+        slot.SyncVisual();
     }
 
     void EnsureEmpty(int idx, BoardSlot slot, BoardManager bm)
