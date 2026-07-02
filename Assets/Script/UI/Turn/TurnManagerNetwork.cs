@@ -51,8 +51,7 @@ public partial class TurnManager
             Debug.Log("[TurnManager] SetPhaseFromNetwork: ENTER BattlePhase");
             currentPhase = TurnPhase.BattlePhase;
             SetPlayerActionsEnabled(false);
-            if (!NetworkServer.active)
-                StartCoroutine(BattleManager.Instance.BattleCoroutine());
+            // Server runs battle — client waits for stat sync after battle
         }
         else if (phase == TurnPhase.EnemyTurn && currentPhase != TurnPhase.EnemyTurn)
         {
