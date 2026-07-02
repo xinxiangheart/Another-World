@@ -3,7 +3,6 @@ using Mirror;
 using TMPro;
 using kcp2k;
 
-[DefaultExecutionOrder(-100)]
 public class AutoConnect : MonoBehaviour
 {
     private TurnManager _turnManager;
@@ -15,13 +14,16 @@ public class AutoConnect : MonoBehaviour
         _nm = FindObjectOfType<NetworkManager>();
         _turnManager = FindObjectOfType<TurnManager>();
         CreateWaitingUI();
-
         if (!LobbyConfig.FromLobby) { HideUI(); return; }
-
         NetworkClient.OnConnectedEvent += OnConnected;
         NetworkClient.OnDisconnectedEvent += OnDisconnected;
         EnsureKcpTransport();
+    }
 
+    void Start()
+    {
+        if (!LobbyConfig.FromLobby) return;
+        if (_turnManager != null) _turnManager.enabled = false;
         if (LobbyConfig.IsHost)
         {
             SetText("主机已启动\n等待客户端连接...");
@@ -36,23 +38,25 @@ public class AutoConnect : MonoBehaviour
         }
     }
 
-    void Start()
-    {
-        if (LobbyConfig.FromLobby && _turnManager != null)
-            _turnManager.enabled = false;
-    }
-
     void EnsureKcpTransport()
     {
         if (_nm == null) return;
-        if (_nm.transport is KcpTransport) return;
-        var old = _nm.transport;
+
+        // Strip ALL existing transport components — they may be crashy or incompatible
+        var all = _nm.gameObject.GetComponents<Transport>();
+        foreach (var t in all)
+        {
+            Debug.Log($"[AutoConnect] Removing transport: {t.GetType().Name}");
+            DestroyImmediate(t as Object);
+        }
         _nm.transport = null;
-        if (old != null) DestroyImmediate(old as Object);
+        Transport.active = null;
+
         var kcp = _nm.gameObject.AddComponent<KcpTransport>();
         kcp.Port = 7777;
         _nm.transport = kcp;
         Transport.active = kcp;
+        Debug.Log("[AutoConnect] KcpTransport ready");
     }
 
     void CreateWaitingUI()

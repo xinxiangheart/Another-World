@@ -5281,6 +5281,7 @@ GameObject:
   - component: {fileID: 1276774490}
   - component: {fileID: 1276774491}
   - component: {fileID: 1276774492}
+  - component: {fileID: 1276774493}
   m_Layer: 0
   m_Name: NetworkManager
   m_TagString: Untagged
@@ -5322,7 +5323,7 @@ MonoBehaviour:
   sendRate: 60
   unreliableBaselineRate: 1
   unreliableRedundancy: 0
-  transport: {fileID: 0}
+  transport: {fileID: 1276774493}
   networkAddress: 127.0.0.1
   maxConnections: 100
   disconnectInactiveConnections: 0
@@ -5416,6 +5417,43 @@ MonoBehaviour:
   Timeout: 25
   AllowSteamRelay: 1
   UseNextGenSteamNetworking: 1
+--- !u!114 &1276774493
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1276774473}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fa9d4c3f48a245ed89f122f44e1e81ea, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  port: 7777
+  DualMode: 1
+  NoDelay: 1
+  Interval: 10
+  Timeout: 10000
+  RecvBufferSize: 7361536
+  SendBufferSize: 7361536
+  FastResend: 2
+  ReceiveWindowSize: 4096
+  SendWindowSize: 4096
+  MaxRetransmit: 40
+  MaximizeSocketBuffers: 1
+  ReliableMaxMessageSize: 294131
+  UnreliableMaxMessageSize: 1181
+  debugLog: 0
+  statisticsGUI: 0
+  statisticsLog: 0
+  relayAddress: 127.0.0.1
+  relayGameServerPort: 8888
+  relayGameClientPort: 9999
+  relayGUI: 0
+  userId: 11111111
+  sessionId: 22222222
+  lobbyUrl: 
+  lobbyWaitTimeout: 60
 --- !u!1 &1309084825
 GameObject:
   m_ObjectHideFlags: 0
