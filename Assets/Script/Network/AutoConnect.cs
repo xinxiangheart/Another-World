@@ -31,7 +31,8 @@ public class AutoConnect : MonoBehaviour
         }
         else
         {
-            string ip = string.IsNullOrEmpty(LobbyConfig.ServerIP) ? "127.0.0.1" : LobbyConfig.ServerIP;
+            string ip = LobbyConfig.ServerIP?.Trim();
+            if (string.IsNullOrEmpty(ip)) { SetText("请输入对方 IP 地址"); return; }
             SetText("正在连接 " + ip + " ...");
             _nm.networkAddress = ip;
             _nm.StartClient();
