@@ -126,7 +126,7 @@ public class AutoConnect : MonoBehaviour
         }
         else
         {
-            SetText("本地主机已启动\n等待客户端连接...");
+            SetText("主机已启动\n等待客户端连接...");
             EnsureKcpTransport(nm, 7777);
             nm.StartHost();
         }
@@ -163,11 +163,18 @@ public class AutoConnect : MonoBehaviour
         if (nm.transport != null && nm.transport.GetType().Name.Contains("Kcp"))
             return;
 
+        // Remove non-KCP transport (FizzySteamworks etc)
+        if (nm.transport != null)
+        {
+            Object.DestroyImmediate(nm.transport as Object);
+            nm.transport = null;
+        }
+
         KcpTransport kcp = nm.gameObject.AddComponent<KcpTransport>();
         kcp.Port = (ushort)port;
         nm.transport = kcp;
         Transport.active = kcp;
-        Debug.Log($"[AutoConnect] KCP Transport set, port={port}");
+        Debug.Log($"[AutoConnect] KCP Transport added, port={port}");
     }
 
     // ========== Steam Lobby ==========
