@@ -242,14 +242,17 @@ public class NetworkPlayer : NetworkBehaviour
                         Vector3 pos = FindObjectOfType<HandManager>().GetSlotWorldPosition(enemySlot);
                         GameObject model = Instantiate(template.prefab3D, pos, Quaternion.Euler(0, 180, 0));
                         Card3DInstance c3d = model.GetComponent<Card3DInstance>();
+                        CardInstance ci = null;
                         if (c3d != null)
                         {
-                            CardInstance ci = model.AddComponent<CardInstance>();
+                            ci = model.AddComponent<CardInstance>();
                             ci.InitFromTemplate(template, 0);
                             c3d.cardInstance = ci;
                             c3d.UpdateValues();
                         }
                         slot.SetCard(model);
+                        if (template.hasOnEnter && ci != null)
+                            slot.StartOnEnterEffect(template, ci);
                     }
                 }
             }
@@ -785,18 +788,18 @@ public class NetworkPlayer : NetworkBehaviour
         if (tm != null) tm.SetPhaseFromNetwork(phase);
     }
 
-    /// <summary>Server syncs full 12-slot board to client with perspective remap.</summary>
+    /// <summary>Server syncs full 12-slot board + attachments to client.</summary>
     [TargetRpc]
-    public void RpcSyncBoard(NetworkConnectionToClient target, string[] allSlots)
+    public void RpcSyncBoard(NetworkConnectionToClient target, string[] allSlots, string attachBlock)
     {
-        BoardSyncManager.Instance?.ApplySync(allSlots);
+        BoardSyncManager.Instance?.ApplySync(allSlots, attachBlock);
     }
 
     /// <summary>Server → client: host slots 6-11 with full stats mapped to client enemy 0-5.</summary>
     [TargetRpc]
     public void TargetSyncHostBoard(NetworkConnectionToClient target, string[] data)
     {
-        BoardSyncManager.Instance?.ApplySync(data);
+        BoardSyncManager.Instance?.ApplySync(data, "");
     }
 
     /// <summary>Client → server: report my 6-11 stats, server updates its 0-5 then re-syncs.</summary>

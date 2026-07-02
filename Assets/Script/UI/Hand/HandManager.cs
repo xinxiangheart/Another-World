@@ -957,6 +957,7 @@ public class HandManager : MonoBehaviour
             hostSlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
         }
         bm.attachedModels.Add(model);
+        BoardSyncManager.MarkDirty();
 
         // 删除手牌
         CardView cv = cardObject?.GetComponent<CardView>();

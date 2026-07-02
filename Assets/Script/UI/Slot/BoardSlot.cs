@@ -3441,6 +3441,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             }
             fairyCI.attachOrder = maxOrder + 1;
             bm.attachedModels.Add(fairy);
+            BoardSyncManager.MarkDirty();
 
             if (newHost.hasCard && newHost.currentCard3D != null && newHost.currentCard3D.GetComponent<Card3DInstance>() != null)
             {

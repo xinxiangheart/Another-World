@@ -38,6 +38,10 @@ public partial class TurnManager
             if (dc != null) dc.ResetForNewPhase();
             else Debug.LogWarning("[TurnManager] SetPhaseFromNetwork: DrawCardUI not found!");
             TriggerMyTurnStartEffects();
+            // Each client processes OWN phase-start triggers (01525/01535/01526).
+            // Host handles this in EndCurrentTurn/StartNewPhase directly.
+            if (!NetworkServer.active)
+                ProcessPhaseStartTriggers();
             // Send updated stats to server so other client sees phase-start effects
             if (NetworkClient.isConnected)
                 ReportMyBoard();
@@ -47,7 +51,8 @@ public partial class TurnManager
             Debug.Log("[TurnManager] SetPhaseFromNetwork: ENTER BattlePhase");
             currentPhase = TurnPhase.BattlePhase;
             SetPlayerActionsEnabled(false);
-            // Client does NOT run battle — server calculates everything, then syncs results.
+            if (!NetworkServer.active)
+                StartCoroutine(BattleManager.Instance.BattleCoroutine());
         }
         else if (phase == TurnPhase.EnemyTurn && currentPhase != TurnPhase.EnemyTurn)
         {

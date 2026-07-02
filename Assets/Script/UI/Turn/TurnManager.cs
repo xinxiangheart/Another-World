@@ -410,85 +410,11 @@ public partial class TurnManager : MonoBehaviour
                 if (ci != null) ci._justTransformed = false;
             }
         }
-        // ===== 阶段开始触发点确认 =====
-        if (slots != null)
-        {
-        // 检测是否触发额外回合
-            for (int i = 6; i <= 11; i++)
-            {
-                if (slots[i]?.currentCard3D == null) continue;
-                CardInstance ci = slots[i].currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                if (ci != null && ci.templateID == "01525")
-                {
-                    if (!ci.CanTriggerTrait("回合开始")) continue;
-            ConfirmQueueManager.Instance.EnqueueConfirm("是否与己方一召唤物互换位置？",
-                        onYes: (done) =>
-                        {
-                            StartCoroutine(IronSmithSelectCard(done));
-                        },
-                        onNo: (done) => { done(); }
-                    );
-                    break;
-                }
-            }
-        // 检测是否触发额外回合
-            for (int i = 6; i <= 11; i++)
-            {
-                BoardSlot slot = slots[i];
-                if (slot?.currentCard3D == null) continue;
-                CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                if (ci != null && ci.templateID == "01535")
-                {
-            ConfirmQueueManager.Instance.EnqueueConfirm("是否与己方一召唤物互换位置？",
-                        onYes: (done) =>
-                        {
-                            StartCoroutine(ExecutionSwordSelectSpell(ci, done));
-                        },
-                        onNo: (done) =>
-                        {
-                            ci.consumedSpellCost = 0;
-                            done();
-                        }
-                    );
-                    break;
-                }
-            }
-        // 检测是否触发额外回合
-            for (int i = 6; i <= 11; i++)
-            {
-                BoardSlot slot = FindObjectOfType<BoardManager>()?.GetSlot(i);
-                if (slot?.currentCard3D == null) continue;
-                Card3DInstance c3d = slot.currentCard3D.GetComponent<Card3DInstance>();
-                if (c3d?.cardInstance?.templateID == "01526")
-                {
-                    CardInstance rebelCI = c3d.cardInstance;
-                    if (!rebelCI.CanTriggerTrait("阶段开始")) continue;
-                    BoardSlot rebelSlot = slot;
-                    Card3DInstance rebel3D = c3d;
 
-            ConfirmQueueManager.Instance.EnqueueConfirm("是否与己方一召唤物互换位置？",
-                        onYes: (done) =>
-                        {
-                            ConfirmQueueManager.EnterSelectionMode();
-                            var validCards = ConfirmQueueManager.FilterHandCards(ci =>
-                                CardDatabase.Instance?.GetTemplate(ci.templateID)?.cardType == CardType.Summon);
-
-                            if (validCards.Count == 0)
-                            {
-                                ConfirmQueueManager.ExitSelectionMode();
-                                ConfirmQueueManager.RestoreAllHandCards();
-                                done();
-                                return;
-                            }
-
-                            StartCoroutine(RebelSelectCard(rebelCI, rebelSlot, rebel3D, validCards, done));
-                        },
-                        onNo: (done) => { done(); }
-                    );
-                    break;
-                }
-            }
-        }
+        // ===== Phase-start triggers (run on each client during their MyTurn) =====
+        // In OFF-line mode, process immediately. In ONLINE mode, defer to SetPhaseFromNetwork.
+        if (!NetworkServer.active && !NetworkClient.isConnected)
+            ProcessPhaseStartTriggers();
 
         // ===== Phase assignment =====
         if (NetworkServer.active)
@@ -501,6 +427,7 @@ public partial class TurnManager : MonoBehaviour
                 NetworkPlayer.Local?.AddEnergy(6);
                 FindObjectOfType<DrawCardUI>()?.ResetForNewPhase();
                 TriggerMyTurnStartEffects();
+                ProcessPhaseStartTriggers();
                 Debug.Log("[TurnManager] Phase start: Host turn (MyTurn)");
             }
             else
@@ -521,6 +448,7 @@ public partial class TurnManager : MonoBehaviour
                 NetworkPlayer.Local.AddEnergy(6);
                 FindObjectOfType<DrawCardUI>()?.ResetForNewPhase();
                 TriggerMyTurnStartEffects();
+                ProcessPhaseStartTriggers();
             }
             else
             {
@@ -617,6 +545,7 @@ public partial class TurnManager : MonoBehaviour
                 NetworkPlayer.Local?.AddEnergy(6);
                 FindObjectOfType<DrawCardUI>()?.ResetForNewPhase();
                 TriggerMyTurnStartEffects();
+                ProcessPhaseStartTriggers();
             }
             else
             {
@@ -664,6 +593,7 @@ public partial class TurnManager : MonoBehaviour
                     NetworkPlayer.Local.AddEnergy(6);
                     FindObjectOfType<DrawCardUI>()?.ResetForNewPhase();
                     TriggerMyTurnStartEffects();
+                    ProcessPhaseStartTriggers();
                 }
             }
         }
@@ -1065,6 +995,71 @@ public partial class TurnManager : MonoBehaviour
         EndCurrentTurn(skipEnergyCleanup: true);
     }
 
+
+    /// <summary>
+    /// Process phase-start EnqueueConfirm triggers for the LOCAL player's slots (6-11).
+    /// Called from SetPhaseFromNetwork(MyTurn) so each client processes its OWN cards.
+    /// Server calls this for both players in order (isMyTurnFirst determines priority).
+    /// </summary>
+    public void ProcessPhaseStartTriggers()
+    {
+        BoardSlot[] slots = FindObjectOfType<BoardManager>()?.GetAllSlots();
+        if (slots == null) return;
+
+        // 01525 铁匠（铁匠）
+        for (int i = 6; i <= 11; i++)
+        {
+            if (slots[i]?.currentCard3D == null) continue;
+            CardInstance ci = slots[i].currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci == null || ci.templateID != "01525") continue;
+            if (!ci.CanTriggerTrait("阶段开始")) continue;
+            ConfirmQueueManager.Instance.EnqueueConfirm("是否对铁匠消耗手牌？",
+                onYes: (done) => { StartCoroutine(IronSmithSelectCard(done)); },
+                onNo: (done) => { done(); });
+            break;
+        }
+        // 01535 执行之剑
+        for (int i = 6; i <= 11; i++)
+        {
+            BoardSlot slot = slots[i];
+            if (slot?.currentCard3D == null) continue;
+            CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci == null || ci.templateID != "01535") continue;
+            ConfirmQueueManager.Instance.EnqueueConfirm("是否对执行之剑消耗法术？",
+                onYes: (done) => { StartCoroutine(ExecutionSwordSelectSpell(ci, done)); },
+                onNo: (done) => { ci.consumedSpellCost = 0; done(); });
+            break;
+        }
+        // 01526 忤逆者
+        for (int i = 6; i <= 11; i++)
+        {
+            BoardSlot slot = FindObjectOfType<BoardManager>()?.GetSlot(i);
+            if (slot?.currentCard3D == null) continue;
+            Card3DInstance c3d = slot.currentCard3D.GetComponent<Card3DInstance>();
+            if (c3d?.cardInstance?.templateID != "01526") continue;
+            CardInstance rebelCI = c3d.cardInstance;
+            if (!rebelCI.CanTriggerTrait("阶段开始")) continue;
+            BoardSlot rebelSlot = slot;
+            Card3DInstance rebel3D = c3d;
+            ConfirmQueueManager.Instance.EnqueueConfirm("是否对忤逆者消耗手牌？",
+                onYes: (done) =>
+                {
+                    ConfirmQueueManager.EnterSelectionMode();
+                    var validCards = ConfirmQueueManager.FilterHandCards(ci =>
+                        CardDatabase.Instance?.GetTemplate(ci.templateID)?.cardType == CardType.Summon);
+                    if (validCards.Count == 0)
+                    {
+                        ConfirmQueueManager.ExitSelectionMode();
+                        ConfirmQueueManager.RestoreAllHandCards();
+                        done();
+                        return;
+                    }
+                    StartCoroutine(RebelSelectCard(rebelCI, rebelSlot, rebel3D, validCards, done));
+                },
+                onNo: (done) => { done(); });
+            break;
+        }
+    }
 
     public bool IsMyTurn()
     {
