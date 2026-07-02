@@ -50,7 +50,18 @@ public class LobbyManager : MonoBehaviour
     {
         LobbyConfig.FromLobby = true;
         LobbyConfig.IsHost = false;
-        SetStatus("正在搜索 Steam 大厅...");
+
+        // If IP is filled → direct KCP connection. If empty → Steam matchmaking.
+        if (ipInputField != null && !string.IsNullOrEmpty(ipInputField.text.Trim()))
+        {
+            LobbyConfig.ServerIP = ipInputField.text.Trim();
+            SetStatus("正在连接 " + LobbyConfig.ServerIP + " ...");
+        }
+        else
+        {
+            LobbyConfig.ServerIP = "127.0.0.1"; // placeholder, Steam path ignores this
+            SetStatus("正在搜索 Steam 大厅...");
+        }
         SceneManager.LoadScene("Game");
     }
 

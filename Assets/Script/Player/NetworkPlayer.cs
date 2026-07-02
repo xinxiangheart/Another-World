@@ -88,14 +88,14 @@ public class NetworkPlayer : NetworkBehaviour
     IEnumerator DelayedSetRemote()
     {
         float waited = 0f;
-        while (waited < 60f && Remote == null)
+        while (waited < 300f && Remote == null)
         {
             yield return new WaitForSeconds(0.2f);
             waited += 0.2f;
             TrySetRemote();
         }
         if (Remote == null)
-            Debug.LogError("[NetworkPlayer] Failed to find Remote after 60s!");
+            Debug.LogError("[NetworkPlayer] Failed to find Remote after 300s!");
     }
 
     public override void OnStartClient()
