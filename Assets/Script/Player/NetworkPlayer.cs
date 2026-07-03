@@ -38,6 +38,63 @@ public class NetworkPlayer : NetworkBehaviour
     TextMeshProUGUI _healthText;
     TextMeshProUGUI _energyText;
 
+    // ========== Heartbeat ==========
+
+    static System.Collections.Generic.Dictionary<int, float> s_lastHeartbeat = new System.Collections.Generic.Dictionary<int, float>();
+    const float HEARTBEAT_INTERVAL = 3f;
+    const float HEARTBEAT_TIMEOUT = 8f;
+    static bool s_heartbeatRunning;
+
+    [Command]
+    void CmdHeartbeat()
+    {
+        s_lastHeartbeat[connectionToClient.connectionId] = Time.time;
+    }
+
+    void StartHeartbeat()
+    {
+        if (s_heartbeatRunning) return;
+        s_heartbeatRunning = true;
+        if (isLocalPlayer) StartCoroutine(HeartbeatClientLoop());
+        if (isServer) StartCoroutine(HeartbeatServerLoop());
+    }
+
+    IEnumerator HeartbeatClientLoop()
+    {
+        while (NetworkClient.isConnected)
+        {
+            yield return new WaitForSeconds(HEARTBEAT_INTERVAL);
+            if (!NetworkClient.isConnected) break;
+            CmdHeartbeat();
+        }
+    }
+
+    IEnumerator HeartbeatServerLoop()
+    {
+        while (NetworkServer.active)
+        {
+            yield return new WaitForSeconds(1f);
+            float now = Time.time;
+            foreach (var kv in NetworkServer.connections)
+            {
+                if (s_lastHeartbeat.TryGetValue(kv.Key, out float last) && now - last > HEARTBEAT_TIMEOUT)
+                {
+                    Debug.LogWarning($"[NetworkPlayer] Heartbeat timeout for connId={kv.Key}, disconnecting");
+                    kv.Value.Disconnect();
+                }
+            }
+        }
+    }
+
+    void OnDisable()
+    {
+        if (isServer)
+        {
+            var conn = connectionToClient;
+            if (conn != null) s_lastHeartbeat.Remove(conn.connectionId);
+        }
+    }
+
     // ========== Mirror Lifecycle ==========
 
     public override void OnStartLocalPlayer()
@@ -52,6 +109,7 @@ public class NetworkPlayer : NetworkBehaviour
         _healthText = FindTMP("Health");
         _energyText = FindTMP("Energy");
         RefreshUI();
+        StartHeartbeat();
     }
 
     public override void OnStartServer()
@@ -69,6 +127,7 @@ public class NetworkPlayer : NetworkBehaviour
             if (Remote == null)
                 StartCoroutine(DelayedSetRemote());
         }
+        StartHeartbeat();
     }
 
     void TrySetRemote()
@@ -263,7 +322,7 @@ public class NetworkPlayer : NetworkBehaviour
                     TargetSpawnCard3D(other, templateID, slotID);
             }
         }
-        else if (template.cardType == CardType.Spell)
+        else if (template.cardType == CardType.Spell && (template.spellType & SpellType.Counter) != 0)
         {
             NetworkConnectionToClient other = null;
             foreach (var kv in NetworkServer.connections)
@@ -835,5 +894,143 @@ public class NetworkPlayer : NetworkBehaviour
             }
         }
         BoardSyncManager.MarkDirty();
+    }
+
+    /// <summary>
+    /// Pirate (01337) effect: confirm all swaps at once.
+    /// pairs: "a1,b1;a2,b2;..." — acting player's local enemy slot IDs (0-5).
+    /// </summary>
+    [Command]
+    public void CmdPirateFinalize(string pairs)
+    {
+        if (string.IsNullOrEmpty(pairs)) return;
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return;
+
+        bool hostActing = isLocalPlayer;
+
+        if (hostActing)
+        {
+            // Host already swapped locally (server IS host, same BoardManager).
+            // Only need to tell Remote.
+            if (Remote != null)
+                TargetFinalizePirate(Remote.connectionToClient, pairs);
+        }
+        else
+        {
+            // Remote acted — server BoardManager needs the swap (remote enemy 0-5 → server 6-11).
+            // Host shares server's BoardManager, so host sees it automatically. No TargetRpc to host.
+            foreach (string pair in pairs.Split(';'))
+            {
+                string[] ab = pair.Split(',');
+                if (ab.Length != 2) continue;
+                if (!int.TryParse(ab[0], out int a) || !int.TryParse(ab[1], out int b)) continue;
+                SwapBoardSlots(bm, a + 6, b + 6);
+            }
+        }
+
+        BoardSyncManager.MarkDirty();
+    }
+
+    [TargetRpc]
+    public void TargetFinalizePirate(NetworkConnectionToClient target, string pairs)
+    {
+        if (string.IsNullOrEmpty(pairs)) return;
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return;
+
+        foreach (string pair in pairs.Split(';'))
+        {
+            string[] ab = pair.Split(',');
+            if (ab.Length != 2) continue;
+            if (!int.TryParse(ab[0], out int a) || !int.TryParse(ab[1], out int b)) continue;
+
+            // Acting enemy (0-5) → this client's ally (6-11)
+            SwapBoardSlots(bm, a + 6, b + 6);
+        }
+    }
+
+    /// <summary>Swap the currentCard3D GameObjects between two board slots.</summary>
+    static void SwapBoardSlots(BoardManager bm, int slotA, int slotB)
+    {
+        if (bm == null) return;
+        BoardSlot sa = bm.GetSlot(slotA);
+        BoardSlot sb = bm.GetSlot(slotB);
+        if (sa == null || sb == null) return;
+
+        GameObject cardA = sa.currentCard3D;
+        GameObject cardB = sb.currentCard3D;
+
+        sa.SetCard(null);
+        sb.SetCard(null);
+
+        HandManager hm = FindObjectOfType<HandManager>();
+        if (cardB != null)
+        {
+            cardB.transform.position = hm.GetSlotWorldPosition(slotA);
+            sa.SetCard(cardB);
+        }
+        if (cardA != null)
+        {
+            cardA.transform.position = hm.GetSlotWorldPosition(slotB);
+            sb.SetCard(cardA);
+        }
+    }
+
+    // ========== Betrayal (03025) sync ==========
+
+    /// <summary>
+    /// Betrayal spell — spawn 03025 叛徒 on an enemy slot. Same pattern as pirate.
+    /// slotID is always the acting player's selected enemy slot (0-5).
+    /// </summary>
+    [Command]
+    public void CmdBetrayalSpawn(int slotID)
+    {
+        CardData template = CardDatabase.Instance?.GetTemplate("03025");
+        if (template?.prefab3D == null) return;
+
+        if (isLocalPlayer)
+        {
+            // Host already spawned locally. Just tell Remote.
+            if (Remote != null)
+                TargetBetrayalSpawn(Remote.connectionToClient, slotID);
+        }
+        else
+        {
+            // Remote acted — spawn on server (remote enemy 0-5 → server 6-11).
+            // Host shares server's BoardManager, sees it automatically.
+            SpawnCardOnBoard(template, slotID + 6);
+        }
+        BoardSyncManager.MarkDirty();
+    }
+
+    [TargetRpc]
+    public void TargetBetrayalSpawn(NetworkConnectionToClient target, int slotID)
+    {
+        // Acting enemy (0-5) → this client's ally (6-11)
+        CardData template = CardDatabase.Instance?.GetTemplate("03025");
+        if (template?.prefab3D != null)
+            SpawnCardOnBoard(template, slotID + 6);
+    }
+
+    /// <summary>Spawn a 3D card model on the given slot. Does nothing if slot already has a card.</summary>
+    static void SpawnCardOnBoard(CardData template, int slotID)
+    {
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        BoardSlot slot = bm?.GetSlot(slotID);
+        if (slot == null || slot.currentCard3D != null) return;
+
+        HandManager hm = FindObjectOfType<HandManager>();
+        Vector3 pos = hm.GetSlotWorldPosition(slotID);
+        GameObject model = Object.Instantiate(template.prefab3D, pos, Quaternion.Euler(0, 180, 0));
+        Card3DInstance c3d = model.GetComponent<Card3DInstance>();
+        if (c3d != null)
+        {
+            CardInstance ci = model.AddComponent<CardInstance>();
+            ci.InitFromTemplate(template, 0);
+            c3d.cardInstance = ci;
+            c3d.UpdateValues();
+        }
+        slot.SetCard(model);
     }
 }

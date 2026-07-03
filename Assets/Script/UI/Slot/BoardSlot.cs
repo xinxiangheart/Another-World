@@ -2385,6 +2385,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         bool confirmed = false;
         ConfirmSelectionButton.Instance.Show(() => confirmed = true);
 
+        System.Text.StringBuilder swapLog = null;
+        if (NetworkClient.isConnected)
+            swapLog = new System.Text.StringBuilder();
+
         BoardSlot.onTargetSelected = (slot) =>
         {
             if (slot == null || slot.isBlocked || slot.slotID < rowStart || slot.slotID >= rowStart + 3) return;
@@ -2395,6 +2399,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             else if (slot != firstSlot)
             {
                 BoardSlot secondSlot = slot;
+                int idA = firstSlot.slotID;
+                int idB = secondSlot.slotID;
                 GameObject c1 = firstSlot.currentCard3D;
                 GameObject c2 = secondSlot.currentCard3D;
                 Vector3 p1 = FindObjectOfType<HandManager>().GetSlotWorldPosition(firstSlot.slotID);
@@ -2415,6 +2421,13 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     secondSlot.SetCard(c1);
                 }
                 firstSlot = null;
+
+                // Record swap pair for network sync on confirm
+                if (swapLog != null)
+                {
+                    if (swapLog.Length > 0) swapLog.Append(';');
+                    swapLog.Append(idA).Append(',').Append(idB);
+                }
             }
         };
 
@@ -2423,6 +2436,11 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         BoardSlot.isStrengtheningSlot = false;
         BoardSlot.extraTargetFilter = null;
         ConfirmSelectionButton.Instance.Hide();
+
+        // Sync all pirate swaps to other client at once
+        if (swapLog != null && swapLog.Length > 0)
+            NetworkPlayer.Local?.CmdPirateFinalize(swapLog.ToString());
+
         CleanupAfterPlacement();
     }
     IEnumerator PrisonEnterEffect(CardInstance giver)

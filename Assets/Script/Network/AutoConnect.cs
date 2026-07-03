@@ -2,6 +2,7 @@ using UnityEngine;
 using Mirror;
 using TMPro;
 using Steamworks;
+using UnityEngine.SceneManagement;
 
 public class AutoConnect : MonoBehaviour
 {
@@ -9,6 +10,7 @@ public class AutoConnect : MonoBehaviour
     private GameObject _waitingUI;
     private NetworkManager _nm;
     private float _startTime;
+    private bool _returningToLobby;
 
     void Awake()
     {
@@ -18,6 +20,7 @@ public class AutoConnect : MonoBehaviour
         if (!LobbyConfig.FromLobby) { HideUI(); return; }
         NetworkClient.OnConnectedEvent += OnConnected;
         NetworkClient.OnDisconnectedEvent += OnDisconnected;
+        NetworkServer.OnDisconnectedEvent += OnServerDisconnected;
     }
 
     void Start()
@@ -25,6 +28,24 @@ public class AutoConnect : MonoBehaviour
         if (!LobbyConfig.FromLobby) return;
         if (_turnManager != null) _turnManager.enabled = false;
         _startTime = Time.time;
+
+        // Direct IP path — bypass Steam entirely for local/self-test
+        if (LobbyConfig.IsDirectIP)
+        {
+            SetupKCP();
+            if (LobbyConfig.IsHost)
+            {
+                SetText("正在创建本地房间...");
+                _nm.StartHost();
+            }
+            else
+            {
+                SetText($"正在连接 {LobbyConfig.ServerIP} ...");
+                _nm.networkAddress = LobbyConfig.ServerIP;
+                _nm.StartClient();
+            }
+            return;
+        }
 
         if (!SteamManager.Initialized)
         {
@@ -61,6 +82,26 @@ public class AutoConnect : MonoBehaviour
         if (!hasFizzy)
         {
             Debug.LogError("[AutoConnect] FizzySteamworks not found on NetworkManager! Add it in the Inspector.");
+        }
+    }
+
+    void SetupKCP()
+    {
+        // Remove FizzySteamworks, keep KCP transport for direct IP
+        var all = _nm.gameObject.GetComponents<Transport>();
+        Transport kcp = null;
+        foreach (var t in all)
+        {
+            if (t.GetType().Name.Contains("Kcp") || t.GetType().Name.Contains("KCP")) { kcp = t; continue; }
+            DestroyImmediate(t);
+        }
+        if (kcp != null)
+        {
+            Transport.active = kcp;
+        }
+        else
+        {
+            Debug.LogError("[AutoConnect] KcpTransport not found on NetworkManager! Add it in the Inspector.");
         }
     }
 
@@ -130,8 +171,38 @@ public class AutoConnect : MonoBehaviour
     }
     void SetText(string m) { var t=_waitingUI?.GetComponentInChildren<TextMeshProUGUI>(); if(t!=null) t.text=m; }
     void HideUI() { if(_waitingUI!=null) _waitingUI.SetActive(false); }
+    void ShowUI(string msg) { if(_waitingUI!=null) { _waitingUI.SetActive(true); SetText(msg); } }
     void OnConnected(){ SetText(NetworkServer.active?"对手已加入！\n即将开始...":"已连接！\n等待房主开始..."); }
-    void OnDisconnected(){ SetText("连接断开\n请返回 Lobby 重试"); }
-    void OnDestroy(){ _lcb?.Dispose(); _llcb?.Dispose(); _leb?.Dispose(); NetworkClient.OnConnectedEvent-=OnConnected; NetworkClient.OnDisconnectedEvent-=OnDisconnected; }
+    void OnDisconnected()
+    {
+        // Only react if game was in progress, not during lobby/connecting phase
+        if (_turnManager == null || !_turnManager.enabled) return;
+        ReturnToLobby("连接断开");
+    }
+    void OnServerDisconnected(NetworkConnectionToClient conn)
+    {
+        // Only react if game was in progress and the remote player dropped
+        if (_turnManager == null || !_turnManager.enabled) return;
+        if (NetworkPlayer.Remote != null && conn.identity?.GetComponent<NetworkPlayer>() == NetworkPlayer.Remote)
+            ReturnToLobby("对手已断开连接");
+    }
+    void ReturnToLobby(string reason)
+    {
+        if (_returningToLobby) return;
+        _returningToLobby = true;
+        Debug.Log($"[AutoConnect] ReturnToLobby: {reason}");
+        ShowUI($"{reason}\n即将返回大厅...");
+        StartCoroutine(DoReturnToLobby());
+    }
+    System.Collections.IEnumerator DoReturnToLobby()
+    {
+        yield return new WaitForSeconds(2f);
+        if (NetworkServer.active) _nm.StopHost();
+        else if (NetworkClient.isConnected) _nm.StopClient();
+        // Destroy DontDestroyOnLoad objects from this session
+        if (_waitingUI != null) { Destroy(_waitingUI); _waitingUI = null; }
+        SceneManager.LoadScene("Lobby");
+    }
+    void OnDestroy(){ _lcb?.Dispose(); _llcb?.Dispose(); _leb?.Dispose(); NetworkClient.OnConnectedEvent-=OnConnected; NetworkClient.OnDisconnectedEvent-=OnDisconnected; NetworkServer.OnDisconnectedEvent-=OnServerDisconnected; }
     void Update(){ if(_waitingUI==null||!_waitingUI.activeSelf)return; if(_turnManager!=null&&_turnManager.enabled&&NetworkTurnSync.Instance!=null&&NetworkTurnSync.Instance.gameStarted)_waitingUI.SetActive(false); }
 }
