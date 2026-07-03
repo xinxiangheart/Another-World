@@ -865,9 +865,9 @@ public class NetworkPlayer : NetworkBehaviour
         BoardSyncManager.Instance?.ApplySync(data, "");
     }
 
-    /// <summary>Client → server: report my 6-11 stats, server updates its 0-5 then re-syncs.</summary>
+    /// <summary>Client → server: report my 6-11 stats + attachments, server updates its 0-5 then re-syncs.</summary>
     [Command]
-    public void CmdReportMyBoard(string[] myStats)
+    public void CmdReportMyBoard(string[] myStats, string attachBlock)
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
         if (bm == null) return;
@@ -926,6 +926,45 @@ public class NetworkPlayer : NetworkBehaviour
                 slot.currentCard3D?.GetComponent<Card3DInstance>()?.UpdateValues();
             }
         }
+
+        // Apply attachment block — reporting client's allied attachments (host 6-11) remap to server 0-5
+        // Clear existing attachments for the reporting side first
+        int targetHostRange = isLocalPlayer ? 6 : 0; // always Remote → 0-5
+        for (int i = bm.attachedModels.Count - 1; i >= 0; i--)
+        {
+            var aci = bm.attachedModels[i]?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (aci != null && aci.isAttached && aci.hostSlotID >= targetHostRange && aci.hostSlotID < targetHostRange + 6)
+            { Destroy(bm.attachedModels[i]); bm.attachedModels.RemoveAt(i); }
+        }
+
+        if (!string.IsNullOrEmpty(attachBlock))
+        {
+            HandManager hm2 = FindObjectOfType<HandManager>();
+            foreach (var item in attachBlock.Split(new[] { "||" },
+                System.StringSplitOptions.RemoveEmptyEntries))
+            {
+                var p = item.Split('|');
+                if (p.Length < 3) continue;
+                if (!int.TryParse(p[1], out int hs) || !int.TryParse(p[2], out int o)) continue;
+                int serverHostSlot = isLocalPlayer ? hs : hs - 6; // client 6-11 → server 0-5 for Remote
+                var t = CardDatabase.Instance?.GetTemplate(p[0]);
+                if (t?.prefab3D == null || hm2 == null) continue;
+                Vector3 hostPos = hm2.GetSlotWorldPosition(serverHostSlot);
+                Vector3 attachPos = new Vector3(hostPos.x - 0.5f - o * 0.5f, hostPos.y,
+                    hostPos.z + 0.1f + o * 0.1f);
+                GameObject model = Instantiate(t.prefab3D, attachPos, Quaternion.Euler(0, 180, 0));
+                Card3DInstance c3dAtt = model.GetComponent<Card3DInstance>();
+                if (c3dAtt != null)
+                {
+                    CardInstance nci = model.AddComponent<CardInstance>();
+                    nci.InitFromTemplate(t, 0);
+                    nci.isAttached = true; nci.hostSlotID = serverHostSlot; nci.attachOrder = o;
+                    c3dAtt.cardInstance = nci; c3dAtt.UpdateValues();
+                }
+                bm.attachedModels.Add(model);
+            }
+        }
+
         BoardSyncManager.MarkDirty();
     }
 

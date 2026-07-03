@@ -772,12 +772,12 @@ public class HandManager : MonoBehaviour
                 if (hostCard != null)
                 {
                     // 添加机械前缀（不重复）
-                    if (!hostCard.prefixes.Contains("灵能"))
+                    if (!hostCard.prefixes.Contains("机械"))
                     {
                         if (string.IsNullOrEmpty(hostCard.prefixes) || hostCard.prefixes == "无")
-                            hostCard.prefixes = "灵能";
+                            hostCard.prefixes = "机械";
                         else
-                            hostCard.prefixes += " 灵能";
+                            hostCard.prefixes += " 机械";
                     }
 
                     // 统计其他机械单位数量（不含宿主自己）
@@ -981,7 +981,8 @@ public class HandManager : MonoBehaviour
         }
 
         // Sync attachment model + host stat changes to opponent
-        if (NetworkClient.isConnected)
+        // Only pure client reports — host IS the server, its board is the authority.
+        if (NetworkClient.isConnected && !NetworkServer.active)
         {
             NetworkPlayer.Local?.CmdReportAttach(template.templateID, hostSlot.slotID, attachOrder);
             TurnManager.SyncMyBoardToOpponent();

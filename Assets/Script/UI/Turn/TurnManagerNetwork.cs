@@ -147,11 +147,13 @@ public partial class TurnManager
     /// <summary>
     /// Public resync entry point — call after any local board mutation
     /// (prefix add, transform, attach) so the opponent's view updates.
-    /// Only does anything when connected as a client.
+    /// Only does anything when running as a PURE client (NOT host-as-server).
+    /// Host's board IS the server board — no client→server report needed.
     /// </summary>
     public static void SyncMyBoardToOpponent()
     {
-        if (NetworkClient.isConnected)
+        // Only pure clients report. Host=server, its board is the authority.
+        if (NetworkClient.isConnected && !NetworkServer.active)
             ReportMyBoard();
     }
 
@@ -179,6 +181,19 @@ public partial class TurnManager
                 ci.poisoned ? "1" : "0",
                 ci.prefixes ?? "");
         }
-        NetworkPlayer.Local?.CmdReportMyBoard(my);
+
+        // Also serialize attachments whose host is in our ally slots (6-11)
+        // Same format as BoardSyncManager.SyncNow attachBlock
+        bm.attachedModels.RemoveAll(a => a == null);
+        var attachParts = new System.Collections.Generic.List<string>();
+        foreach (var o in bm.attachedModels)
+        {
+            var ci = o.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci != null && ci.isAttached && ci.hostSlotID >= 6)
+                attachParts.Add($"{ci.templateID}|{ci.hostSlotID}|{ci.attachOrder}");
+        }
+        string attachBlock = attachParts.Count > 0 ? string.Join("||", attachParts) : "";
+
+        NetworkPlayer.Local?.CmdReportMyBoard(my, attachBlock);
     }
 }
