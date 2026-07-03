@@ -90,26 +90,25 @@ public class AutoConnect : MonoBehaviour
 
     System.Collections.IEnumerator FetchIPThenCreateLobby()
     {
-        string ip = "127.0.0.1";
-        var req = UnityEngine.Networking.UnityWebRequest.Get("https://api.ipify.org");
+        string ip = "";
+        var req = UnityEngine.Networking.UnityWebRequest.Get("https://ipv4.ip.sb");
         req.timeout = 5;
         req.certificateHandler = new BypassCert();
         yield return req.SendWebRequest();
         if (req.result == UnityEngine.Networking.UnityWebRequest.Result.Success)
-            ip = req.downloadHandler.text.Trim();
-
-        bool isLan = ip.StartsWith("127.") || ip.StartsWith("10.") || ip.StartsWith("192.168.") || ip.StartsWith("172.");
-        if (isLan)
         {
-            // Can't detect public IP → can't use KCP over internet
-            SetText("⚠️ 无法获取公网 IP\n\n请检查网络连接\n或让对方直接输入你的 IP");
-            _nm.StartHost();
-            yield break;
+            ip = req.downloadHandler.text.Trim();
+            bool isLan = ip.StartsWith("127.") || ip.StartsWith("10.") || ip.StartsWith("192.168.") || ip.StartsWith("172.");
+            if (isLan) ip = "";
         }
 
         RegisterCallbacks();
         _lobbyIP = ip;
         SteamMatchmaking.CreateLobby(ELobbyType.k_ELobbyTypePublic, 2);
+        if (!string.IsNullOrEmpty(ip))
+            SetText("正在获取 IP...\n你的IP: " + ip);
+        else
+            SetText("正在创建 Steam 房间...\n（未能获取公网IP，\n同一局域网内可直连）");
     }
 
     string _lobbyIP = "";
