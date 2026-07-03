@@ -101,6 +101,23 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
         return;
     }
 
+    // 联机：非己方回合禁止出牌，回弹手牌
+    if (NetworkClient.isConnected)
+    {
+        TurnManager tmGuard = FindObjectOfType<TurnManager>();
+        if (tmGuard != null && !tmGuard.IsMyTurn())
+        {
+            Debug.Log("非己方回合，无法出牌");
+            SetButtonsInteractable(true);
+            transform.SetParent(originalParent);
+            rectTransform.anchoredPosition = Vector2.zero;
+            transform.localScale = originalScale;
+            handManager.SetHandAreaRaycast(true);
+            handManager.RefreshLayout(true);
+            return;
+        }
+    }
+
     CardInstance inst = GetComponent<CardInstance>();
     CardData template = CardDatabase.Instance?.GetTemplate(inst?.templateID);
     NetworkPlayer player = NetworkPlayer.Local;
@@ -672,6 +689,8 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
                             }
                             targetSlot.SetCard(model);
                             Debug.Log($"机械飞升：槽位{targetSlot.slotID}转变为飞升者");
+                            if (NetworkClient.isConnected)
+                                NetworkPlayer.Local?.CmdReportTransform(targetSlot.slotID, "03005");
                         }
                     }
                 }
@@ -701,6 +720,8 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
                             }
                             targetSlot.SetCard(model);
                             Debug.Log($"深渊之息：槽位{targetSlot.slotID}转变为被腐化者");
+                            if (NetworkClient.isConnected)
+                                NetworkPlayer.Local?.CmdReportTransform(targetSlot.slotID, "03003");
                         }
                     }
                 }

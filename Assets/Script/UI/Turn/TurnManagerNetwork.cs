@@ -145,6 +145,17 @@ public partial class TurnManager
     }
 
     /// <summary>
+    /// Public resync entry point — call after any local board mutation
+    /// (prefix add, transform, attach) so the opponent's view updates.
+    /// Only does anything when connected as a client.
+    /// </summary>
+    public static void SyncMyBoardToOpponent()
+    {
+        if (NetworkClient.isConnected)
+            ReportMyBoard();
+    }
+
+    /// <summary>
     /// Call after TriggerMyTurnStartEffects on any client.
     /// Packs slots 6-11 and sends to server for relay.
     /// </summary>

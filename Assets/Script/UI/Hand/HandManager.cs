@@ -442,6 +442,9 @@ public class HandManager : MonoBehaviour
                 }
                 CardView cvMerge = cardObject.GetComponent<CardView>();
                 if (cvMerge != null) RemoveCard(cvMerge);
+
+                // Sync merged 阴阳 + cleared slot to opponent
+                TurnManager.SyncMyBoardToOpponent();
                 return;
             }
 
@@ -975,6 +978,13 @@ public class HandManager : MonoBehaviour
         {
             handCards.RemoveAll(c => c == null);
             RefreshLayout(true);
+        }
+
+        // Sync attachment model + host stat changes to opponent
+        if (NetworkClient.isConnected)
+        {
+            NetworkPlayer.Local?.CmdReportAttach(template.templateID, hostSlot.slotID, attachOrder);
+            TurnManager.SyncMyBoardToOpponent();
         }
     }
     private void ProcessAuras(BoardSlot slot, CardInstance sourceInstance)
@@ -1853,6 +1863,9 @@ public class HandManager : MonoBehaviour
             }
             RefreshLayout(true);
             CardDrag.CleanupSpellResources();
+
+            // Sync core model + ally prefix changes to opponent
+            TurnManager.SyncMyBoardToOpponent();
         };
         yield return new WaitUntil(() => placed);
     }

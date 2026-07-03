@@ -874,30 +874,56 @@ public class NetworkPlayer : NetworkBehaviour
         for (int i = 0; i < 6 && i < myStats.Length; i++)
         {
             string raw = myStats[i];
-            if (string.IsNullOrEmpty(raw)) continue;
-            string tid = raw.Split('|')[0];
-            if (string.IsNullOrEmpty(tid)) continue;
             BoardSlot slot = bm.GetSlot(i); // server 0-5 = reporting client
-            if (slot?.currentCard3D != null)
+            if (slot == null) continue;
+
+            string tid = string.IsNullOrEmpty(raw) ? "" : raw.Split('|')[0];
+
+            // Empty report → clear the slot
+            if (string.IsNullOrEmpty(tid))
             {
-                var ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                if (ci != null && ci.templateID == tid)
+                if (slot.currentCard3D != null) { Destroy(slot.currentCard3D); slot.SetCard(null); }
+                continue;
+            }
+
+            var ci = slot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+
+            // Model missing or templateID changed (transform: 腐化/飞升/阴阳) → rebuild model
+            if (ci == null || ci.templateID != tid)
+            {
+                if (slot.currentCard3D != null) { Destroy(slot.currentCard3D); slot.SetCard(null); }
+                CardData t = CardDatabase.Instance?.GetTemplate(tid);
+                if (t?.prefab3D != null)
                 {
-                    string[] p = raw.Split('|');
-                    int hp2, atk2, mh2, cost2, tier2;
-                    if (p.Length > 1 && int.TryParse(p[1], out hp2)) ci.currentHealth = hp2;
-                    if (p.Length > 2 && int.TryParse(p[2], out atk2)) ci.currentAttack = atk2;
-                    if (p.Length > 3 && int.TryParse(p[3], out mh2)) ci.currentMaxHealth = mh2;
-                    if (p.Length > 4 && int.TryParse(p[4], out cost2)) ci.currentCost = cost2;
-                    if (p.Length > 5 && int.TryParse(p[5], out tier2)) ci.currentTier = tier2;
-                    if (p.Length > 6) ci.hasShield = (p[6] == "1");
-                    if (p.Length > 7) ci.silencedThisPhase = (p[7] == "1");
-                    if (p.Length > 8) ci.isAttached = (p[8] == "1");
-                    if (p.Length > 9) ci.poisoned = (p[9] == "1");
-                    if (p.Length > 10) ci.prefixes = p[10];
-                    var u = slot.currentCard3D.GetComponent<Card3DInstance>();
-                    if (u != null) u.UpdateValues();
+                    Vector3 pos = FindObjectOfType<HandManager>().GetSlotWorldPosition(i);
+                    GameObject model = Instantiate(t.prefab3D, pos, Quaternion.Euler(0, 180, 0));
+                    Card3DInstance c3d = model.GetComponent<Card3DInstance>();
+                    if (c3d != null)
+                    {
+                        CardInstance nci = model.AddComponent<CardInstance>();
+                        nci.InitFromTemplate(t, 0);
+                        c3d.cardInstance = nci;
+                    }
+                    slot.SetCard(model);
+                    ci = model.GetComponent<Card3DInstance>()?.cardInstance;
                 }
+            }
+
+            if (ci != null && ci.templateID == tid)
+            {
+                string[] p = raw.Split('|');
+                int hp2, atk2, mh2, cost2, tier2;
+                if (p.Length > 1 && int.TryParse(p[1], out hp2)) ci.currentHealth = hp2;
+                if (p.Length > 2 && int.TryParse(p[2], out atk2)) ci.currentAttack = atk2;
+                if (p.Length > 3 && int.TryParse(p[3], out mh2)) ci.currentMaxHealth = mh2;
+                if (p.Length > 4 && int.TryParse(p[4], out cost2)) ci.currentCost = cost2;
+                if (p.Length > 5 && int.TryParse(p[5], out tier2)) ci.currentTier = tier2;
+                if (p.Length > 6) ci.hasShield = (p[6] == "1");
+                if (p.Length > 7) ci.silencedThisPhase = (p[7] == "1");
+                if (p.Length > 8) ci.isAttached = (p[8] == "1");
+                if (p.Length > 9) ci.poisoned = (p[9] == "1");
+                if (p.Length > 10) ci.prefixes = p[10];
+                slot.currentCard3D?.GetComponent<Card3DInstance>()?.UpdateValues();
             }
         }
         BoardSyncManager.MarkDirty();
@@ -1104,6 +1130,114 @@ public class NetworkPlayer : NetworkBehaviour
         CardData template = CardDatabase.Instance?.GetTemplate(templateID);
         if (template != null)
             AddCardToHand(template);
+    }
+
+    // ========== Attachment sync ==========
+
+    /// <summary>
+    /// Client → server: an attachment was placed on hostSlotID (acting client coords 6-11).
+    /// Server rebuilds the attachment model on its board; BoardSyncManager then broadcasts it.
+    /// </summary>
+    [Command]
+    public void CmdReportAttach(string templateID, int hostSlotID, int attachOrder)
+    {
+        // Acting client's ally 6-11 → server: host keeps 6-11, remote maps to 0-5
+        bool hostActing = isLocalPlayer;
+        int serverHostSlot = hostActing ? hostSlotID : hostSlotID - 6;
+
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        BoardSlot hostSlot = bm?.GetSlot(serverHostSlot);
+        if (hostSlot?.currentCard3D == null) return;
+
+        CardData t = CardDatabase.Instance?.GetTemplate(templateID);
+        if (t?.prefab3D == null) return;
+
+        // Skip if already present (avoid dupes when host is the actor)
+        foreach (var existing in bm.attachedModels)
+        {
+            var eci = existing?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (eci != null && eci.hostSlotID == serverHostSlot && eci.attachOrder == attachOrder && eci.templateID == templateID)
+                return;
+        }
+
+        Vector3 hostPos = hostSlot.currentCard3D.transform.position;
+        Vector3 attachPos = new Vector3(hostPos.x - 0.5f - attachOrder * 0.5f, hostPos.y, hostPos.z + 0.1f + attachOrder * 0.1f);
+        GameObject model = Instantiate(t.prefab3D, attachPos, Quaternion.Euler(0, 180, 0));
+        Card3DInstance c3d = model.GetComponent<Card3DInstance>();
+        if (c3d != null)
+        {
+            CardInstance ci = model.AddComponent<CardInstance>();
+            ci.InitFromTemplate(t, 0);
+            ci.isAttached = true;
+            ci.hostSlotID = serverHostSlot;
+            ci.attachOrder = attachOrder;
+            c3d.cardInstance = ci;
+            c3d.UpdateValues();
+        }
+        bm.attachedModels.Add(model);
+        BoardSyncManager.MarkDirty();
+    }
+
+    // ========== Transform sync (腐化/飞升 on any slot) ==========
+
+    /// <summary>
+    /// Client → server: a minion at localSlotID transformed into newTemplateID.
+    /// localSlotID is in the acting client's coordinates (0-5 enemy, 6-11 ally).
+    /// Server remaps and rebuilds its model, then broadcasts to the other client.
+    /// </summary>
+    [Command]
+    public void CmdReportTransform(int localSlotID, string newTemplateID)
+    {
+        bool hostActing = isLocalPlayer;
+        // Acting ally 6-11 → server: host keeps 6-11, remote maps to 0-5
+        // Acting enemy 0-5 → server: host keeps 0-5, remote maps to 6-11
+        int serverSlot;
+        if (localSlotID >= 6) serverSlot = hostActing ? localSlotID : localSlotID - 6;
+        else serverSlot = hostActing ? localSlotID : localSlotID + 6;
+
+        RebuildSlotModel(serverSlot, newTemplateID);
+
+        // Broadcast to the other client (their view mirrors the acting client)
+        NetworkPlayer other = hostActing ? Remote : Local;
+        if (other != null)
+        {
+            // Other client sees the acting client's slots mirrored: ally↔enemy
+            int otherSlot = localSlotID >= 6 ? localSlotID - 6 : localSlotID + 6;
+            other.TargetReportTransform(other.connectionToClient, otherSlot, newTemplateID);
+        }
+        BoardSyncManager.MarkDirty();
+    }
+
+    [TargetRpc]
+    public void TargetReportTransform(NetworkConnectionToClient target, int slotID, string newTemplateID)
+    {
+        RebuildSlotModel(slotID, newTemplateID);
+    }
+
+    /// <summary>Replace the model at slotID with a fresh instance of newTemplateID.</summary>
+    static void RebuildSlotModel(int slotID, string newTemplateID)
+    {
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        BoardSlot slot = bm?.GetSlot(slotID);
+        if (slot == null) return;
+
+        if (slot.currentCard3D != null) { Destroy(slot.currentCard3D); slot.SetCard(null); }
+
+        CardData t = CardDatabase.Instance?.GetTemplate(newTemplateID);
+        if (t?.prefab3D == null) return;
+
+        HandManager hm = FindObjectOfType<HandManager>();
+        Vector3 pos = hm.GetSlotWorldPosition(slotID);
+        GameObject model = Object.Instantiate(t.prefab3D, pos, Quaternion.Euler(0, 180, 0));
+        Card3DInstance c3d = model.GetComponent<Card3DInstance>();
+        if (c3d != null)
+        {
+            CardInstance ci = model.AddComponent<CardInstance>();
+            ci.InitFromTemplate(t, 0);
+            c3d.cardInstance = ci;
+            c3d.UpdateValues();
+        }
+        slot.SetCard(model);
     }
 
     /// <summary>Remove a counter model after it's been triggered/expired on the server.</summary>
