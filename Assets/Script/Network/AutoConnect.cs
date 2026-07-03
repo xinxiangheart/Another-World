@@ -66,9 +66,10 @@ public class AutoConnect : MonoBehaviour
 
     Callback<LobbyCreated_t> _lcb;
     Callback<LobbyMatchList_t> _llcb;
+    Callback<LobbyEnter_t> _leb;
     void RegisterCallbacks()
     {
-        _lcb?.Dispose(); _llcb?.Dispose();
+        _lcb?.Dispose(); _llcb?.Dispose(); _leb?.Dispose();
         _lcb = Callback<LobbyCreated_t>.Create(r =>
         {
             if (r.m_eResult != EResult.k_EResultOK) { SetText("创建房间失败"); return; }
@@ -83,6 +84,23 @@ public class AutoConnect : MonoBehaviour
             SteamMatchmaking.JoinLobby(SteamMatchmaking.GetLobbyByIndex(0));
             SetText("找到房间！\n正在加入...");
         });
+        _leb = Callback<LobbyEnter_t>.Create(r =>
+        {
+            if (LobbyConfig.IsHost) return;
+            var lid = new CSteamID(r.m_ulSteamIDLobby);
+            CSteamID hostID = SteamMatchmaking.GetLobbyOwner(lid);
+            Debug.Log($"[AutoConnect] LobbyEnter — lobby={lid}, host={hostID}, starting client in 0.5s");
+            // Store the host's SteamID in lobby data so Fizzy can find it
+            SteamMatchmaking.SetLobbyMemberData(lid, "ready", "1");
+            SetText("已进入大厅\n正在连接 Steam P2P ...");
+            Invoke(nameof(StartMirrorClient), 0.5f);
+        });
+    }
+
+    void StartMirrorClient()
+    {
+        Debug.Log($"[AutoConnect] StartMirrorClient — transport={_nm.transport?.GetType().Name}");
+        _nm.StartClient();
     }
 
     void SearchLobbies()
@@ -110,6 +128,6 @@ public class AutoConnect : MonoBehaviour
     void HideUI() { if(_waitingUI!=null) _waitingUI.SetActive(false); }
     void OnConnected(){ SetText(NetworkServer.active?"对手已加入！\n即将开始...":"已连接！\n等待房主开始..."); }
     void OnDisconnected(){ SetText("连接断开\n请返回 Lobby 重试"); }
-    void OnDestroy(){ _lcb?.Dispose(); _llcb?.Dispose(); NetworkClient.OnConnectedEvent-=OnConnected; NetworkClient.OnDisconnectedEvent-=OnDisconnected; }
+    void OnDestroy(){ _lcb?.Dispose(); _llcb?.Dispose(); _leb?.Dispose(); NetworkClient.OnConnectedEvent-=OnConnected; NetworkClient.OnDisconnectedEvent-=OnDisconnected; }
     void Update(){ if(_waitingUI==null||!_waitingUI.activeSelf)return; if(_turnManager!=null&&_turnManager.enabled&&NetworkTurnSync.Instance!=null&&NetworkTurnSync.Instance.gameStarted)_waitingUI.SetActive(false); }
 }
