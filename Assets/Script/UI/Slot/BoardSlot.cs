@@ -967,6 +967,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             hm?.ShowAllCards();
             FindObjectOfType<CardDrag>()?.SetButtonsInteractable(true);
         }
+        BoardSyncManager.MarkDirty();
     }
 
     public void SetBlocked(bool blocked)
