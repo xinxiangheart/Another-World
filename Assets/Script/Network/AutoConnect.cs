@@ -2,6 +2,7 @@ using UnityEngine;
 using Mirror;
 using TMPro;
 using Steamworks;
+using kcp2k;
 
 public class AutoConnect : MonoBehaviour
 {
@@ -11,6 +12,7 @@ public class AutoConnect : MonoBehaviour
     private float _startTime;
     private Callback<LobbyCreated_t> _lcb;
     private Callback<LobbyMatchList_t> _llcb;
+    private string _lobbyIP = "";
 
     void Awake()
     {
@@ -28,32 +30,40 @@ public class AutoConnect : MonoBehaviour
         if (_turnManager != null) _turnManager.enabled = false;
         _startTime = Time.time;
 
-        if (!SteamManager.Initialized)
+        var filledIP = !string.IsNullOrEmpty(LobbyConfig.ServerIP?.Trim());
+
+        if (filledIP)
         {
-            SetText("Steam 未初始化\n请确保:\n1. 已登录 Steam 客户端\n2. 工程目录下有 steam_appid.txt");
+            SetupKcp();
+            if (LobbyConfig.IsHost)
+            {
+                SetText("主机已启动\n等待客户端连接...\nIP: " + LobbyConfig.ServerIP);
+                _nm.StartHost();
+            }
+            else
+            {
+                SetText("正在连接 " + LobbyConfig.ServerIP + " ...");
+                _nm.networkAddress = LobbyConfig.ServerIP;
+                _nm.StartClient();
+            }
             return;
         }
 
-        _lcb = Callback<LobbyCreated_t>.Create(r =>
+        if (!SteamManager.Initialized)
         {
-            if (r.m_eResult != EResult.k_EResultOK) { SetText("创建房间失败"); return; }
-            SteamMatchmaking.SetLobbyData(new CSteamID(r.m_ulSteamIDLobby), "game", "anotherworld");
-            SetText("房间已创建\n等待对手加入...");
-            _nm.StartHost();
-        });
+            SetText("请先启动 Steam 客户端\n或在下方输入对方 IP 地址");
+            return;
+        }
 
-        _llcb = Callback<LobbyMatchList_t>.Create(r =>
-        {
-            if (r.m_nLobbiesMatching == 0) return;
-            CancelInvoke(nameof(SearchLobbies));
-            SteamMatchmaking.JoinLobby(SteamMatchmaking.GetLobbyByIndex(0));
-            SetText("找到房间！\n正在加入...");
-        });
+        SetupKcp();
+
+        _lcb = Callback<LobbyCreated_t>.Create(OnLobbyCreated);
+        _llcb = Callback<LobbyMatchList_t>.Create(OnLobbyList);
 
         if (LobbyConfig.IsHost)
         {
-            SetText("正在创建房间...");
-            SteamMatchmaking.CreateLobby(ELobbyType.k_ELobbyTypePublic, 2);
+            SetText("正在获取公网 IP...");
+            StartCoroutine(FetchIPThenCreateLobby());
         }
         else
         {
@@ -62,12 +72,63 @@ public class AutoConnect : MonoBehaviour
         }
     }
 
+    void SetupKcp()
+    {
+        var all = _nm.gameObject.GetComponents<Transport>();
+        foreach (var t in all) DestroyImmediate(t);
+        _nm.transport = null;
+        Transport.active = null;
+        var kcp = _nm.gameObject.AddComponent<KcpTransport>();
+        kcp.Port = 7777;
+        _nm.transport = kcp;
+        Transport.active = kcp;
+    }
+
+    System.Collections.IEnumerator FetchIPThenCreateLobby()
+    {
+        string ip = "";
+        var req = UnityEngine.Networking.UnityWebRequest.Get("https://ipv4.ip.sb");
+        req.timeout = 5;
+        yield return req.SendWebRequest();
+        if (req.result == UnityEngine.Networking.UnityWebRequest.Result.Success)
+            ip = req.downloadHandler.text.Trim();
+
+        _lobbyIP = ip;
+        SetText("正在创建房间...\n你的IP: " + (string.IsNullOrEmpty(ip) ? "未获取到" : ip));
+        SteamMatchmaking.CreateLobby(ELobbyType.k_ELobbyTypePublic, 2);
+    }
+
+    void OnLobbyCreated(LobbyCreated_t r)
+    {
+        if (r.m_eResult != EResult.k_EResultOK) { SetText("创建房间失败"); return; }
+        var lid = new CSteamID(r.m_ulSteamIDLobby);
+        SteamMatchmaking.SetLobbyData(lid, "game", "anotherworld");
+        if (!string.IsNullOrEmpty(_lobbyIP))
+            SteamMatchmaking.SetLobbyData(lid, "host_ip", _lobbyIP);
+        SteamMatchmaking.SetLobbyData(lid, "host_port", "7777");
+        SetText("房间已创建\n等待对手加入...\n你的IP: " + (_lobbyIP ?? ""));
+        _nm.StartHost();
+    }
+
     void SearchLobbies()
     {
         if (NetworkClient.isConnected || NetworkServer.active) { CancelInvoke(nameof(SearchLobbies)); return; }
-        if (Time.time - _startTime > 60f) { CancelInvoke(nameof(SearchLobbies)); SetText("搜索超时\n请检查网络"); return; }
+        if (Time.time - _startTime > 60f) { CancelInvoke(nameof(SearchLobbies)); SetText("搜索超时\n请检查网络或手动输入IP"); return; }
         SteamMatchmaking.AddRequestLobbyListStringFilter("game", "anotherworld", ELobbyComparison.k_ELobbyComparisonEqual);
         SteamMatchmaking.RequestLobbyList();
+    }
+
+    void OnLobbyList(LobbyMatchList_t r)
+    {
+        if (r.m_nLobbiesMatching == 0) return;
+        CancelInvoke(nameof(SearchLobbies));
+        var lid = SteamMatchmaking.GetLobbyByIndex(0);
+        string ip = SteamMatchmaking.GetLobbyData(lid, "host_ip");
+        if (string.IsNullOrEmpty(ip)) { SetText("找到房间但无 IP 数据\n请手动输入对方 IP"); return; }
+        SetText("找到房间！\n正在连接 " + ip + " ...");
+        SteamMatchmaking.LeaveLobby(lid);
+        _nm.networkAddress = ip;
+        _nm.StartClient();
     }
 
     void CreateWaitingUI()
@@ -94,7 +155,6 @@ public class AutoConnect : MonoBehaviour
         NetworkClient.OnConnectedEvent -= OnConnected;
         NetworkClient.OnDisconnectedEvent -= OnDisconnected;
     }
-
     void Update()
     {
         if (_waitingUI == null || !_waitingUI.activeSelf) return;

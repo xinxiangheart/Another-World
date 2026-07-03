@@ -5322,7 +5322,7 @@ MonoBehaviour:
   sendRate: 60
   unreliableBaselineRate: 1
   unreliableRedundancy: 0
-  transport: {fileID: 1276774492}
+  transport: {fileID: 0}
   networkAddress: 127.0.0.1
   maxConnections: 100
   disconnectInactiveConnections: 0
