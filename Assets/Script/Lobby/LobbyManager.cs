@@ -21,6 +21,7 @@ public class LobbyManager : MonoBehaviour
     public Button joinRoomButton;
     public Button viewCardsButton;
     public Button gameIntroButton;
+    public Button leaveButton;
 
     [Header("Input")]
     public TMP_InputField ipInputField;
@@ -34,6 +35,7 @@ public class LobbyManager : MonoBehaviour
         if (joinRoomButton != null) joinRoomButton.onClick.AddListener(JoinRoom);
         if (viewCardsButton != null) viewCardsButton.onClick.AddListener(() => SetStatus("卡牌浏览功能开发中"));
         if (gameIntroButton != null) gameIntroButton.onClick.AddListener(() => SetStatus("游戏介绍功能开发中"));
+        if (leaveButton != null) leaveButton.onClick.AddListener(LeaveGame);
         SetStatus("欢迎来到异界");
     }
 
@@ -70,6 +72,16 @@ public class LobbyManager : MonoBehaviour
         {
             LobbyConfig.IsDirectIP = false;
         }
+    }
+
+    public void LeaveGame()
+    {
+        Debug.Log("[Lobby] LeaveGame — quitting application");
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.isPlaying = false;
+#else
+        Application.Quit();
+#endif
     }
 
     void SetStatus(string msg)

@@ -79,7 +79,7 @@ public class Card3DHover : MonoBehaviour
         if (shouldTriggerDiscard)
             HandleDiscardEffect(cardInstance, savedSlotID);
 
-        BoardSyncManager.MarkDirty();
+        TurnManager.SyncMyBoardToOpponent();
     }
     private bool CanDiscard()
     {
@@ -154,7 +154,7 @@ public class Card3DHover : MonoBehaviour
                             }
                         }
                         BoardSlot.CheckAndHandleDeaths();
-                        BoardSyncManager.MarkDirty();
+                        TurnManager.SyncMyBoardToOpponent();
                     });
                     return;
                 }
@@ -174,7 +174,7 @@ public class Card3DHover : MonoBehaviour
                             t3d?.cardInstance?.ReceiveHeal(3, CardInstance.HealSourceType.Minion);
                             t3d?.UpdateValues();
                         }
-                        BoardSyncManager.MarkDirty();
+                        TurnManager.SyncMyBoardToOpponent();
                     });
                     return;
                 }
@@ -205,7 +205,7 @@ public class Card3DHover : MonoBehaviour
                             }
                         }
                         BoardSlot.CheckAndHandleDeaths();
-                        BoardSyncManager.MarkDirty();
+                        TurnManager.SyncMyBoardToOpponent();
                     });
                     return;
                 }
@@ -229,7 +229,7 @@ public class Card3DHover : MonoBehaviour
                                 t3d.UpdateValues();
                             }
                         }
-                        BoardSyncManager.MarkDirty();
+                        TurnManager.SyncMyBoardToOpponent();
                     });
                     return;
                 }

@@ -42,8 +42,9 @@ public partial class TurnManager
             // Host handles this in EndCurrentTurn/StartNewPhase directly.
             if (!NetworkServer.active)
                 ProcessPhaseStartTriggers();
-            // Send updated stats to server so other client sees phase-start effects
-            if (NetworkClient.isConnected)
+            // Send updated stats to server so other client sees phase-start effects.
+            // Only pure client reports — host IS the server.
+            if (NetworkClient.isConnected && !NetworkServer.active)
                 ReportMyBoard();
         }
         else if (phase == TurnPhase.BattlePhase && currentPhase != TurnPhase.BattlePhase)

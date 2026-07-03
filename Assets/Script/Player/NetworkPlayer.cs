@@ -1279,6 +1279,30 @@ public class NetworkPlayer : NetworkBehaviour
         slot.SetCard(model);
     }
 
+    // ========== Surrender ==========
+
+    [Command]
+    public void CmdSurrender()
+    {
+        Debug.Log($"[NetworkPlayer] CmdSurrender from netId={netId}");
+
+        // Tell the other player to return to lobby
+        NetworkPlayer other = this == Local ? Remote : Local;
+        if (other != null)
+            TargetSurrender(other.connectionToClient);
+
+        // Each side already handles its own lobby return:
+        // - Surrendering player: Surrender() starts DoReturnToLobby after sending CmdSurrender
+        // - Other player: TargetSurrender triggers OnOpponentSurrendered()
+    }
+
+    [TargetRpc]
+    public void TargetSurrender(NetworkConnectionToClient target)
+    {
+        Debug.Log("[NetworkPlayer] TargetSurrender received");
+        FindObjectOfType<SettingsButton>()?.OnOpponentSurrendered();
+    }
+
     /// <summary>Remove a counter model after it's been triggered/expired on the server.</summary>
     [TargetRpc]
     public void TargetRemoveCounter(NetworkConnectionToClient target, string templateID, string listType)

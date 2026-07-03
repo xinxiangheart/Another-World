@@ -82,7 +82,7 @@ public class BoardSyncManager : MonoBehaviour
             if (p.Length > 2 && int.TryParse(p[2], out int od)) o = od;
             var t = CardDatabase.Instance?.GetTemplate(p[0]);
             if (t?.prefab3D == null || hm == null) continue;
-            int cs = (hs >= 6 && hs <= 11) ? hs - 6 : hs;
+            int cs = hs >= 6 ? hs - 6 : hs + 6;  // mirror 6-11↔0-5
             var m = Instantiate(t.prefab3D, hm.GetSlotWorldPosition(cs)
                 + new Vector3(-0.5f - o * 0.5f, 0, 0.1f + o * 0.1f), Quaternion.Euler(0, 180, 0));
             var c = m.GetComponent<Card3DInstance>();

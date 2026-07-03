@@ -1733,6 +1733,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 }
             }
         BoardSlot.SyncMistHiderDisplay();
+
+        // Pure client: report slot changes (discard/removal) to server
+        if (NetworkClient.isConnected && !NetworkServer.active)
+            TurnManager.SyncMyBoardToOpponent();
     }
 
     public static void TriggerDeathEffect(CardInstance ci, bool isActive)
