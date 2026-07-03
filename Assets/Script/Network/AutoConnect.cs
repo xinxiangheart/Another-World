@@ -10,7 +10,6 @@ public class AutoConnect : MonoBehaviour
     private GameObject _waitingUI;
     private NetworkManager _nm;
     private float _startTime;
-    private string _myPublicIP = "";
 
     void Awake()
     {
@@ -20,7 +19,6 @@ public class AutoConnect : MonoBehaviour
         if (!LobbyConfig.FromLobby) { HideUI(); return; }
         NetworkClient.OnConnectedEvent += OnConnected;
         NetworkClient.OnDisconnectedEvent += OnDisconnected;
-        EnsureKcpTransport();
     }
 
     void Start()
@@ -29,94 +27,111 @@ public class AutoConnect : MonoBehaviour
         if (_turnManager != null) _turnManager.enabled = false;
         _startTime = Time.time;
 
+        bool hasSteam = SteamManager.Initialized;
+        bool filledIP = !string.IsNullOrEmpty(LobbyConfig.ServerIP?.Trim());
+
+        if (filledIP)
+        {
+            // ── Direct KCP ──
+            SetupKcp();
+            if (LobbyConfig.IsHost)
+            {
+                SetText("主机已启动\n等待客户端连接...\nIP: " + LobbyConfig.ServerIP);
+                _nm.StartHost();
+            }
+            else
+            {
+                SetText("正在连接 " + LobbyConfig.ServerIP + " ...");
+                _nm.networkAddress = LobbyConfig.ServerIP;
+                _nm.StartClient();
+            }
+            return;
+        }
+
+        // ── Steam + KCP ──
+        // Steam Lobby finds each other, then we switch to KCP with the host's IP
+        SetupKcp();
+
+        if (!hasSteam)
+        {
+            // Steam not available but no IP either → can't do anything
+            SetText("请先启动 Steam 客户端\n或在下方输入对方 IP 地址");
+            return;
+        }
+
         if (LobbyConfig.IsHost)
         {
-            StartAsHost();
-        }
-        else if (!string.IsNullOrEmpty(LobbyConfig.ServerIP?.Trim()))
-        {
-            // IP filled → direct KCP connection
-            SetText("正在连接 " + LobbyConfig.ServerIP + " ...");
-            _nm.networkAddress = LobbyConfig.ServerIP;
-            _nm.StartClient();
+            SetText("正在创建房间...");
+            StartCoroutine(FetchIPThenCreateLobby());
         }
         else
         {
-            // IP empty → search Steam lobbies
-            if (!SteamManager.Initialized) { Invoke(nameof(Start), 0.5f); return; }
             SetText("正在搜索可用房间...");
-            RegisterSteamCallbacks();
+            RegisterCallbacks();
             InvokeRepeating(nameof(SearchLobbies), 0f, 2f);
         }
     }
 
     // ── Transport ──
-    void EnsureKcpTransport()
+
+    void SetupKcp()
     {
-        if (_nm == null) return;
-        // Remove ALL transports — Edgegap, Fizzy, old KCP, everything
         var all = _nm.gameObject.GetComponents<Transport>();
-        foreach (var t in all)
-        {
-            Debug.Log($"[AutoConnect] Removing transport: {t.GetType().FullName}");
-            DestroyImmediate(t);
-        }
+        foreach (var t in all) DestroyImmediate(t);
         _nm.transport = null;
         Transport.active = null;
-
         var kcp = _nm.gameObject.AddComponent<KcpTransport>();
         kcp.Port = 7777;
         _nm.transport = kcp;
         Transport.active = kcp;
-        Debug.Log("[AutoConnect] Clean KcpTransport ready");
     }
 
-    // ── Host ──
-    void StartAsHost()
+    // ── Host: get public IP → put in lobby data → start host ──
+
+    System.Collections.IEnumerator FetchIPThenCreateLobby()
     {
-        StartCoroutine(FetchPublicIP(ip =>
-        {
-            // If the IP looks like a LAN address, ignore it — the real public IP
-            // is behind a NAT we can't read. Don't put bad IP in lobby data.
-            if (ip.StartsWith("127.") || ip.StartsWith("10.") || ip.StartsWith("192.168.") || ip.StartsWith("172."))
-                _myPublicIP = "";
-            else
-                _myPublicIP = ip;
+        string ip = "127.0.0.1";
+        var req = UnityEngine.Networking.UnityWebRequest.Get("https://api.ipify.org");
+        req.timeout = 5;
+        req.certificateHandler = new BypassCert();
+        yield return req.SendWebRequest();
+        if (req.result == UnityEngine.Networking.UnityWebRequest.Result.Success)
+            ip = req.downloadHandler.text.Trim();
 
-            if (!SteamManager.Initialized)
-            {
-                SetText(string.IsNullOrEmpty(_myPublicIP)
-                    ? "主机已启动\nSteam 未初始化\n请手动分享你的 IP 给对方"
-                    : "主机已启动\nSteam 未初始化\n你的IP: " + _myPublicIP);
-                _nm.StartHost();
-                return;
-            }
-            RegisterSteamCallbacks();
-            SetText("正在创建房间...");
-            SteamMatchmaking.CreateLobby(ELobbyType.k_ELobbyTypePublic, 2);
-        }));
+        bool isLan = ip.StartsWith("127.") || ip.StartsWith("10.") || ip.StartsWith("192.168.") || ip.StartsWith("172.");
+        if (isLan)
+        {
+            // Can't detect public IP → can't use KCP over internet
+            SetText("⚠️ 无法获取公网 IP\n\n请检查网络连接\n或让对方直接输入你的 IP");
+            _nm.StartHost();
+            yield break;
+        }
+
+        RegisterCallbacks();
+        _lobbyIP = ip;
+        SteamMatchmaking.CreateLobby(ELobbyType.k_ELobbyTypePublic, 2);
     }
+
+    string _lobbyIP = "";
 
     void OnLobbyCreated(LobbyCreated_t r)
     {
         if (r.m_eResult != EResult.k_EResultOK)
         {
-            SetText(string.IsNullOrEmpty(_myPublicIP)
-                ? "创建房间失败\n主机已启动\n请手动分享你的 IP 给对方"
-                : "主机已启动\nIP: " + _myPublicIP);
+            SetText("创建 Steam 房间失败\n主机已启动\nIP: " + _lobbyIP);
             _nm.StartHost();
             return;
         }
         var lid = new CSteamID(r.m_ulSteamIDLobby);
         SteamMatchmaking.SetLobbyData(lid, "game", "anotherworld");
-        if (!string.IsNullOrEmpty(_myPublicIP))
-            SteamMatchmaking.SetLobbyData(lid, "host_ip", _myPublicIP);
+        SteamMatchmaking.SetLobbyData(lid, "host_ip", _lobbyIP);
         SteamMatchmaking.SetLobbyData(lid, "host_port", "7777");
-        SetText("房间已创建\n等待对手加入...");
+        SetText("房间已创建\n等待对手加入...\n你的IP: " + _lobbyIP);
         _nm.StartHost();
     }
 
-    // ── Client lobby search ──
+    // ── Client: search Steam lobbies → get host IP → KCP connect ──
+
     void SearchLobbies()
     {
         if (NetworkClient.isConnected || NetworkServer.active) { CancelInvoke(nameof(SearchLobbies)); return; }
@@ -129,27 +144,13 @@ public class AutoConnect : MonoBehaviour
     {
         if (r.m_nLobbiesMatching == 0) return;
         CancelInvoke(nameof(SearchLobbies));
-        var lobbyID = SteamMatchmaking.GetLobbyByIndex(0);
-        string hostIP = SteamMatchmaking.GetLobbyData(lobbyID, "host_ip");
-        string hostPort = SteamMatchmaking.GetLobbyData(lobbyID, "host_port");
-        if (string.IsNullOrEmpty(hostIP)) { SetText("房间数据异常\n请手动输入IP"); return; }
-        SetText("找到房间！\n正在连接 " + hostIP + ":" + hostPort + " ...");
-        SteamMatchmaking.LeaveLobby(lobbyID);
-        _nm.networkAddress = hostIP;
+        var lid = SteamMatchmaking.GetLobbyByIndex(0);
+        string ip = SteamMatchmaking.GetLobbyData(lid, "host_ip");
+        if (string.IsNullOrEmpty(ip)) { SetText("找到房间但无 IP 数据\n请手动输入对方 IP"); return; }
+        SetText("找到房间！\n正在连接 " + ip + " ...");
+        SteamMatchmaking.LeaveLobby(lid);
+        _nm.networkAddress = ip;
         _nm.StartClient();
-    }
-
-    // ── IP detection ──
-    System.Collections.IEnumerator FetchPublicIP(System.Action<string> cb)
-    {
-        var req = UnityEngine.Networking.UnityWebRequest.Get("https://api.ipify.org");
-        req.timeout = 5;
-        req.certificateHandler = new BypassCert(); // some networks MITM HTTPS
-        yield return req.SendWebRequest();
-        if (req.result == UnityEngine.Networking.UnityWebRequest.Result.Success)
-            cb(req.downloadHandler.text.Trim());
-        else
-            cb("127.0.0.1");
     }
 
     class BypassCert : UnityEngine.Networking.CertificateHandler
@@ -158,39 +159,43 @@ public class AutoConnect : MonoBehaviour
     }
 
     // ── UI ──
+
     void CreateWaitingUI()
     {
         _waitingUI = new GameObject("NetworkWaiting"); DontDestroyOnLoad(_waitingUI);
         var c = _waitingUI.AddComponent<Canvas>(); c.renderMode = RenderMode.ScreenSpaceOverlay; c.sortingOrder = 999;
         _waitingUI.AddComponent<UnityEngine.UI.CanvasScaler>(); _waitingUI.AddComponent<UnityEngine.UI.GraphicRaycaster>();
-        var pnl = new GameObject("Panel"); pnl.transform.SetParent(_waitingUI.transform, false);
-        var im = pnl.AddComponent<UnityEngine.UI.Image>(); im.color = new Color(0,0,0,0.85f);
-        var pr = pnl.GetComponent<RectTransform>(); pr.anchorMin=Vector2.zero; pr.anchorMax=Vector2.one; pr.offsetMin=Vector2.zero; pr.offsetMax=Vector2.zero;
-        var tgo = new GameObject("Text"); tgo.transform.SetParent(_waitingUI.transform, false);
-        var tmp = tgo.AddComponent<TextMeshProUGUI>(); tmp.fontSize=28; tmp.color=Color.white; tmp.alignment=TextAlignmentOptions.Center;
-        var f = Resources.Load<TMP_FontAsset>("Fonts & Materials/NotoSansSC SDF"); if(f!=null) tmp.font=f;
-        var tr = tgo.GetComponent<RectTransform>(); tr.anchorMin=new Vector2(0.05f,0.1f); tr.anchorMax=new Vector2(0.95f,0.9f); tr.offsetMin=Vector2.zero; tr.offsetMax=Vector2.zero;
+        var p = new GameObject("Panel"); p.transform.SetParent(_waitingUI.transform, false);
+        p.AddComponent<UnityEngine.UI.Image>().color = new Color(0, 0, 0, 0.85f);
+        var pr = p.GetComponent<RectTransform>(); pr.anchorMin = Vector2.zero; pr.anchorMax = Vector2.one; pr.offsetMin = Vector2.zero; pr.offsetMax = Vector2.zero;
+        var t = new GameObject("Text"); t.transform.SetParent(_waitingUI.transform, false);
+        var tmp = t.AddComponent<TextMeshProUGUI>(); tmp.fontSize = 26; tmp.color = Color.white; tmp.alignment = TextAlignmentOptions.Center;
+        var f = Resources.Load<TMP_FontAsset>("Fonts & Materials/NotoSansSC SDF"); if (f != null) tmp.font = f;
+        var tr = t.GetComponent<RectTransform>(); tr.anchorMin = new Vector2(0.05f, 0.1f); tr.anchorMax = new Vector2(0.95f, 0.9f); tr.offsetMin = Vector2.zero; tr.offsetMax = Vector2.zero;
     }
-    void SetText(string msg){ var t=_waitingUI?.GetComponentInChildren<TextMeshProUGUI>(); if(t!=null) t.text=msg; }
-    void HideUI(){ if(_waitingUI!=null) _waitingUI.SetActive(false); }
+    void SetText(string msg) { var t = _waitingUI?.GetComponentInChildren<TextMeshProUGUI>(); if (t != null) t.text = msg; }
+    void HideUI() { if (_waitingUI != null) _waitingUI.SetActive(false); }
 
-    // ── Steam callbacks ──
-    Callback<LobbyCreated_t> _lobbyCreatedCB;
-    Callback<LobbyMatchList_t> _lobbyListCB;
-    void RegisterSteamCallbacks()
-    {
-        _lobbyCreatedCB?.Dispose(); _lobbyListCB?.Dispose();
-        _lobbyCreatedCB = Callback<LobbyCreated_t>.Create(OnLobbyCreated);
-        _lobbyListCB = Callback<LobbyMatchList_t>.Create(OnLobbyList);
-    }
+    // ── Callbacks ──
+
+    Callback<LobbyCreated_t> _lcb;
+    Callback<LobbyMatchList_t> _llcb;
+    void RegisterCallbacks() { _lcb?.Dispose(); _llcb?.Dispose(); _lcb = Callback<LobbyCreated_t>.Create(OnLobbyCreated); _llcb = Callback<LobbyMatchList_t>.Create(OnLobbyList); }
+
+    void OnConnected() { SetText(NetworkServer.active ? "对手已加入！\n即将开始..." : "已连接！\n等待房主开始..."); }
+    void OnDisconnected() { SetText("连接断开\n请返回 Lobby 重试"); }
+
     void OnDestroy()
     {
-        _lobbyCreatedCB?.Dispose(); _lobbyListCB?.Dispose();
+        _lcb?.Dispose(); _llcb?.Dispose();
         NetworkClient.OnConnectedEvent -= OnConnected;
         NetworkClient.OnDisconnectedEvent -= OnDisconnected;
     }
 
-    void OnConnected(){ SetText(NetworkServer.active?"对手已加入！\n即将开始...":"已连接！\n等待房主开始..."); }
-    void OnDisconnected(){ SetText("连接断开\n请返回 Lobby 重试"); }
-    void Update(){ if(_waitingUI==null||!_waitingUI.activeSelf)return; if(_turnManager!=null&&_turnManager.enabled&&NetworkTurnSync.Instance!=null&&NetworkTurnSync.Instance.gameStarted)_waitingUI.SetActive(false); }
+    void Update()
+    {
+        if (_waitingUI == null || !_waitingUI.activeSelf) return;
+        if (_turnManager != null && _turnManager.enabled && NetworkTurnSync.Instance != null && NetworkTurnSync.Instance.gameStarted)
+            _waitingUI.SetActive(false);
+    }
 }
