@@ -543,6 +543,21 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 }
             }
             BoardSlot.CheckAndHandleDeaths();
+
+            // Sync enemy health to server so opponent sees the damage
+            if (NetworkClient.isConnected)
+            {
+                string[] enemyStats = new string[6];
+                for (int i = 0; i <= 5; i++)
+                {
+                    BoardSlot es = bm?.GetSlot(i);
+                    var ci = es?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                    if (ci != null)
+                        enemyStats[i] = $"{ci.templateID}|{ci.currentHealth}";
+                }
+                NetworkPlayer.Local?.CmdSyncEnemyDamage(enemyStats);
+            }
+
             CleanupAfterPlacement();
             return;
         }
@@ -564,6 +579,21 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 }
             }
             BoardSlot.CheckAndHandleDeaths();
+
+            // Sync enemy health to server so opponent sees the damage
+            if (NetworkClient.isConnected)
+            {
+                string[] enemyStats = new string[6];
+                for (int i = 0; i <= 5; i++)
+                {
+                    BoardSlot es = bm?.GetSlot(i);
+                    var ci = es?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                    if (ci != null)
+                        enemyStats[i] = $"{ci.templateID}|{ci.currentHealth}";
+                }
+                NetworkPlayer.Local?.CmdSyncEnemyDamage(enemyStats);
+            }
+
             CleanupAfterPlacement();
             return;
         }
@@ -1662,7 +1692,13 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             }
         }
         if (shouldReturn03504 && template03504 != null)
-            NetworkPlayer.Local.AddCardToHandFromInstance(template03504, c3d.cardInstance);
+        {
+            // Server-side: route to correct player (slot 0-5 = Remote, 6-11 = Host)
+            if (NetworkServer.active && slotID >= 0 && slotID < 6)
+                NetworkPlayer.Local?.RouteReturnToHand(slotID, c3d.cardInstance);
+            else
+                NetworkPlayer.Local.AddCardToHandFromInstance(template03504, c3d.cardInstance);
+        }
         if (shouldReturn01117 && template01117 != null)
             NetworkPlayer.Local.AddCardToHandFromInstance(template01117, c3d.cardInstance);
         if (shouldReturn03009 && template03009 != null)

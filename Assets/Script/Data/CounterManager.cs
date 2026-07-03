@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using Mirror;
 
 public class CounterManager : MonoBehaviour
 {
@@ -118,29 +119,55 @@ public class CounterManager : MonoBehaviour
         }
     }
 
-    // ========== 即时触发检测（对方打出卡牌时调用） ==========
+    // ========== 即时触发检测（离线模式，FakeEnemyPlayButton 调用） ==========
     public void CheckOnCardPlayed(CardData playedCard)
     {
-        for (int i = myCounters.Count - 1; i >= 0; i--)
+        // Only used in offline mode — online goes through ServerCheckOnCardPlayed in CmdPlayCard.
+        if (NetworkServer.active || NetworkClient.isConnected) return;
+        // Offline: FakeEnemyPlayButton simulates enemy playing → check player's own counters
+        ServerCheckOnCardPlayed(playedCard, false);
+    }
+
+    /// <summary>Server-side: check counters matching a played card. hostPlayed = who played the card.</summary>
+    public void ServerCheckOnCardPlayed(CardData playedCard, bool hostPlayed)
+    {
+        if (hostPlayed)
         {
-            CounterCard counter = myCounters[i];
-            if (counter.template.counterTiming != CounterTriggerTiming.OnCardPlayed) continue;
-            if (!MatchCondition(counter, playedCard)) continue;
-
-            // 蛊惑之音特殊处理：设置进场重定向模板，+1能量
-            if (counter.template.templateID == "02304")
+            // Host played — check Remote's counters (enemyCounters). Effect benefits Remote.
+            for (int i = enemyCounters.Count - 1; i >= 0; i--)
             {
-                GlobalEventManager.Instance.PendingEnterRedirectTemplate = playedCard;
-                NetworkPlayer.Local.AddEnergy(1);
+                CounterCard counter = enemyCounters[i];
+                if (counter.template.counterTiming != CounterTriggerTiming.OnCardPlayed) continue;
+                if (!MatchCondition(counter, playedCard)) continue;
+                TriggerCounter(counter, i, false);
             }
+        }
+        else
+        {
+            // Remote played — check Host's counters (myCounters). Effect benefits Host.
+            for (int i = myCounters.Count - 1; i >= 0; i--)
+            {
+                CounterCard counter = myCounters[i];
+                if (counter.template.counterTiming != CounterTriggerTiming.OnCardPlayed) continue;
+                if (!MatchCondition(counter, playedCard)) continue;
 
-            TriggerCounter(counter, i, true);
+                // 蛊惑之音 special
+                if (counter.template.templateID == "02304")
+                {
+                    GlobalEventManager.Instance.PendingEnterRedirectTemplate = playedCard;
+                    CounterOwner(true).AddEnergy(1);
+                }
+
+                TriggerCounter(counter, i, true);
+            }
         }
     }
 
     // ========== 阶段开始检测 ==========
     public void CheckOnPhaseStart()
     {
+        if (!NetworkServer.active) return;
+
         for (int i = myCounters.Count - 1; i >= 0; i--)
         {
             CounterCard counter = myCounters[i];
@@ -169,6 +196,8 @@ public class CounterManager : MonoBehaviour
     // ========== 阶段结束检测 ==========
     public void CheckOnPhaseEnd()
     {
+        if (!NetworkServer.active) return;
+
         for (int i = myCounters.Count - 1; i >= 0; i--)
         {
             CounterCard counter = myCounters[i];
@@ -197,6 +226,8 @@ public class CounterManager : MonoBehaviour
     // ========== 攻击回合结束检测 ==========
     public void CheckOnBattleEnd()
     {
+        if (!NetworkServer.active) return;
+
         for (int i = myCounters.Count - 1; i >= 0; i--)
         {
             CounterCard counter = myCounters[i];
@@ -225,6 +256,8 @@ public class CounterManager : MonoBehaviour
     // ========== 对方回合结束检测 ==========
     public void CheckOnEnemyTurnEnd()
     {
+        if (!NetworkServer.active) return;
+
         for (int i = myCounters.Count - 1; i >= 0; i--)
         {
             CounterCard counter = myCounters[i];
@@ -271,6 +304,8 @@ public class CounterManager : MonoBehaviour
     // ========== 己方回合开始检测 ==========
     public void CheckOnMyTurnStart()
     {
+        if (!NetworkServer.active) return;
+
         for (int i = myCounters.Count - 1; i >= 0; i--)
         {
             CounterCard counter = myCounters[i];
@@ -354,27 +389,23 @@ public class CounterManager : MonoBehaviour
     // ========== 无效果到期（只扣费+移除，不触发效果） ==========
     private void ExpireWithNoEffect(CounterCard counter, int index, bool isMine)
     {
+        NetworkPlayer owner = CounterOwner(isMine);
+
         if (!counter.noCostOnTrigger)
         {
             int cost = counter.reducedTriggerCost >= 0 ? counter.reducedTriggerCost : counter.template.baseCost;
-            if (isMine)
-            {
-                NetworkPlayer.Local.currentEnergy -= cost;
-                NetworkPlayer.Local.UpdateUI();
-            }
-            else
-            {
-                NetworkPlayer.Remote.currentEnergy -= cost;
-                NetworkPlayer.Remote.UpdateUI();
-            }
+            owner.currentEnergy -= cost;
+            owner.UpdateUI();
         }
 
         RemoveCounter(index, isMine);
+        SyncCounterRemoved(counter, isMine);
         Debug.Log($"反制牌 {counter.template.cardName} 到期无效果触发" + (counter.noCostOnTrigger ? "" : $"，扣除{counter.template.baseCost}能量"));
     }
     // ========== 触发反制牌效果 ==========
     private void TriggerCounter(CounterCard counter, int index, bool isMine)
     {
+        NetworkPlayer owner = CounterOwner(isMine);
         string effect = counter.template.counterEffect;
 
         if (!string.IsNullOrEmpty(effect))
@@ -382,31 +413,45 @@ public class CounterManager : MonoBehaviour
             if (effect.Contains("摸三张牌"))
             {
                 for (int j = 0; j < 3; j++)
-                    NetworkPlayer.Local.DrawCard();
+                    ServerDrawFor(owner);
             }
             else if (effect.Contains("+3能量"))
             {
-                NetworkPlayer.Local.AddEnergy(3);
+                owner.AddEnergy(3);
             }
-           
         }
 
         if (!counter.noCostOnTrigger)
         {
             int cost = counter.reducedTriggerCost >= 0 ? counter.reducedTriggerCost : counter.template.baseCost;
-            if (isMine)
-            {
-                NetworkPlayer.Local.currentEnergy -= cost;
-                NetworkPlayer.Local.UpdateUI();
-            }
-            else
-            {
-                NetworkPlayer.Remote.currentEnergy -= cost;
-                NetworkPlayer.Remote.UpdateUI();
-            }
+            owner.currentEnergy -= cost;
+            owner.UpdateUI();
         }
 
         RemoveCounter(index, isMine);
+        SyncCounterRemoved(counter, isMine);
+    }
+
+    NetworkPlayer CounterOwner(bool isMine) => isMine ? NetworkPlayer.Local : NetworkPlayer.Remote;
+
+    /// <summary>Draw a card from deck for the given player on the server.</summary>
+    void ServerDrawFor(NetworkPlayer player)
+    {
+        if (!NetworkServer.active || player == null) return;
+        CardData data = DeckManager.Instance?.DrawFromMain();
+        if (data == null) return;
+        player.TargetReceiveCard(player.connectionToClient, data.templateID);
+        player.AddServerSideCard(data);
+    }
+
+    /// <summary>Tell Remote to remove their visual copy of a counter that the server just consumed.</summary>
+    void SyncCounterRemoved(CounterCard counter, bool isMine)
+    {
+        // Server myCounters → Remote has it in enemyCounters → tell Remote to remove from "enemy"
+        // Server enemyCounters → Remote has it in myCounters → tell Remote to remove from "mine"
+        if (NetworkPlayer.Remote != null)
+            NetworkPlayer.Remote.TargetRemoveCounter(NetworkPlayer.Remote.connectionToClient,
+                counter.template.templateID, isMine ? "enemy" : "mine");
     }
 
     // ========== 移除反制牌 ==========
@@ -433,6 +478,8 @@ public class CounterManager : MonoBehaviour
     }
     public void CheckOnPlayerDying()
     {
+        if (!NetworkServer.active) return;
+
         for (int i = myCounters.Count - 1; i >= 0; i--)
         {
             CounterCard counter = myCounters[i];

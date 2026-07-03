@@ -610,6 +610,9 @@ public class HandManager : MonoBehaviour
         BoardSyncManager.MarkDirty();
         if (instance3D != null) instance3D.UpdateValues();
 
+        // Sync 3D model to opponent
+        if (NetworkClient.isConnected && !string.IsNullOrEmpty(sourceInstance.templateID))
+            NetworkPlayer.Local?.CmdPlayCard(sourceInstance.templateID, slot.slotID);
 
         ProcessAuras(slot, sourceInstance);
 

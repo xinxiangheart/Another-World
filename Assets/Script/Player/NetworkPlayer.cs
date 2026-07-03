@@ -322,7 +322,14 @@ public class NetworkPlayer : NetworkBehaviour
                     TargetSpawnCard3D(other, templateID, slotID);
             }
         }
-        else if (template.cardType == CardType.Spell && (template.spellType & SpellType.Counter) != 0)
+        // Non-counter cards: trigger opponent's OnCardPlayed counters on server
+        if ((template.spellType & SpellType.Counter) == 0)
+        {
+            bool hostPlayed = (this == NetworkPlayer.Local);
+            CounterManager.Instance?.ServerCheckOnCardPlayed(template, hostPlayed);
+        }
+
+        if (template.cardType == CardType.Spell && (template.spellType & SpellType.Counter) != 0)
         {
             NetworkConnectionToClient other = null;
             foreach (var kv in NetworkServer.connections)
@@ -1032,5 +1039,90 @@ public class NetworkPlayer : NetworkBehaviour
             c3d.UpdateValues();
         }
         slot.SetCard(model);
+    }
+
+    // ========== Enemy board damage sync (03504 on-enter, etc.) ==========
+
+    /// <summary>
+    /// Sync enemy slot health after on-enter damage. Acting player's enemy (0-5) → server-side opponent ally.
+    /// enemyStats[0..5] = "templateID|health" or empty for empty slots.
+    /// </summary>
+    [Command]
+    public void CmdSyncEnemyDamage(string[] enemyStats)
+    {
+        if (enemyStats == null || enemyStats.Length < 6) return;
+
+        // Host acting → enemy is server 0-5; Remote acting → enemy is server 6-11
+        int offset = isLocalPlayer ? 0 : 6;
+
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        for (int i = 0; i < 6; i++)
+        {
+            if (string.IsNullOrEmpty(enemyStats[i])) continue;
+            string[] parts = enemyStats[i].Split('|');
+            if (parts.Length < 2) continue;
+            string tid = parts[0];
+            if (!int.TryParse(parts[1], out int hp)) continue;
+
+            int serverSlot = i + offset;
+            BoardSlot slot = bm?.GetSlot(serverSlot);
+            var ci = slot?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci != null && ci.templateID == tid)
+                ci.currentHealth = hp;
+            slot?.currentCard3D?.GetComponent<Card3DInstance>()?.UpdateValues();
+        }
+        BoardSlot.CheckAndHandleDeaths();
+        BoardSyncManager.MarkDirty();
+    }
+
+    /// <summary>
+    /// Send a card back to the correct player's hand. Called from server-side HandleDeath.
+    /// If slotID indicates a Remote-owned card (0-5 on server), TargetRpc to Remote.
+    /// </summary>
+    [Server]
+    public void RouteReturnToHand(int slotID, CardInstance ci)
+    {
+        CardData template = CardDatabase.Instance?.GetTemplate(ci.templateID);
+        if (template == null) return;
+
+        if (slotID >= 0 && slotID < 6)
+        {
+            // Card in server 0-5 belongs to Remote player
+            if (Remote != null)
+                TargetReturnToHand(Remote.connectionToClient, ci.templateID);
+        }
+        else
+        {
+            // Card in server 6-11 belongs to Host
+            Local?.AddCardToHandFromInstance(template, ci);
+        }
+    }
+
+    [TargetRpc]
+    public void TargetReturnToHand(NetworkConnectionToClient target, string templateID)
+    {
+        CardData template = CardDatabase.Instance?.GetTemplate(templateID);
+        if (template != null)
+            AddCardToHand(template);
+    }
+
+    /// <summary>Remove a counter model after it's been triggered/expired on the server.</summary>
+    [TargetRpc]
+    public void TargetRemoveCounter(NetworkConnectionToClient target, string templateID, string listType)
+    {
+        CounterManager cm = CounterManager.Instance;
+        if (cm == null) return;
+
+        var list = listType == "mine" ? cm.myCounters : cm.enemyCounters;
+        for (int i = list.Count - 1; i >= 0; i--)
+        {
+            if (list[i].template.templateID == templateID)
+            {
+                if (list[i].model != null) Destroy(list[i].model);
+                list.RemoveAt(i);
+                Debug.Log($"[NetworkPlayer] TargetRemoveCounter: removed {templateID} from {listType}");
+                return;
+            }
+        }
     }
 }
