@@ -73,7 +73,10 @@ public class AutoConnect : MonoBehaviour
         _lcb = Callback<LobbyCreated_t>.Create(r =>
         {
             if (r.m_eResult != EResult.k_EResultOK) { SetText("创建房间失败"); return; }
-            SteamMatchmaking.SetLobbyData(new CSteamID(r.m_ulSteamIDLobby), "game", "anotherworld");
+            var lid = new CSteamID(r.m_ulSteamIDLobby);
+            SteamMatchmaking.SetLobbyData(lid, "game", "anotherworld");
+            SteamMatchmaking.SetLobbyData(lid, "host_sid", SteamUser.GetSteamID().m_SteamID.ToString());
+            Debug.Log($"[AutoConnect] Lobby {lid}, host SteamID64: {SteamUser.GetSteamID().m_SteamID}");
             SetText("房间已创建\n等待对手加入...");
             _nm.StartHost();
         });
@@ -88,12 +91,13 @@ public class AutoConnect : MonoBehaviour
         {
             if (LobbyConfig.IsHost) return;
             var lid = new CSteamID(r.m_ulSteamIDLobby);
-            CSteamID hostID = SteamMatchmaking.GetLobbyOwner(lid);
-            Debug.Log($"[AutoConnect] LobbyEnter — lobby={lid}, host={hostID}, starting client in 0.5s");
-            // Store the host's SteamID in lobby data so Fizzy can find it
-            SteamMatchmaking.SetLobbyMemberData(lid, "ready", "1");
+            string hostSid = SteamMatchmaking.GetLobbyData(lid, "host_sid");
+            if (string.IsNullOrEmpty(hostSid))
+                hostSid = SteamMatchmaking.GetLobbyOwner(lid).m_SteamID.ToString();
+            Debug.Log($"[AutoConnect] LobbyEnter — host SteamID64={hostSid}");
+            _nm.networkAddress = hostSid;
             SetText("已进入大厅\n正在连接 Steam P2P ...");
-            Invoke(nameof(StartMirrorClient), 0.5f);
+            Invoke(nameof(StartMirrorClient), 1.5f);
         });
     }
 
