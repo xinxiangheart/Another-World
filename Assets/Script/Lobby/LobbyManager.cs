@@ -29,13 +29,18 @@ public class LobbyManager : MonoBehaviour
     [Header("Status")]
     public TextMeshProUGUI statusText;
 
+    private GameIntroPanel _gameIntro;
+
     void Start()
     {
         if (createRoomButton != null) createRoomButton.onClick.AddListener(CreateRoom);
         if (joinRoomButton != null) joinRoomButton.onClick.AddListener(JoinRoom);
         if (viewCardsButton != null) viewCardsButton.onClick.AddListener(() => SetStatus("卡牌浏览功能开发中"));
-        if (gameIntroButton != null) gameIntroButton.onClick.AddListener(() => SetStatus("游戏介绍功能开发中"));
+        if (gameIntroButton != null) gameIntroButton.onClick.AddListener(OpenGameIntro);
         if (leaveButton != null) leaveButton.onClick.AddListener(LeaveGame);
+
+        // Find GameIntroPanel in scene (disabled at start)
+        _gameIntro = FindObjectOfType<GameIntroPanel>(true);
         SetStatus("欢迎来到异界");
     }
 
@@ -88,5 +93,13 @@ public class LobbyManager : MonoBehaviour
     {
         Debug.Log("[Lobby] " + msg);
         if (statusText != null) statusText.text = msg;
+    }
+
+    void OpenGameIntro()
+    {
+        if (_gameIntro != null)
+            _gameIntro.Open();
+        else
+            SetStatus("游戏介绍面板未找到");
     }
 }
