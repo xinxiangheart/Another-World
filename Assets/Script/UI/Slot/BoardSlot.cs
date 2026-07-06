@@ -397,7 +397,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 }
             }
 
-            // Sync to remote client after placement is fully complete
+            // Sync to remote client after placement is fully complete.
             if (NetworkClient.isConnected && !string.IsNullOrEmpty(playTemplateID))
             {
                 NetworkPlayer.Local?.CmdPlayCard(playTemplateID, slotID);
@@ -3471,6 +3471,21 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
 
         CleanupAfterPlacement();
+
+        // Sync terrorist AOE damage to server
+        if (NetworkClient.isConnected)
+        {
+            BoardManager bmSync = FindObjectOfType<BoardManager>();
+            string[] enemyStats = new string[6];
+            for (int i = 0; i <= 5; i++)
+            {
+                BoardSlot es = bmSync?.GetSlot(i);
+                var ci = es?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                if (ci != null)
+                    enemyStats[i] = $"{ci.templateID}|{ci.currentHealth}";
+            }
+            NetworkPlayer.Local?.CmdSyncEnemyDamage(enemyStats);
+        }
     }
     IEnumerator AncientFairyReattach(GameObject fairy, int oldHostSlotID)
     {

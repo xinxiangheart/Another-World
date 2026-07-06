@@ -71,10 +71,12 @@ public class SettingsButton : MonoBehaviour, IPointerEnterHandler, IPointerExitH
     System.Collections.IEnumerator DoReturnToLobby()
     {
         yield return new WaitForSeconds(1.5f);
+        var nm = FindObjectOfType<Mirror.NetworkManager>();
         if (NetworkServer.active)
-            FindObjectOfType<Mirror.NetworkManager>()?.StopHost();
+            nm?.StopHost();
         else if (NetworkClient.isConnected)
-            FindObjectOfType<Mirror.NetworkManager>()?.StopClient();
+            nm?.StopClient();
+        if (nm != null) Destroy(nm.gameObject);
         SceneManager.LoadScene("Lobby");
     }
 

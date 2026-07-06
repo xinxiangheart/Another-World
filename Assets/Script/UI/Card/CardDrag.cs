@@ -201,6 +201,13 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
         {
             Debug.Log("进入反制牌分支");
             CounterManager.Instance?.PlayCounter(this.gameObject, true);
+
+            // Network sync: tell the other side about this counter
+            if (NetworkServer.active && NetworkPlayer.Remote != null)
+                NetworkPlayer.Remote.TargetSpawnCounterCard(NetworkPlayer.Remote.connectionToClient, template.templateID);
+            else if (NetworkClient.isConnected)
+                NetworkPlayer.Local?.CmdPlayCounter(template.templateID);
+
             CardView cv = GetComponent<CardView>();
             if (cv != null) handManager.RemoveCard(cv);
             else Destroy(gameObject);

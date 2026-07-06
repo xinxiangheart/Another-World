@@ -290,7 +290,8 @@ public class NetworkPlayer : NetworkBehaviour
             if (this != NetworkPlayer.Local)
             {
                 // Remote's card — spawn on server for BattleCoroutine. Host=server, no TargetRpc needed.
-                int enemySlot = (slotID >= 6 && slotID <= 11) ? slotID - 6 : slotID;
+                // Mirror remote's local slot to server slot: remote 6-11→server 0-5, remote 0-5→server 6-11
+                int enemySlot = slotID >= 6 ? slotID - 6 : slotID + 6;
                 if (template.prefab3D != null)
                 {
                     BoardManager bm = FindObjectOfType<BoardManager>();
@@ -307,6 +308,14 @@ public class NetworkPlayer : NetworkBehaviour
                             ci.InitFromTemplate(template, 0);
                             c3d.cardInstance = ci;
                             c3d.UpdateValues();
+
+                            // Compute x-value stats from visible board (server perspective)
+                            if (ci.isXValue)
+                            {
+                                HandManager hmX = FindObjectOfType<HandManager>();
+                                if (hmX != null) hmX.UpdateXValues(ci);
+                                c3d.UpdateValues();
+                            }
                         }
                         slot.SetCard(model);
                     }
@@ -329,14 +338,13 @@ public class NetworkPlayer : NetworkBehaviour
             CounterManager.Instance?.ServerCheckOnCardPlayed(template, hostPlayed);
         }
 
-        if (template.cardType == CardType.Spell && (template.spellType & SpellType.Counter) != 0)
-        {
-            NetworkConnectionToClient other = null;
-            foreach (var kv in NetworkServer.connections)
-                if (kv.Value != connectionToClient) { other = kv.Value; break; }
-            if (other != null)
-                TargetSpawnCounterCard(other, templateID);
-        }
+        // Always sync after placement so the other side sees the new model
+        if (template.cardType == CardType.Summon)
+            BoardSyncManager.MarkDirty();
+
+        // Counter spell sync is handled entirely by CardDrag.OnEndDrag's counter branch
+        // (TargetSpawnCounterCard for Host→Remote, CmdPlayCounter for Client→Server).
+        // CmdPlayCard is NEVER called for counters — the counter path has an early return.
     }
 
     [Command]
@@ -749,8 +757,8 @@ public class NetworkPlayer : NetworkBehaviour
         CardData template = CardDatabase.Instance?.GetTemplate(templateID);
         if (template?.prefab3D == null) return;
 
-        // Remap to opposing slot: player slot 6-11 -> enemy slot 0-5
-        int enemySlot = (slotID >= 6 && slotID <= 11) ? slotID - 6 : slotID;
+        // Mirror slot for other client: 6-11↔0-5 (both directions)
+        int enemySlot = slotID >= 6 ? slotID - 6 : slotID + 6;
 
         BoardManager bm = FindObjectOfType<BoardManager>();
         if (bm == null) return;
@@ -772,8 +780,21 @@ public class NetworkPlayer : NetworkBehaviour
             ci.InitFromTemplate(template, 0);
             c3d.cardInstance = ci;
             c3d.UpdateValues();
+
+            // Compute x-values for 阴/阳/阴阳/万象镜面 from visible board
+            if (ci.isXValue)
+            {
+                HandManager hmX = FindObjectOfType<HandManager>();
+                if (hmX != null) hmX.UpdateXValues(ci);
+                c3d.UpdateValues();
+            }
         }
         slot.SetCard(model);
+
+        // If opponent has MistHider, immediately hide this new enemy card
+        if (Card3DHover.EnemyCardsAreHidden)
+            Card3DHover.SetHidden(model, true, false);
+
         Debug.Log($"[NetworkPlayer] TargetSpawnCard3D: {templateID} to enemySlot={enemySlot}");
     }
 
@@ -799,8 +820,8 @@ public class NetworkPlayer : NetworkBehaviour
         GameObject model = Instantiate(prefab, pos, Quaternion.Euler(0, 180, 0));
         model.name = $"counter_enemy_{templateID}";
 
-        Card3DHover hover = model.GetComponent<Card3DHover>();
-        if (hover != null) hover.enabled = false;
+        // Opponent's counter is hidden — flipped, no text, no hover panel
+        Card3DHover.SetHidden(model, true, false);
 
         CounterCard counter = new CounterCard();
         counter.model = model;
@@ -1049,63 +1070,6 @@ public class NetworkPlayer : NetworkBehaviour
         }
     }
 
-    // ========== Betrayal (03025) sync ==========
-
-    /// <summary>
-    /// Betrayal spell — spawn 03025 叛徒 on an enemy slot. Same pattern as pirate.
-    /// slotID is always the acting player's selected enemy slot (0-5).
-    /// </summary>
-    [Command]
-    public void CmdBetrayalSpawn(int slotID)
-    {
-        CardData template = CardDatabase.Instance?.GetTemplate("03025");
-        if (template?.prefab3D == null) return;
-
-        if (isLocalPlayer)
-        {
-            // Host already spawned locally. Just tell Remote.
-            if (Remote != null)
-                TargetBetrayalSpawn(Remote.connectionToClient, slotID);
-        }
-        else
-        {
-            // Remote acted — spawn on server (remote enemy 0-5 → server 6-11).
-            // Host shares server's BoardManager, sees it automatically.
-            SpawnCardOnBoard(template, slotID + 6);
-        }
-        BoardSyncManager.MarkDirty();
-    }
-
-    [TargetRpc]
-    public void TargetBetrayalSpawn(NetworkConnectionToClient target, int slotID)
-    {
-        // Acting enemy (0-5) → this client's ally (6-11)
-        CardData template = CardDatabase.Instance?.GetTemplate("03025");
-        if (template?.prefab3D != null)
-            SpawnCardOnBoard(template, slotID + 6);
-    }
-
-    /// <summary>Spawn a 3D card model on the given slot. Does nothing if slot already has a card.</summary>
-    static void SpawnCardOnBoard(CardData template, int slotID)
-    {
-        BoardManager bm = FindObjectOfType<BoardManager>();
-        BoardSlot slot = bm?.GetSlot(slotID);
-        if (slot == null || slot.currentCard3D != null) return;
-
-        HandManager hm = FindObjectOfType<HandManager>();
-        Vector3 pos = hm.GetSlotWorldPosition(slotID);
-        GameObject model = Object.Instantiate(template.prefab3D, pos, Quaternion.Euler(0, 180, 0));
-        Card3DInstance c3d = model.GetComponent<Card3DInstance>();
-        if (c3d != null)
-        {
-            CardInstance ci = model.AddComponent<CardInstance>();
-            ci.InitFromTemplate(template, 0);
-            c3d.cardInstance = ci;
-            c3d.UpdateValues();
-        }
-        slot.SetCard(model);
-    }
-
     // ========== Enemy board damage sync (03504 on-enter, etc.) ==========
 
     /// <summary>
@@ -1301,6 +1265,29 @@ public class NetworkPlayer : NetworkBehaviour
     {
         Debug.Log("[NetworkPlayer] TargetSurrender received");
         FindObjectOfType<SettingsButton>()?.OnOpponentSurrendered();
+    }
+
+    // ========== Counter sync ==========
+
+    /// <summary>
+    /// Client → server: counter spell played. Rebuilds the enemy counter model
+    /// on the server so the host sees it. PlayCounter uses inst only for templateID
+    /// lookup and model naming; the CardInstance copy is skipped for isMine=false.
+    /// </summary>
+    [Command]
+    public void CmdPlayCounter(string templateID)
+    {
+        CardData template = CardDatabase.Instance?.GetTemplate(templateID);
+        if (template == null) return;
+
+        // Temporary CardInstance only needed for PlayCounter to get templateID.
+        // PlayCounter's isMine=false path does NOT copy card data — it just
+        // adds the entry to enemyCounters. Keep temp alive to avoid dangling ref.
+        GameObject temp = new GameObject("TempCounterCmd");
+        CardInstance ci = temp.AddComponent<CardInstance>();
+        ci.InitFromTemplate(template, 0);
+        CounterManager.Instance?.PlayCounter(temp, false);
+        DontDestroyOnLoad(temp);
     }
 
     /// <summary>Remove a counter model after it's been triggered/expired on the server.</summary>

@@ -41,9 +41,22 @@ public class BoardSyncManager : MonoBehaviour
         }
         string ab = al.Count > 0 ? string.Join("||", al) : "";
 
+        // Signal whether the server-side has an active MistHider so the client hides the correct side
+        bool mistHiderActive = IsMistHiderActive();
+        string header = mistHiderActive ? "1|" : "0|";
+
         foreach (var kv in NetworkServer.connections)
             if (kv.Value != NetworkPlayer.Local?.connectionToClient)
-            { NetworkPlayer.Local?.RpcSyncBoard(kv.Value, s, ab); return; }
+            { NetworkPlayer.Local?.RpcSyncBoard(kv.Value, s, header + ab); return; }
+    }
+
+    static bool IsMistHiderActive()
+    {
+        var all = GlobalEventManager.Instance?.GetAllAuras();
+        if (all == null) return false;
+        foreach (var a in all)
+            if (a is MistHiderAura && a.IsActive()) return true;
+        return false;
     }
 
     static string Tid(GameObject o)
@@ -56,16 +69,38 @@ public class BoardSyncManager : MonoBehaviour
 
     // ============= Client =============
 
-    public void ApplySync(string[] s, string attachBlock)
+    public void ApplySync(string[] s, string attachBlockExt)
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
         HandManager hm = FindObjectOfType<HandManager>();
         if (bm == null || s == null || s.Length < 12) return;
 
+        // Parse header: "1|rest" → mistHiderActive, "0|rest" → not active
+        bool mistHiderActive = false;
+        string attachBlock = attachBlockExt;
+        if (!string.IsNullOrEmpty(attachBlockExt))
+        {
+            int sepIdx = attachBlockExt.IndexOf('|');
+            if (sepIdx >= 0)
+            {
+                mistHiderActive = attachBlockExt[0] == '1';
+                attachBlock = attachBlockExt.Substring(sepIdx + 1);
+            }
+        }
+
         for (int i = 0; i < 6; i++)
         {
             ApplySlot(i + 6, s[i], bm, hm);     // server 0-5 → client 6-11
             ApplySlot(i, s[i + 6], bm, hm);     // server 6-11 → client 0-5
+        }
+
+        // Server's 6-11 maps to this client's 0-5. If server has MistHider, enemy cards are hidden.
+        // Apply in both directions: hide when active, unhide when aura expires.
+        Card3DHover.EnemyCardsAreHidden = mistHiderActive;
+        for (int i = 0; i <= 5; i++)
+        {
+            GameObject card = bm.GetSlot(i)?.currentCard3D;
+            if (card != null) Card3DHover.SetHidden(card, mistHiderActive, false);
         }
 
         // attachments
@@ -92,8 +127,8 @@ public class BoardSyncManager : MonoBehaviour
                 n.isAttached = true; n.hostSlotID = cs; n.attachOrder = o;
                 c.cardInstance = n; c.UpdateValues();
             }
-            var d = m.GetComponent<CardDisplay3D>();
-            if (d != null) { if (d.nameText) d.nameText.gameObject.SetActive(false); if (d.prefixText) d.prefixText.gameObject.SetActive(false); if (d.attackText) d.attackText.gameObject.SetActive(false); if (d.healthText) d.healthText.gameObject.SetActive(false); if (d.costText) d.costText.gameObject.SetActive(false); }
+            // Attachments: always text-hidden to opponent. If MistHider, also flipped + no hover.
+            Card3DHover.SetHidden(m, mistHiderActive, true);
             bm.attachedModels.Add(m);
         }
     }

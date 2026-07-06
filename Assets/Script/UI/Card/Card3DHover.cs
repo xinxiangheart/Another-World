@@ -20,7 +20,7 @@ public class Card3DHover : MonoBehaviour
 
         originalScale = transform.localScale;
         meshRenderer = GetComponent<MeshRenderer>();
-       
+
     }
 
     void OnMouseEnter()
@@ -257,25 +257,51 @@ public class Card3DHover : MonoBehaviour
         BoardSlot.isTargetingMode = false;
     }
 
-    // Card3DHover.SwapTwoAllies 完整替换
-  
+    // ========== Unified Hidden State ==========
+
     /// <summary>
-    /// 设为己方视角：启用悬停详情、显示牌面
+    /// Set by ApplySync when the opponent has an active MistHider aura.
+    /// Any new card model spawned on this client should check this flag
+    /// and hide itself if targeting enemy slots.
     /// </summary>
-    public void SetEnemyView()
+    public static bool EnemyCardsAreHidden { get; set; }
+
+    /// <summary>
+    /// Re-read cardInstance from Card3DInstance. Call after late-assigning c3d.cardInstance
+    /// (e.g. in PlayCounter, where prefab is instantiated before data is copied).
+    /// </summary>
+    public void RefreshCardData()
     {
-        enabled = false;
-        transform.rotation = Quaternion.Euler(0, 0, 0);
+        Card3DInstance c3d = GetComponent<Card3DInstance>();
+        cardInstance = c3d != null ? c3d.cardInstance : GetComponent<CardInstance>();
     }
 
     /// <summary>
-    /// 设为己方视角：启用悬停详情、显示牌面
+    /// Apply or remove hidden state for the OPPONENT'S perspective. Visual only.
+    /// hidden=true: model flips (rotation 0°), text hides, hover panel blocked.
+    /// hidden=false: restore normal — except attachments never show text.
+    /// This does NOT affect targeting, damage, traits, or stat sync.
     /// </summary>
-    public void SetMyView()
+    public static void SetHidden(GameObject model, bool hidden, bool isAttachment = false)
     {
-        enabled = true;
-        transform.rotation = Quaternion.Euler(0, 180, 0);
+        if (model == null) return;
+
+        // 1. Rotation — hidden faces away (0°), visible faces toward viewer (180°)
+        model.transform.rotation = hidden ? Quaternion.Euler(0, 0, 0) : Quaternion.Euler(0, 180, 0);
+
+        // 2. Text — hidden hides all; unhiding shows except for attachments
+        CardDisplay3D display = model.GetComponent<CardDisplay3D>();
+        if (display != null)
+        {
+            if (hidden || isAttachment)
+                display.HideAllInfo();
+            else
+                display.ShowAllInfo();
+        }
+
+        // 3. Hover panel / discard — disabled when hidden
+        Card3DHover hover = model.GetComponent<Card3DHover>();
+        if (hover != null)
+            hover.enabled = !hidden;
     }
-   
-  
 }

@@ -43,48 +43,16 @@ public class MistHiderAura : AuraBase
     }
     public void ApplyHide()
     {
-        BoardManager bm = GameObject.FindObjectOfType<BoardManager>();
-        if (bm == null) return;
-
-        for (int i = 6; i <= 11; i++)
-        {
-            BoardSlot s = bm.GetSlot(i);
-            if (s?.currentCard3D != null)
-            {
-                CardDisplay3D display = s.currentCard3D.GetComponent<CardDisplay3D>();
-                if (display != null) display.HideAllInfo();
-            }
-        }
-
-        foreach (GameObject obj in bm.attachedModels)
-        {
-            if (obj == null) continue;
-            CardDisplay3D display = obj.GetComponent<CardDisplay3D>();
-            if (display != null) display.HideAllInfo();
-        }
+        // Visual hiding happens ONLY on the opponent client via BoardSync header.
+        // Server's own cards (6-11) must remain visible to the owner.
+        // Mark dirty so SyncNow picks up IsMistHiderActive=true → sends "1|" header.
+        BoardSyncManager.MarkDirty();
     }
 
     public void RemoveHide()
     {
-        BoardManager bm = GameObject.FindObjectOfType<BoardManager>();
-        if (bm == null) return;
-
-        for (int i = 6; i <= 11; i++)
-        {
-            BoardSlot s = bm.GetSlot(i);
-            if (s?.currentCard3D != null)
-            {
-                CardDisplay3D display = s.currentCard3D.GetComponent<CardDisplay3D>();
-                if (display != null) display.ShowAllInfo();
-            }
-        }
-
-        foreach (GameObject obj in bm.attachedModels)
-        {
-            if (obj == null) continue;
-            CardDisplay3D display = obj.GetComponent<CardDisplay3D>();
-            if (display != null) display.ShowAllInfo();
-        }
+        // Mark dirty so SyncNow sends "0|" header → opponent client un-hides.
+        BoardSyncManager.MarkDirty();
     }
 }
 public class SageAura : AuraBase

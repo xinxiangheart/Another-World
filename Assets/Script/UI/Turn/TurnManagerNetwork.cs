@@ -75,41 +75,24 @@ public partial class TurnManager
     public void BroadcastTurnPhase(TurnPhase hostPhase)
     {
         if (!NetworkServer.active) return;
-
-        Debug.Log($"[TurnManager] BroadcastTurnPhase: hostPhase={hostPhase}, Local={NetworkPlayer.Local?.netId}, Remote={NetworkPlayer.Remote?.netId}");
-
-        if (NetworkPlayer.Local == null)
-        {
-            Debug.LogError("[TurnManager] BroadcastTurnPhase: NetworkPlayer.Local is NULL! Cannot broadcast.");
-            return;
-        }
+        if (NetworkPlayer.Local == null) return;
+        // Remote disconnected — game is ending, skip broadcast
+        if (NetworkPlayer.Remote == null) return;
 
         if (hostPhase == TurnPhase.BattlePhase || hostPhase == TurnPhase.PhaseStart)
         {
-            // Same for both players
             NetworkPlayer.Local.TargetSetPhase(NetworkPlayer.Local.connectionToClient, (int)hostPhase);
-            if (NetworkPlayer.Remote != null)
-                NetworkPlayer.Remote.TargetSetPhase(NetworkPlayer.Remote.connectionToClient, (int)hostPhase);
-            else
-                Debug.LogWarning("[TurnManager] BroadcastTurnPhase: Remote is null, only Local received phase");
+            NetworkPlayer.Remote.TargetSetPhase(NetworkPlayer.Remote.connectionToClient, (int)hostPhase);
         }
         else if (hostPhase == TurnPhase.MyTurn)
         {
-            // Host is active: host sees MyTurn, remote sees EnemyTurn
             NetworkPlayer.Local.TargetSetPhase(NetworkPlayer.Local.connectionToClient, (int)TurnPhase.MyTurn);
-            if (NetworkPlayer.Remote != null)
-                NetworkPlayer.Remote.TargetSetPhase(NetworkPlayer.Remote.connectionToClient, (int)TurnPhase.EnemyTurn);
-            else
-                Debug.LogWarning("[TurnManager] BroadcastTurnPhase: Remote is null, remote missed EnemyTurn notification");
+            NetworkPlayer.Remote.TargetSetPhase(NetworkPlayer.Remote.connectionToClient, (int)TurnPhase.EnemyTurn);
         }
         else // EnemyTurn (host perspective) = Remote is active
         {
-            // Remote is active: host sees EnemyTurn, remote sees MyTurn
             NetworkPlayer.Local.TargetSetPhase(NetworkPlayer.Local.connectionToClient, (int)TurnPhase.EnemyTurn);
-            if (NetworkPlayer.Remote != null)
-                NetworkPlayer.Remote.TargetSetPhase(NetworkPlayer.Remote.connectionToClient, (int)TurnPhase.MyTurn);
-            else
-                Debug.LogWarning("[TurnManager] BroadcastTurnPhase: Remote is null, remote missed MyTurn notification");
+            NetworkPlayer.Remote.TargetSetPhase(NetworkPlayer.Remote.connectionToClient, (int)TurnPhase.MyTurn);
         }
     }
 

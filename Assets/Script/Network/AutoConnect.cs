@@ -201,6 +201,7 @@ public class AutoConnect : MonoBehaviour
         else if (NetworkClient.isConnected) _nm.StopClient();
         // Destroy DontDestroyOnLoad objects from this session
         if (_waitingUI != null) { Destroy(_waitingUI); _waitingUI = null; }
+        if (_nm != null) { Destroy(_nm.gameObject); _nm = null; }
         SceneManager.LoadScene("Lobby");
     }
     void OnDestroy(){ _lcb?.Dispose(); _llcb?.Dispose(); _leb?.Dispose(); NetworkClient.OnConnectedEvent-=OnConnected; NetworkClient.OnDisconnectedEvent-=OnDisconnected; NetworkServer.OnDisconnectedEvent-=OnServerDisconnected; }

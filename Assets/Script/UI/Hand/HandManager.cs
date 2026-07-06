@@ -2462,10 +2462,7 @@ public class HandManager : MonoBehaviour
             placed = true;
             BoardSlot.isPlacingCard = false;
             BoardSlot.isStrengtheningSlot = false;
-
-            // Sync to other client
-            if (NetworkClient.isConnected)
-                NetworkPlayer.Local?.CmdBetrayalSpawn(selectedSlot.slotID);
+            // CmdPlayCard is called from PlaceIndependentCard — no separate sync needed
         });
 
         yield return new WaitUntil(() => placed);

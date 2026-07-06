@@ -52,7 +52,6 @@ public class CounterManager : MonoBehaviour
 
     CounterCard counter = new CounterCard();
     counter.model = model;
-    counter.cardInstance = inst;
     counter.template = template;
     counter.isMine = isMine;
     counter.remainingDuration = template.counterDuration;
@@ -88,25 +87,25 @@ public class CounterManager : MonoBehaviour
         if (isMine)
     {
         myCounters.Add(counter);
-        // Copy CardInstance data to 3D model so CardDisplay3D shows text
+        // Copy CardInstance data to 3D model so CardDisplay3D shows real card info
         Card3DInstance c3d = model.GetComponent<Card3DInstance>();
-        if (c3d != null)
-        {
-            CardInstance copy = model.AddComponent<CardInstance>();
-            copy.CopyFrom(inst);
-            c3d.cardInstance = copy;
-            c3d.UpdateValues();
-        }
+        if (c3d == null) c3d = model.AddComponent<Card3DInstance>();
+        CardInstance copy = model.AddComponent<CardInstance>();
+        copy.CopyFrom(inst);
+        c3d.cardInstance = copy;
+        // Force refresh display text (name/cost/effect/prefix) from the real card
+        c3d.UpdateValues();
+        // Owner sees counter normally (re-enables hover + visible text)
+        Card3DHover.SetHidden(model, false, false);
+        // Re-read cardInstance after late assignment — Start() captured stale prefab data
         Card3DHover hover = model.GetComponent<Card3DHover>();
-        if (hover != null) hover.SetMyView();
+        if (hover != null) hover.RefreshCardData();
     }
     else
     {
         enemyCounters.Add(counter);
-        CardDisplay3D display3D = model.GetComponent<CardDisplay3D>();
-        display3D?.HideAllInfo();
-        Card3DHover hover = model.GetComponent<Card3DHover>();
-        if (hover != null) hover.SetEnemyView();
+        // Opponent's counter is hidden — flipped, no text, no panel
+        Card3DHover.SetHidden(model, true, false);
     }
 
     Debug.Log($"反制牌已生成，己方数量：{myCounters.Count}");
