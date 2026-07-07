@@ -174,6 +174,7 @@ MonoBehaviour:
   baseAttack: 0
   baseHealth: 0
   baseMaxHealth: 0
+  baseTier: 0
   currentHealth: 0
   currentMaxHealth: 0
   currentTier: 0
@@ -185,6 +186,7 @@ MonoBehaviour:
   hasRevenge: 0
   hasDiscard: 0
   revengeEffect: 
+  deathPhase: 0
   isXValue: 0
   xAttackReadsHighest: 0
   xHealthReadsHighest: 0
@@ -193,14 +195,61 @@ MonoBehaviour:
   buffedBySage: 0
   summonType: 0
   enteredWithZeroCost: 0
+  scrollCorePhaseCount: 0
+  _conductorDoubleDeath: 0
+  energyReaperDiscounted: 0
   poisoned: 0
+  originalAttackBeforeDebuff: 0
+  greedySnakeEnterCount: 0
   tempAttackBoost: 0
   tempHealthBoost: 0
   xInitialHealth: 0
+  buffedByEmperor: 0
+  merchantDiscounted: 0
+  braveTemplateID: 
+  _justTransformed: 0
   attacksBackRow: 0
   attacksFrontRow: 0
-  ironSmithConsumedCount: 0
+  ironSmithTotalConsumedCount: 0
+  ironSmithOneCostConsumedCount: 0
+  isShadow: 0
+  wolfKingInstanceID: 
+  totalDamageTaken: 0
+  isAncientFairy: 0
+  savedAttackForDiscard: 0
+  isWatcher: 0
+  consumedSpellCost: 0
+  _rebornSummon: 0
+  enemyDamageSourceIDs: []
+  _outlawPlayerDamageThisTurn: 0
+  cannotHealOrGainMaxHP: 0
   damageSourceInstanceIDs: []
+  hasLifePriestBlessing: 0
+  lifePriestBlessingSource: {fileID: 0}
+  _nourisherHost: 0
+  _nourisherInstanceID: 
+  _nourisherAttached: 0
+  ignoreAllCounters: 0
+  _conquerorTriggered: 0
+  mindScholarCopyCount: 0
+  mindScholarCopiedTraits: []
+  mindScholarEnterTriggeredThisPhase: 0
+  mindScholarDiscardTriggeredThisPhase: 0
+  _conquerorTotalDamageThisBattle: 0
+  _conquerorPendingCheck: 0
+  _conquerorTargetEnemyCard: {fileID: 0}
+  immuneToEnemySpell: 0
+  grantedTraitTexts: []
+  giveableDeathTraits: []
+  hasOriginalFirstStrike: 0
+  hasOriginalOnEnter: 0
+  hasOriginalOnDeath: 0
+  hasOriginalActiveExit: 0
+  hasOriginalRevenge: 0
+  hasOriginalDiscard: 0
+  hasOriginalAttach: 0
+  hasOriginalAttacksFrontRow: 0
+  hasOriginalAttacksBackRow: 0
   handledReturnToHand: 0
   silencedThisPhase: 0
   isActiveExit: 0
@@ -213,11 +262,16 @@ MonoBehaviour:
   isAttached: 0
   hostSlotID: -1
   attachOrder: 0
+  cannotHeal: 0
+  healModifier: 1
   counterTiming: 0
   counterTriggerCondition: 
   counterEffect: 
   counterDuration: 0
   isYinYang: 0
+  overclocked: 0
+  prisonMySlot: -1
+  prisonEnemySlot: -1
 --- !u!1 &3018694101168864770
 GameObject:
   m_ObjectHideFlags: 0
@@ -283,10 +337,10 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: "\u6548\u679C"
+  m_text: "\u6548\u679C\u63CF\u8FF0"
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: 3bd21f304e77db54eb98a1f35f6a2680, type: 2}
-  m_sharedMaterial: {fileID: -3509209986637506031, guid: 3bd21f304e77db54eb98a1f35f6a2680, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: 33c204896c0cca64e8e60641e9e7c64c, type: 2}
+  m_sharedMaterial: {fileID: -4995267273640441941, guid: 33c204896c0cca64e8e60641e9e7c64c, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []
@@ -419,8 +473,8 @@ MonoBehaviour:
       m_Calls: []
   m_text: 2
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: 3bd21f304e77db54eb98a1f35f6a2680, type: 2}
-  m_sharedMaterial: {fileID: -3509209986637506031, guid: 3bd21f304e77db54eb98a1f35f6a2680, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: d233f3062e8579e43aace0d4bdcf90fb, type: 2}
+  m_sharedMaterial: {fileID: -7300241376912848282, guid: d233f3062e8579e43aace0d4bdcf90fb, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []
@@ -444,7 +498,7 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 3.7
+  m_fontSize: 3.75
   m_fontSizeBase: 5
   m_fontWeight: 400
   m_enableAutoSizing: 1
@@ -551,10 +605,10 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: 2
+  m_text: "\u6CD5\u672F"
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: 3bd21f304e77db54eb98a1f35f6a2680, type: 2}
-  m_sharedMaterial: {fileID: -3509209986637506031, guid: 3bd21f304e77db54eb98a1f35f6a2680, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: 33c204896c0cca64e8e60641e9e7c64c, type: 2}
+  m_sharedMaterial: {fileID: -4995267273640441941, guid: 33c204896c0cca64e8e60641e9e7c64c, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []
@@ -578,11 +632,11 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 5.35
+  m_fontSize: 8
   m_fontSizeBase: 5
   m_fontWeight: 400
   m_enableAutoSizing: 1
-  m_fontSizeMin: 4
+  m_fontSizeMin: 8
   m_fontSizeMax: 10
   m_fontStyle: 0
   m_HorizontalAlignment: 2
@@ -614,7 +668,7 @@ MonoBehaviour:
   m_VertexBufferAutoSizeReduction: 0
   m_useMaxVisibleDescender: 1
   m_pageToDisplay: 1
-  m_margin: {x: -27.239498, y: -0.13403702, z: -18.164562, w: 12.333768}
+  m_margin: {x: -27.239498, y: -1.2053986, z: -18.164562, w: 11.024331}
   m_isUsingLegacyAnimationComponent: 0
   m_isVolumetricText: 0
   m_hasFontAssetChanged: 0

@@ -55,7 +55,7 @@ public class CardDisplay2D : MonoBehaviour
             displayCost = Mathf.Max(0, displayCost - 1);
         if (instance.energyReaperDiscounted && NetworkPlayer.Local.IsEnergyReaperOnFieldPublic())
             displayCost = Mathf.Max(0, displayCost - 1);
-        if (costText != null) costText.text = displayCost.ToString();
+        if (costText != null) costText.gameObject.SetActive(false);
 
         if (attackText != null)
         {
@@ -65,7 +65,7 @@ public class CardDisplay2D : MonoBehaviour
         if (healthText != null)
         {
             healthText.gameObject.SetActive(!isSpell);
-            if (!isSpell) healthText.text = $"{instance.currentHealth}/{instance.currentMaxHealth}";
+            if (!isSpell) healthText.text = instance.currentHealth.ToString();
         }
 
         if (effectText != null)

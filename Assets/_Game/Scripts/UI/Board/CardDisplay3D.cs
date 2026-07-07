@@ -31,14 +31,13 @@ public class CardDisplay3D : MonoBehaviour
             if (attackText != null) attackText.gameObject.SetActive(false);
             if (healthText != null) healthText.gameObject.SetActive(false);
         }
-        if (costText != null)
-            costText.text = $"{instance.currentCost}费({instance.currentTier}阶)";
+        if (costText != null) costText.gameObject.SetActive(false);
 
         if (attackText != null) attackText.text = instance.Attack.ToString();
         if (healthText != null)
         {
            
-            healthText.text = $"{instance.currentHealth}/{instance.currentMaxHealth}";
+            healthText.text = instance.currentHealth.ToString();
         }
     }
     private bool IsSuppressorOnField()
