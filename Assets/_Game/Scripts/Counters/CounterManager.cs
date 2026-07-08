@@ -91,6 +91,9 @@ public class CounterManager : MonoBehaviour
         Card3DInstance c3d = model.GetComponent<Card3DInstance>();
         if (c3d == null) c3d = model.AddComponent<Card3DInstance>();
         CardInstance copy = model.AddComponent<CardInstance>();
+        // Ensure Card3DHover exists so hover detail panel works for owner
+        if (model.GetComponent<Card3DHover>() == null)
+            model.AddComponent<Card3DHover>();
         copy.CopyFrom(inst);
         c3d.cardInstance = copy;
         // Force refresh display text (name/cost/effect/prefix) from the real card

@@ -42,16 +42,87 @@ public class GlobalEventManager : MonoBehaviour
 
     public bool IsTraitBlocked(CardInstance ci, string trait)
     {
+        // 本地光环检查
         foreach (var a in auras)
             if (a.IsActive() && a.BlocksTrait(ci, trait)) return true;
+
+        // 网络兜底：基于已同步的棋盘状态判断（对方客户端没有光环实例）
+        if (ci.silencedThisPhase) return true;
+        if (IsTraitBlockedByBoardState(ci, trait)) return true;
+
         return false;
     }
 
     public bool IsFullySilenced(CardInstance ci)
     {
+        // 本地光环检查
         foreach (var a in auras)
             if (a.IsActive() && a.IsTargetFullySilenced(ci)) return true;
+
+        // 网络兜底：基于已同步的棋盘状态判断
+        if (ci.silencedThisPhase) return true;
+        if (IsSilencedByEnergyHacker(ci)) return true;
+
         return false;
+    }
+
+    /// <summary>兜底：根据棋盘状态判断特性是否被狂热萨满(01515)/法官(01323)压制</summary>
+    bool IsTraitBlockedByBoardState(CardInstance ci, string trait)
+    {
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return false;
+        int slot = GetSlotOf(ci, bm);
+        if (slot < 0 || slot >= 6) return false; // 只压制对方（slot 0-5）
+
+        // 检查对方场上是否有狂热萨满(01515)：禁止进场+抛置
+        if (trait == "进场" || trait == "抛置")
+        {
+            for (int i = 6; i <= 11; i++)
+            {
+                CardInstance ally = bm.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                if (ally != null && ally.templateID == "01515" && !ally.silencedThisPhase && !IsFullySilenced(ally))
+                    return true;
+            }
+        }
+        // 检查对方场上是否有法官(01323)：禁止退场
+        if (trait == "退场")
+        {
+            for (int i = 6; i <= 11; i++)
+            {
+                CardInstance ally = bm.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                if (ally != null && ally.templateID == "01323" && !ally.silencedThisPhase && !IsFullySilenced(ally))
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>兜底：检查是否被能量骇客(01335)对位压制（递归安全：仅检查silencedThisPhase）</summary>
+    bool IsSilencedByEnergyHacker(CardInstance ci)
+    {
+        if (ci.templateID == "01335") return false;
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return false;
+        int slot = GetSlotOf(ci, bm);
+        if (slot < 0) return false;
+
+        int oppSlot = slot < 6 ? slot + 6 : slot - 6;
+        CardInstance opp = bm.GetSlot(oppSlot)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+        if (opp == null || opp.templateID != "01335") return false;
+        if (opp.silencedThisPhase) return false;
+        // 能量骇客附着时检查实际槽位
+        if (opp.isAttached && opp.hostSlotID != oppSlot) return false;
+        return true;
+    }
+
+    int GetSlotOf(CardInstance ci, BoardManager bm)
+    {
+        for (int i = 0; i < 12; i++)
+        {
+            if (bm.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance == ci)
+                return i;
+        }
+        return -1;
     }
     public void UnregisterAuraOfSource(CardInstance source)
     {

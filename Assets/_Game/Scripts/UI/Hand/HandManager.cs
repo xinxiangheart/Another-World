@@ -1633,6 +1633,7 @@ public class HandManager : MonoBehaviour
                 BoardManager.SyncAttachedModels(secondSlot);
 
                 SelectionManager.Instance.ForceEndAll();
+                TurnManager.SyncMyBoardToOpponent();
                 swapDone = true;
             }
         };
