@@ -567,6 +567,9 @@ public class NetworkPlayer : NetworkBehaviour
 
     public void AddCardToHand(CardData template)
     {
+        // 先清理已打出/销毁的手牌（GameObject 被 Destroy 后仅剩 null 残留在列表里），
+        // 否则陈旧计数会把未满手误判为满手，导致抽牌被错误拦截。
+        handCards.RemoveAll(c => c == null);
         if (handCards.Count >= maxHandSize) return;
 
         GameObject prefab = GetCardPrefab(template.cardType);
@@ -613,6 +616,7 @@ public class NetworkPlayer : NetworkBehaviour
             return;
         }
 
+        if (!isEnemy) handCards.RemoveAll(c => c == null); // 同 AddCardToHand：清理陈旧手牌后再判上限
         if (!isEnemy && handCards.Count >= maxSize) return;
 
         GameObject card = Instantiate(prefab, targetHandArea);
@@ -909,8 +913,18 @@ public class NetworkPlayer : NetworkBehaviour
 
             var ci = slot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
 
-            // Model missing or templateID changed (transform: 腐化/飞升/阴阳) → rebuild model
-            if (ci == null || ci.templateID != tid)
+            // 服务器该槽为空，但客户端上报有牌 = 陈旧上报。
+            // 服务器对"移除"是权威的（战斗死亡/退场都在服务器结算），客户端上报绝不能把已移除的牌复活。
+            // 否则出现"召唤物死亡后又进场"（陈旧上报重建了已死单位）。新牌走 CmdPlayCard 等专用通道，不依赖此处创建。
+            if (ci == null)
+            {
+                // [死亡重生溯源] 修复生效验证：这里拦截的就是原来会复活死亡单位的上报。定位稳定后可删此日志。
+                Debug.LogWarning($"[死亡重生溯源] 拦截陈旧上报，拒绝复活 tid={tid} 服务器槽={i} 相位={TurnManager.Instance?.currentPhase}");
+                continue;
+            }
+
+            // 变身（腐化/飞升/阴阳）：服务器仍有这张牌，但 templateID 变了 → 重建模型。
+            if (ci.templateID != tid)
             {
                 if (slot.currentCard3D != null) { Destroy(slot.currentCard3D); slot.SetCard(null); }
                 CardData t = CardDatabase.Instance?.GetTemplate(tid);

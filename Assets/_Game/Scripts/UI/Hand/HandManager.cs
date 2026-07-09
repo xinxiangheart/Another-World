@@ -339,6 +339,8 @@ public class HandManager : MonoBehaviour
         }
 
         Vector3 worldPos = GetSlotWorldPosition(slot.slotID);
+        // [复现独立放置重复] 定位后可删：每创建一个模型都写帧序号+槽位+模板
+        Debug.Log($"[模型创建溯源] PlaceCardToSlot tid={sourceInstance?.templateID} 槽={slot.slotID} 帧={Time.frameCount}");
         GameObject model = Instantiate(template.prefab3D, worldPos, Quaternion.Euler(0, 180, 0));
         model.name = sourceInstance.instanceID;
         model.transform.localScale = template.prefab3D.transform.localScale;
@@ -598,6 +600,8 @@ public class HandManager : MonoBehaviour
     private void PlaceIndependentCard(BoardSlot slot, CardInstance sourceInstance, CardData template, GameObject cardObject)
     {
         Vector3 worldPos = GetSlotWorldPosition(slot.slotID);
+        // [复现独立放置重复] 定位后可删：每创建一个模型都写帧序号+槽位+模板
+        Debug.Log($"[模型创建溯源] PlaceIndependentCard tid={sourceInstance?.templateID} 槽={slot.slotID} 帧={Time.frameCount}");
         GameObject model = Instantiate(template.prefab3D, worldPos, Quaternion.Euler(0, 180, 0));
         model.name = sourceInstance.instanceID;
         Card3DInstance instance3D = model.GetComponent<Card3DInstance>();
@@ -606,6 +610,12 @@ public class HandManager : MonoBehaviour
         {
             CardInstance cardInst = model.AddComponent<CardInstance>();
             CopyCardInstance(cardInst, sourceInstance);
+            // 独立放置 = 未附着。若 sourceInstance 残留了 isAttached（曾附着→回手→再独立放置），
+            // 会被棋盘同步当作附着物在固定偏移位重建出一个幻影模型（偶现重复）。强制清除该状态。
+            if (cardInst.isAttached || cardInst.hostSlotID != -1)
+                Debug.LogWarning($"[独立放置溯源] 清除残留附着状态 tid={cardInst.templateID} isAttached={cardInst.isAttached} hostSlot={cardInst.hostSlotID}");
+            cardInst.isAttached = false;
+            cardInst.hostSlotID = -1;
             instance3D.cardInstance = cardInst;
         }
 

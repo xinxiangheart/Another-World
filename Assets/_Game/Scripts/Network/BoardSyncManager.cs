@@ -199,6 +199,8 @@ public class BoardSyncManager : MonoBehaviour
             if (t?.prefab3D != null)
             {
                 var m = Instantiate(t.prefab3D, hm.GetSlotWorldPosition(idx), Quaternion.Euler(0, 180, 0));
+                // [复现独立放置重复] 定位后可删：同步路径创建模型
+                Debug.LogWarning($"[模型创建溯源] EnsureCard(同步) tid={tid} 槽={idx} 帧={Time.frameCount} 槽旧卡={slot.currentCard3D != null}");
                 var c = m.GetComponent<Card3DInstance>();
                 if (c != null) { var n = m.AddComponent<CardInstance>(); n.InitFromTemplate(t, 0); c.cardInstance = n; c.UpdateValues(); }
                 slot.SetCard(m);

@@ -95,7 +95,6 @@ public class DelayedAction : IGameAction
     readonly Action _payload;
     readonly MonoBehaviour _runner;
     readonly string _name;
-    float _elapsed;
     bool _executed;
 
     public DelayedAction(string debugName, MonoBehaviour runner, float delaySeconds, Action payload)
@@ -108,7 +107,6 @@ public class DelayedAction : IGameAction
 
     public void Execute()
     {
-        _elapsed = 0f;
         _executed = false;
         _runner.StartCoroutine(WaitAndFire());
     }
@@ -206,16 +204,22 @@ public struct DeathInfo
 }
 
 // ============================================================================
-// ActionQueueManager — 主入口（Step 1 只完成接口定义 + 类型，Step 2 完善管理逻辑）
+// ActionQueueManager — 主入口
 // ============================================================================
 
+/// <summary>入队位置。Bottom = 排队执行（默认）；Top = 插队立即执行（反制/先手插入）。</summary>
+public enum QueuePosition { Bottom, Top }
+
 /// <summary>
-/// 全局游戏效果队列。所有卡牌效果通过 Enqueue / Interrupt 加入队列，
-/// 由 ProcessLoop 按 FIFO 顺序逐一执行。
+/// 全局游戏效果队列。所有卡牌效果通过 QueueAction / AddToBottom / AddToTop 加入队列，
+/// 由 ProcessLoop 按 FIFO 顺序逐一执行（ExecuteAll 语义，出队直到清空）。
 ///
 /// 使用方法：
-///   ActionQueueManager.Enqueue(new SyncAction("DoX", () => { ... }));
-///   ActionQueueManager.Enqueue(new CoroutineAction("DoY", this, () => MyRoutine()));
+///   ActionQueueManager.AddToBottom(new SyncAction("DoX", () => { ... }));
+///   ActionQueueManager.AddToBottom(new CoroutineAction("DoY", this, () => MyRoutine()));
+///   ActionQueueManager.AddToTop(new SyncAction("Interrupt", () => { ... }));
+///
+/// 场景中无需手动挂载：Bootstrap 会在场景加载前自动创建一个常驻实例。
 /// </summary>
 public class ActionQueueManager : MonoBehaviour
 {
@@ -227,27 +231,61 @@ public class ActionQueueManager : MonoBehaviour
     bool _processing;
     const int MAX_ITERATIONS = 10000; // 单次处理循环的硬上限
 
+    /// <summary>自举：若场景未手动挂载，则在场景加载前创建一个常驻实例。</summary>
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+    static void Bootstrap()
+    {
+        if (Instance != null) return;
+        var go = new GameObject("ActionQueueManager");
+        go.AddComponent<ActionQueueManager>();
+        DontDestroyOnLoad(go);
+    }
+
     void Awake()
     {
-        if (Instance != null) { Destroy(gameObject); return; }
+        if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
     }
 
-    /// <summary>普通排队 — 添加到队尾，FIFO 顺序执行。</summary>
-    public static void Enqueue(IGameAction action)
+    // ---- 用户约定 API（AddToBottom/AddToTop/QueueAction/ExecuteAll） -------------
+
+    /// <summary>统一入队入口。position 决定排队(Bottom)还是插队(Top)。</summary>
+    public static void QueueAction(IGameAction action, QueuePosition position = QueuePosition.Bottom)
+    {
+        if (position == QueuePosition.Top) AddToTop(action);
+        else AddToBottom(action);
+    }
+
+    /// <summary>排队执行 — 添加到队尾，FIFO 顺序执行。</summary>
+    public static void AddToBottom(IGameAction action)
     {
         if (Instance == null) { action.Execute(); return; } // 离线模式兜底
         Instance._queue.AddLast(action);
         if (!Instance._processing) Instance.StartCoroutine(Instance.ProcessLoop());
     }
 
-    /// <summary>插队 — 添加到队首，下一个就执行。用于紧急响应（如反制牌触发）。</summary>
-    public static void Interrupt(IGameAction action)
+    /// <summary>插队立即执行 — 添加到队首，下一个就执行。用于紧急响应（如反制牌触发）。</summary>
+    public static void AddToTop(IGameAction action)
     {
         if (Instance == null) { action.Execute(); return; }
         Instance._queue.AddFirst(action);
         if (!Instance._processing) Instance.StartCoroutine(Instance.ProcessLoop());
     }
+
+    /// <summary>逐一出队并执行，直到队列清空。ProcessLoop 已自动驱动，此处仅供显式启动/兜底。</summary>
+    public static void ExecuteAll()
+    {
+        if (Instance != null && !Instance._processing && Instance._queue.Count > 0)
+            Instance.StartCoroutine(Instance.ProcessLoop());
+    }
+
+    // ---- 兼容别名（旧命名 Enqueue/Interrupt，内部/DeathCheckAction 仍在用） --------
+
+    /// <summary>[别名] 等价于 AddToBottom。</summary>
+    public static void Enqueue(IGameAction action) => AddToBottom(action);
+
+    /// <summary>[别名] 等价于 AddToTop。</summary>
+    public static void Interrupt(IGameAction action) => AddToTop(action);
 
     /// <summary>清空队列（回合切换、游戏结束时调用）。</summary>
     public static void Clear()
@@ -256,6 +294,19 @@ public class ActionQueueManager : MonoBehaviour
     }
 
     public static int PendingCount => Instance?._queue.Count ?? 0;
+
+    /// <summary>队列是否空闲（无待执行、无正在处理）。</summary>
+    public static bool IsIdle => Instance == null || (!Instance._processing && Instance._queue.Count == 0);
+
+    /// <summary>协程调用点适配：等待队列彻底排空。供原本"同步 CheckAndHandleDeaths 后立即比对棋盘"的协程使用。</summary>
+    public static IEnumerator WaitForDrain()
+    {
+        if (Instance == null) yield break;
+        // 等到不再处理且队列为空。加一帧缓冲，避免恰好在入队瞬间误判空闲。
+        yield return null;
+        while (Instance._processing || Instance._queue.Count > 0)
+            yield return null;
+    }
 
     IEnumerator ProcessLoop()
     {
@@ -288,9 +339,15 @@ public class ActionQueueManager : MonoBehaviour
         }
 
         if (safety >= MAX_ITERATIONS)
+        {
             Debug.LogError($"[ActionQueue] 单次处理循环达到 {MAX_ITERATIONS} 上限，强制停止！可能存在死循环。队列中还有 {_queue.Count} 个待执行动作。");
+            _queue.Clear(); // 仅在疑似死循环时清空，避免卡死
+        }
 
-        _queue.Clear();
         _processing = false;
+
+        // 处理期间可能有新动作在最后一刻入队；若队列非空则再起一轮，避免漏执行。
+        if (_queue.Count > 0)
+            StartCoroutine(ProcessLoop());
     }
 }
