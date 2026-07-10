@@ -20,6 +20,30 @@ public class BoardSyncManager : MonoBehaviour
         BoardManager bm = FindObjectOfType<BoardManager>();
         if (bm == null) return;
 
+        // ---- 服务器端去重 ----
+        // 同一半场（0-5 或 6-11）不应有两个不同槽位持有相同 templateID 的非空牌。
+        // 若发生，说明某张牌被错误写入两个槽——清理幻影，防止主机和客户端都看到重复模型。
+        for (int half = 0; half <= 6; half += 6)
+        {
+            var seen = new System.Collections.Generic.Dictionary<string, int>(); // tid → 槽号
+            for (int i = half; i < half + 6; i++)
+            {
+                BoardSlot slot = bm.GetSlot(i);
+                var ci = slot?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                string tid = ci?.templateID;
+                if (string.IsNullOrEmpty(tid)) continue;
+                if (seen.TryGetValue(tid, out int firstSlot))
+                {
+                    var dupSlot = bm.GetSlot(i);
+                    if (dupSlot?.currentCard3D != null) { SafeDestroy(dupSlot.currentCard3D); dupSlot.SetCard(null); }
+                }
+                else
+                {
+                    seen[tid] = i;
+                }
+            }
+        }
+
         // 12 slots: "tid|data"
         string[] s = new string[12];
         for (int i = 0; i < 12; i++)
@@ -34,10 +58,27 @@ public class BoardSyncManager : MonoBehaviour
 
         bm.attachedModels.RemoveAll(a => a == null);
         var al = new System.Collections.Generic.List<string>();
-        foreach (var o in bm.attachedModels)
+        // 收集同半场 slot 已有的 templateID（slot 去重后再收集，确保 slot 侧已是权威）
+        var slotTids = new System.Collections.Generic.HashSet<string>();
+        for (int i = 0; i < 12; i++)
         {
-            var ci = o.GetComponent<Card3DInstance>()?.cardInstance;
-            if (ci != null) al.Add($"{ci.templateID}|{ci.hostSlotID}|{ci.attachOrder}");
+            var ci2 = bm.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci2 != null && !string.IsNullOrEmpty(ci2.templateID)) slotTids.Add(ci2.templateID);
+        }
+        for (int i = bm.attachedModels.Count - 1; i >= 0; i--)
+        {
+            var o = bm.attachedModels[i];
+            var ci = o?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci == null) { bm.attachedModels.RemoveAt(i); continue; }
+            // attachedModels 里的模型如果 templateID 已存在于 slot（=独立放置过的牌），
+            // 则为同步竞态产生的重复附着幻影，清理掉。
+            if (slotTids.Contains(ci.templateID))
+            {
+                SafeDestroy(o);
+                bm.attachedModels.RemoveAt(i);
+                continue;
+            }
+            al.Add($"{ci.templateID}|{ci.hostSlotID}|{ci.attachOrder}");
         }
         string ab = al.Count > 0 ? string.Join("||", al) : "";
 
@@ -108,6 +149,13 @@ public class BoardSyncManager : MonoBehaviour
         { if (bm.attachedModels[i] != null) SafeDestroy(bm.attachedModels[i]); bm.attachedModels.RemoveAt(i); }
 
         if (string.IsNullOrEmpty(attachBlock)) return;
+        // 客户端附着物去重：收集当前所有 slot 的 templateID，防附着块重建同模板幻影
+        var clientSlotTids = new System.Collections.Generic.HashSet<string>();
+        for (int si = 0; si < 12; si++)
+        {
+            var sci = bm.GetSlot(si)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (sci != null && !string.IsNullOrEmpty(sci.templateID)) clientSlotTids.Add(sci.templateID);
+        }
         foreach (var item in attachBlock.Split(new[] { "||" }, System.StringSplitOptions.None))
         {
             if (string.IsNullOrEmpty(item)) continue;
@@ -115,6 +163,8 @@ public class BoardSyncManager : MonoBehaviour
             int hs = 0, o = 0;
             if (p.Length > 1 && int.TryParse(p[1], out int h)) hs = h;
             if (p.Length > 2 && int.TryParse(p[2], out int od)) o = od;
+            // 去重：同模板已存在于 slot 则跳过
+            if (clientSlotTids.Contains(p[0])) continue;
             var t = CardDatabase.Instance?.GetTemplate(p[0]);
             if (t?.prefab3D == null || hm == null) continue;
             int cs = hs >= 6 ? hs - 6 : hs + 6;  // mirror 6-11↔0-5
@@ -195,12 +245,23 @@ public class BoardSyncManager : MonoBehaviour
         if (cur != null && cur.templateID != tid) { SafeDestroy(slot.currentCard3D); slot.SetCard(null); cur = null; }
         if (cur == null && hm != null)
         {
+            // 去重：同步竞态可能把同一张牌的数据写进多个槽位。
+            // 若同侧(6-11)已有同 templateID 的牌（=刚才正常放置的，如 PlaceIndependentCard），
+            // 且本方当前不在该目标槽，则跳过创建，防止"一个放置变两个模型"。
+            int otherSlot = -1;
+            for (int check = 6; check <= 11; check++)
+            {
+                if (check == idx) continue;
+                var checkCard = bm.GetSlot(check)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                if (checkCard != null && checkCard.templateID == tid)
+                    { otherSlot = check; break; }
+            }
+            if (otherSlot >= 0) return;
+
             var t = CardDatabase.Instance?.GetTemplate(tid);
             if (t?.prefab3D != null)
             {
                 var m = Instantiate(t.prefab3D, hm.GetSlotWorldPosition(idx), Quaternion.Euler(0, 180, 0));
-                // [复现独立放置重复] 定位后可删：同步路径创建模型
-                Debug.LogWarning($"[模型创建溯源] EnsureCard(同步) tid={tid} 槽={idx} 帧={Time.frameCount} 槽旧卡={slot.currentCard3D != null}");
                 var c = m.GetComponent<Card3DInstance>();
                 if (c != null) { var n = m.AddComponent<CardInstance>(); n.InitFromTemplate(t, 0); c.cardInstance = n; c.UpdateValues(); }
                 slot.SetCard(m);

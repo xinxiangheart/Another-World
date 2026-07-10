@@ -918,8 +918,9 @@ public class NetworkPlayer : NetworkBehaviour
             // 否则出现"召唤物死亡后又进场"（陈旧上报重建了已死单位）。新牌走 CmdPlayCard 等专用通道，不依赖此处创建。
             if (ci == null)
             {
-                // [死亡重生溯源] 修复生效验证：这里拦截的就是原来会复活死亡单位的上报。定位稳定后可删此日志。
-                Debug.LogWarning($"[死亡重生溯源] 拦截陈旧上报，拒绝复活 tid={tid} 服务器槽={i} 相位={TurnManager.Instance?.currentPhase}");
+                // 拒绝客户端陈旧上报复活已移除单位（ci==null 时 Create 会复活）
+
+
                 continue;
             }
 
@@ -975,6 +976,13 @@ public class NetworkPlayer : NetworkBehaviour
         if (!string.IsNullOrEmpty(attachBlock))
         {
             HandManager hm2 = FindObjectOfType<HandManager>();
+            // 去重：附着物 templateID 若已存在于 slot（=独立放置过的牌），跳过创建，防止重复模型。
+            var slotTids = new System.Collections.Generic.HashSet<string>();
+            for (int si = 0; si < 12; si++)
+            {
+                var sci = bm.GetSlot(si)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                if (sci != null && !string.IsNullOrEmpty(sci.templateID)) slotTids.Add(sci.templateID);
+            }
             foreach (var item in attachBlock.Split(new[] { "||" },
                 System.StringSplitOptions.RemoveEmptyEntries))
             {
@@ -982,6 +990,8 @@ public class NetworkPlayer : NetworkBehaviour
                 if (p.Length < 3) continue;
                 if (!int.TryParse(p[1], out int hs) || !int.TryParse(p[2], out int o)) continue;
                 int serverHostSlot = isLocalPlayer ? hs : hs - 6; // client 6-11 → server 0-5 for Remote
+                // 去重：若该模板已在 slot 中存在，跳过附着物创建
+                if (slotTids.Contains(p[0])) continue;
                 var t = CardDatabase.Instance?.GetTemplate(p[0]);
                 if (t?.prefab3D == null || hm2 == null) continue;
                 Vector3 hostPos = hm2.GetSlotWorldPosition(serverHostSlot);
