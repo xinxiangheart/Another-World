@@ -52,8 +52,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public static Action<BoardSlot> onTargetSelected;
 
     private Vector3 originalScale;
-    private Image slotImage;
-    private Color normalColor;
+    public Image slotImage;
+    public Color normalColor;
     public Color highlightColor = Color.yellow;
 
     public static bool attachCanBeIndependent = false;
@@ -526,466 +526,20 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
 
         if (template.templateID == "01309") {CleanupAfterPlacement();return;}
-        if (template.templateID == "03504")
-        {
-            BoardManager bm = FindObjectOfType<BoardManager>();
-            for (int i = 0; i <= 5; i++)
-            {
-                BoardSlot es = bm?.GetSlot(i);
-                if (es?.currentCard3D != null)
-                {
-                    Card3DInstance ei = es.currentCard3D.GetComponent<Card3DInstance>();
-                    if (ei?.cardInstance != null)
-                    {
-                        BattleManager.Instance?.ApplyDamageToMinionPublic(ei.cardInstance, 1, null);
-                        ei.UpdateValues();
-                    }
-                }
-            }
-            BoardSlot.CheckAndHandleDeaths();
 
-            // Sync enemy health to server so opponent sees the damage
-            if (NetworkClient.isConnected)
-            {
-                string[] enemyStats = new string[6];
-                for (int i = 0; i <= 5; i++)
-                {
-                    BoardSlot es = bm?.GetSlot(i);
-                    var ci = es?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
-                    if (ci != null)
-                        enemyStats[i] = $"{ci.templateID}|{ci.currentHealth}";
-                }
-                NetworkPlayer.Local?.CmdSyncEnemyDamage(enemyStats);
-            }
+        // ── Step 3: 进场效果分发（新 → EffectRegistry，回退 → 旧 switch）──
+        var enterCtx = EffectContext.ForEnter(template, inst, this);
+        if (EffectDispatcher.Dispatch(Trigger.Enter, enterCtx))
+            return; // handler 已处理全部逻辑（含 CleanupAfterPlacement）
 
-            CleanupAfterPlacement();
-            return;
-        }
-
-        if (template.templateID == "03506")
-        {
-            BoardManager bm = FindObjectOfType<BoardManager>();
-            for (int i = 0; i <= 5; i++)
-            {
-                BoardSlot es = bm?.GetSlot(i);
-                if (es?.currentCard3D != null)
-                {
-                    Card3DInstance ei = es.currentCard3D.GetComponent<Card3DInstance>();
-                    if (ei?.cardInstance != null)
-                    {
-                        BattleManager.Instance?.ApplyDamageToMinionPublic(ei.cardInstance, 1, null);
-                        ei.UpdateValues();
-                    }
-                }
-            }
-            BoardSlot.CheckAndHandleDeaths();
-
-            // Sync enemy health to server so opponent sees the damage
-            if (NetworkClient.isConnected)
-            {
-                string[] enemyStats = new string[6];
-                for (int i = 0; i <= 5; i++)
-                {
-                    BoardSlot es = bm?.GetSlot(i);
-                    var ci = es?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
-                    if (ci != null)
-                        enemyStats[i] = $"{ci.templateID}|{ci.currentHealth}";
-                }
-                NetworkPlayer.Local?.CmdSyncEnemyDamage(enemyStats);
-            }
-
-            CleanupAfterPlacement();
-            return;
-        }
-
-        switch (template.templateID)
-        {
-            case "03501":
-                GlobalEventManager.Instance.RegisterAura(new SuppressorAura { source = inst });
-                if (!HasEnemyTarget()) { CleanupAfterPlacement(); return; }
-                {
-                    SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (targetSlot) =>
-                    {
-                        if (targetSlot != null && targetSlot.currentCard3D != null)
-                        {
-                            targetSlot.currentCard3D.GetComponent<Card3DInstance>().cardInstance.silencedThisPhase = true;
-                        }
-                    });
-                }
-                return;
-            case "03503":
-                GlobalEventManager.Instance.RegisterAura(new SageAura { source = inst });
-                CleanupAfterPlacement();
-                return;
-            case "03511":
-            Debug.Log("妖精护盾选择前");
-                GlobalEventManager.Instance.OnPlayerDamaged += OnDisasterWalkerDamage;
-                inst._disasterWalkerHandler = OnDisasterWalkerDamage;
-                CleanupAfterPlacement();
-                return;
-            case "01104":
-                if (!HasEnemyTarget()) { CleanupAfterPlacement(); return; }
-                SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (targetSlot) =>
-                {
-                    if (targetSlot != null && targetSlot.currentCard3D != null)
-                    {
-                        Card3DInstance t3d = targetSlot.currentCard3D.GetComponent<Card3DInstance>();
-                        if (t3d != null)
-                        {
-                            BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, 1, currentCard3D);
-                            t3d.UpdateValues();
-                        }
-                    }
-                    BoardSlot.CheckAndHandleDeaths();
-                    CleanupAfterPlacement();
-                });
-                break;
-          
-            case "01110":
-                if (!HasAllyTargetExceptSelf()) { CleanupAfterPlacement(); return; }
-                SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (targetSlot) =>
-                {
-                    if (targetSlot != null && targetSlot.currentCard3D != null && targetSlot != this)
-                    {
-                        targetSlot.currentCard3D.GetComponent<Card3DInstance>().cardInstance.isActiveExit = true;
-                        targetSlot.HandleDeath(targetSlot.currentCard3D);
-                    }
-                    CleanupAfterPlacement();
-                });
-                break;
-            case "01311":
-                StartCoroutine(ConductorEnterEffect(inst));
-                return;
-            case "01313":
-                if (!HasAllyTargetExceptSelf()) { CleanupAfterPlacement(); return; }
-                {
-                    string jdLayerId = SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, null);
-                    BoardSlot.onTargetSelected = (targetSlot) =>
-                    {
-                        if (targetSlot == this || targetSlot == null || targetSlot.currentCard3D == null) return;
-
-                        SelectionManager.Instance.EndSelection(jdLayerId);
-
-                        Card3DInstance t3d = targetSlot.currentCard3D.GetComponent<Card3DInstance>();
-                        if (t3d != null)
-                        {
-                            int atk = t3d.cardInstance.currentAttack;
-                            int hp = t3d.cardInstance.currentHealth;
-                            CardInstance targetInst = t3d.cardInstance;
-                            t3d.cardInstance.isActiveExit = true;
-                            targetSlot.HandleDeath(t3d.gameObject);
-                            if (!targetInst.handledReturnToHand)
-                            {
-                                CardData tt = CardDatabase.Instance?.GetTemplate(targetInst.templateID);
-                                if (tt != null) NetworkPlayer.Local.AddCardToHandFromInstance(tt, targetInst);
-                            }
-                            Card3DInstance self3D = currentCard3D?.GetComponent<Card3DInstance>();
-                            if (self3D != null)
-                            {
-                                self3D.cardInstance.currentAttack += atk;
-                                self3D.cardInstance.currentHealth += hp;
-                                self3D.cardInstance.currentMaxHealth += hp;
-                                self3D.UpdateValues();
-                            }
-                        }
-                        CleanupAfterPlacement();
-                    };
-                }
-                break;
-            case "01314":
-                StartCoroutine(HeartthrobEnterEffect(inst));
-                return;
-            case "01317":
-                if (inst.greedySnakeEnterCount >= 3)
-                {
-                    Debug.Log("贪欲之蛇：进场已达3次，无效果");
-                    CleanupAfterPlacement();
-                    return;
-                }
-                if (!HasEnemyTarget())
-                {
-            Debug.Log("妖精护盾选择前");
-                    CleanupAfterPlacement();
-                    return;
-                }
-                {
-                    string layerId = SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (targetSlot) =>
-                    {
-                        if (targetSlot?.currentCard3D != null)
-                        {
-                            CardInstance targetCI = targetSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                            if (targetCI != null)
-                            {
-                                StartCoroutine(GreedySnakeCopyProcess(inst, targetCI));
-                                return;
-                            }
-                        }
-                        CleanupAfterPlacement();
-                    });
-                }
-                return;
-            case "01319":
-                StartCoroutine(FearlessEnterEffect());
-                return;
-            case "01322":
-                StartCoroutine(RemnantEnterEffect(inst));
-                return;
-            case "01329":
-                StartCoroutine(ApprenticeMageEnterEffect(inst));
-                return;
-            case "01331":
-                StartCoroutine(PrisonEnterEffect(inst));
-                return;
-            case "01335":
-                {
-                    BoardManager bmScroll = FindObjectOfType<BoardManager>();
-                    int mySlot = -1;
-                    if (inst.isAttached)
-                    {
-                        mySlot = inst.hostSlotID;
-                    }
-                    else
-                    {
-                        for (int i = 0; i < 12; i++)
-                        {
-                            if (bmScroll?.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance == inst)
-                            { mySlot = i; break; }
-                        }
-                    }
-                    if (mySlot >= 0)
-                    {
-                        GlobalEventManager.Instance.RegisterAura(new EnergyHackerAura
-                        {
-                            source = inst,
-                            hostSlotID = mySlot,
-                            mySlotID = mySlot
-                        });
-                    }
-                }
-                CleanupAfterPlacement();
-                return;
-            case "01337":
-                StartCoroutine(PirateEnterEffect(inst));
-                return;
-            case "01323":
-                GlobalEventManager.Instance.RegisterAura(new JudgeAura { source = inst });
-                CleanupAfterPlacement();
-                return;
-            case "01348":
-                if (CounterManager.Instance == null || CounterManager.Instance.enemyCounters.Count == 0)
-                {
-            Debug.Log("妖精护盾选择前");
-                    CleanupAfterPlacement();
-                    return;
-                }
-                GenericChoicePanel.Instance.Show("选择强化", new List<string> { "+3+0", "+0+3" }, (index) =>
-                {
-                    if (index == 0)
-                    {
-                        inst.currentHealth += 3;
-                        inst.currentMaxHealth += 3;
-                    }
-                    else
-                    {
-                        inst.currentAttack += 3;
-                    }
-                    Card3DInstance c3d = FindGiver3D(inst);
-                    c3d?.UpdateValues();
-                    CleanupAfterPlacement();
-                });
-                return;
-            case "01349":
-                HandManager hmCollector = FindObjectOfType<HandManager>();
-                hmCollector.StartCoroutine(hmCollector.CollectorEnterEffect(inst));
-                return;
-
-            case "01108":
-                if (CounterManager.Instance != null && CounterManager.Instance.enemyCounters.Count > 0)
-                {
-                    NetworkPlayer.Local.currentEnergy -= 1;
-                    NetworkPlayer.Local.UpdateUI();
-                }
-                CleanupAfterPlacement();
-                return;
-
-            case "01117":
-                if (!HasEnemyTarget()) { CleanupAfterPlacement(); return; }
-                if (inst.giveableDeathTraits == null || inst.giveableDeathTraits.Count == 0) { CleanupAfterPlacement(); return; }
-                SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (targetSlot) =>
-                {
-                    if (targetSlot != null && targetSlot.currentCard3D != null)
-                    {
-                        CardInstance targetCI = targetSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                        if (targetCI != null)
-                        {
-                            SufferingGiverPanel.Instance.Show(
-                                new List<string>(inst.giveableDeathTraits),
-                                (chosenTrait) =>
-                                {
-                                    ApplySufferingGiverEffect(inst, targetCI, chosenTrait);
-                                    CleanupAfterPlacement();
-                                }
-                            );
-                            return;
-                        }
-                    }
-                    CleanupAfterPlacement();
-                });
-                break;
-
-            case "01127":
-                StartCoroutine(ReformerEnterEffect(inst));
-                return;
-            case "01501":
-                StartCoroutine(EmperorEnterEffect(inst));
-                return;
-            case "01502":
-                StartCoroutine(ShadowMasterEnterEffect(inst));
-                return;
-            case "01503":
-                StartCoroutine(LordEnterEffect(inst));
-                return;
-            case "01504":
-                StartCoroutine(WolfKingEnterEffect(inst));
-                return;
-            case "01505":
-                StartCoroutine(BlockerEnterEffect(inst));
-                return;
-            case "01506":
-                StartCoroutine(AmplifierEnterEffect(inst));
-                return;
-            case "01507":
-                if (!HasAllyTargetExceptSelf()) { CleanupAfterPlacement(); return; }
-                {
-                    string layerId = SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (targetSlot) =>
-                    {
-                        if (targetSlot != null && targetSlot.currentCard3D != null && targetSlot != this)
-                        {
-                            CardInstance targetCI = targetSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                            if (targetCI != null)
-                            {
-                                targetCI.hasLifePriestBlessing = true;
-                                targetCI.lifePriestBlessingSource = inst;
-                            }
-                        }
-                        CleanupAfterPlacement();
-                    });
-                }
-                return;
-            case "01509":
-                StartCoroutine(TerroristEnterEffect(inst));
-                return;
-            case "01511":
-                if (inst.mindScholarEnterTriggeredThisPhase)
-                {
-                    CleanupAfterPlacement();
-                    return;
-                }
-                StartCoroutine(MindScholarEnterEffect(inst));
-                return;
-            case "01514":
-                CardData follower = CardDatabase.Instance?.GetTemplate("03001");
-                if (follower != null)
-                {
-                    NetworkPlayer.Local.AddCardToHand(follower);
-                    NetworkPlayer.Local.AddCardToHand(follower);
-                }
-                CleanupAfterPlacement();
-                return;
-            case "01515":
-                StartCoroutine(FanaticShamanEnterEffect(inst));
-                return;
-            case "01516":
-                inst.GrantShield(false, false, true);
-                CleanupAfterPlacement();
-                return;
-            case "01517":
-                {
-                    var aura = new MistHiderAura { source = inst };
-                    GlobalEventManager.Instance.RegisterAura(aura);
-                    aura.ApplyHide();
-                }
-                StartCoroutine(MistHiderEnterEffect(inst));
-                return;
-            case "01520":
-                GlobalEventManager.Instance.RegisterAura(new MerchantAura { source = inst });
-                foreach (GameObject card in NetworkPlayer.Local.handCards)
-                {
-                    if (card == null) continue;
-                    CardInstance ci = card.GetComponent<CardInstance>();
-                    if (ci == null) continue;
-                    CardData td = CardDatabase.Instance?.GetTemplate(ci.templateID);
-                    if (td != null && td.cardType == CardType.Summon && !ci.merchantDiscounted)
-                    {
-                        ci.merchantDiscounted = true;
-                        card.GetComponent<CardDisplay2D>()?.Refresh();
-                    }
-                }
-                CleanupAfterPlacement();
-                return;
-            case "01521":
-                StartCoroutine(BrilliantMageEnterEffect(inst));
-                return;
-            case "01523":
-                StartCoroutine(InkEnterEffect(inst));
-                return;
-            case "01524":
-                int scrollCount = 0;
-                BoardManager bmCore = FindObjectOfType<BoardManager>();
-                for (int i = 6; i <= 11; i++)
-                {
-                    BoardSlot s = bmCore?.GetSlot(i);
-                    if (s?.currentCard3D != null)
-                    {
-                        CardInstance ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                        if (ci != null && ci.prefixes.Contains("神灵画卷") && ci != inst)
-                            scrollCount++;
-                    }
-                }
-                Debug.Log($"画卷之核进场: scrollCount={scrollCount}");
-                if (scrollCount >= 2)
-                {
-                    for (int i = 0; i <= 5; i++)
-                    {
-                        BoardSlot s = bmCore?.GetSlot(i);
-                        if (s?.currentCard3D != null)
-                        {
-                            Debug.Log($"画卷之核令槽位{s.slotID}退场");
-                            CardInstance ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                            if (ci != null)
-                            {
-                                ci.isActiveExit = true;
-                                s.HandleDeath(s.currentCard3D);
-                            }
-                        }
-                    }
-                }
-                CleanupAfterPlacement();
-                return;
-            case "01528":
-                if (!inst.isAttached)
-                    GlobalEventManager.Instance.RegisterAura(new EnergyReaperAura { source = inst });
-                foreach (GameObject card in NetworkPlayer.Local.handCards)
-                {
-                    if (card == null) continue;
-                    CardInstance ci = card.GetComponent<CardInstance>();
-                    if (ci == null) continue;
-                    CardData td = CardDatabase.Instance?.GetTemplate(ci.templateID);
-                    if (td != null && td.cardType == CardType.Summon && ci.prefixes.Contains("灵能") && !ci.energyReaperDiscounted)
-                    {
-                        ci.energyReaperDiscounted = true;
-                        card.GetComponent<CardDisplay2D>()?.Refresh();
-                    }
-                }
-                CleanupAfterPlacement();
-                return;
-        }
-        BoardSlot.SyncMistHiderDisplay();
+        // ── 未注册卡回退 ───────────────────────────────────
+        Debug.LogWarning($"[StartOnEnterEffect] 未注册: {template.templateID}");
+        CleanupAfterPlacement();
     }
 
   
 
-    void CleanupAfterPlacement()
+    public void CleanupAfterPlacement()
     {
         isPlacingCard = false;
         cardToPlace = null;
@@ -1020,7 +574,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         else slotImage.color = normalColor;
     }
 
-    bool HasEnemyTarget()
+    public bool HasEnemyTarget()
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
         for (int id = 0; id <= 5; id++)
@@ -1031,7 +585,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         return false;
     }
 
-    bool HasAllyTargetExceptSelf()
+    public bool HasAllyTargetExceptSelf()
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
         for (int id = 6; id <= 11; id++)
@@ -1046,43 +600,59 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
         if (bm == null) return;
-        bool anyDied;
-        do
-        {
-            anyDied = false;
-            List<GameObject> died = new List<GameObject>();
-            for (int i = 0; i < 12; i++)
+
+        // ── Step 2c: DeathCheckAction 替代同步 do-while ─────────────────
+        ActionQueueManager.Enqueue(new DeathCheckAction(
+            "CheckAndHandleDeaths",
+            scanDeaths: () =>
             {
-                BoardSlot slot = bm.GetSlot(i);
-                if (slot?.currentCard3D == null) continue;
-                Card3DInstance c3d = slot.currentCard3D.GetComponent<Card3DInstance>();
-                if (c3d?.cardInstance != null && c3d.cardInstance.currentHealth <= 0)
-                    died.Add(slot.currentCard3D);
-            }
-            foreach (GameObject dead in died)
-            {
+                var list = new List<DeathInfo>();
+                BoardManager bmScan = FindObjectOfType<BoardManager>();
+                if (bmScan == null) return list;
                 for (int i = 0; i < 12; i++)
                 {
-                    BoardSlot slot = bm.GetSlot(i);
-                    if (slot.currentCard3D == dead) { slot.HandleDeath(dead); anyDied = true; break; }
+                    BoardSlot s = bmScan.GetSlot(i);
+                    if (s?.currentCard3D == null) continue;
+                    Card3DInstance c3d = s.currentCard3D.GetComponent<Card3DInstance>();
+                    if (c3d?.cardInstance != null && c3d.cardInstance.currentHealth <= 0)
+                    {
+                        list.Add(new DeathInfo
+                        {
+                            slotID = s.slotID,
+                            templateID = c3d.cardInstance.templateID,
+                            cardObject = s.currentCard3D,
+                            cardInstance = c3d.cardInstance,
+                            isActiveExit = c3d.cardInstance.isActiveExit,
+                        });
+                    }
                 }
-            }
-        } while (anyDied);
-
-        // 更新所有X数值单位
-        HandManager hm = FindObjectOfType<HandManager>();
-        if (hm != null)
-        {
-            for (int i = 0; i < 12; i++)
+                return list;
+            },
+            handleDeath: (death) =>
             {
-                BoardSlot slot = bm.GetSlot(i);
-                if (slot?.currentCard3D == null) continue;
-                CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                if (ci != null && ci.isXValue)
-                    hm.UpdateXValues(ci);
-            }
-        }
-        BoardSyncManager.MarkDirty();
+                BoardManager bmHandle = FindObjectOfType<BoardManager>();
+                if (bmHandle == null) return;
+                BoardSlot s = bmHandle.GetSlot(death.slotID);
+                if (s != null && s.currentCard3D == death.cardObject)
+                    s.HandleDeath(death.cardObject);
+            },
+            onAllDeathsResolved: () =>
+            {
+                HandManager hm = FindObjectOfType<HandManager>();
+                BoardManager bmFinal = FindObjectOfType<BoardManager>();
+                if (hm != null && bmFinal != null)
+                {
+                    for (int i = 0; i < 12; i++)
+                    {
+                        BoardSlot s = bmFinal.GetSlot(i);
+                        if (s?.currentCard3D == null) continue;
+                        CardInstance ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                        if (ci != null && ci.isXValue)
+                            hm.UpdateXValues(ci);
+                    }
+                }
+                BoardSyncManager.MarkDirty();
+            }));
     }
 
     public void HandleDeath(GameObject dyingCard)
@@ -1152,591 +722,38 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             }
         }
 
-        if (templateID == "03503" || templateID == "03501")
-        {
-            GlobalEventManager.Instance?.UnregisterAuraOfSource(c3d.cardInstance);
-        }
-        if (templateID == "03501")
-        {
-            BoardManager bm = FindObjectOfType<BoardManager>();
-            if (bm != null)
-                for (int i = 6; i <= 11; i++)
-                {
-                    BoardSlot ally = bm.GetSlot(i);
-                    if (ally?.currentCard3D != null)
-                        ally.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
-                }
-        }
-        if (templateID == "03511")
-        {
-            if (c3d.cardInstance._disasterWalkerHandler != null)
-                GlobalEventManager.Instance.OnPlayerDamaged -= c3d.cardInstance._disasterWalkerHandler;
-        }
-        if (templateID == "01106")
-        {
-            if (isActiveExit) NetworkPlayer.Local.AddEnergy(3);
-            else NetworkPlayer.Local.AddEnergy(1);
-        }
-
+        // ── 退场效果分发 ──────────────────────────────────────────────
         bool shouldReturn03504 = false;
         CardData template03504 = null;
-        if (templateID == "03504")
-        {
-            shouldReturn03504 = c3d.cardInstance.currentCost > 0 && !c3d.cardInstance.enteredWithZeroCost;
-            c3d.cardInstance.costReduction++;
-            c3d.cardInstance.currentCost = Mathf.Max(0, c3d.cardInstance.currentCost - 1);
-            if (shouldReturn03504)
-            {
-                c3d.cardInstance.handledReturnToHand = true;
-                template03504 = CardDatabase.Instance?.GetTemplate(templateID);
-            }
-        }
-
-        if (templateID == "01107" && isActiveExit)
-        {
-            Debug.Log("妖精护盾选择前");
-            NetworkPlayer.Local.AddEnergy(2);
-            bool hasAlly = false;
-            BoardManager bm = FindObjectOfType<BoardManager>();
-            for (int i = 6; i <= 11; i++)
-            {
-                if (bm?.GetSlot(i)?.currentCard3D != null) { hasAlly = true; break; }
-            }
-            Debug.Log($"妖精 hasAlly={hasAlly}");
-            if (hasAlly)
-            {
-                Debug.Log("妖精 BeginSelection 返回");
-                SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (target) =>
-                {
-                    Debug.Log($"妖精选择回调: target={target?.slotID}");
-                    if (target?.currentCard3D != null)
-                    {
-                        CardInstance ti = target.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                        if (ti != null)
-                        {
-                            ti.GrantShield(true, false, false);
-                            target.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
-                        }
-                    }
-                });
-                Debug.Log("妖精 BeginSelection 调用");
-            }
-        }
-
-        if (templateID == "01111" && isActiveExit)
-        {
-            BoardManager bm = FindObjectOfType<BoardManager>();
-            if (bm != null)
-                for (int i = 6; i <= 11; i++)
-                {
-                    BoardSlot slot = bm.GetSlot(i);
-                    if (slot?.currentCard3D == null) continue;
-                    CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                    if (ci != null && ci.templateID != "01111" && ci.templateID != "01301")
-                    {
-                        TriggerDeathEffect(ci, true);
-                    }
-                }
-        }
-
-        if (templateID == "01301")
-        {
-            BoardManager bm = FindObjectOfType<BoardManager>();
-            if (bm != null)
-                for (int i = 6; i <= 11; i++)
-                {
-                    BoardSlot slot = bm.GetSlot(i);
-                    if (slot?.currentCard3D == null) continue;
-                    CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                    if (ci != null && ci.templateID != "01111" && ci.templateID != "01301")
-                        TriggerDeathEffect(ci, isActiveExit);
-                }
-        }
-
-        if (templateID == "01306" && isActiveExit)
-        {
-            BoardManager bm = FindObjectOfType<BoardManager>();
-            if (bm != null)
-            {
-                int highestAtk = -1;
-                BoardSlot targetSlot = null;
-                for (int i = 0; i <= 5; i++)
-                {
-                    BoardSlot slot = bm.GetSlot(i);
-                    if (slot?.currentCard3D == null) continue;
-                    Card3DInstance ce = slot.currentCard3D.GetComponent<Card3DInstance>();
-                    if (ce?.cardInstance != null && ce.cardInstance.currentAttack > highestAtk)
-                    { highestAtk = ce.cardInstance.currentAttack; targetSlot = slot; }
-                }
-                if (targetSlot != null)
-                {
-                    targetSlot.currentCard3D.GetComponent<Card3DInstance>().cardInstance.isActiveExit = true;
-                    targetSlot.HandleDeath(targetSlot.currentCard3D);
-                }
-            }
-        }
-
-        if (templateID == "01307" && isActiveExit)
-        {
-            BoardManager bm = FindObjectOfType<BoardManager>();
-            if (bm != null)
-            {
-                int highestHp = -1;
-                BoardSlot targetSlot = null;
-                for (int i = 0; i <= 5; i++)
-                {
-                    BoardSlot slot = bm.GetSlot(i);
-                    if (slot?.currentCard3D == null) continue;
-                    Card3DInstance ce = slot.currentCard3D.GetComponent<Card3DInstance>();
-                    if (ce?.cardInstance != null && ce.cardInstance.currentHealth > highestHp)
-                    { highestHp = ce.cardInstance.currentHealth; targetSlot = slot; }
-                }
-                if (targetSlot != null)
-                {
-                    targetSlot.currentCard3D.GetComponent<Card3DInstance>().cardInstance.isActiveExit = true;
-                    targetSlot.HandleDeath(targetSlot.currentCard3D);
-                }
-            }
-        }
-        if (templateID == "01309")
-        {
-            StartCoroutine(RogueDeathEffect(c3d.cardInstance));
-        }
-        if (templateID == "01311" && isActiveExit)
-        {
-            // 选择任意召唤物退场：双倍+返还费用
-            if (HasAllyTargetExceptSelf())
-            {
-                SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (targetSlot) =>
-                {
-                    if (targetSlot != null && targetSlot.currentCard3D != null && targetSlot != this)
-                    {
-                        CardInstance targetCI = targetSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                        if (targetCI != null)
-                        {
-                            NetworkPlayer.Local.AddEnergy(targetCI.currentCost);
-                            targetCI.isActiveExit = true;
-                            targetCI._conductorDoubleDeath = true;
-                            targetSlot.HandleDeath(targetSlot.currentCard3D);
-                        }
-                    }
-                });
-            }
-        }
-        if (templateID == "01316")
-        {
-            if (isActiveExit)
-            {
-                // 清理重定向标记
-                StartCoroutine(ThiefActiveExitEffect());
-            }
-            else
-            {
-                // 清理重定向标记
-                NetworkPlayer.Local.DrawCardWithoutLimit();
-                NetworkPlayer.Local.DrawCardWithoutLimit();
-            }
-        }
-        if (templateID == "01320")
-        {
-            int targetSum = isActiveExit ? 10 : 4;
-            int totalCost = 0;
-            int drawnCount = 0;
-            while (totalCost < targetSum && drawnCount < 20)
-            {
-                CardData data = DeckManager.Instance?.DrawFromMain();
-                if (data == null) break;
-                NetworkPlayer.Local.AddCardToHand(data);
-                totalCost += data.baseCost;
-                drawnCount++;
-            }
-            Debug.Log($"魔术师退场：摸{drawnCount}张，总基础费用{totalCost}");
-        }
-        if (templateID == "01321")
-        {
-            StartCoroutine(RiddlerDeathEffect(c3d.cardInstance));
-        }
-        if (templateID == "01323")
-        {
-            GlobalEventManager.Instance?.UnregisterAuraOfSource(c3d.cardInstance);
-        }
-        if (templateID == "01325" && isActiveExit)
-        {
-            int baseHP = Mathf.Max(0, c3d.cardInstance.currentHealth);
-            int energyGain = baseHP * 2;
-            NetworkPlayer.Local._energyCanExceedLimit = true;
-            NetworkPlayer.Local.AddEnergy(energyGain);
-        }
-        if (templateID == "01331")
-        {
-            BoardManager bm = FindObjectOfType<BoardManager>();
-            if (c3d.cardInstance.prisonMySlot >= 0)
-            {
-                BoardSlot s = bm?.GetSlot(c3d.cardInstance.prisonMySlot);
-                if (s != null)
-                {
-                    s.prisonBlocked = false;
-                    s.prisonAllowYuan = false;
-                    s.slotImage.color = s.isBlocked ? Color.gray : s.normalColor;
-                }
-            }
-            if (c3d.cardInstance.prisonEnemySlot >= 0)
-            {
-                BoardSlot s = bm?.GetSlot(c3d.cardInstance.prisonEnemySlot);
-                if (s != null)
-                {
-                    s.prisonBlocked = false;
-                    s.prisonAllowYuan = false;
-                    s.slotImage.color = s.isBlocked ? Color.gray : s.normalColor;
-                }
-            }
-        }
-        if (templateID == "01335")
-        {
-            GlobalEventManager.Instance?.UnregisterAuraOfSource(c3d.cardInstance);
-        }
-        if (templateID == "01338" && isActiveExit)
-        {
-            StartCoroutine(DeepSeaActiveExitEffect());
-        }
-        if (templateID == "01347")
-        {
-            if (isActiveExit)
-            {
-                // 主动退场：+2能量，展示对方手牌并弃掉邪恶法术
-                StartCoroutine(HonorAttendantActiveExit());
-            }
-            else
-            {
-        // 检查目标排是否有至少2个可操作的格子
-                if (HasEnemyTarget())
-                {
-                    SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (target) =>
-                    {
-                        if (target?.currentCard3D != null)
-                        {
-                            Card3DInstance t3d = target.currentCard3D.GetComponent<Card3DInstance>();
-                            if (t3d?.cardInstance != null)
-                            {
-                                BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, 2, null);
-                                t3d.UpdateValues();
-                            }
-                        }
-                        BoardSlot.CheckAndHandleDeaths();
-                    });
-                }
-            }
-        }
-        if (templateID == "01502")
-        {
-            CardInstance.shadowMasterAlive = false;
-        }
-        if (templateID == "01511")
-        {
-            if (!c3d.cardInstance.handledReturnToHand)
-            {
-                c3d.cardInstance.handledReturnToHand = true;
-                CardData template = CardDatabase.Instance?.GetTemplate(templateID);
-                if (template != null)
-                    NetworkPlayer.Local.AddCardToHandFromInstance(template, c3d.cardInstance);
-            }
-        }
-        if (templateID == "01515")
-        {
-            GlobalEventManager.Instance?.UnregisterAuraOfSource(c3d.cardInstance);
-        }
-        if (templateID == "01517")
-        {
-            var auras = GlobalEventManager.Instance?.GetAurasOfSource(c3d.cardInstance);
-            if (auras != null)
-            {
-                foreach (var a in auras)
-                {
-                    if (a is MistHiderAura mistAura)
-                        mistAura.RemoveHide();
-                }
-            }
-            GlobalEventManager.Instance?.UnregisterAuraOfSource(c3d.cardInstance);
-        }
-        if (templateID == "01520")
-        {
-            NetworkPlayer.Local.DrawCardWithoutLimit();
-            GlobalEventManager.Instance?.UnregisterAuraOfSource(c3d.cardInstance);
-
-            foreach (GameObject card in NetworkPlayer.Local.handCards)
-            {
-                if (card == null) continue;
-                CardInstance ci = card.GetComponent<CardInstance>();
-                if (ci != null && ci.merchantDiscounted)
-                {
-                    ci.merchantDiscounted = false;
-                    card.GetComponent<CardDisplay2D>()?.Refresh();
-                }
-            }
-        }
-        if (templateID == "01528")
-        {
-            GlobalEventManager.Instance?.UnregisterAuraOfSource(c3d.cardInstance);
-            foreach (GameObject card in NetworkPlayer.Local.handCards)
-            {
-                if (card == null) continue;
-                CardInstance ci = card.GetComponent<CardInstance>();
-                if (ci != null && ci.energyReaperDiscounted)
-                {
-                    ci.energyReaperDiscounted = false;
-                    card.GetComponent<CardDisplay2D>()?.Refresh();
-                }
-            }
-        }
-        if (templateID == "03513")
-        {
-            BoardManager bm = FindObjectOfType<BoardManager>();
-            if (bm != null)
-            {
-                for (int i = 0; i <= 5; i++)
-                {
-                    BoardSlot es = bm.GetSlot(i);
-                    if (es?.currentCard3D != null)
-                    {
-                        Card3DInstance ei = es.currentCard3D.GetComponent<Card3DInstance>();
-                        if (ei?.cardInstance != null)
-                        {
-                            BattleManager.Instance.ApplyDamageToMinionPublic(ei.cardInstance, 1, dyingCard);
-                            ei.UpdateValues();
-                        }
-                    }
-                }
-            }
-           
-        }
-        if (templateID == "03020" && !c3d.cardInstance.handledReturnToHand)
-        {
-            if (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(c3d.cardInstance))
-            {
-                CardData next = CardDatabase.Instance?.GetTemplate("03021");
-                if (next != null) NetworkPlayer.Local.AddCardToHand(next);
-            }
-        }
-        if (templateID == "03021" && !c3d.cardInstance.handledReturnToHand)
-        {
-            if (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(c3d.cardInstance))
-            {
-                CardData next = CardDatabase.Instance?.GetTemplate("03022");
-                if (next != null) NetworkPlayer.Local.AddCardToHand(next);
-            }
-        }
-
-        bool shouldReturn03009 = false;
-        CardData template03009 = null;
-        if (templateID == "03009")
-        {
-            if (!c3d.cardInstance.handledReturnToHand)
-            {
-                c3d.cardInstance.handledReturnToHand = true;
-                template03009 = CardDatabase.Instance?.GetTemplate(templateID);
-                shouldReturn03009 = true;
-            }
-        }
-
         bool shouldReturn01117 = false;
         CardData template01117 = null;
-        if (templateID == "01117")
+        bool shouldReturn03009 = false;
+        CardData template03009 = null;
+
+        var exitCtx = EffectContext.ForExit(c3d.cardInstance, this, isActiveExit);
+        Trigger exitTrigger = isActiveExit ? Trigger.ActiveExit : Trigger.Exit;
+        EffectDispatcher.Dispatch(exitTrigger, exitCtx);
+
+        shouldReturn03504 = exitCtx.shouldReturn03504;
+        template03504 = exitCtx.template03504;
+        shouldReturn01117 = exitCtx.shouldReturn01117;
+        template01117 = exitCtx.template01117;
+        shouldReturn03009 = exitCtx.shouldReturn03009;
+        template03009 = exitCtx.template03009;
+
+        // ── 通用死亡后处理管线（Step 2a 提取） ─────────────────────────
+        DeathPipeline.ExecuteCommon(new DeathPipelineParams
         {
-            bool shouldReturnToHand = false;
-            if (!isActiveExit) shouldReturnToHand = true;
-
-            foreach (string trait in c3d.cardInstance.giveableDeathTraits)
-            {
-                switch (trait)
-                {
-                    case "退场：摸一张牌":
-                        NetworkPlayer.Local.currentEnergy -= 1;
-                        NetworkPlayer.Local.UpdateUI();
-                        break;
-                    case "退场：己方全体受一点伤害":
-                        BoardManager bm = FindObjectOfType<BoardManager>();
-                        if (bm != null)
-                            for (int i = 6; i <= 11; i++)
-                            {
-                                BoardSlot slot = bm.GetSlot(i);
-                                if (slot?.currentCard3D != null)
-                                {
-                                    Card3DInstance ca = slot.currentCard3D.GetComponent<Card3DInstance>();
-                                    if (ca?.cardInstance != null && ca.cardInstance != c3d.cardInstance)
-                                    {
-                                        BattleManager.Instance.ApplyDamageToMinionPublic(ca.cardInstance, 1, dyingCard);
-                                        ca.UpdateValues();
-                                    }
-                                }
-                            }
-                        
-                        break;
-                    case "退场：己方玩家扣一血":
-                        NetworkPlayer.Local.TakeDamage(1);
-                        break;
-                }
-            }
-
-            if (shouldReturnToHand && !c3d.cardInstance.handledReturnToHand)
-            {
-                c3d.cardInstance.handledReturnToHand = true;
-                template01117 = CardDatabase.Instance?.GetTemplate(templateID);
-                shouldReturn01117 = true;
-            }
-        }
-        if (templateID == "01522")
-        {
-                // 清理重定向标记
-            StartCoroutine(MartyrDeathEffectCoroutine(c3d.cardInstance));
-        }
-        if (c3d.cardInstance.tempHealthBoost > 0)
-            c3d.cardInstance.currentHealth -= c3d.cardInstance.tempHealthBoost;
-        c3d.cardInstance.currentAttack -= c3d.cardInstance.tempAttackBoost;
-        c3d.cardInstance.tempAttackBoost = 0;
-        c3d.cardInstance.tempHealthBoost = 0;
-       
-        if (c3d.cardInstance.tempHealthBoost > 0)
-            c3d.cardInstance.currentHealth -= c3d.cardInstance.tempHealthBoost;
-        c3d.cardInstance.currentAttack -= c3d.cardInstance.tempAttackBoost;
-        c3d.cardInstance.tempAttackBoost = 0;
-        c3d.cardInstance.tempHealthBoost = 0;
-        c3d.cardInstance.currentAttack = c3d.cardInstance.baseAttack;
-        c3d.cardInstance.currentHealth = c3d.cardInstance.baseHealth;
-        c3d.cardInstance.currentMaxHealth = c3d.cardInstance.baseMaxHealth;
-        c3d.cardInstance.currentTier = c3d.cardInstance.baseTier;
-        GraveEntry entry = new GraveEntry();
-        entry.templateID = c3d.cardInstance.templateID;
-        entry.instanceID = c3d.cardInstance.instanceID;
-        entry.currentCost = c3d.cardInstance.currentCost;
-        entry.currentAttack = c3d.cardInstance.currentAttack;
-        entry.baseAttack = c3d.cardInstance.baseAttack;
-        entry.currentHealth = c3d.cardInstance.currentHealth;
-        entry.baseHealth = c3d.cardInstance.baseHealth;
-        entry.baseMaxHealth = c3d.cardInstance.baseMaxHealth;
-        entry.currentMaxHealth = c3d.cardInstance.currentMaxHealth;
-        entry.currentTier = c3d.cardInstance.currentTier;
-        entry.baseTier = c3d.cardInstance.baseTier;
-        entry.prefixes = c3d.cardInstance.prefixes;
-        entry.handledReturnToHand = false;
-        entry.deathPhase = TurnManager.Instance.phaseCount;
-        GraveyardManager.Instance.AddToGraveyard(entry);
-     
-                // 清理重定向标记
-        if (c3d.cardInstance._conductorDoubleDeath)
-        {
-            c3d.cardInstance._conductorDoubleDeath = false;
-            DeathEffectData data = ExtractDeathData(c3d.cardInstance);
-            data.slotID = this.slotID;
-            StartCoroutine(ConductorDoubleDeathEffect(data));
-        }
-                // 清理重定向标记
-        if (c3d.cardInstance != null && c3d.cardInstance.isAttached == false)
-        {
-            BoardManager bm = FindObjectOfType<BoardManager>();
-            List<GameObject> fairies = new List<GameObject>();
-            foreach (GameObject obj in bm.attachedModels)
-            {
-                Card3DInstance c3dAtt = obj?.GetComponent<Card3DInstance>();
-                if (c3dAtt?.cardInstance != null && c3dAtt.cardInstance.isAncientFairy && c3dAtt.cardInstance.hostSlotID == slotID)
-                {
-                    fairies.Add(obj);
-                }
-            }
-
-            foreach (GameObject fairy in fairies)
-            {
-                // 清理重定向标记
-                bm.attachedModels.Remove(fairy);
-
-                bool hasOtherAlly = false;
-                for (int i = 6; i <= 11; i++)
-                {
-                    BoardSlot s = bm?.GetSlot(i);
-                    if (s != null && s.hasCard && s.slotID != slotID)
-                    {
-                        hasOtherAlly = true;
-                        break;
-                    }
-                }
-
-                if (hasOtherAlly)
-                {
-                    StartCoroutine(AncientFairyReattach(fairy, slotID));
-                    Debug.Log($"古老精灵协程启动: fairy={fairy.name}, oldHost={slotID}");
-                }
-                else
-                {
-                    CardInstance fairyCI = fairy.GetComponent<Card3DInstance>()?.cardInstance;
-                    if (fairyCI != null)
-                    {
-                        fairyCI.isActiveExit = true;
-                    }
-                    Destroy(fairy);
-                }
-            }
-        }
-        SetCard(null);
-
-                // 清理重定向标记
-        if (c3d.cardInstance._rebornSummon)
-        {
-            CardData soldierTemplate = CardDatabase.Instance?.GetTemplate("03004");
-            if (soldierTemplate?.prefab3D != null && !this.isBlocked)
-            {
-                GameObject temp = new GameObject("TempSoldier");
-                CardInstance ti = temp.AddComponent<CardInstance>();
-                ti.InitFromTemplate(soldierTemplate, 0);
-                HandManager hm = FindObjectOfType<HandManager>();
-                hm.PlaceCardToSlot(this, temp);
-                Destroy(temp);
-            }
-        }
-        if (shouldReturn03504 && template03504 != null)
-        {
-            // Server-side: route to correct player (slot 0-5 = Remote, 6-11 = Host)
-            if (NetworkServer.active && slotID >= 0 && slotID < 6)
-                NetworkPlayer.Local?.RouteReturnToHand(slotID, c3d.cardInstance);
-            else
-                NetworkPlayer.Local.AddCardToHandFromInstance(template03504, c3d.cardInstance);
-        }
-        if (shouldReturn01117 && template01117 != null)
-            NetworkPlayer.Local.AddCardToHandFromInstance(template01117, c3d.cardInstance);
-        if (shouldReturn03009 && template03009 != null)
-            NetworkPlayer.Local.AddCardToHandFromInstance(template03009, c3d.cardInstance);
-        Destroy(dyingCard);
-        HandManager hmDeath = FindObjectOfType<HandManager>();
-        if (hmDeath != null)
-        {
-            BoardManager bmDeath = FindObjectOfType<BoardManager>();
-            if (bmDeath != null)
-                for (int i = 6; i <= 11; i++)
-                {
-                    BoardSlot sd = bmDeath.GetSlot(i);
-                    if (sd?.currentCard3D == null) continue;
-                    CardInstance ci = sd.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                    if (ci != null && ci.isXValue) hmDeath.UpdateXValues(ci);
-                }
-        }
-
-        BoardManager bmAtt = FindObjectOfType<BoardManager>();
-        if (bmAtt != null)
-            for (int i = bmAtt.attachedModels.Count - 1; i >= 0; i--)
-            {
-                GameObject obj = bmAtt.attachedModels[i];
-                if (obj == null) continue;
-                Card3DInstance ca = obj.GetComponent<Card3DInstance>();
-                if (ca?.cardInstance != null && ca.cardInstance.hostSlotID == slotID)
-                {
-                    if (ca.cardInstance.isAncientFairy) continue;
-                    bmAtt.attachedModels.RemoveAt(i);
-                    Destroy(obj);
-                }
-            }
-        BoardSlot.SyncMistHiderDisplay();
-
-        // Pure client: report slot changes (discard/removal) to server
-        if (NetworkClient.isConnected && !NetworkServer.active)
-            TurnManager.SyncMyBoardToOpponent();
+            dyingCard = dyingCard,
+            c3d = c3d,
+            slot = this,
+            shouldReturn03504 = shouldReturn03504,
+            template03504 = template03504,
+            shouldReturn01117 = shouldReturn01117,
+            template01117 = template01117,
+            shouldReturn03009 = shouldReturn03009,
+            template03009 = template03009,
+        });
     }
 
     public static void TriggerDeathEffect(CardInstance ci, bool isActive)
@@ -1803,7 +820,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
     }
 
-    void ApplySufferingGiverEffect(CardInstance giver, CardInstance target, string chosenTrait)
+    public void ApplySufferingGiverEffect(CardInstance giver, CardInstance target, string chosenTrait)
     {
         if (chosenTrait == null || giver == null || target == null) return;
         giver.giveableDeathTraits.Remove(chosenTrait);
@@ -1843,7 +860,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
     void CleanupAfterSelection() { }
 
-    IEnumerator ReformerEnterEffect(CardInstance giver)
+    public IEnumerator ReformerEnterEffect(CardInstance giver)
     {
         yield return null;
       
@@ -2030,7 +1047,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         isAttachSelectMode = true;
         attachCanBeIndependent = canBeIndependent;
     }
-    void OnDisasterWalkerDamage(int amount)
+    public void OnDisasterWalkerDamage(int amount)
     {
         Debug.Log($"灾厄行者触发: 扣血{amount}");
         for (int i = 0; i < amount; i++)
@@ -2063,7 +1080,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         dest.grantedTraitTexts = src.grantedTraitTexts != null ? new List<string>(src.grantedTraitTexts) : new List<string>();
         dest.giveableDeathTraits = src.giveableDeathTraits != null ? new List<string>(src.giveableDeathTraits) : new List<string>();
     }
-    IEnumerator HeartthrobEnterEffect(CardInstance giver)
+    public IEnumerator HeartthrobEnterEffect(CardInstance giver)
     {
         yield return null;
         NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
@@ -2126,7 +1143,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         NetworkPlayer.Local.handCards.Remove(selectedCard);
     }
-    IEnumerator MartyrDeathEffectCoroutine(CardInstance giver)
+    public IEnumerator MartyrDeathEffectCoroutine(CardInstance giver)
     {
         yield return null;
         yield return StartCoroutine(BattleManager.Instance.WaitForSelection((onDone) =>
@@ -2164,7 +1181,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             }
         }));
     }
-    IEnumerator RogueDeathEffect(CardInstance giver)
+    public IEnumerator RogueDeathEffect(CardInstance giver)
     {
         NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
 
@@ -2224,7 +1241,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             NetworkPlayer.Local.handCards.Remove(selectedCard);
         }
     }
-    IEnumerator GreedySnakeCopyProcess(CardInstance giver, CardInstance target)
+    public IEnumerator GreedySnakeCopyProcess(CardInstance giver, CardInstance target)
     {
         List<(string key, string fullText)> traits = new List<(string, string)>();
 
@@ -2315,7 +1332,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         Debug.Log($"贪欲之蛇复制了{key}，进场次数={giver.greedySnakeEnterCount}");
     }
   
-    IEnumerator RemnantEnterEffect(CardInstance giver)
+    public IEnumerator RemnantEnterEffect(CardInstance giver)
     {
         List<CardInstance> allyMinions = new List<CardInstance>();
         BoardManager bm = FindObjectOfType<BoardManager>();
@@ -2391,7 +1408,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
           hm.RemnantFinalize(firstTarget, secondTarget, index == 0);
       });
     }
-    IEnumerator PirateEnterEffect(CardInstance giver)
+    public IEnumerator PirateEnterEffect(CardInstance giver)
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
         int mySlot = -1;
@@ -2483,7 +1500,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         CleanupAfterPlacement();
     }
-    IEnumerator PrisonEnterEffect(CardInstance giver)
+    public IEnumerator PrisonEnterEffect(CardInstance giver)
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
 
@@ -2548,7 +1565,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             return true;
         return false;
     }
-    IEnumerator EmperorEnterEffect(CardInstance giver)
+    public IEnumerator EmperorEnterEffect(CardInstance giver)
     {
         yield return null;
         NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
@@ -2635,7 +1652,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     {
         return normalColor;
     }
-    IEnumerator RiddlerDeathEffect(CardInstance giver)
+    public IEnumerator RiddlerDeathEffect(CardInstance giver)
     {
         NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
 
@@ -2695,7 +1712,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             hm?.RefreshLayout(true);
         }
     }
-    IEnumerator BlockerEnterEffect(CardInstance giver)
+    public IEnumerator BlockerEnterEffect(CardInstance giver)
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
 
@@ -2730,7 +1747,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         CleanupAfterPlacement();
     }
-    IEnumerator InkEnterEffect(CardInstance giver)
+    public IEnumerator InkEnterEffect(CardInstance giver)
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
         List<CardInstance> allies = new List<CardInstance>();
@@ -2786,7 +1803,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         return null;
     }
 
-    Card3DInstance FindGiver3D(CardInstance ci)
+    public Card3DInstance FindGiver3D(CardInstance ci)
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
         for (int i = 0; i < 12; i++)
@@ -2797,7 +1814,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
         return null;
     }
-    IEnumerator ApprenticeMageEnterEffect(CardInstance giver)
+    public IEnumerator ApprenticeMageEnterEffect(CardInstance giver)
     {
         yield return null;
         NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
@@ -2882,7 +1899,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         CleanupAfterPlacement();
     }
-    IEnumerator ConductorDoubleDeathEffect(DeathEffectData data)
+    public IEnumerator ConductorDoubleDeathEffect(DeathEffectData data)
     {
         yield return null;
         yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
@@ -3007,7 +2024,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             }
         }
     }
-    IEnumerator ConductorEnterEffect(CardInstance giver)
+    public IEnumerator ConductorEnterEffect(CardInstance giver)
     {
         if (!HasAllyTargetExceptSelf()) { CleanupAfterPlacement(); yield break; }
 
@@ -3036,7 +2053,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
         CleanupAfterPlacement();
     }
-    IEnumerator DeepSeaActiveExitEffect()
+    public IEnumerator DeepSeaActiveExitEffect()
     {
         BoardSlot.isStrengtheningSlot = true;
 
@@ -3062,7 +2079,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         NetworkPlayer.Local.AddEnergy(1);
     }
-    IEnumerator FanaticShamanEnterEffect(CardInstance giver)
+    public IEnumerator FanaticShamanEnterEffect(CardInstance giver)
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
         List<BoardSlot> allies = new List<BoardSlot>();
@@ -3140,7 +2157,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
     }
 
-    IEnumerator ShadowMasterEnterEffect(CardInstance giver)
+    public IEnumerator ShadowMasterEnterEffect(CardInstance giver)
     {
         yield return null;
         yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
@@ -3151,7 +2168,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         yield return StartCoroutine(SummonAllShadows());
         CleanupAfterPlacement();
     }
-    IEnumerator LordEnterEffect(CardInstance giver)
+    public IEnumerator LordEnterEffect(CardInstance giver)
     {
         CardData ghostTemplate = CardDatabase.Instance?.GetTemplate("03002");
         if (ghostTemplate?.prefab3D == null) { CleanupAfterPlacement(); yield break; }
@@ -3182,7 +2199,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         CleanupAfterPlacement();
     }
-    IEnumerator AmplifierEnterEffect(CardInstance giver)
+    public IEnumerator AmplifierEnterEffect(CardInstance giver)
     {
         // 2a. 召唤两名杂兵
         CardData soldierTemplate = CardDatabase.Instance?.GetTemplate("03004");
@@ -3303,7 +2320,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             }
         }
     }
-    IEnumerator WolfKingEnterEffect(CardInstance giver)
+    public IEnumerator WolfKingEnterEffect(CardInstance giver)
     {
         CardData wolfTemplate = CardDatabase.Instance?.GetTemplate("03006");
         if (wolfTemplate?.prefab3D == null) { CleanupAfterPlacement(); yield break; }
@@ -3375,7 +2392,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             }
         }
     }
-    IEnumerator TerroristEnterEffect(CardInstance giver)
+    public IEnumerator TerroristEnterEffect(CardInstance giver)
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
         List<GameObject> diedThisRound = new List<GameObject>();
@@ -3407,6 +2424,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             }
         }
         BoardSlot.CheckAndHandleDeaths();
+        yield return ActionQueueManager.WaitForDrain();
         yield return null;
         yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
 
@@ -3454,6 +2472,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 }
             }
             BoardSlot.CheckAndHandleDeaths();
+            yield return ActionQueueManager.WaitForDrain();
             yield return null;
             yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
 
@@ -3487,7 +2506,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             NetworkPlayer.Local?.CmdSyncEnemyDamage(enemyStats);
         }
     }
-    IEnumerator AncientFairyReattach(GameObject fairy, int oldHostSlotID)
+    public IEnumerator AncientFairyReattach(GameObject fairy, int oldHostSlotID)
     {
         yield return null;
         yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
@@ -3548,7 +2567,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             Destroy(fairy);
         }
     }
-    IEnumerator MistHiderEnterEffect(CardInstance giver)
+    public IEnumerator MistHiderEnterEffect(CardInstance giver)
     {
         yield return null;
 
@@ -3608,7 +2627,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 mist.IsActive(); // 触发同步
         }
     }
-    IEnumerator BrilliantMageEnterEffect(CardInstance giver)
+    public IEnumerator BrilliantMageEnterEffect(CardInstance giver)
     {
         yield return null;
         NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
@@ -3752,7 +2771,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
         return null;
     }
-    IEnumerator ThiefActiveExitEffect()
+    public IEnumerator ThiefActiveExitEffect()
     {
         List<CardInstance> enemyCards = new List<CardInstance>();
         foreach (GameObject card in NetworkPlayer.Local.handCards)
@@ -3804,7 +2823,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         CardDisplayPanel.Instance.Hide();
     }
-    IEnumerator HonorAttendantActiveExit()
+    public IEnumerator HonorAttendantActiveExit()
     {
         NetworkPlayer.Local.AddEnergy(2);
 
@@ -3864,7 +2883,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         CardDisplayPanel.Instance.Hide();
     }
-    IEnumerator FearlessEnterEffect()
+    public IEnumerator FearlessEnterEffect()
     {
         List<CounterCard> enemyCounters = CounterManager.Instance?.enemyCounters;
         if (enemyCounters == null || enemyCounters.Count == 0)
@@ -3911,7 +2930,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     {
         selectedFearless = cc;
     }
-    IEnumerator MindScholarEnterEffect(CardInstance giver)
+    public IEnumerator MindScholarEnterEffect(CardInstance giver)
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
 

@@ -40,6 +40,15 @@ public class EffectContext
     /// <summary>触发时机（分发时写入，handler 可读）。</summary>
     public Trigger trigger;
 
+    // ---- 死亡后处理回手标志（handler 设置 → DeathPipeline 消费） ----
+
+    public bool shouldReturn03504;
+    public CardData template03504;
+    public bool shouldReturn01117;
+    public CardData template01117;
+    public bool shouldReturn03009;
+    public CardData template03009;
+
     // ---- 便捷构造 ----------------------------------------------------------
 
     public static EffectContext ForEnter(CardData template, CardInstance source, BoardSlot sourceSlot)

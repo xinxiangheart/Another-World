@@ -9,6 +9,11 @@ public abstract class AuraBase
     public virtual bool BlocksTrait(CardInstance target, string traitType) => false;
     public virtual bool IsTargetFullySilenced(CardInstance target) => false;
 
+    /// <summary>攻击方伤害修正（Stage1/Stage3）。返回修改后的伤害值。</summary>
+    public virtual int ModifyDamageOutgoing(int damage, DamageContext ctx) => damage;
+    /// <summary>防守方伤害修正（Stage2/Stage4）。返回修改后的伤害值。</summary>
+    public virtual int ModifyDamageIncoming(int damage, DamageContext ctx) => damage;
+
     protected int GetSlotOf(CardInstance ci)
     {
         BoardManager bm = GameObject.FindObjectOfType<BoardManager>();

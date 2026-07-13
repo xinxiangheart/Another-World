@@ -684,36 +684,9 @@ public class BattleManager : MonoBehaviour
             }
         }
 
-        // ===== 阶段2.5：死亡递归退出 =====
-        bool anyDied;
-        do
-        {
-            anyDied = false;
-            List<GameObject> died = new List<GameObject>();
-            foreach (BoardSlot slot in allSlots)
-            {
-                if (slot?.currentCard3D == null) continue;
-                Card3DInstance inst = slot.currentCard3D.GetComponent<Card3DInstance>();
-                if (inst?.cardInstance != null && inst.cardInstance.currentHealth <= 0)
-                    died.Add(slot.currentCard3D);
-            }
-            foreach (GameObject dead in died)
-            {
-                CardInstance deadInst = dead.GetComponent<Card3DInstance>()?.cardInstance;
-
-               
-
-                foreach (BoardSlot slot in allSlots)
-                {
-                    if (slot.currentCard3D == dead)
-                    {
-                        slot.HandleDeath(dead);
-                        anyDied = true;
-                        break;
-                    }
-                }
-            }
-        } while (anyDied);
+        // ── Step 6: 死亡递归走 DeathCheckAction（替代同步 do-while）───
+        BoardSlot.CheckAndHandleDeaths();
+        yield return ActionQueueManager.WaitForDrain();
     }
 
     void FirstStrike()
@@ -1037,134 +1010,15 @@ public class BattleManager : MonoBehaviour
             {
                 if (dmg.Item1 == null) continue;
                 Card3DInstance inst = dmg.Item1.GetComponent<Card3DInstance>();
+                CardInstance sourceCI = dmg.Item3?.GetComponent<Card3DInstance>()?.cardInstance;
                 if (inst?.cardInstance != null)
-                {
-                    if (inst.cardInstance.isAttached) continue;
-                    if (IsShadowHost(inst.cardInstance)) continue;
-                    if (inst.cardInstance.hasShield)
-                    {
-                        inst.cardInstance.RemoveShield();
-                        continue;
-                    }
-
-                    int actualDamage = dmg.Item2;
-
-                    if (inst.cardInstance.isYinYang && !IsTargetSilenced(inst.cardInstance))
-                        actualDamage = Mathf.Max(0, actualDamage - 1);
-
-                    if (inst.cardInstance.poisoned) actualDamage *= 2;
-
-                    if (inst.cardInstance.tempHealthBoost > 0)
-                    {
-                        if (actualDamage <= inst.cardInstance.tempHealthBoost)
-                        {
-                            inst.cardInstance.tempHealthBoost -= actualDamage;
-                            inst.cardInstance.currentHealth -= actualDamage;
-                            actualDamage = 0;
-                        }
-                        else
-                        {
-                            actualDamage -= inst.cardInstance.tempHealthBoost;
-                            inst.cardInstance.currentHealth -= inst.cardInstance.tempHealthBoost;
-                            inst.cardInstance.tempHealthBoost = 0;
-                        }
-                    }
-
-        // 万象镜面：单次伤害最高为1
-                    if (inst.cardInstance.templateID == "01512" && (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(inst.cardInstance)))
-                        actualDamage = Mathf.Min(actualDamage, 1);
-
-        // 检查对方是否有合法目标
-                    CardInstance lord = FindLordOnField();
-                    if (lord != null && inst.cardInstance != lord && IsAllyUnit(inst.cardInstance) && (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(lord)))
-                    {
-                        lord.currentHealth -= actualDamage;
-                        UpdateLordDisplay(lord);
-                        continue;
-                    }
-
-        // 检查对方是否有合法目标
-                    if (inst.cardInstance.braveTemplateID == "01514" && inst.cardInstance.currentHealth - actualDamage <= 0)
-                    {
-                        if (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(inst.cardInstance))
-                        {
-                            BoardManager bm = FindObjectOfType<BoardManager>();
-                            GameObject lastFollower = null;
-                            int lastOrder = -1;
-                            int hostSlotID = -1;
-                            for (int i = 0; i < 12; i++)
-                            {
-                                BoardSlot s = bm?.GetSlot(i);
-                                if (s?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance == inst.cardInstance)
-                                { hostSlotID = i; break; }
-                            }
-                            foreach (GameObject obj in bm.attachedModels)
-                            {
-                                CardInstance ci = obj?.GetComponent<Card3DInstance>()?.cardInstance;
-                                if (ci != null && ci.isAttached && ci.hostSlotID == hostSlotID && ci.templateID == "03001")
-                                {
-                                    if (ci.attachOrder > lastOrder) { lastOrder = ci.attachOrder; lastFollower = obj; }
-                                }
-                            }
-                            if (lastFollower != null)
-                            {
-                                bm.attachedModels.Remove(lastFollower);
-                                Destroy(lastFollower);
-                                inst.cardInstance.currentHealth = 2;
-                                int newOrder = 0;
-                                foreach (GameObject obj2 in bm.attachedModels)
-                                {
-                                    CardInstance ci2 = obj2?.GetComponent<Card3DInstance>()?.cardInstance;
-                                    if (ci2 != null && ci2.isAttached && ci2.hostSlotID == hostSlotID)
-                                    { ci2.attachOrder = newOrder++; }
-                                }
-                                BoardManager.SyncAttachedModels(bm.GetSlot(hostSlotID));
-                                continue;
-                            }
-                        }
-                    }
-
-        // 检查对方是否有合法目标
-                    if (inst.cardInstance.hasLifePriestBlessing && inst.cardInstance.currentHealth - actualDamage <= 0)
-                    {
-                        CardInstance priest = inst.cardInstance.lifePriestBlessingSource;
-                        if (priest == null || GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(priest))
-                        {
-                            inst.cardInstance.hasLifePriestBlessing = false;
-                            inst.cardInstance.lifePriestBlessingSource = null;
-                            inst.cardInstance.currentHealth = inst.cardInstance.currentMaxHealth;
-                            inst.cardInstance.currentHealth += 2;
-                            inst.cardInstance.currentMaxHealth += 2;
-                            inst.cardInstance.currentAttack += 1;
-                            UpdateLordDisplay(inst.cardInstance);
-                            CardData td = CardDatabase.Instance?.GetTemplate(inst.cardInstance.templateID);
-                            if (td != null && td.hasOnEnter)
-                            {
-                                BoardSlot targetSlot = FindSlotOf(inst.cardInstance);
-                                if (targetSlot != null)
-                                    targetSlot.StartOnEnterEffect(td, inst.cardInstance);
-                            }
-                            continue;
-                        }
-                    }
-
-                    if (inst.cardInstance.isXValue) inst.cardInstance.xAccumulatedDamage += actualDamage;
-                    if (inst.cardInstance.templateID == "01534")
-                        inst.cardInstance.totalDamageTaken += Mathf.Min(actualDamage, inst.cardInstance.currentHealth);
-                    inst.cardInstance.currentHealth -= actualDamage;
-
-        // 检查对方是否有合法目标
-                    if (inst.cardInstance.templateID == "01508" && (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(inst.cardInstance)))
-                        inst.cardInstance._conquerorTotalDamageThisBattle += actualDamage;
-
-                    dmg.Item1.GetComponent<DamageSourceMarker>()?.RegisterDamage(dmg.Item3, actualDamage);
-                }
+                    DamagePipeline.Process(new DamageInput(sourceCI, inst.cardInstance, dmg.Item2, dmg.Item3, DamagePhase.Battle));
             }
             pending.Clear();
 
-        // 检查对方是否有合法目标
             CheckConquerorTrigger();
 
+            // ── Step 6: 反击/恐惧之龙等预死亡反应 ──
             List<GameObject> died = new List<GameObject>();
             foreach (BoardSlot slot in allSlots)
             {
@@ -1208,7 +1062,6 @@ public class BattleManager : MonoBehaviour
                     }
                 }
 
-        // 检查对方是否有合法目标
                 if (deadInst != null && deadInst.revengeEffect != null && deadInst.revengeEffect.Contains("对方摸两张牌"))
                 {
                     for (int j = 0; j < 2; j++)
@@ -1276,7 +1129,6 @@ public class BattleManager : MonoBehaviour
                         else onDone();
                     }));
                 }
-        // 检查对方是否有合法目标
                 else if (deadInst != null && !string.IsNullOrEmpty(deadInst.revengeEffect))
                 {
                     List<GameObject> revengeTargets = marker?.GetMinionDamageSources();
@@ -1285,20 +1137,15 @@ public class BattleManager : MonoBehaviour
                         yield return StartCoroutine(ResolveRevengeEffect(deadInst.revengeEffect, dead, revengeTargets));
                     }
                 }
+            }
 
-                BoardSlot deadSlot = null;
-                foreach (BoardSlot slot in allSlots)
-                {
-                    if (slot.currentCard3D == dead) { deadSlot = slot; break; }
-                }
-                int slotID = deadSlot != null ? deadSlot.slotID : -1;
-
-                if (deadSlot != null)
-                {
-                    deadSlot.HandleDeath(dead);
-                    yield return null;
-                    yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
-                }
+            // ── Step 6: 死亡递归走 DeathCheckAction（替代逐个 HandleDeath 调用）──
+            if (died.Count > 0)
+            {
+                BoardSlot.CheckAndHandleDeaths();
+                yield return ActionQueueManager.WaitForDrain();
+                yield return null;
+                yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
             }
         }
     }
@@ -1596,136 +1443,18 @@ public class BattleManager : MonoBehaviour
     void ApplyDamageToMinion(CardInstance target, int damage, GameObject source)
     {
         if (target == null) return;
-        if (target.isAttached) return;
-        if (IsShadowHost(target)) return;
-        if (target.hasShield)
-        {
-            target.RemoveShield();
-            return;
-        }
 
-        int actualDamage = damage;
-
-        if (target.isYinYang && !IsTargetSilenced(target))
-            actualDamage = Mathf.Max(0, actualDamage - 1);
-
-        if (source != null)
-        {
-            CardInstance sourceCI = source.GetComponent<Card3DInstance>()?.cardInstance;
-            if (sourceCI != null && sourceCI.overclocked) actualDamage *= 2;
-        }
-
-        if (target.poisoned) actualDamage *= 2;
-
-        if (target.tempHealthBoost > 0)
-        {
-            if (actualDamage <= target.tempHealthBoost)
-            {
-                target.tempHealthBoost -= actualDamage;
-                target.currentHealth -= actualDamage;
-                actualDamage = 0;
-            }
-            else
-            {
-                actualDamage -= target.tempHealthBoost;
-                target.currentHealth -= target.tempHealthBoost;
-                target.tempHealthBoost = 0;
-            }
-        }
-
-        // 万象镜面：单次伤害最高为1
-        if (target.templateID == "01512" && (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(target)))
-            actualDamage = Mathf.Min(actualDamage, 1);
-
-        // 检查对方是否有合法目标
-        CardInstance lord = FindLordOnField();
-        if (lord != null && target != lord && IsAllyUnit(target) && (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(lord)))
-        {
-            lord.currentHealth -= actualDamage;
-            UpdateLordDisplay(lord);
-            return;
-        }
-
-        // 检查对方是否有合法目标
-        if (target.braveTemplateID == "01514" && target.currentHealth - actualDamage <= 0)
-        {
-            if (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(target))
-            {
-                BoardManager bm = FindObjectOfType<BoardManager>();
-                GameObject lastFollower = null;
-                int lastOrder = -1;
-                int hostSlotID = -1;
-                for (int i = 0; i < 12; i++)
-                {
-                    BoardSlot s = bm?.GetSlot(i);
-                    if (s?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance == target)
-                    { hostSlotID = i; break; }
-                }
-                foreach (GameObject obj in bm.attachedModels)
-                {
-                    CardInstance ci = obj?.GetComponent<Card3DInstance>()?.cardInstance;
-                    if (ci != null && ci.isAttached && ci.hostSlotID == hostSlotID && ci.templateID == "03001")
-                    {
-                        if (ci.attachOrder > lastOrder) { lastOrder = ci.attachOrder; lastFollower = obj; }
-                    }
-                }
-                if (lastFollower != null)
-                {
-                    bm.attachedModels.Remove(lastFollower);
-                    Destroy(lastFollower);
-                    target.currentHealth = 2;
-                    int newOrder = 0;
-                    foreach (GameObject obj2 in bm.attachedModels)
-                    {
-                        CardInstance ci2 = obj2?.GetComponent<Card3DInstance>()?.cardInstance;
-                        if (ci2 != null && ci2.isAttached && ci2.hostSlotID == hostSlotID)
-                        { ci2.attachOrder = newOrder++; }
-                    }
-                    BoardManager.SyncAttachedModels(bm.GetSlot(hostSlotID));
-                    return;
-                }
-            }
-        }
-
-        // 检查对方是否有合法目标
-        if (target.hasLifePriestBlessing && target.currentHealth - actualDamage <= 0)
-        {
-            CardInstance priest = target.lifePriestBlessingSource;
-            if (priest == null || GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(priest))
-            {
-                target.hasLifePriestBlessing = false;
-                target.lifePriestBlessingSource = null;
-                target.currentHealth = target.currentMaxHealth;
-                target.currentHealth += 2;
-                target.currentMaxHealth += 2;
-                target.currentAttack += 1;
-                UpdateLordDisplay(target);
-                CardData td = CardDatabase.Instance?.GetTemplate(target.templateID);
-                if (td != null && td.hasOnEnter)
-                {
-                    BoardSlot targetSlot = FindSlotOf(target);
-                    if (targetSlot != null)
-                        targetSlot.StartOnEnterEffect(td, target);
-                }
-                return;
-            }
-        }
-
-        if (target.isXValue) target.xAccumulatedDamage += actualDamage;
-        if (target.templateID == "01534")
-            target.totalDamageTaken += Mathf.Min(actualDamage, target.currentHealth);
-        target.currentHealth -= actualDamage;
-
-    
-        // 检查对方是否有合法目标
-        if (target.templateID == "01508" && (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(target)))
-            target._conquerorTotalDamageThisBattle += actualDamage;
-
-        if (source != null)
-        {
-            DamageSourceMarker marker = FindCard3DByInstance(target)?.GetComponent<DamageSourceMarker>();
-            if (marker != null) marker.RegisterDamage(source, actualDamage);
-        }
+        // ── Step D6: 统一走 DamagePipeline 五阶段 ───────────────────
+        CardInstance sourceCI = source?.GetComponent<Card3DInstance>()?.cardInstance;
+        DamagePipeline.Process(new DamageInput(
+            attacker: sourceCI,
+            defender: target,
+            baseDamage: damage,
+            sourceObject: source,
+            phase: DamagePhase.Battle
+        ));
+        // 护盾吸收/领主重定向/追随者挡死/祭司复活 → DamagePipeline 内全处理。
+        // 调用方后续读 target.currentHealth 即可判断生死。
     }
     IEnumerator TroubleMakerEffect(CardInstance giver)
     {
@@ -1919,6 +1648,7 @@ public class BattleManager : MonoBehaviour
         {
             BattleManager.Instance.ApplyDamageToMinionPublic(targetCI, damage, swordSlot.currentCard3D);
             BoardSlot.CheckAndHandleDeaths();
+            yield return ActionQueueManager.WaitForDrain();
 
             if (targetCI.currentHealth <= 0)
             {
