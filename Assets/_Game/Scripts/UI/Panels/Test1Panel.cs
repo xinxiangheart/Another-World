@@ -27,6 +27,7 @@ public class Test1Panel : MonoBehaviour
         if (template == null) return;
 
         panelRoot.SetActive(true);
+        panelRoot.transform.SetAsLastSibling();
 
         if (template.cardType == CardType.Spell)
         {
@@ -40,13 +41,15 @@ public class Test1Panel : MonoBehaviour
         {
             string traits = BuildTraitsText(instance);
             string shieldText = instance.hasShield ? "（护盾）" : "";
-            Player.Instance.handCards.RemoveAll(c => c == null);
-            bool isOnField = !Player.Instance.handCards.Exists(c => c?.GetComponent<CardInstance>() == instance);
             int displayCost = instance.currentCost;
-            if (instance.merchantDiscounted && Player.Instance.IsMerchantOnFieldPublic())
-                displayCost = Mathf.Max(0, displayCost - 1);
-            if (instance.energyReaperDiscounted && Player.Instance.IsEnergyReaperOnFieldPublic())
-                displayCost = Mathf.Max(0, displayCost - 1);
+            if (Player.Instance != null)
+            {
+                Player.Instance.handCards.RemoveAll(c => c == null);
+                if (instance.merchantDiscounted && Player.Instance.IsMerchantOnFieldPublic())
+                    displayCost = Mathf.Max(0, displayCost - 1);
+                if (instance.energyReaperDiscounted && Player.Instance.IsEnergyReaperOnFieldPublic())
+                    displayCost = Mathf.Max(0, displayCost - 1);
+            }
             infoText.text = $"ID: {instance.instanceID}\n" +
                             $"名称: {template.cardName}\n" +
                             $"类型: {template.cardType} ({template.summonType})\n" +
