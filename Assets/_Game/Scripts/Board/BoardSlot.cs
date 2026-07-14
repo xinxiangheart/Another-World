@@ -215,7 +215,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             if (isPlacingCard && slotID >= 6 && prisonAllowYuan)
             {
                 CardInstance ci = cardToPlace?.GetComponent<CardInstance>();
-                if (ci != null && ci.prefixes.Contains("Ԩ"))
+                if (ci != null && ci.prefixes.Contains("渊"))
                 {
                     transform.localScale = originalScale * 1.15f;
                     slotImage.color = highlightColor;
@@ -328,7 +328,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             if (prisonBlocked && slotID >= 6 && prisonAllowYuan)
             {
                 CardInstance checkCI = cardToPlace?.GetComponent<CardInstance>();
-                if (checkCI == null || !checkCI.prefixes.Contains("Ԩ")) return;
+                if (checkCI == null || !checkCI.prefixes.Contains("渊")) return;
             }
             else if (prisonBlocked)
             {
@@ -1495,8 +1495,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         ConfirmSelectionButton.Instance.Hide();
 
         // Sync all pirate swaps to other client at once
-        if (swapLog != null && swapLog.Length > 0)
-            NetworkPlayer.Local?.CmdPirateFinalize(swapLog.ToString());
+        TurnManager.SyncMyBoardToOpponent();
 
         CleanupAfterPlacement();
     }
@@ -1561,7 +1560,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     {
         if (isBlocked) return false;
         if (!prisonBlocked) return true;
-        if (slotID >= 6 && prisonAllowYuan && ci != null && ci.prefixes.Contains("Ԩ"))
+        if (slotID >= 6 && prisonAllowYuan && ci != null && ci.prefixes.Contains("渊"))
             return true;
         return false;
     }
@@ -1632,11 +1631,11 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         if (target == null) return;
         CardInstance ci = target.GetComponent<CardInstance>();
         if (ci == null) { Card3DInstance c3d = target.GetComponent<Card3DInstance>(); if (c3d != null) ci = c3d.cardInstance; }
-        if (ci != null && !ci.prefixes.Contains("Ԩ"))
+        if (ci != null && !ci.prefixes.Contains("渊"))
         {
             if (string.IsNullOrEmpty(ci.prefixes) || ci.prefixes == "无")
-                ci.prefixes = "Ԩ";
-            else ci.prefixes += " Ԩ";
+                ci.prefixes = "渊";
+            else ci.prefixes += " 渊";
             Card3DInstance c3d = target.GetComponent<Card3DInstance>();
             c3d?.UpdateValues();
             CardDisplay2D d2d = target.GetComponent<CardDisplay2D>();
@@ -2491,20 +2490,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         CleanupAfterPlacement();
 
-        // Sync terrorist AOE damage to server
-        if (NetworkClient.isConnected)
-        {
-            BoardManager bmSync = FindObjectOfType<BoardManager>();
-            string[] enemyStats = new string[6];
-            for (int i = 0; i <= 5; i++)
-            {
-                BoardSlot es = bmSync?.GetSlot(i);
-                var ci = es?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
-                if (ci != null)
-                    enemyStats[i] = $"{ci.templateID}|{ci.currentHealth}";
-            }
-            NetworkPlayer.Local?.CmdSyncEnemyDamage(enemyStats);
-        }
+        TurnManager.SyncMyBoardToOpponent();
     }
     public IEnumerator AncientFairyReattach(GameObject fairy, int oldHostSlotID)
     {

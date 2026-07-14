@@ -45,7 +45,7 @@ public partial class TurnManager
             // Send updated stats to server so other client sees phase-start effects.
             // Only pure client reports — host IS the server.
             if (NetworkClient.isConnected && !NetworkServer.active)
-                ReportMyBoard();
+                ReportAllSlots();
         }
         else if (phase == TurnPhase.BattlePhase && currentPhase != TurnPhase.BattlePhase)
         {
@@ -129,33 +129,40 @@ public partial class TurnManager
     }
 
     /// <summary>
-    /// Public resync entry point — call after any local board mutation
-    /// (prefix add, transform, attach) so the opponent's view updates.
-    /// Only does anything when running as a PURE client (NOT host-as-server).
-    /// Host's board IS the server board — no client→server report needed.
+    /// Unified sync — call after any local board change (damage/transform/swap/death).
+    /// Host: BoardSyncManager.MarkDirty() broadcasts to remote.
+    /// Pure client: reports full 12-slot snapshot to server.
+    /// Replaces old CmdSyncEnemyDamage / CmdPirateFinalize / CmdReportTransform.
     /// </summary>
     public static void SyncMyBoardToOpponent()
     {
-        // Only pure clients report. Host=server, its board is the authority.
-        if (NetworkClient.isConnected && !NetworkServer.active)
-            ReportMyBoard();
+        if (!NetworkClient.isConnected) return;
+        if (NetworkServer.active)
+        {
+            // Host: server IS this client, board is already correct. Just broadcast.
+            BoardSyncManager.MarkDirty();
+            return;
+        }
+        // Pure client: report all 12 slots to server
+        ReportAllSlots();
     }
 
     /// <summary>
-    /// Call after TriggerMyTurnStartEffects on any client.
-    /// Packs slots 6-11 and sends to server for relay.
+    /// Packs all 12 slots + attachments and sends to server.
+    /// Server handler (CmdReportAllSlots) applies the state, runs CheckAndHandleDeaths,
+    /// then MarkDirty to broadcast to the other client.
     /// </summary>
-    static void ReportMyBoard()
+    static void ReportAllSlots()
     {
-        BoardManager bm = FindObjectOfType<BoardManager>();
+        BoardManager bm = Object.FindObjectOfType<BoardManager>();
         if (bm == null) return;
-        string[] my = new string[6];
-        for (int i = 0; i < 6; i++)
+        string[] all = new string[12];
+        for (int i = 0; i < 12; i++)
         {
-            var c3d = bm.GetSlot(i + 6)?.currentCard3D?.GetComponent<Card3DInstance>();
+            var c3d = bm.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>();
             var ci = c3d?.cardInstance;
-            if (ci == null) { my[i] = ""; continue; }
-            my[i] = string.Join("|",
+            if (ci == null) { all[i] = ""; continue; }
+            all[i] = string.Join("|",
                 ci.templateID ?? "",
                 ci.currentHealth, ci.currentAttack, ci.currentMaxHealth,
                 ci.currentCost, ci.currentTier,
@@ -166,18 +173,17 @@ public partial class TurnManager
                 ci.prefixes ?? "");
         }
 
-        // Also serialize attachments whose host is in our ally slots (6-11)
-        // Same format as BoardSyncManager.SyncNow attachBlock
         bm.attachedModels.RemoveAll(a => a == null);
         var attachParts = new System.Collections.Generic.List<string>();
         foreach (var o in bm.attachedModels)
         {
             var ci = o.GetComponent<Card3DInstance>()?.cardInstance;
-            if (ci != null && ci.isAttached && ci.hostSlotID >= 6)
+            if (ci != null && ci.isAttached)
                 attachParts.Add($"{ci.templateID}|{ci.hostSlotID}|{ci.attachOrder}");
         }
         string attachBlock = attachParts.Count > 0 ? string.Join("||", attachParts) : "";
 
-        NetworkPlayer.Local?.CmdReportMyBoard(my, attachBlock);
+        NetworkPlayer.Local?.CmdReportAllSlots(all, attachBlock);
     }
+
 }

@@ -939,7 +939,7 @@ public partial class TurnManager : MonoBehaviour
         if (selectedCard != null)
         {
             int tier = selectedCard.currentTier;
-            bool isYuan = selectedCard.prefixes.Contains("Ԩ");
+            bool isYuan = selectedCard.prefixes.Contains("渊");
             int healAmount = tier + (isYuan ? 1 : 0);
 
             NetworkPlayer.Local.Heal(healAmount);

@@ -56,7 +56,7 @@ public static class GlobalDeathEventHandler
                 foreach (string sourceID in damageSourceInstanceIDs)
                 {
                     CardInstance sourceCI = FindByInstanceID(bm, sourceID);
-                    if (sourceCI != null && sourceCI.prefixes.Contains("Ԩ") && IsAlly(bm, sourceCI))
+                    if (sourceCI != null && sourceCI.prefixes.Contains("渊") && IsAlly(bm, sourceCI))
                     {
                         if (!sourceCI.cannotHealOrGainMaxHP)
                         {

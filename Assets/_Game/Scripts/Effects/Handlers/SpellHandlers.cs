@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using Mirror;
 using UnityEngine;
 using Random = UnityEngine.Random;
 
@@ -318,7 +317,7 @@ public static class SpellHandlers
             new3D.cardInstance = newInst; new3D.UpdateValues();
         }
         ts.SetCard(model);
-        if (NetworkClient.isConnected) NetworkPlayer.Local?.CmdReportTransform(ts.slotID, targetID);
+        TurnManager.SyncMyBoardToOpponent();
         Cleanup();
     }
 

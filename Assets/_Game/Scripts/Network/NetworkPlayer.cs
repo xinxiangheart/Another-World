@@ -890,6 +890,84 @@ public class NetworkPlayer : NetworkBehaviour
         BoardSyncManager.Instance?.ApplySync(data, "");
     }
 
+    /// <summary>
+    /// Unified sync: client reports full 12-slot board snapshot + attachments.
+    /// Server applies state, runs CheckAndHandleDeaths, then MarkDirty to broadcast.
+    /// </summary>
+    [Command]
+    public void CmdReportAllSlots(string[] allStats, string attachBlock)
+    {
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return;
+        if (allStats == null || allStats.Length < 12) return;
+
+        for (int i = 0; i < 12; i++)
+        {
+            string raw = allStats[i];
+            int serverSlot = isLocalPlayer ? i : i ^ 6;
+            BoardSlot slot = bm.GetSlot(serverSlot);
+            if (slot == null) continue;
+
+            string tid = string.IsNullOrEmpty(raw) ? "" : raw.Split('|')[0];
+            if (string.IsNullOrEmpty(tid))
+            { if (slot.currentCard3D != null) { Destroy(slot.currentCard3D); slot.SetCard(null); } continue; }
+
+            var ci = slot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci == null) continue; // stale report guard
+
+            if (ci.templateID != tid)
+            {
+                if (slot.currentCard3D != null) { Destroy(slot.currentCard3D); slot.SetCard(null); }
+                CardData t = CardDatabase.Instance?.GetTemplate(tid);
+                if (t?.prefab3D != null)
+                { RebuildSlotModel(serverSlot, tid); ci = slot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance; }
+            }
+
+            if (ci != null && ci.templateID == tid)
+            {
+                string[] p = raw.Split('|'); int v;
+                if (p.Length > 1 && int.TryParse(p[1], out v)) ci.currentHealth = v;
+                if (p.Length > 2 && int.TryParse(p[2], out v)) ci.currentAttack = v;
+                if (p.Length > 3 && int.TryParse(p[3], out v)) ci.currentMaxHealth = v;
+                if (p.Length > 4 && int.TryParse(p[4], out v)) ci.currentCost = v;
+                if (p.Length > 5 && int.TryParse(p[5], out v)) ci.currentTier = v;
+                if (p.Length > 6) ci.hasShield = (p[6] == "1");
+                if (p.Length > 7) ci.silencedThisPhase = (p[7] == "1");
+                if (p.Length > 8) ci.isAttached = (p[8] == "1");
+                if (p.Length > 9) ci.poisoned = (p[9] == "1");
+                if (p.Length > 10) ci.prefixes = p[10];
+                slot.currentCard3D?.GetComponent<Card3DInstance>()?.UpdateValues();
+            }
+        }
+
+        // Attachments
+        bm.attachedModels.RemoveAll(a => a == null);
+        for (int i = bm.attachedModels.Count - 1; i >= 0; i--)
+        { Destroy(bm.attachedModels[i]); bm.attachedModels.RemoveAt(i); }
+        if (!string.IsNullOrEmpty(attachBlock))
+        {
+            var hm = FindObjectOfType<HandManager>();
+            foreach (var item in attachBlock.Split(new[] { "||" }, System.StringSplitOptions.None))
+            {
+                if (string.IsNullOrEmpty(item)) continue;
+                var p = item.Split('|');
+                if (p.Length < 3) continue;
+                if (!int.TryParse(p[1], out int hs) || !int.TryParse(p[2], out int o)) continue;
+                int mapped = isLocalPlayer ? hs : hs ^ 6;
+                var t = CardDatabase.Instance?.GetTemplate(p[0]);
+                if (t?.prefab3D == null || hm == null) continue;
+                var m = Instantiate(t.prefab3D, hm.GetSlotWorldPosition(mapped)
+                    + new Vector3(-0.5f - o * 0.5f, 0, 0.1f + o * 0.1f), Quaternion.Euler(0, 180, 0));
+                var c = m.GetComponent<Card3DInstance>();
+                if (c != null) { var n = m.AddComponent<CardInstance>(); n.InitFromTemplate(t, 0); n.isAttached = true; n.hostSlotID = mapped; n.attachOrder = o; c.cardInstance = n; c.UpdateValues(); }
+                bm.attachedModels.Add(m);
+            }
+        }
+
+        BoardSlot.CheckAndHandleDeaths();
+        BoardSyncManager.MarkDirty();
+    }
+
     /// <summary>Client → server: report my 6-11 stats + attachments, server updates its 0-5 then re-syncs.</summary>
     [Command]
     public void CmdReportMyBoard(string[] myStats, string attachBlock)

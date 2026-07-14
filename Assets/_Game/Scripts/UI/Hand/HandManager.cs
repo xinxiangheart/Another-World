@@ -1089,7 +1089,7 @@ public class HandManager : MonoBehaviour
                     if (s?.currentCard3D != null)
                     {
                         CardInstance ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                        if (ci != null && ci.prefixes.Contains("Ԩ") && !ci.buffedByEmperor && ci != sourceInstance)
+                        if (ci != null && ci.prefixes.Contains("渊") && !ci.buffedByEmperor && ci != sourceInstance)
                         {
                             if (!ci.cannotHealOrGainMaxHP)
                             {
@@ -1106,7 +1106,7 @@ public class HandManager : MonoBehaviour
         }
 
         // 新英雄进场：如果是渊前缀且皇帝在场，+1+1
-        if (sourceInstance != null && sourceInstance.prefixes.Contains("Ԩ"))
+        if (sourceInstance != null && sourceInstance.prefixes.Contains("渊"))
         {
             CardInstance placedCI = slot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
             if (placedCI != null && !placedCI.buffedByEmperor)

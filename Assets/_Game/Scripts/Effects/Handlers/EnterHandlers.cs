@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using Mirror;
 using UnityEngine;
 
 // ============================================================================
@@ -94,18 +93,7 @@ public static class EnterHandlers
             }
         }
         BoardSlot.CheckAndHandleDeaths();
-        // sync enemy health
-        if (NetworkClient.isConnected)
-        {
-            string[] enemyStats = new string[6];
-            for (int i = 0; i <= 5; i++)
-            {
-                var es = bm?.GetSlot(i);
-                var ci = es?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
-                if (ci != null) enemyStats[i] = $"{ci.templateID}|{ci.currentHealth}";
-            }
-            NetworkPlayer.Local?.CmdSyncEnemyDamage(enemyStats);
-        }
+        TurnManager.SyncMyBoardToOpponent();
         slot.CleanupAfterPlacement();
     }
 
