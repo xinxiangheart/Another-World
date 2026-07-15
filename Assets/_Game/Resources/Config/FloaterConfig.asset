@@ -13,9 +13,9 @@ MonoBehaviour:
   m_Name: FloaterConfig
   m_EditorClassIdentifier: 
   duration: 1.5
-  floatSpeed: 1.2
+  floatSpeed: 0.1
   worldOffsetY: 2.5
-  fadeStart: 0
+  fadeStart: 0.5
   fontSize: 36
   outlineWidth: 0.25
   outlineColor: {r: 0, g: 0, b: 0, a: 0.7}
