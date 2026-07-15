@@ -168,6 +168,7 @@ public static class DiscardHandlers
                     {
                         t3d.cardInstance.baseAttack -= 2;
                         t3d.cardInstance.currentAttack = Mathf.Max(0, t3d.cardInstance.currentAttack - 2);
+                        DamagePipeline.ShowFloaterAt(t3d.cardInstance, 2, FloaterType.Debuff);
                         t3d.UpdateValues();
                     }
                 }

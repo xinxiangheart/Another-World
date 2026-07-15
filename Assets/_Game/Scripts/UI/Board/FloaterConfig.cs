@@ -56,6 +56,18 @@ public class FloaterConfig : ScriptableObject
     [Tooltip("文字")]
     public string blockedText = "抵挡!";
 
+    [Header("增幅（+攻/+血 等）")]
+    [Tooltip("颜色")]
+    public Color buffColor = new Color(1f, 0.85f, 0.1f, 1f);
+    [Tooltip("缩放倍数")]
+    public float buffScale = 0.85f;
+
+    [Header("减益（-攻/-血 等）")]
+    [Tooltip("颜色")]
+    public Color debuffColor = new Color(0.7f, 0.3f, 1f, 1f);
+    [Tooltip("缩放倍数")]
+    public float debuffScale = 0.85f;
+
     [Header("Canvas")]
     [Tooltip("Canvas 排序层级")]
     public int sortingOrder = 100;

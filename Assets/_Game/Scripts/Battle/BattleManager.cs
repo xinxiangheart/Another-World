@@ -114,6 +114,8 @@ public class BattleManager : MonoBehaviour
                 ci.currentHealth -= slot.plagueRoundCount;
                 ci.currentAttack = Mathf.Max(0, ci.currentAttack - 1);
                 ci.baseAttack = Mathf.Max(0, ci.baseAttack - 1);
+                DamagePipeline.ShowFloaterAt(ci, slot.plagueRoundCount, FloaterType.Debuff);
+                DamagePipeline.ShowFloaterAt(ci, 1, FloaterType.Debuff);
                 slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
             }
             slot.plagueRoundCount++;
@@ -473,6 +475,7 @@ public class BattleManager : MonoBehaviour
                 if (!ci.hasShield)
                 {
                     ci.currentHealth -= 2;
+                    DamagePipeline.ShowFloaterAt(ci, 2, FloaterType.Debuff);
                     ci.GrantShield(true, false, false);
                     slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
                 }

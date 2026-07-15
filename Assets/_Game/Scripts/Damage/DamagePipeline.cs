@@ -140,6 +140,10 @@ public static class DamagePipeline
         int d = ctx.damage;
         var atk = ctx.Attacker;
         var def = ctx.Defender;
+
+        // AOE / 无攻击方伤害 → 跳过攻击方增益
+        if (atk == null) return d;
+
         bool attackerSilenced = IsSilenced(atk);
 
         // ── slotTempAttackBoost（仅非X值单位适用）───────────────────
@@ -150,6 +154,7 @@ public static class DamagePipeline
         if (!attackerSilenced && atk.templateID == "01114" && def.hasShield)
         {
             def.currentHealth -= 2;
+            ShowFloaterAt(def, 2, FloaterType.Damage);
             UpdateDefenderValues(def);
         }
 
@@ -157,6 +162,7 @@ public static class DamagePipeline
         if (def.hasShield && HasBreakerOnField(ctx.Attacker))
         {
             def.currentHealth -= 2;
+            ShowFloaterAt(def, 2, FloaterType.Damage);
             UpdateDefenderValues(def);
         }
 
@@ -229,7 +235,7 @@ public static class DamagePipeline
             {
                 def.tempHealthBoost -= d;
                 def.currentHealth -= d;
-                ShowFloaterAt(def, 0, FloaterType.Blocked);
+                ShowFloaterAt(def, d, FloaterType.Damage);
                 ctx.tempHpAbsorbed = d;
                 ctx.stopped = true;
                 return 0;
@@ -238,7 +244,7 @@ public static class DamagePipeline
             {
                 d -= def.tempHealthBoost;
                 def.currentHealth -= def.tempHealthBoost;
-                ShowFloaterAt(def, 0, FloaterType.Blocked);
+                ShowFloaterAt(def, def.tempHealthBoost, FloaterType.Damage);
                 ctx.tempHpAbsorbed = def.tempHealthBoost;
                 def.tempHealthBoost = 0;
             }
@@ -284,12 +290,15 @@ public static class DamagePipeline
             CardInstance priest = def.lifePriestBlessingSource;
             if (priest != null && !IsSilenced(priest))
             {
+                int healthBeforeRevive = def.currentHealth;
                 def.hasLifePriestBlessing = false;
                 def.lifePriestBlessingSource = null;
                 def.currentHealth = def.currentMaxHealth;
                 def.currentHealth += 2;
                 def.currentMaxHealth += 2;
                 def.currentAttack += 1;
+                int healAmount = def.currentHealth - healthBeforeRevive;
+                if (healAmount > 0) ShowFloaterAt(def, healAmount, FloaterType.Heal);
                 UpdateLordDisplay(def);
                 CardData td = CardDatabase.Instance?.GetTemplate(def.templateID);
                 if (td != null && td.hasOnEnter)

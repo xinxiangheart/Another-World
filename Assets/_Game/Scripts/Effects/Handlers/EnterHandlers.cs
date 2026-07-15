@@ -257,6 +257,8 @@ public static class EnterHandlers
                         self3D.cardInstance.currentAttack += atk;
                         self3D.cardInstance.currentHealth += hp;
                         self3D.cardInstance.currentMaxHealth += hp;
+                        if (atk > 0) DamagePipeline.ShowFloaterAt(self3D.cardInstance, atk, FloaterType.Buff);
+                        if (hp > 0)  DamagePipeline.ShowFloaterAt(self3D.cardInstance, hp, FloaterType.Heal);
                         self3D.UpdateValues();
                     }
                 }
@@ -349,8 +351,8 @@ public static class EnterHandlers
         { slot.CleanupAfterPlacement(); return; }
         GenericChoicePanel.Instance.Show("选择强化", new List<string> { "+3+0", "+0+3" }, (index) =>
         {
-            if (index == 0) { ctx.source.currentHealth += 3; ctx.source.currentMaxHealth += 3; }
-            else { ctx.source.currentAttack += 3; }
+            if (index == 0) { ctx.source.currentHealth += 3; ctx.source.currentMaxHealth += 3; DamagePipeline.ShowFloaterAt(ctx.source, 3, FloaterType.Heal); }
+            else { ctx.source.currentAttack += 3; DamagePipeline.ShowFloaterAt(ctx.source, 3, FloaterType.Buff); }
             var c3d = slot.FindGiver3D(ctx.source);
             c3d?.UpdateValues();
             slot.CleanupAfterPlacement();

@@ -11,7 +11,7 @@ using TMPro;
 // 未配置时使用默认值。
 // ============================================================================
 
-public enum FloaterType { Damage, Heal, Blocked }
+public enum FloaterType { Damage, Heal, Blocked, Buff, Debuff }
 
 public class DamageFloater : MonoBehaviour
 {
@@ -63,6 +63,16 @@ public class DamageFloater : MonoBehaviour
                 df._tmp.text = _cfg != null ? _cfg.blockedText : "抵挡!";
                 df._tmp.color = _cfg != null ? _cfg.blockedColor : new Color(0.3f, 0.5f, 1f, 1f);
                 df.transform.localScale = Vector3.one * (_cfg != null ? _cfg.blockedScale : 1f);
+                break;
+            case FloaterType.Buff:
+                df._tmp.text = $"+{value}";
+                df._tmp.color = _cfg != null ? _cfg.buffColor : new Color(1f, 0.85f, 0.1f, 1f);   // 黄
+                df.transform.localScale = Vector3.one * (_cfg != null ? _cfg.buffScale : 0.85f);
+                break;
+            case FloaterType.Debuff:
+                df._tmp.text = $"-{value}";
+                df._tmp.color = _cfg != null ? _cfg.debuffColor : new Color(0.7f, 0.3f, 1f, 1f);   // 紫
+                df.transform.localScale = Vector3.one * (_cfg != null ? _cfg.debuffScale : 0.85f);
                 break;
         }
         if (df._cg != null) df._cg.alpha = 1f;

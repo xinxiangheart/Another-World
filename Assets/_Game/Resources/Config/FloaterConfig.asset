@@ -14,9 +14,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   duration: 1.5
   floatSpeed: 0.1
-  worldOffsetY: 2.5
+  worldOffsetY: 2
   fadeStart: 0.5
-  fontSize: 36
+  fontSize: 72
   outlineWidth: 0.25
   outlineColor: {r: 0, g: 0, b: 0, a: 0.7}
   bold: 1
@@ -29,5 +29,9 @@ MonoBehaviour:
   blockedColor: {r: 0.3, g: 0.5, b: 1, a: 1}
   blockedScale: 1
   blockedText: "\u62B5\u6321!"
+  buffColor: {r: 1, g: 0.85, b: 0.1, a: 1}
+  buffScale: 0.85
+  debuffColor: {r: 0.7, g: 0.3, b: 1, a: 1}
+  debuffScale: 0.85
   sortingOrder: 100
   planeDistance: 5

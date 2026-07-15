@@ -68,6 +68,13 @@ public class SteamManager : MonoBehaviour {
 		}
 		s_instance = this;
 
+		// Direct IP 直连模式不需要 Steam，跳过初始化避免 SteamAPI_Init() 报错
+		if (LobbyConfig.IsDirectIP)
+		{
+			Debug.Log("[SteamManager] Direct IP 模式，跳过 Steam 初始化");
+			return;
+		}
+
 		if(s_EverInitialized) {
 			// This is almost always an error.
 			// The most common case where this happens is when SteamManager gets destroyed because of Application.Quit(),

@@ -521,12 +521,16 @@ public class CardInstance : MonoBehaviour
     {
         tempHealthBoost += amount;
         currentHealth += amount;
+        if (amount > 0) DamagePipeline.ShowFloaterAt(this, amount, FloaterType.Heal);
+        else if (amount < 0) DamagePipeline.ShowFloaterAt(this, -amount, FloaterType.Debuff);
     }
 
     public void AddTempAttack(int amount)
     {
         tempAttackBoost += amount;
         currentAttack += amount;
+        if (amount > 0) DamagePipeline.ShowFloaterAt(this, amount, FloaterType.Buff);
+        else if (amount < 0) DamagePipeline.ShowFloaterAt(this, -amount, FloaterType.Debuff);
     }
     public bool CanTriggerTrait(string keyword)
     {

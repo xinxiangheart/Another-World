@@ -345,6 +345,8 @@ public static class SpellHandlers
                 int r = ci.currentAttack - 1;
                 ci.currentAttack = 1; ci.currentHealth += r;
                 if (ci.currentHealth > ci.currentMaxHealth) ci.currentMaxHealth = ci.currentHealth;
+                DamagePipeline.ShowFloaterAt(ci, r, FloaterType.Debuff);
+                DamagePipeline.ShowFloaterAt(ci, r, FloaterType.Heal);
                 t3d.UpdateValues();
             }
         }
@@ -475,7 +477,7 @@ public static class SpellHandlers
                     {
                         ci.GrantShield(true, false, false);
                         if (!ci.cannotHealOrGainMaxHP)
-                        { ci.currentHealth += 1; ci.currentMaxHealth += 1; }
+                        { ci.currentHealth += 1; ci.currentMaxHealth += 1; DamagePipeline.ShowFloaterAt(ci, 1, FloaterType.Heal); }
                         s.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
                     }
                 }
