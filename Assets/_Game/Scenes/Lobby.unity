@@ -1124,12 +1124,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0cd44c1031e13a943bb63640046fad76, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  m_UiScaleMode: 0
+  m_UiScaleMode: 1
   m_ReferencePixelsPerUnit: 100
   m_ScaleFactor: 1
-  m_ReferenceResolution: {x: 800, y: 600}
+  m_ReferenceResolution: {x: 1920, y: 1080}
   m_ScreenMatchMode: 0
-  m_MatchWidthOrHeight: 0
+  m_MatchWidthOrHeight: 0.5
   m_PhysicalUnit: 3
   m_FallbackScreenDPI: 96
   m_DefaultSpriteDPI: 96
@@ -1975,7 +1975,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 304, y: -246}
+  m_AnchoredPosition: {x: 638, y: -493}
   m_SizeDelta: {x: 200, y: 50}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &699174010
@@ -2258,7 +2258,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 268, y: -55}
+  m_AnchoredPosition: {x: 566, y: -131}
   m_SizeDelta: {x: 90, y: 30}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &759557486
@@ -2629,8 +2629,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 350, y: 0}
-  m_SizeDelta: {x: 700, y: 0}
+  m_AnchoredPosition: {x: 600, y: 0}
+  m_SizeDelta: {x: 1200, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &829617476
 MonoBehaviour:
@@ -3861,7 +3861,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 268, y: -127}
+  m_AnchoredPosition: {x: 566, y: -219}
   m_SizeDelta: {x: 90, y: 30}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1288303118
@@ -4264,7 +4264,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 268, y: -91}
+  m_AnchoredPosition: {x: 566, y: -176}
   m_SizeDelta: {x: 90, y: 30}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1368550381
@@ -4735,7 +4735,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 445, y: -259}
+  m_AnchoredPosition: {x: 888, y: -506}
   m_SizeDelta: {x: 90, y: 30}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1591534643
@@ -5213,17 +5213,22 @@ MonoBehaviour:
   - {fileID: 1368550380}
   - {fileID: 1288303117}
   filterButtonPrefab: {fileID: 2114368998817766852, guid: e22427d97fb32724e8de81d767a5846f, type: 3}
+  btnCellSize: {x: 90, y: 30}
+  btnSpacing: {x: 10, y: 8}
+  buttonsPerRow: 3
   scrollRect: {fileID: 829617476}
   cardContainer: {fileID: 1865147471}
   summonCardPrefab: {fileID: 1550741978800441838, guid: f160bef7ac04a49439e53967d006942d, type: 3}
   spellCardPrefab: {fileID: 1550741978800441838, guid: a31740f54d99f4449b1b820e76fbd889, type: 3}
-  cardsPerRow: 4
+  detailFont: {fileID: 11400000, guid: 33c204896c0cca64e8e60641e9e7c64c, type: 3}
+  cardsPerRow: 5
+  cardScale: 2
   cardWidth: 83
   cardHeight: 146
   hSpacing: 25
   vSpacing: 25
-  startX: -140
-  startY: 282
+  startX: 40
+  startY: -20
   returnButton: {fileID: 1591534643}
   statusText: {fileID: 699174010}
 --- !u!1 &1815787593
@@ -5803,7 +5808,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 268, y: -20}
+  m_AnchoredPosition: {x: 566, y: -86}
   m_SizeDelta: {x: 90, y: 30}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &2054580324

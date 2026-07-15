@@ -24,13 +24,18 @@ public class CardCollectionPanel : MonoBehaviour
     [Header("Button Bars (级联按钮行)")]
     public Transform[] buttonBars;
     public GameObject filterButtonPrefab;
+    public Vector2 btnCellSize = new Vector2(160, 30);
+    public Vector2 btnSpacing = new Vector2(10, 8);
+    public int buttonsPerRow = 10;
 
     [Header("Card Grid")]
     public ScrollRect scrollRect;
     public Transform cardContainer;
     public GameObject summonCardPrefab;
     public GameObject spellCardPrefab;
+    public TMPro.TMP_FontAsset detailFont;
     public int cardsPerRow = 4;
+    public float cardScale = 1f;
     public float cardWidth = 83f, cardHeight = 146f, hSpacing = 25f, vSpacing = 25f;
     public float startX = -140f, startY = 282f;
 
@@ -99,11 +104,43 @@ public class CardCollectionPanel : MonoBehaviour
 
     void Awake()
     {
-        // Lobby 场景没有 CardDatabase/Player 单例，动态补上
+        // Lobby 场景没有 CardDatabase / Test1Panel / Player 单例，动态补上
         if (CardDatabase.Instance == null)
         {
             var dbGo = new GameObject("CardDatabase");
             dbGo.AddComponent<CardDatabase>();
+        }
+
+        if (Test1Panel.Instance == null)
+        {
+            var tpGo = new GameObject("Test1Panel");
+            tpGo.transform.SetParent(transform.parent, false); // 同级 Canvas
+            var tprt = tpGo.AddComponent<RectTransform>();
+            tprt.anchorMin = tprt.anchorMax = tprt.pivot = new Vector2(1, 1);
+            tprt.anchoredPosition = new Vector2(-20, -20);
+            tprt.sizeDelta = new Vector2(300, 450);
+            var tpImg = tpGo.AddComponent<UnityEngine.UI.Image>();
+            tpImg.color = new Color(0.1f, 0.1f, 0.15f, 0.92f);
+
+            var txtGo = new GameObject("InfoText");
+            txtGo.transform.SetParent(tpGo.transform, false);
+            var txtRt = txtGo.AddComponent<RectTransform>();
+            txtRt.anchorMin = Vector2.zero; txtRt.anchorMax = Vector2.one;
+            txtRt.offsetMin = new Vector2(12, 12); txtRt.offsetMax = new Vector2(-12, -12);
+            var txt = txtGo.AddComponent<TextMeshProUGUI>();
+            var font = detailFont ?? Resources.Load<TMPro.TMP_FontAsset>("Fonts & Materials/NotoSerifCJKsc-Bold SDF");
+            if (font != null)
+            {
+                txt.font = font;
+                txt.fontMaterial = font.material;
+            }
+            txt.fontSize = 15;
+            txt.color = Color.white;
+            txt.alignment = TMPro.TextAlignmentOptions.TopLeft;
+
+            var tp = tpGo.AddComponent<Test1Panel>();
+            tp.panelRoot = tpGo;
+            tp.infoText = txt;
         }
 
         if (cardContainer == null && scrollRect != null && scrollRect.content != null)
@@ -304,6 +341,26 @@ public class CardCollectionPanel : MonoBehaviour
         var bar = buttonBars[depth];
         if (bar == null || filterButtonPrefab == null) return;
 
+        bar.gameObject.SetActive(true);
+
+        // 移除旧布局组件，换上 GridLayoutGroup 自动换行
+        var oldHlg = bar.GetComponent<UnityEngine.UI.HorizontalLayoutGroup>();
+        if (oldHlg) DestroyImmediate(oldHlg);
+        var oldVlg = bar.GetComponent<UnityEngine.UI.VerticalLayoutGroup>();
+        if (oldVlg) DestroyImmediate(oldVlg);
+        var oldCsf = bar.GetComponent<UnityEngine.UI.ContentSizeFitter>();
+        if (oldCsf) DestroyImmediate(oldCsf);
+
+        var grid = bar.GetComponent<UnityEngine.UI.GridLayoutGroup>();
+        if (!grid) grid = bar.gameObject.AddComponent<UnityEngine.UI.GridLayoutGroup>();
+        grid.cellSize = btnCellSize;
+        grid.spacing = btnSpacing;
+        grid.startCorner = UnityEngine.UI.GridLayoutGroup.Corner.UpperLeft;
+        grid.startAxis = UnityEngine.UI.GridLayoutGroup.Axis.Horizontal;
+        grid.childAlignment = TextAnchor.UpperLeft;
+        grid.constraint = UnityEngine.UI.GridLayoutGroup.Constraint.FixedColumnCount;
+        grid.constraintCount = buttonsPerRow;
+
         for (int i = 0; i < btns.Length; i++)
         {
             var go = Instantiate(filterButtonPrefab, bar);
@@ -323,6 +380,7 @@ public class CardCollectionPanel : MonoBehaviour
     {
         if (depth >= buttonBars.Length || buttonBars[depth] == null) return;
         foreach (Transform t in buttonBars[depth]) Destroy(t.gameObject);
+        buttonBars[depth].gameObject.SetActive(false);
     }
 
     void ClearAllBars()
@@ -376,6 +434,9 @@ public class CardCollectionPanel : MonoBehaviour
             if (prefab == null) continue;
 
             var go = Instantiate(prefab, cardContainer);
+            // 确保卡片可以接收悬停事件（IPointerEnterHandler 需要 RaycastTarget）
+            var gfx = go.GetComponent<UnityEngine.UI.Graphic>();
+            if (gfx != null) gfx.raycastTarget = true;
             var di = go.GetComponent<CardInstance>() ?? go.AddComponent<CardInstance>();
             di.InitFromTemplate(td, 0);
             go.GetComponent<CardDisplay2D>()?.RefreshWithInstance(di);
@@ -386,11 +447,12 @@ public class CardCollectionPanel : MonoBehaviour
 
             var rt = go.GetComponent<RectTransform>();
             rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0, 1);
+            rt.localScale = Vector3.one * cardScale;
             rt.sizeDelta = new Vector2(cardWidth, cardHeight);
+            float sw = (cardWidth + hSpacing) * cardScale;
+            float sh = (cardHeight + vSpacing) * cardScale;
             int row = i / cardsPerRow, col = i % cardsPerRow;
-            rt.anchoredPosition = new Vector2(
-                startX + col * (cardWidth + hSpacing),
-                startY - row * (cardHeight + vSpacing));
+            rt.anchoredPosition = new Vector2(startX + col * sw, startY - row * sh);
             _spawned.Add(go);
         }
 
@@ -400,7 +462,7 @@ public class CardCollectionPanel : MonoBehaviour
         {
             float vh = scrollRect.viewport.rect.height;
             crt.sizeDelta = new Vector2(crt.sizeDelta.x,
-                Mathf.Max(vh, rows * (cardHeight + vSpacing) + Mathf.Abs(startY)));
+                Mathf.Max(vh, rows * (cardHeight + vSpacing) * cardScale + Mathf.Abs(startY)));
         }
     }
 }
