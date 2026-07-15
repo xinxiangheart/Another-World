@@ -106,8 +106,17 @@ public class NetworkPlayer : NetworkBehaviour
         _energyCanExceedLimit = false;
         handArea = GameObject.Find("HandArea")?.transform;
         handManager = FindObjectOfType<HandManager>();
-        _healthText = FindTMP("Health");
-        _energyText = FindTMP("Energy");
+        // 用 Player 的场景绑定（准确），不用 GameObject.Find("Health")（场景有两个同名对象会找错）
+        if (Player.Instance != null)
+        {
+            _healthText = Player.Instance.healthText;
+            _energyText = Player.Instance.energyText;
+        }
+        else
+        {
+            _healthText = FindTMP("Health");
+            _energyText = FindTMP("Energy");
+        }
         RefreshUI();
         StartHeartbeat();
     }

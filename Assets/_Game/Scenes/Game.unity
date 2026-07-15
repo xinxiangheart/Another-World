@@ -6809,7 +6809,7 @@ GameObject:
   - component: {fileID: 1568678124}
   - component: {fileID: 1568678123}
   m_Layer: 5
-  m_Name: 'EnemyHealthLabel '
+  m_Name: EnemyHealthLabel
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -8357,7 +8357,7 @@ GameObject:
   - component: {fileID: 1886966185}
   - component: {fileID: 1886966184}
   m_Layer: 5
-  m_Name: 'EnemyEnergyLabel '
+  m_Name: EnemyEnergyLabel
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
