@@ -344,7 +344,9 @@ public class BattleManager : MonoBehaviour
                 ci.hasRevenge = false;
                 bool shieldDone = false;
                 bool hasAlly = false;
-                for (int j = 6; j <= 11; j++) if (allSlots[j]?.currentCard3D != null && allSlots[j] != slot) { hasAlly = true; break; }
+                int fsSideStart = (i >= 6) ? 6 : 0;
+                int fsSideEnd = fsSideStart + 5;
+                for (int j = fsSideStart; j <= fsSideEnd; j++) if (allSlots[j]?.currentCard3D != null && allSlots[j] != slot) { hasAlly = true; break; }
                 if (hasAlly)
                 {
                     SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (targetSlot) =>
@@ -386,12 +388,19 @@ public class BattleManager : MonoBehaviour
         // 检查对方是否有合法目标
             if (ci.templateID == "01519")
             {
+                // 判断 GK 所在半场，只给自己的友方上盾
+                bool isOnHostSide = (i >= 6);
+                int sideStart = isOnHostSide ? 6 : 0;
+                int sideEnd   = isOnHostSide ? 11 : 5;
+
                 List<BoardSlot> candidates = new List<BoardSlot>();
-                for (int j = 6; j <= 11; j++)
+                for (int j = sideStart; j <= sideEnd; j++)
                 {
                     BoardSlot s = allSlots[j];
                     if (s?.currentCard3D != null)
                     {
+                        // 排除 GK 自身
+                        if (j == i) continue;
                         CardInstance c = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
                         if (c != null && !c.hasShield && !c.isAttached)
                             candidates.Add(s);

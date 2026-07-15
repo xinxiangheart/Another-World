@@ -495,7 +495,9 @@ public class CardInstance : MonoBehaviour
         amount = Mathf.RoundToInt(amount * healModifier);
         if (amount <= 0) return;
         if (templateID == "01512") amount = Mathf.Min(amount, 1);
-        currentHealth = Mathf.Min(currentMaxHealth, currentHealth + amount);
+        int actualHeal = Mathf.Min(currentMaxHealth - currentHealth, amount);
+        currentHealth += actualHeal;
+        if (actualHeal > 0) DamagePipeline.ShowFloaterAt(this, actualHeal, FloaterType.Heal);
         UpdateDisplay();
     }
 

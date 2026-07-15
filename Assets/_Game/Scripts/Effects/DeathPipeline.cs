@@ -123,10 +123,11 @@ public static class DeathPipeline
                 bm.attachedModels.Remove(fairy);
 
                 bool hasOtherAlly = false;
-                for (int i = 6; i <= 11; i++)
+                BoardManager.GetSideRange(p.slot.slotID, out int afS, out int afE);
+                for (int i = afS; i <= afE; i++)
                 {
                     BoardSlot s = bm?.GetSlot(i);
-                    if (s != null && s.hasCard && s.slotID != slotID)
+                    if (s != null && s.hasCard && s.slotID != p.slot.slotID)
                     {
                         hasOtherAlly = true;
                         break;
@@ -135,7 +136,7 @@ public static class DeathPipeline
 
                 if (hasOtherAlly)
                 {
-                    slot.StartCoroutine(slot.AncientFairyReattach(fairy, slotID));
+                    slot.StartCoroutine(slot.AncientFairyReattach(fairy, p.slot.slotID));
                 }
                 else
                 {
@@ -189,13 +190,16 @@ public static class DeathPipeline
         {
             BoardManager bmDeath = Object.FindObjectOfType<BoardManager>();
             if (bmDeath != null)
-                for (int i = 6; i <= 11; i++)
+            {
+                BoardManager.GetSideRange(p.slot.slotID, out int xvS, out int xvE);
+                for (int i = xvS; i <= xvE; i++)
                 {
                     BoardSlot sd = bmDeath.GetSlot(i);
                     if (sd?.currentCard3D == null) continue;
                     CardInstance ciX = sd.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
                     if (ciX != null && ciX.isXValue) hmDeath.UpdateXValues(ciX);
                 }
+            }
         }
 
         // ── 10. 清除宿主的非妖精附着物 + SyncMistHiderDisplay ─────────

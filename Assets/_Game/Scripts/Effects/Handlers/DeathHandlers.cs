@@ -110,8 +110,8 @@ public static class DeathHandlers
         GlobalEventManager.Instance?.UnregisterAuraOfSource(ctx.source);
         // 03501 独有：己方全体 UpdateValues
         var bm = BM();
-        if (bm != null)
-            for (int i = 6; i <= 11; i++)
+        if (bm != null && BoardManager.GetSideRangeOf(ctx.source, out int s03501, out int e03501))
+            for (int i = s03501; i <= e03501; i++)
             {
                 var ally = bm.GetSlot(i);
                 if (ally?.currentCard3D != null)
@@ -249,8 +249,8 @@ public static class DeathHandlers
                     break;
                 case "退场：己方全体受一点伤害":
                     var bm = BM();
-                    if (bm != null)
-                        for (int i = 6; i <= 11; i++)
+                    if (bm != null && BoardManager.GetSideRangeOf(ctx.source, out int sAoe, out int eAoe))
+                        for (int i = sAoe; i <= eAoe; i++)
                         {
                             var slot = bm.GetSlot(i);
                             if (slot?.currentCard3D != null)
@@ -364,8 +364,8 @@ public static class DeathHandlers
     {
         var bm = BM();
         bool isActive = ctx.isActiveExit;
-        if (bm != null)
-            for (int i = 6; i <= 11; i++)
+        if (bm != null && BoardManager.GetSideRangeOf(ctx.source, out int s1301, out int e1301))
+            for (int i = s1301; i <= e1301; i++)
             {
                 var slot = bm.GetSlot(i);
                 if (slot?.currentCard3D == null) continue;
@@ -464,7 +464,8 @@ public static class DeathHandlers
         NetworkPlayer.Local.AddEnergy(2);
         var bm = BM();
         bool hasAlly = false;
-        for (int i = 6; i <= 11; i++)
+        BoardManager.GetSideRangeOf(ctx.source, out int f1007S, out int f1007E);
+        for (int i = f1007S; i <= f1007E; i++)
         {
             if (bm?.GetSlot(i)?.currentCard3D != null) { hasAlly = true; break; }
         }
@@ -488,8 +489,8 @@ public static class DeathHandlers
     static void Handle01111(EffectContext ctx)
     {
         var bm = BM();
-        if (bm != null)
-            for (int i = 6; i <= 11; i++)
+        if (bm != null && BoardManager.GetSideRangeOf(ctx.source, out int s1111, out int e1111))
+            for (int i = s1111; i <= e1111; i++)
             {
                 var slot = bm.GetSlot(i);
                 if (slot?.currentCard3D == null) continue;

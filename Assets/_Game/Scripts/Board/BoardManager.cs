@@ -102,6 +102,27 @@ public class BoardManager : MonoBehaviour
     {
         return allSlots;
     }
+    /// <summary>返回槽位所在半场的起止索引 (0-5 或 6-11)</summary>
+    public static void GetSideRange(int slotID, out int start, out int end)
+    {
+        start = (slotID >= 6) ? 6 : 0;
+        end = start + 5;
+    }
+    /// <summary>返回 CardInstance 所在半场的起止索引</summary>
+    public static bool GetSideRangeOf(CardInstance ci, out int start, out int end)
+    {
+        start = end = -1;
+        if (ci == null) return false;
+        var bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return false;
+        for (int i = 0; i < 12; i++)
+        {
+            if (bm.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance == ci)
+            { GetSideRange(i, out start, out end); return true; }
+        }
+        return false;
+    }
+
     public static void SyncAttachedModels(BoardSlot slot)
     {
         if (slot == null) return;

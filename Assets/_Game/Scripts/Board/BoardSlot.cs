@@ -673,7 +673,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             {
                 BoardManager bm = FindObjectOfType<BoardManager>();
                 bool fromGravekeeper = false;
-                for (int i = 6; i <= 11; i++)
+                BoardManager.GetSideRange(slotID, out int gkSideStart, out int gkSideEnd);
+                for (int i = gkSideStart; i <= gkSideEnd; i++)
                 {
                     BoardSlot s = bm?.GetSlot(i);
                     if (s?.currentCard3D == null) continue;
@@ -770,7 +771,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     {
                         bool hasAlly = false;
                         BoardManager bm = FindObjectOfType<BoardManager>();
-                        for (int i = 6; i <= 11; i++)
+                        BoardManager.GetSideRangeOf(ci, out int fcSideStart, out int fcSideEnd);
+                        for (int i = fcSideStart; i <= fcSideEnd; i++)
                         {
                             if (bm?.GetSlot(i)?.currentCard3D != null) { hasAlly = true; break; }
                         }
@@ -1336,7 +1338,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     {
         List<CardInstance> allyMinions = new List<CardInstance>();
         BoardManager bm = FindObjectOfType<BoardManager>();
-        for (int i = 6; i <= 11; i++)
+        BoardManager.GetSideRangeOf(giver, out int rmSideStart, out int rmSideEnd);
+        for (int i = rmSideStart; i <= rmSideEnd; i++)
         {
             BoardSlot slot = bm?.GetSlot(i);
             if (slot?.currentCard3D == null) continue;
@@ -1504,7 +1507,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         BoardManager bm = FindObjectOfType<BoardManager>();
 
         bool hasMyEmpty = false;
-        for (int i = 6; i <= 11; i++)
+        BoardManager.GetSideRangeOf(giver, out int prSideStart, out int prSideEnd);
+        for (int i = prSideStart; i <= prSideEnd; i++)
         {
             BoardSlot s = bm.GetSlot(i);
             if (s != null && !s.hasCard && !s.isBlocked && !s.prisonBlocked) { hasMyEmpty = true; break; }
@@ -1515,7 +1519,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         bool myDone = false;
         SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (s) =>
         {
-            if (s != null && !s.hasCard && !s.isBlocked && !s.prisonBlocked && s.slotID >= 6)
+            if (s != null && !s.hasCard && !s.isBlocked && !s.prisonBlocked && s.slotID >= prSideStart && s.slotID <= prSideEnd)
             { myPrison = s; myDone = true; }
         });
         BoardSlot.isStrengtheningSlot = true;
@@ -1750,7 +1754,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
         List<CardInstance> allies = new List<CardInstance>();
-        for (int i = 6; i <= 11; i++)
+        BoardManager.GetSideRangeOf(giver, out int inkSideStart, out int inkSideEnd);
+        for (int i = inkSideStart; i <= inkSideEnd; i++)
         {
             BoardSlot s = bm?.GetSlot(i);
             if (s?.currentCard3D != null)
@@ -1936,7 +1941,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     {
                         bool hasAlly = false;
                         BoardManager bm = FindObjectOfType<BoardManager>();
-                        for (int i = 6; i <= 11; i++)
+                        BoardManager.GetSideRange(data.slotID, out int fcSideStart, out int fcSideEnd);
+                        for (int i = fcSideStart; i <= fcSideEnd; i++)
                         {
                             if (bm?.GetSlot(i)?.currentCard3D != null) { hasAlly = true; break; }
                         }
@@ -1998,14 +2004,17 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                         NetworkPlayer.Local.UpdateUI();
                         break;
                     case "退场：己方全体受一点伤害":
-                        BoardManager bm = FindObjectOfType<BoardManager>();
-                        if (bm != null)
-                            for (int i = 6; i <= 11; i++)
+                        BoardManager bmDH = FindObjectOfType<BoardManager>();
+                        if (bmDH != null)
+                        {
+                            BoardManager.GetSideRange(slotID, out int dhSideStart, out int dhSideEnd);
+                            for (int i = dhSideStart; i <= dhSideEnd; i++)
                             {
-                                BoardSlot slot = bm.GetSlot(i);
+                                BoardSlot slot = bmDH.GetSlot(i);
                                 if (slot?.currentCard3D != null)
                                     BattleManager.Instance.ApplyDamageToMinionPublic(slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance, 1, null);
                             }
+                        }
                         
                         break;
                     case "退场：己方玩家扣一血":
@@ -2081,8 +2090,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public IEnumerator FanaticShamanEnterEffect(CardInstance giver)
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
+        BoardManager.GetSideRangeOf(giver, out int fsSideStart, out int fsSideEnd);
         List<BoardSlot> allies = new List<BoardSlot>();
-        for (int i = 6; i <= 11; i++)
+        for (int i = fsSideStart; i <= fsSideEnd; i++)
         {
             BoardSlot s = bm?.GetSlot(i);
             if (s?.currentCard3D != null && s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance != giver)
@@ -2326,13 +2336,17 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         BoardManager bm = FindObjectOfType<BoardManager>();
         int mySlot = -1;
-        for (int i = 6; i <= 11; i++)
+        for (int i = 0; i <= 11; i++)
         {
             if (bm?.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance == giver)
             { mySlot = i; break; }
         }
 
-        for (int i = 6; i <= 11; i++)
+        // 只处理 Wolf King 所在半场的槽位
+        int sideStart = (mySlot >= 6) ? 6 : 0;
+        int sideEnd   = (mySlot >= 6) ? 11 : 5;
+
+        for (int i = sideStart; i <= sideEnd; i++)
         {
             if (i == mySlot) continue;
             BoardSlot slot = bm?.GetSlot(i);
@@ -2355,11 +2369,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 }
                 else
                 {
-                    continue; // 阶位>=3跳过
+                    continue;
                 }
             }
 
-                // 清理重定向标记
             Vector3 pos = FindObjectOfType<HandManager>().GetSlotWorldPosition(i);
             GameObject model = Instantiate(wolfTemplate.prefab3D, pos, Quaternion.Euler(0, 180, 0));
             Card3DInstance c3d = model.GetComponent<Card3DInstance>();
@@ -3103,7 +3116,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 }
                 break;
             case "01346": // 士兵：为己方一召唤物恢复3生命值
-                if (HasAllyTarget())
+                if (HasAllyTarget(ci))
                 {
                     BoardSlot mySlot = FindSlotOf(ci);
                     int mySlotID = mySlot?.slotID ?? -1;
@@ -3139,7 +3152,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 }
                 break;
             case "01135": // 杂耍大师：交换己方两召唤物
-                if (HasAllyTarget())
+                if (HasAllyTarget(ci))
                 {
                     HandManager hm = FindObjectOfType<HandManager>();
                     hm.StartCoroutine(hm.SwapTwoAllies());
@@ -3148,10 +3161,11 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
            
         }
     }
-    bool HasAllyTarget()
+    bool HasAllyTarget(CardInstance source)
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
-        for (int i = 6; i <= 11; i++)
+        if (!BoardManager.GetSideRangeOf(source, out int s, out int e)) return false;
+        for (int i = s; i <= e; i++)
             if (bm?.GetSlot(i)?.currentCard3D != null) return true;
         return false;
     }

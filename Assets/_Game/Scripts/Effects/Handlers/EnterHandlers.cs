@@ -362,7 +362,8 @@ public static class EnterHandlers
         var slot = ctx.sourceSlot;
         int scrollCount = 0;
         var bm = BM();
-        for (int i = 6; i <= 11; i++)
+        BoardManager.GetSideRange(slot.slotID, out int scS, out int scE);
+        for (int i = scS; i <= scE; i++)
         {
             var s = bm?.GetSlot(i);
             if (s?.currentCard3D != null)

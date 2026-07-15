@@ -53,8 +53,9 @@ public static class DiscardHandlers
         int discardSlotID = ctx.discardSlotID;
         int allyCount = 0;
         var bm = BM();
+        BoardManager.GetSideRange(discardSlotID, out int d1S, out int d1E);
         if (bm != null)
-            for (int i = 6; i <= 11; i++)
+            for (int i = d1S; i <= d1E; i++)
             {
                 var s = bm.GetSlot(i);
                 if (s != null && s.hasCard && s.slotID != discardSlotID) allyCount++;
@@ -101,7 +102,8 @@ public static class DiscardHandlers
         int discardSlotID = ctx.discardSlotID;
         bool hasAlly = false;
         var bm = BM();
-        for (int i = 6; i <= 11; i++)
+        BoardManager.GetSideRange(discardSlotID, out int d2S, out int d2E);
+        for (int i = d2S; i <= d2E; i++)
             if (bm?.GetSlot(i)?.currentCard3D != null) { hasAlly = true; break; }
         if (hasAlly)
         {

@@ -154,7 +154,7 @@ public static class DamagePipeline
         }
 
         // ── 01328 破防者: 己方有破防者 → 攻击护盾目标额外扣2HP ────
-        if (def.hasShield && HasBreakerOnField())
+        if (def.hasShield && HasBreakerOnField(ctx.Attacker))
         {
             def.currentHealth -= 2;
             UpdateDefenderValues(def);
@@ -207,6 +207,7 @@ public static class DamagePipeline
         if (def.hasShield)
         {
             def.RemoveShield();
+            ShowFloaterAt(def, 0, FloaterType.Blocked);
             ctx.shieldConsumed = true;
             ctx.stopped = true;
             return d;
@@ -228,6 +229,7 @@ public static class DamagePipeline
             {
                 def.tempHealthBoost -= d;
                 def.currentHealth -= d;
+                ShowFloaterAt(def, 0, FloaterType.Blocked);
                 ctx.tempHpAbsorbed = d;
                 ctx.stopped = true;
                 return 0;
@@ -236,17 +238,20 @@ public static class DamagePipeline
             {
                 d -= def.tempHealthBoost;
                 def.currentHealth -= def.tempHealthBoost;
+                ShowFloaterAt(def, 0, FloaterType.Blocked);
                 ctx.tempHpAbsorbed = def.tempHealthBoost;
                 def.tempHealthBoost = 0;
             }
         }
 
         // ── 领主(01503)重定向 ───────────────────────────────────────
-        CardInstance lord = FindLordOnField();
+        CardInstance lord = FindLordOnField(def);
         if (lord != null && def != lord && IsAlly(def)
             && !IsSilenced(lord))
         {
             lord.currentHealth -= d;
+            ShowFloaterAt(def, 0, FloaterType.Blocked);
+            ShowFloaterAt(lord, d, FloaterType.Damage);
             UpdateLordDisplay(lord);
             ctx.redirectedToLord = true;
             ctx.lordTarget = lord;
@@ -263,6 +268,7 @@ public static class DamagePipeline
             {
                 RemoveFollower(lastFollower);
                 def.currentHealth = 2;
+                ShowFloaterAt(def, 0, FloaterType.Blocked);
                 ReorderAttachments(GetHostSlotID(def));
                 SyncAttachments(GetHostSlotID(def));
                 ctx.negatedByFollower = true;
@@ -378,6 +384,7 @@ public static class DamagePipeline
 
         // ── 实际扣血 ─────────────────────────────────────────────────
         def.currentHealth -= actual;
+        ShowFloaterAt(def, actual, FloaterType.Damage);
 
         // ── DamageSourceMarker ────────────────────────────────────────
         if (ctx.input.sourceObject != null)
@@ -449,11 +456,12 @@ public static class DamagePipeline
         return null;
     }
 
-    static bool HasBreakerOnField()
+    static bool HasBreakerOnField(CardInstance forCard)
     {
         var bm = UnityEngine.Object.FindObjectOfType<BoardManager>();
-        if (bm == null) return false;
-        for (int i = 6; i <= 11; i++)
+        if (bm == null || forCard == null) return false;
+        if (!BoardManager.GetSideRangeOf(forCard, out int brS, out int brE)) return false;
+        for (int i = brS; i <= brE; i++)
         {
             var s = bm.GetSlot(i);
             if (s?.currentCard3D == null) continue;
@@ -470,11 +478,12 @@ public static class DamagePipeline
         return ci.prefixes.Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries).Length;
     }
 
-    static CardInstance FindLordOnField()
+    static CardInstance FindLordOnField(CardInstance forCard)
     {
         var bm = UnityEngine.Object.FindObjectOfType<BoardManager>();
-        if (bm == null) return null;
-        for (int i = 6; i <= 11; i++)
+        if (bm == null || forCard == null) return null;
+        if (!BoardManager.GetSideRangeOf(forCard, out int ldS, out int ldE)) return null;
+        for (int i = ldS; i <= ldE; i++)
         {
             var s = bm.GetSlot(i);
             if (s?.currentCard3D != null)
@@ -564,4 +573,42 @@ public static class DamagePipeline
         redirectedToLord = ctx.redirectedToLord,
         negatedByFollower = ctx.negatedByFollower,
     };
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 浮动数字
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// <summary>在 CardInstance 的 3D 模型上方弹出浮动数字</summary>
+    public static void ShowFloaterAt(CardInstance ci, int value, FloaterType type)
+    {
+        if (ci == null) return;
+        Vector3 worldPos = GetWorldPosOf(ci);
+        DamageFloater.Show(worldPos, value, type);
+    }
+
+    static Vector3 GetWorldPosOf(CardInstance ci)
+    {
+        var bm = UnityEngine.Object.FindObjectOfType<BoardManager>();
+        if (bm == null) return Vector3.zero;
+        float offset = _floaterOffsetY ?? 2.5f;
+        for (int i = 0; i < 12; i++)
+        {
+            var s = bm.GetSlot(i);
+            var c3d = s?.currentCard3D?.GetComponent<Card3DInstance>();
+            if (c3d?.cardInstance == ci && s.currentCard3D != null)
+                return s.currentCard3D.transform.position + Vector3.up * offset;
+        }
+        return Vector3.zero;
+    }
+
+    static float? _floaterOffsetY;
+    static float GetFloaterOffsetY()
+    {
+        if (!_floaterOffsetY.HasValue)
+        {
+            var cfg = Resources.Load<FloaterConfig>("FloaterConfig");
+            _floaterOffsetY = cfg != null ? cfg.worldOffsetY : 2.5f;
+        }
+        return _floaterOffsetY.Value;
+    }
 }

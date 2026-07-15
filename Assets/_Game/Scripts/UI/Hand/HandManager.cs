@@ -840,7 +840,8 @@ public class HandManager : MonoBehaviour
                     {
                         // 己方全体+2+1
                         BoardManager bmCluster = FindObjectOfType<BoardManager>();
-                        for (int i = 6; i <= 11; i++)
+                        BoardManager.GetSideRange(hostSlot.slotID, out int clS, out int clE);
+                        for (int i = clS; i <= clE; i++)
                         {
                             BoardSlot clusterSlot = bmCluster?.GetSlot(i);
                             if (clusterSlot?.currentCard3D != null)
@@ -997,7 +998,8 @@ public class HandManager : MonoBehaviour
         if (sourceInstance != null && sourceInstance.templateID == "03503")
         {
             BoardManager bm = FindObjectOfType<BoardManager>();
-            for (int i = 6; i <= 11; i++)
+            BoardManager.GetSideRange(slot.slotID, out int sageS, out int sageE);
+            for (int i = sageS; i <= sageE; i++)
             {
                 BoardSlot allySlot = bm?.GetSlot(i);
                 if (allySlot?.currentCard3D != null)
@@ -1039,22 +1041,23 @@ public class HandManager : MonoBehaviour
                 }
             }
         }
-        // 无赖：进场获得护盾（攻击回合开始消失）
+        // 中枢：附加灵能前缀
         if (sourceInstance != null && sourceInstance.templateID == "03027")
         {
             BoardManager bm = FindObjectOfType<BoardManager>();
-            for (int i = 6; i <= 11; i++)
+            BoardManager.GetSideRange(slot.slotID, out int coreS, out int coreE);
+            for (int i = coreS; i <= coreE; i++)
             {
                 BoardSlot coreSlot = bm?.GetSlot(i);
-                if (slot?.currentCard3D == null) continue;
-                CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                if (coreSlot?.currentCard3D == null) continue;
+                CardInstance ci = coreSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
                 if (ci != null && !ci.prefixes.Contains("灵能"))
                 {
                         if (string.IsNullOrEmpty(ci.prefixes) || ci.prefixes == "无")
                             ci.prefixes = "灵能";
                     else
                             ci.prefixes += " 灵能";
-                    slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+                    coreSlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
                 }
             }
             // 附加灵能前缀：手牌中召唤物
@@ -1077,13 +1080,14 @@ public class HandManager : MonoBehaviour
                 }
             }
         }
-        // 无赖：进场获得护盾（攻击回合开始消失）
+        // 皇帝：渊前缀+1+1
         if (sourceInstance != null && sourceInstance.templateID == "01501")
         {
             if (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(sourceInstance))
             {
                 BoardManager bm = FindObjectOfType<BoardManager>();
-                for (int i = 6; i <= 11; i++)
+                BoardManager.GetSideRange(slot.slotID, out int empS, out int empE);
+                for (int i = empS; i <= empE; i++)
                 {
                     BoardSlot s = bm?.GetSlot(i);
                     if (s?.currentCard3D != null)
@@ -1113,7 +1117,8 @@ public class HandManager : MonoBehaviour
             {
                 bool emperorActive = false;
                 BoardManager bm = FindObjectOfType<BoardManager>();
-                for (int i = 6; i <= 11; i++)
+                BoardManager.GetSideRange(slot.slotID, out int empPS, out int empPE);
+                for (int i = empPS; i <= empPE; i++)
                 {
                     BoardSlot s = bm?.GetSlot(i);
                     if (s?.currentCard3D != null)
@@ -1165,7 +1170,8 @@ public class HandManager : MonoBehaviour
         BoardManager bmSync = FindObjectOfType<BoardManager>();
         if (bmSync != null)
         {
-            for (int i = 6; i <= 11; i++)
+            BoardManager.GetSideRange(slot.slotID, out int xvS, out int xvE);
+            for (int i = xvS; i <= xvE; i++)
             {
                 BoardSlot slotSync = bmSync.GetSlot(i);
                 if (slotSync?.currentCard3D == null) continue;
