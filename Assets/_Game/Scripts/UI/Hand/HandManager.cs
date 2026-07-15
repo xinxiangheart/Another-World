@@ -73,7 +73,7 @@ public class HandManager : MonoBehaviour
         // Sync to remote client after spell/counter cast is fully processed
         if (NetworkClient.isConnected && !string.IsNullOrEmpty(removedTemplateID))
         {
-            NetworkPlayer.Local?.CmdPlayCard(removedTemplateID, -1);
+            NetworkPlayer.Local?.CmdPlayCard(removedTemplateID, -1, -1, -1, -1);
             BoardSyncManager.MarkDirty();
         }
 
@@ -617,7 +617,7 @@ public class HandManager : MonoBehaviour
 
         // Sync 3D model to opponent
         if (NetworkClient.isConnected && !string.IsNullOrEmpty(sourceInstance.templateID))
-            NetworkPlayer.Local?.CmdPlayCard(sourceInstance.templateID, slot.slotID);
+            NetworkPlayer.Local?.CmdPlayCard(sourceInstance.templateID, slot.slotID, -1, -1, -1);
 
         ProcessAuras(slot, sourceInstance);
 

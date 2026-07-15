@@ -102,6 +102,12 @@ public class BoardManager : MonoBehaviour
     {
         return allSlots;
     }
+    /// <summary>返回槽位对面半场的起止索引</summary>
+    public static void GetEnemySideRange(int slotID, out int start, out int end)
+    {
+        start = (slotID >= 6) ? 0 : 6;
+        end = start + 5;
+    }
     /// <summary>返回槽位所在半场的起止索引 (0-5 或 6-11)</summary>
     public static void GetSideRange(int slotID, out int start, out int end)
     {

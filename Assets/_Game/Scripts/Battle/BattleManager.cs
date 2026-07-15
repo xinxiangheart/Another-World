@@ -371,7 +371,8 @@ public class BattleManager : MonoBehaviour
             if (ci.templateID == "01324")
             {
                 int highestTier = 0;
-                for (int j = 0; j <= 5; j++)
+                int enemyStart = i >= 6 ? 0 : 6;
+                for (int j = enemyStart; j < enemyStart + 6; j++)
                 {
                     BoardSlot enemySlot = allSlots[j];
                     if (enemySlot?.currentCard3D != null)
@@ -493,8 +494,9 @@ public class BattleManager : MonoBehaviour
             // 毒巫：清除护盾+中毒
             if (ci.templateID == "03502")
             {
+                int myStart = i >= 6 ? 0 : 6;
                 bool hasEnemy = false;
-                for (int j = 0; j <= 5; j++) if (allSlots[j]?.currentCard3D != null) { hasEnemy = true; break; }
+                for (int j = myStart; j < myStart + 6; j++) if (allSlots[j]?.currentCard3D != null) { hasEnemy = true; break; }
                 if (!hasEnemy) continue;
                 bool poisonDone = false;
                 SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (targetSlot) =>
@@ -507,7 +509,14 @@ public class BattleManager : MonoBehaviour
                             ti.cardInstance.RemoveShield();
                             ti.cardInstance.poisoned = true;
                             if (ti.cardInstance.summonType == SummonType.ChosenOne)
-                            { NetworkPlayer.Remote.currentEnergy -= 1; NetworkPlayer.Remote.UpdateUI(); }
+                            {
+                                if (targetSlot.slotID >= 6)
+                                    NetworkPlayer.Local.currentEnergy -= 1;
+                                else
+                                    NetworkPlayer.Remote.currentEnergy -= 1;
+                                NetworkPlayer.Local?.UpdateUI();
+                                NetworkPlayer.Remote?.UpdateUI();
+                            }
                         }
                     }
                     poisonDone = true;
@@ -544,7 +553,10 @@ public class BattleManager : MonoBehaviour
             // 万人迷：对手+1能量
             if (ci.templateID == "01314")
             {
-                NetworkPlayer.Remote.AddEnergy(1);
+                if (i >= 6)
+                    NetworkPlayer.Remote.AddEnergy(1);
+                else
+                    NetworkPlayer.Local.AddEnergy(1);
             }
         }
 
@@ -559,7 +571,8 @@ public class BattleManager : MonoBehaviour
         // 检查对方是否有合法目标
             if (ci.templateID == "03506")
             {
-                int[] targets = { 2, 0, 4 };
+                int offset = i >= 6 ? 0 : 6;
+                int[] targets = { 2 + offset, 0 + offset, 4 + offset };
                 foreach (int id in targets)
                 {
                     BoardSlot targetSlot = allSlots[id];
@@ -578,7 +591,8 @@ public class BattleManager : MonoBehaviour
         // 检查对方是否有合法目标
             if (ci.templateID == "03513")
             {
-                int[] targets = { 1, 5, 3 };
+                int offset = i >= 6 ? 0 : 6;
+                int[] targets = { 1 + offset, 5 + offset, 3 + offset };
                 foreach (int id in targets)
                 {
                     BoardSlot targetSlot = allSlots[id];
@@ -596,7 +610,8 @@ public class BattleManager : MonoBehaviour
             // 麻烦制造者赋予的先手：扣对方玩家1生命值
             if (ci.templateID == "01310")
             {
-                for (int j = 0; j <= 5; j++)
+                int myStart = i >= 6 ? 0 : 6;
+                for (int j = myStart; j < myStart + 6; j++)
                 {
                     BoardSlot targetSlot = allSlots[j];
                     if (targetSlot?.currentCard3D != null)
@@ -613,7 +628,8 @@ public class BattleManager : MonoBehaviour
             // 麻烦制造者赋予的先手：扣对方玩家1生命值
             if (ci.templateID == "03005")
             {
-                int[] frontRow = { 0, 1, 2 };
+                int offset = i >= 6 ? 0 : 6;
+                int[] frontRow = { offset, 1 + offset, 2 + offset };
                 foreach (int id in frontRow)
                 {
                     BoardSlot targetSlot = allSlots[id];
@@ -631,7 +647,8 @@ public class BattleManager : MonoBehaviour
             // 麻烦制造者赋予的先手：扣对方玩家1生命值
             if (ci.templateID == "03003")
             {
-                int[] backRow = { 3, 4, 5 };
+                int offset = i >= 6 ? 0 : 6;
+                int[] backRow = { 3 + offset, 4 + offset, 5 + offset };
                 foreach (int id in backRow)
                 {
                     BoardSlot targetSlot = allSlots[id];
@@ -648,12 +665,16 @@ public class BattleManager : MonoBehaviour
             }
             if (ci.templateID == "03020")
             {
-                NetworkPlayer.Remote.TakeDamage(1);
+                if (i >= 6)
+                    NetworkPlayer.Remote.TakeDamage(1);
+                else
+                    NetworkPlayer.Local.TakeDamage(1);
             }
             // 麻烦制造者赋予的先手：扣对方玩家1生命值
             if (ci.grantedTraitTexts.Exists(t => t.Contains("先手：对对方前排召唤物造成1伤害")))
             {
-                int[] frontRow = { 0, 1, 2 };
+                int myStart = i >= 6 ? 0 : 6;
+                int[] frontRow = { myStart, myStart + 1, myStart + 2 };
                 foreach (int id in frontRow)
                 {
                     BoardSlot targetSlot = allSlots[id];
@@ -671,7 +692,8 @@ public class BattleManager : MonoBehaviour
             // 修正者赋予的先手（灵能版）：对前排2伤害，后排1伤害
             if (ci.grantedTraitTexts.Exists(t => t.Contains("先手：对对方前排召唤物造成2伤害，对后排造成1伤害")))
             {
-                for (int j = 0; j <= 5; j++)
+                int myStart = i >= 6 ? 0 : 6;
+                for (int j = myStart; j < myStart + 6; j++)
                 {
                     BoardSlot targetSlot = allSlots[j];
                     if (targetSlot?.currentCard3D != null)
@@ -679,7 +701,7 @@ public class BattleManager : MonoBehaviour
                         Card3DInstance ti = targetSlot.currentCard3D.GetComponent<Card3DInstance>();
                         if (ti?.cardInstance != null)
                         {
-                            int dmg = j < 3 ? 2 : 1;
+                            int dmg = (j - myStart) < 3 ? 2 : 1;
                             ApplyDamageToMinion(ti.cardInstance, dmg, slot.currentCard3D);
                             ti.UpdateValues();
                         }

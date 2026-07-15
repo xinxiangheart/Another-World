@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using Mirror;
 
 // ============================================================================
 // DamagePipeline — 统一五阶段伤害结算（D1-D5 全部落地）
@@ -587,12 +588,24 @@ public static class DamagePipeline
     // 浮动数字
     // ═══════════════════════════════════════════════════════════════════
 
-    /// <summary>在 CardInstance 的 3D 模型上方弹出浮动数字</summary>
+    /// <summary>在 CardInstance 的 3D 模型上方弹出浮动数字（服务器端同时广播到远端客户端）</summary>
     public static void ShowFloaterAt(CardInstance ci, int value, FloaterType type)
     {
         if (ci == null) return;
         Vector3 worldPos = GetWorldPosOf(ci);
         DamageFloater.Show(worldPos, value, type);
+
+        // Server broadcasts floater to remote client so they see battle damage numbers too.
+        if (Mirror.NetworkServer.active)
+        {
+            var np = NetworkPlayer.Local;
+            if (np != null)
+            {
+                int slotID = GetSlotOf(ci);
+                if (slotID >= 0)
+                    np.RpcShowDamageFloater(slotID, value, (int)type);
+            }
+        }
     }
 
     static Vector3 GetWorldPosOf(CardInstance ci)

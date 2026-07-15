@@ -283,8 +283,12 @@ public class NetworkPlayer : NetworkBehaviour
         AddServerSideCard(data);
     }
 
+    /// <summary>
+    /// Server-side card placement. overrideAtk/overrideHP/overrideMaxHP (-1 = use template default)
+    /// are applied after InitFromTemplate so enter-effect stat boosts survive the server's fresh spawn.
+    /// </summary>
     [Command]
-    public void CmdPlayCard(string templateID, int slotID)
+    public void CmdPlayCard(string templateID, int slotID, int overrideAtk, int overrideHP, int overrideMaxHP)
     {
         Debug.Log($"[NetworkPlayer] CmdPlayCard: templateID={templateID}, slotID={slotID}, netId={netId}");
         TurnManager tm = FindObjectOfType<TurnManager>();
@@ -315,6 +319,12 @@ public class NetworkPlayer : NetworkBehaviour
                         {
                             CardInstance ci = model.AddComponent<CardInstance>();
                             ci.InitFromTemplate(template, 0);
+
+                            // Apply enter-effect stat overrides before first sync
+                            if (overrideAtk >= 0) ci.currentAttack = overrideAtk;
+                            if (overrideHP >= 0) ci.currentHealth = overrideHP;
+                            if (overrideMaxHP >= 0) ci.currentMaxHealth = overrideMaxHP;
+
                             c3d.cardInstance = ci;
                             c3d.UpdateValues();
 
@@ -337,7 +347,7 @@ public class NetworkPlayer : NetworkBehaviour
                 foreach (var kv in NetworkServer.connections)
                     if (kv.Value != connectionToClient) { other = kv.Value; break; }
                 if (other != null)
-                    TargetSpawnCard3D(other, templateID, slotID);
+                    TargetSpawnCard3D(other, templateID, slotID, overrideAtk, overrideHP, overrideMaxHP);
             }
         }
         // Non-counter cards: trigger opponent's OnCardPlayed counters on server
@@ -354,6 +364,35 @@ public class NetworkPlayer : NetworkBehaviour
         // Counter spell sync is handled entirely by CardDrag.OnEndDrag's counter branch
         // (TargetSpawnCounterCard for Host→Remote, CmdPlayCounter for Client→Server).
         // CmdPlayCard is NEVER called for counters — the counter path has an early return.
+    }
+
+    /// <summary>
+    /// Client → server: update a card's stats after enter effect modified them locally.
+    /// Used when CmdPlayCard was called before the enter effect (HandManager path).
+    /// localSlotID is in the calling client's coordinate system (6-11 = ally).
+    /// </summary>
+    [Command]
+    public void CmdUpdateCardStats(int localSlotID, int atk, int hp, int maxHp)
+    {
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return;
+
+        // Map client's local slot to server slot
+        int serverSlot;
+        if (isLocalPlayer)
+            serverSlot = localSlotID;
+        else
+            serverSlot = localSlotID >= 6 ? localSlotID - 6 : localSlotID + 6;
+
+        BoardSlot slot = bm.GetSlot(serverSlot);
+        var ci = slot?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+        if (ci == null) return;
+
+        ci.currentAttack = atk;
+        ci.currentHealth = hp;
+        ci.currentMaxHealth = maxHp;
+        slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+        BoardSyncManager.MarkDirty();
     }
 
     [Command]
@@ -376,7 +415,7 @@ public class NetworkPlayer : NetworkBehaviour
 
     public void TakeDamage(int amount)
     {
-        if (isServer)
+        if (NetworkServer.active)
             currentHealth -= amount;
         else
             CmdTakeDamage(amount);
@@ -390,7 +429,7 @@ public class NetworkPlayer : NetworkBehaviour
 
     public void Heal(int amount)
     {
-        if (isServer)
+        if (NetworkServer.active)
             currentHealth = Mathf.Min(maxHealth, currentHealth + amount);
         else
             CmdHeal(amount);
@@ -406,7 +445,7 @@ public class NetworkPlayer : NetworkBehaviour
 
     public void AddEnergy(int amount)
     {
-        if (isServer)
+        if (NetworkServer.active)
         {
             currentEnergy += amount;
             if (!_energyCanExceedLimit && currentEnergy > maxEnergy)
@@ -428,7 +467,7 @@ public class NetworkPlayer : NetworkBehaviour
     {
         if (currentEnergy >= amount)
         {
-            if (isServer)
+            if (NetworkServer.active)
                 currentEnergy -= amount;
             else
                 CmdUseEnergy(amount);
@@ -763,9 +802,12 @@ public class NetworkPlayer : NetworkBehaviour
     /// Server tells a client to spawn a 3D card model at a board slot.
     /// The card is an enemy/opponent card, so it renders with opposite rotation
     /// and SetEnemyView (no hover interaction, no discard).
+    /// overrideAtk/overrideHP/overrideMaxHP (-1 = use template default) carry
+    /// enter-effect stat boosts across the network.
     /// </summary>
     [TargetRpc]
-    public void TargetSpawnCard3D(NetworkConnectionToClient target, string templateID, int slotID)
+    public void TargetSpawnCard3D(NetworkConnectionToClient target, string templateID, int slotID,
+        int overrideAtk, int overrideHP, int overrideMaxHP)
     {
         CardData template = CardDatabase.Instance?.GetTemplate(templateID);
         if (template?.prefab3D == null) return;
@@ -791,6 +833,12 @@ public class NetworkPlayer : NetworkBehaviour
         {
             CardInstance ci = model.AddComponent<CardInstance>();
             ci.InitFromTemplate(template, 0);
+
+            // Apply enter-effect stat overrides
+            if (overrideAtk >= 0) ci.currentAttack = overrideAtk;
+            if (overrideHP >= 0) ci.currentHealth = overrideHP;
+            if (overrideMaxHP >= 0) ci.currentMaxHealth = overrideMaxHP;
+
             c3d.cardInstance = ci;
             c3d.UpdateValues();
 
@@ -1244,6 +1292,31 @@ public class NetworkPlayer : NetworkBehaviour
         CardData template = CardDatabase.Instance?.GetTemplate(templateID);
         if (template != null)
             AddCardToHand(template);
+    }
+
+    // ========== Damage floater broadcast ==========
+
+    /// <summary>Server → clients: show a damage/heal/buff floater above the card in serverSlotID.</summary>
+    [ClientRpc]
+    public void RpcShowDamageFloater(int serverSlotID, int value, int typeInt)
+    {
+        // Host already shows floaters locally via the server-side DamagePipeline call; skip.
+        if (isLocalPlayer) return;
+
+        // Map server slot to this client's local board layout.
+        int localSlot = serverSlotID ^ 6;
+
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        Vector3 worldPos;
+        BoardSlot slot = bm?.GetSlot(localSlot);
+        if (slot?.currentCard3D != null)
+            worldPos = slot.currentCard3D.transform.position + Vector3.up * 2.5f;
+        else
+        {
+            HandManager hm = FindObjectOfType<HandManager>();
+            worldPos = (hm != null ? hm.GetSlotWorldPosition(localSlot) : Vector3.zero) + Vector3.up * 2.5f;
+        }
+        DamageFloater.Show(worldPos, value, (FloaterType)typeInt);
     }
 
     // ========== Transform sync (腐化/飞升 on any slot) ==========

@@ -260,6 +260,13 @@ public static class EnterHandlers
                         if (atk > 0) DamagePipeline.ShowFloaterAt(self3D.cardInstance, atk, FloaterType.Buff);
                         if (hp > 0)  DamagePipeline.ShowFloaterAt(self3D.cardInstance, hp, FloaterType.Heal);
                         self3D.UpdateValues();
+
+                        // Sync boosted stats to server (covers the HandManager path where
+                        // CmdPlayCard was already sent before the enter effect).
+                        NetworkPlayer.Local?.CmdUpdateCardStats(slot.slotID,
+                            self3D.cardInstance.currentAttack,
+                            self3D.cardInstance.currentHealth,
+                            self3D.cardInstance.currentMaxHealth);
                     }
                 }
                 slot.CleanupAfterPlacement();

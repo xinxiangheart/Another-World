@@ -400,7 +400,12 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             // Sync to remote client after placement is fully complete.
             if (NetworkClient.isConnected && !string.IsNullOrEmpty(playTemplateID))
             {
-                NetworkPlayer.Local?.CmdPlayCard(playTemplateID, slotID);
+                // Read current stats (may have been modified by enter effect)
+                Card3DInstance placedC3D = currentCard3D?.GetComponent<Card3DInstance>();
+                int atk = placedC3D?.cardInstance?.currentAttack ?? -1;
+                int hp = placedC3D?.cardInstance?.currentHealth ?? -1;
+                int maxHp = placedC3D?.cardInstance?.currentMaxHealth ?? -1;
+                NetworkPlayer.Local?.CmdPlayCard(playTemplateID, slotID, atk, hp, maxHp);
                 BoardSyncManager.MarkDirty();
             }
 
@@ -801,24 +806,41 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             {
                 case "01106": NetworkPlayer.Local.AddEnergy(1); break;
                 case "03513":
-                    BoardManager bm = FindObjectOfType<BoardManager>();
-                    if (bm != null)
-                        for (int j = 0; j <= 5; j++)
-                        {
-                            BoardSlot es = bm.GetSlot(j);
-                            if (es?.currentCard3D != null)
-                            {
-                                Card3DInstance ei = es.currentCard3D.GetComponent<Card3DInstance>();
-                                if (ei?.cardInstance != null)
-                                {
-                                    BattleManager.Instance.ApplyDamageToMinionPublic(ei.cardInstance, 1, null);
-                                    ei.UpdateValues();
-                                }
-                            }
-                        }
-                   
+                    Do03513AOE(ci);
                     break;
             }
+        }
+    }
+
+    /// <summary>03513 断罪者死亡时：对对方全部随从造成 1 伤害。从有 this 和无 this 的两处调用点提取。</summary>
+    static void Do03513AOE(BoardSlot mySlot)
+    {
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return;
+        int enemyStart = mySlot.slotID >= 6 ? 0 : 6;
+        for (int j = enemyStart; j < enemyStart + 6; j++)
+        {
+            BoardSlot es = bm.GetSlot(j);
+            if (es?.currentCard3D != null)
+            {
+                Card3DInstance ei = es.currentCard3D.GetComponent<Card3DInstance>();
+                if (ei?.cardInstance != null)
+                {
+                    BattleManager.Instance.ApplyDamageToMinionPublic(ei.cardInstance, 1, null);
+                    ei.UpdateValues();
+                }
+            }
+        }
+    }
+
+    static void Do03513AOE(CardInstance ci)
+    {
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return;
+        for (int i = 0; i < 12; i++)
+        {
+            if (bm.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance == ci)
+            { Do03513AOE(bm.GetSlot(i)); return; }
         }
     }
 
@@ -1971,22 +1993,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             {
                 case "01106": NetworkPlayer.Local.AddEnergy(1); break;
                 case "03513":
-                    BoardManager bm = FindObjectOfType<BoardManager>();
-                    if (bm != null)
-                        for (int j = 0; j <= 5; j++)
-                        {
-                            BoardSlot es = bm.GetSlot(j);
-                            if (es?.currentCard3D != null)
-                            {
-                                Card3DInstance ei = es.currentCard3D.GetComponent<Card3DInstance>();
-                                if (ei?.cardInstance != null)
-                                {
-                                    BattleManager.Instance.ApplyDamageToMinionPublic(ei.cardInstance, 1, null);
-                                    ei.UpdateValues();
-                                }
-                            }
-                        }
-                   
+                    Do03513AOE(this);
                     break;
             }
         }
