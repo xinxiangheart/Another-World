@@ -344,7 +344,9 @@ public static class DeathHandlers
         var bm = BM();
         if (bm != null)
         {
-            for (int i = 0; i <= 5; i++)
+            // 使用退场卡牌所在半场动态计算对方半场
+            BoardManager.GetEnemySideRange(ctx.SourceSlotID, out int start, out int end);
+            for (int i = start; i <= end; i++)
             {
                 var es = bm.GetSlot(i);
                 if (es?.currentCard3D != null)
@@ -507,9 +509,10 @@ public static class DeathHandlers
         var bm = BM();
         if (bm != null)
         {
+            BoardManager.GetEnemySideRange(ctx.SourceSlotID, out int start, out int end);
             int highestAtk = -1;
             BoardSlot targetSlot = null;
-            for (int i = 0; i <= 5; i++)
+            for (int i = start; i <= end; i++)
             {
                 var slot = bm.GetSlot(i);
                 if (slot?.currentCard3D == null) continue;
@@ -530,9 +533,10 @@ public static class DeathHandlers
         var bm = BM();
         if (bm != null)
         {
+            BoardManager.GetEnemySideRange(ctx.SourceSlotID, out int start, out int end);
             int highestHp = -1;
             BoardSlot targetSlot = null;
-            for (int i = 0; i <= 5; i++)
+            for (int i = start; i <= end; i++)
             {
                 var slot = bm.GetSlot(i);
                 if (slot?.currentCard3D == null) continue;

@@ -2164,6 +2164,12 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 HandManager hm = FindObjectOfType<HandManager>();
                 hm.PlaceCardToSlot(selectedSlot, temp);
                 Destroy(temp);
+
+                // Sync shadow to opponent
+                if (NetworkClient.isConnected)
+                    NetworkPlayer.Local?.CmdPlayCard(shadowTemplate.templateID, selectedSlot.slotID,
+                        ti.currentAttack, ti.currentHealth, ti.currentMaxHealth);
+
                 placed = true;
                 SelectionManager.Instance.ForceEndAll();
                 BoardSlot.isPlacingCard = false;
@@ -2205,6 +2211,12 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 HandManager hm = FindObjectOfType<HandManager>();
                 hm.PlaceCardToSlot(selectedSlot, temp);
                 Destroy(temp);
+
+                // Sync ghost to opponent — CmdPlayCard is not called by PlaceCardToSlot,
+                // and ghosts are placed outside the normal OnPointerClick flow.
+                if (NetworkClient.isConnected)
+                    NetworkPlayer.Local?.CmdPlayCard(ghostTemplate.templateID, selectedSlot.slotID, -1, -1, -1);
+
                 placed = true;
                 SelectionManager.Instance.ForceEndAll();
                 BoardSlot.isPlacingCard = false;
@@ -2236,6 +2248,11 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     HandManager hm = FindObjectOfType<HandManager>();
                     hm.PlaceCardToSlot(selectedSlot, temp);
                     Destroy(temp);
+
+                    // Sync soldier to opponent
+                    if (NetworkClient.isConnected)
+                        NetworkPlayer.Local?.CmdPlayCard(soldierTemplate.templateID, selectedSlot.slotID, -1, -1, -1);
+
                     placed = true;
                     SelectionManager.Instance.ForceEndAll();
                     BoardSlot.isPlacingCard = false;

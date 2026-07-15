@@ -66,7 +66,8 @@ public class BattleManager : MonoBehaviour
             }
         }
 
-        for (int i = 6; i <= 11; i++)
+        // 麻烦制造者(01308)：赋予对方召唤物先手扣血。遍历全部12槽，两边都能触发。
+        for (int i = 0; i < 12; i++)
         {
             BoardSlot slot = allSlots[i];
             if (slot?.currentCard3D == null) continue;
@@ -74,12 +75,12 @@ public class BattleManager : MonoBehaviour
             if (ci != null && ci.templateID == "01308")
             {
                 if (!ci.CanTriggerTrait("战斗回合开始")) continue;
-                yield return StartCoroutine(TroubleMakerEffect(ci));
+                yield return StartCoroutine(TroubleMakerEffect(ci, i));
                 break;
             }
         }
-        // 检查对方是否有合法目标
-        for (int i = 6; i <= 11; i++)
+        // 处刑剑(01535)：消耗法术费用造成伤害。遍历全部12槽。
+        for (int i = 0; i < 12; i++)
         {
             BoardSlot slot = allSlots[i];
             if (slot?.currentCard3D == null) continue;
@@ -89,11 +90,7 @@ public class BattleManager : MonoBehaviour
                 if (GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(ci))
                     continue;
 
-                bool hasEnemy = false;
-                for (int j = 0; j <= 5; j++)
-                    if (allSlots[j]?.currentCard3D != null) { hasEnemy = true; break; }
-
-                if (hasEnemy)
+                if (BoardManager.HasEnemyMinion(i))
                 {
                     int dmg = ci.consumedSpellCost;
                     yield return StartCoroutine(ExecutionSwordDamage(ci, dmg, slot));
@@ -742,8 +739,8 @@ public class BattleManager : MonoBehaviour
 
         yield return StartCoroutine(ApplyDamageLoop(damageList, "攻击"));
 
-        // 检查对方是否有合法目标
-        for (int i = 6; i <= 11; i++)
+        // 01345 操控者: 交换对方前后排同列两个随从。检查全部12槽。
+        for (int i = 0; i < 12; i++)
         {
             BoardSlot mySlot = allSlots[i];
             if (mySlot?.currentCard3D == null) continue;
@@ -752,15 +749,19 @@ public class BattleManager : MonoBehaviour
             if (myInst.templateID != "01345") continue;
             if (GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(myInst)) continue;
 
-            int myCol = i % 3;
-            int myRow = i < 9 ? 0 : 3;
-            int enemyRowStart = myRow == 0 ? 3 : 0;
-            int enemySlotIndex = enemyRowStart + myCol;
+            int col = i % 3;
+            BoardManager.GetEnemySideRange(i, out int enemyHalfStart, out int _);
+            // Row within the card's own half: 0=front, 3=back
+            int ownHalfStart = i >= 6 ? 6 : 0;
+            int ownRow = (i - ownHalfStart) < 3 ? 0 : 3;
+            // Opposite row in enemy half
+            int enemyRowOffset = ownRow == 0 ? 3 : 0;
+            int enemySlotIndex = enemyHalfStart + enemyRowOffset + col;
+            // The other enemy row
+            int otherEnemyRow = enemyRowOffset == 0 ? 3 : 0;
+            int targetEnemySlotIndex = enemyHalfStart + otherEnemyRow + col;
 
             BoardSlot enemySlot = allSlots[enemySlotIndex];
-
-            int targetEnemyRow = enemyRowStart == 0 ? 3 : 0;
-            int targetEnemySlotIndex = targetEnemyRow + myCol;
             BoardSlot targetEnemySlot = allSlots[targetEnemySlotIndex];
             if (targetEnemySlot.isBlocked || targetEnemySlot.prisonBlocked) continue;
 
@@ -812,228 +813,236 @@ public class BattleManager : MonoBehaviour
         CardInstance myInst = myCard?.GetComponent<Card3DInstance>()?.cardInstance;
         CardInstance enemyInst = enemyCard?.GetComponent<Card3DInstance>()?.cardInstance;
 
-        bool mySilenced = myInst != null && GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(myInst);
+        // ── 攻击方A（6-11, 主机侧）攻击防守方B（0-5）──
+        ProcessAttackerVsDefender(
+            attackerCard: myCard, attackerInst: myInst, attackerSlot: mySlot,
+            attackerSlotID: mySlotIndex + 6,
+            defenderSlotID: enemySlotIndex,
+            defenderHalfStart: 0, defenderHalfEnd: 5,
+            damageList: damageList,
+            pendingDamageToOpponent: ref pendingDamageToEnemy,
+            attackerOwner: NetworkPlayer.Local,
+            defenderOwner: NetworkPlayer.Remote
+        );
 
-        // 检查对方是否有合法目标
-        if (myCard != null && myInst != null && !myInst.silencedThisPhase)
+        // ── 攻击方B（0-5, 客户端侧）攻击防守方A（6-11）──
+        ProcessAttackerVsDefender(
+            attackerCard: enemyCard, attackerInst: enemyInst, attackerSlot: enemySlot,
+            attackerSlotID: enemySlotIndex,
+            defenderSlotID: mySlotIndex + 6,
+            defenderHalfStart: 6, defenderHalfEnd: 11,
+            damageList: damageList,
+            pendingDamageToOpponent: ref pendingDamageToMe,
+            attackerOwner: NetworkPlayer.Remote,
+            defenderOwner: NetworkPlayer.Local
+        );
+    }
+
+    void ProcessAttackerVsDefender(
+        GameObject attackerCard, CardInstance attackerInst, BoardSlot attackerSlot,
+        int attackerSlotID, int defenderSlotID,
+        int defenderHalfStart, int defenderHalfEnd,
+        List<(GameObject, int, GameObject)> damageList,
+        ref int pendingDamageToOpponent,
+        NetworkPlayer attackerOwner, NetworkPlayer defenderOwner)
+    {
+        if (attackerCard == null || attackerInst == null || attackerInst.silencedThisPhase)
+            return;
+
+        bool attackerSilenced = GlobalEventManager.Instance != null
+            && GlobalEventManager.Instance.IsFullySilenced(attackerInst);
+
+        int col = attackerSlotID % 3;
+        int targetDefenderSlotIndex;
+
+        // ── 特殊目标选择 ──
+        if (attackerInst.templateID == "01305")
         {
-            int targetEnemySlotIndex;
-
-            if (myInst.templateID == "01305")
+            // 喷溅：攻击同排另外两列
+            targetDefenderSlotIndex = defenderSlotID;
+            int rowStart = (defenderSlotID - defenderHalfStart) < 3 ? defenderHalfStart : defenderHalfStart + 3;
+            for (int i = rowStart; i < rowStart + 3; i++)
             {
-                targetEnemySlotIndex = enemySlotIndex % 3;
-                for (int i = 0; i < 3; i++)
+                if (i == defenderSlotID) continue;
+                BoardSlot otherSlot = allSlots[i];
+                GameObject otherCard = otherSlot?.currentCard3D;
+                CardInstance otherInst = otherCard?.GetComponent<Card3DInstance>()?.cardInstance;
+                bool otherSilenced = otherInst != null && GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(otherInst);
+                if (otherCard != null && otherInst != null && !otherInst.silencedThisPhase && !otherSilenced)
                 {
-                    if (i == targetEnemySlotIndex) continue;
-                    BoardSlot otherSlot = allSlots[i];
-                    GameObject otherCard = otherSlot?.currentCard3D;
-                    CardInstance otherInst = otherCard?.GetComponent<Card3DInstance>()?.cardInstance;
-                    bool otherSilenced = otherInst != null && GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(otherInst);
-                    if (otherCard != null && otherInst != null && !otherInst.silencedThisPhase && !otherSilenced)
-                    {
-                        damageList.Add((otherCard, 2, myCard));
-                    }
-                }
-            }
-            else if (myInst.templateID == "01530")
-            {
-                targetEnemySlotIndex = enemySlotIndex;
-                int rowStart = (targetEnemySlotIndex < 3) ? 0 : 3;
-                int rowEnd = rowStart + 3;
-                for (int i = rowStart; i < rowEnd; i++)
-                {
-                    if (i == targetEnemySlotIndex) continue;
-                    BoardSlot otherSlot = allSlots[i];
-                    GameObject otherCard = otherSlot?.currentCard3D;
-                    CardInstance otherInst = otherCard?.GetComponent<Card3DInstance>()?.cardInstance;
-                    bool otherSilenced = otherInst != null && GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(otherInst);
-                    if (otherCard != null && otherInst != null && !otherInst.silencedThisPhase && !otherSilenced)
-                    {
-                        damageList.Add((otherCard, myInst.Attack, myCard));
-                    }
-                }
-            }
-            else if (myInst.templateID == "01336" && !myInst.isAttached)
-            {
-                targetEnemySlotIndex = enemySlotIndex % 3; // 攻击前排对位
-
-        // 检查对方是否有合法目标
-                int rowStart = (targetEnemySlotIndex < 3) ? 0 : 3;
-                for (int j = rowStart; j < rowStart + 3; j++)
-                {
-                    if (j == targetEnemySlotIndex) continue;
-                    BoardSlot otherSlot = allSlots[j];
-                    GameObject otherCard = otherSlot?.currentCard3D;
-                    if (otherCard != null)
-                    {
-                        damageList.Add((otherCard, 1, myCard));
-                    }
-                }
-        // 检查对方是否有合法目标
-            }
-            else if (myInst.attacksBackRow)
-            {
-                targetEnemySlotIndex = enemySlotIndex % 3 + 3;
-            }
-            else if (myInst.attacksFrontRow)
-            {
-                targetEnemySlotIndex = enemySlotIndex % 3;
-            }
-            else
-            {
-                targetEnemySlotIndex = enemySlotIndex;
-            }
-
-            BoardSlot targetEnemySlot = allSlots[targetEnemySlotIndex];
-            GameObject targetEnemyCard = targetEnemySlot?.currentCard3D;
-            CardInstance targetEnemyInst = targetEnemyCard?.GetComponent<Card3DInstance>()?.cardInstance;
-            bool targetSilenced = targetEnemyInst != null && GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(targetEnemyInst);
-
-            if (targetEnemyCard != null && targetEnemyInst != null && !targetEnemyInst.silencedThisPhase)
-            {
-                int myAtk = myInst.Attack;
-                if (!myInst.isXValue)
-                {
-                    myAtk += mySlot.slotTempAttackBoost;
-                }
-            // 亡命之徒：攻击对方召唤物扣对方玩家2血
-                if (myInst.templateID == "01114" && targetEnemyInst.hasShield)
-                {
-                    targetEnemyInst.currentHealth -= 2;
-                    targetEnemyInst.GetComponent<Card3DInstance>()?.UpdateValues();
-                }
-            // 亡命之徒：攻击对方召唤物扣对方玩家2血
-                if (targetEnemyInst != null && targetEnemyInst.hasShield)
-                {
-                    bool breakerOnField = false;
-                    BoardManager bm = FindObjectOfType<BoardManager>();
-                    for (int i = 6; i <= 11; i++)
-                    {
-                        BoardSlot s = bm?.GetSlot(i);
-                        if (s?.currentCard3D != null)
-                        {
-                            CardInstance ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                            if (ci != null && ci.templateID == "01328" && (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(ci)))
-                            {
-                                breakerOnField = true;
-                                break;
-                            }
-                        }
-                    }
-                    if (breakerOnField)
-                    {
-                        targetEnemyInst.currentHealth -= 2;
-                        targetEnemyInst.GetComponent<Card3DInstance>()?.UpdateValues();
-                    }
-                }
-                // 投机者：攻击有先手或进场特性的召唤物伤害+2
-                if (myInst.templateID == "01118")
-                {
-                    if (targetEnemyInst.HasOnDeath || targetEnemyInst.HasActiveExit)
-                    {
-                        myAtk += 2;
-                    }
-                }
-                // 投机者：攻击有先手或进场特性的召唤物伤害+2
-                if (myInst.templateID == "01125")
-                {
-                    if (targetEnemyInst.HasFirstStrike || targetEnemyInst.HasOnEnter)
-                    {
-                        myAtk += 2;
-                    }
-                }
-                damageList.Add((targetEnemyCard, myAtk, myCard));
-                if (IsShadowHost(myInst) && targetEnemyInst != null)
-                {
-                    myInst.currentHealth -= myAtk;
-                    if (myInst.currentHealth < 0) myInst.currentHealth = 0;
-                    mySlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
-                }
-        // 检查对方是否有合法目标
-                if (myInst.templateID == "01508" && !myInst._conquerorTriggered
-                    && (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(myInst)))
-                {
-                    myInst._conquerorPendingCheck = true;
-                    myInst._conquerorTargetEnemyCard = targetEnemyCard;
-                }
-            }
-            // 亡命之徒：攻击对方召唤物扣对方玩家2血
-            if (myInst.templateID == "01531" && targetEnemyInst != null && !myInst._outlawPlayerDamageThisTurn
-                && (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(myInst)))
-            {
-                NetworkPlayer.Remote.TakeDamage(2);
-                myInst._outlawPlayerDamageThisTurn = true;
-            }
-            if (targetEnemyCard == null)
-            {
-                if (enemySlot.prisonBlocked || enemySlot.isBlocked)
-                {
-        // 检查对方是否有合法目标
-                }
-                else if (IsShadowHost(myInst))
-                {
-                    int myTier = myInst.currentTier;
-                    if (HasSuppressorOnField() && myInst.summonType == SummonType.Hero)
-                        myTier += 1;
-                    pendingDamageToEnemy += myTier;
-
-                    myInst.currentHealth -= myInst.currentAttack;
-                    if (myInst.currentHealth < 0) myInst.currentHealth = 0;
-                    mySlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
-                }
-                else if (myInst.templateID == "01531" && (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(myInst)))
-                {
-                    pendingDamageToEnemy += myInst.currentTier + 2;
-                }
-                else if (myInst.templateID == "03014")
-                {
-                    BoardManager bm = FindObjectOfType<BoardManager>();
-                    if (bm != null)
-                    {
-                        for (int j = 0; j <= 5; j++)
-                        {
-                            BoardSlot es = bm.GetSlot(j);
-                            if (es?.currentCard3D != null && !es.prisonBlocked && !es.isBlocked)
-                            {
-                                Card3DInstance e3d = es.currentCard3D.GetComponent<Card3DInstance>();
-                                if (e3d?.cardInstance != null)
-                                {
-                                    ApplyDamageToMinionPublic(e3d.cardInstance, 2, myCard);
-                                    e3d.UpdateValues();
-                                }
-                            }
-                        }
-                    }
-                    BoardSlot.CheckAndHandleDeaths();
-                }
-                else
-                {
-                    int myTier = myInst.currentTier;
-                    if (HasSuppressorOnField() && myInst.summonType == SummonType.Hero)
-                        myTier += 1;
-                    pendingDamageToEnemy += myTier;
+                    damageList.Add((otherCard, 2, attackerCard));
                 }
             }
         }
-
-        // 检查对方是否有合法目标
-        bool enemySilenced = enemyInst != null && GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(enemyInst);
-        if (enemyCard != null && enemyInst != null && !enemyInst.silencedThisPhase)
+        else if (attackerInst.templateID == "01530")
         {
-            if (myCard != null)
+            // 恐惧之龙：攻击同排另外两列
+            targetDefenderSlotIndex = defenderSlotID;
+            int rowStart = (defenderSlotID - defenderHalfStart) < 3 ? defenderHalfStart : defenderHalfStart + 3;
+            for (int i = rowStart; i < rowStart + 3; i++)
             {
-                int enemyAtk = enemyInst.Attack;
-                damageList.Add((myCard, enemyAtk, enemyCard));
+                if (i == defenderSlotID) continue;
+                BoardSlot otherSlot = allSlots[i];
+                GameObject otherCard = otherSlot?.currentCard3D;
+                CardInstance otherInst = otherCard?.GetComponent<Card3DInstance>()?.cardInstance;
+                bool otherSilenced = otherInst != null && GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(otherInst);
+                if (otherCard != null && otherInst != null && !otherInst.silencedThisPhase && !otherSilenced)
+                {
+                    damageList.Add((otherCard, attackerInst.Attack, attackerCard));
+                }
+            }
+        }
+        else if (attackerInst.templateID == "01336" && !attackerInst.isAttached)
+        {
+            // 碎阵先锋：攻击前排对位 + 同排另外两列 1 伤害
+            targetDefenderSlotIndex = defenderHalfStart + col;
+            int rowStart2 = (targetDefenderSlotIndex - defenderHalfStart) < 3 ? defenderHalfStart : defenderHalfStart + 3;
+            for (int j = rowStart2; j < rowStart2 + 3; j++)
+            {
+                if (j == targetDefenderSlotIndex) continue;
+                BoardSlot otherSlot = allSlots[j];
+                GameObject otherCard = otherSlot?.currentCard3D;
+                if (otherCard != null)
+                {
+                    damageList.Add((otherCard, 1, attackerCard));
+                }
+            }
+        }
+        else if (attackerInst.attacksBackRow)
+        {
+            targetDefenderSlotIndex = defenderHalfStart + 3 + col;
+        }
+        else if (attackerInst.attacksFrontRow)
+        {
+            targetDefenderSlotIndex = defenderHalfStart + col;
+        }
+        else
+        {
+            targetDefenderSlotIndex = defenderSlotID;
+        }
+
+        BoardSlot targetSlot = allSlots[targetDefenderSlotIndex];
+        GameObject targetCard = targetSlot?.currentCard3D;
+        CardInstance targetInst = targetCard?.GetComponent<Card3DInstance>()?.cardInstance;
+        bool targetSilenced = targetInst != null && GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(targetInst);
+
+        if (targetCard != null && targetInst != null && !targetInst.silencedThisPhase)
+        {
+            int atk = attackerInst.Attack;
+            if (!attackerInst.isXValue)
+            {
+                atk += attackerSlot.slotTempAttackBoost;
+            }
+            // 暴徒(01114)：攻击护盾目标额外扣2HP
+            if (!attackerSilenced && attackerInst.templateID == "01114" && targetInst.hasShield)
+            {
+                targetInst.currentHealth -= 2;
+                targetInst.GetComponent<Card3DInstance>()?.UpdateValues();
+            }
+            // 破防者(01328)光环：护盾目标额外扣2HP
+            if (targetInst.hasShield && HasBreakerOnSide(attackerSlotID))
+            {
+                targetInst.currentHealth -= 2;
+                targetInst.GetComponent<Card3DInstance>()?.UpdateValues();
+            }
+            // 猎犬(01118)：攻击有退场特性的+2
+            if (!attackerSilenced && attackerInst.templateID == "01118"
+                && (targetInst.HasOnDeath || targetInst.HasActiveExit))
+                atk += 2;
+            // 投机者(01125)：攻击有先手/进场特性的+2
+            if (!attackerSilenced && attackerInst.templateID == "01125"
+                && (targetInst.HasFirstStrike || targetInst.HasOnEnter))
+                atk += 2;
+            damageList.Add((targetCard, atk, attackerCard));
+            // 影寄主：自伤
+            if (IsShadowHost(attackerInst) && targetInst != null)
+            {
+                attackerInst.currentHealth -= atk;
+                if (attackerInst.currentHealth < 0) attackerInst.currentHealth = 0;
+                attackerSlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+            }
+            // 征服者(01508)：标记目标
+            if (!attackerSilenced && attackerInst.templateID == "01508" && !attackerInst._conquerorTriggered)
+            {
+                attackerInst._conquerorPendingCheck = true;
+                attackerInst._conquerorTargetEnemyCard = targetCard;
+            }
+        }
+
+        // ── 亡命之徒(01531) 攻击时扣对方玩家2血 ──
+        if (!attackerSilenced && attackerInst.templateID == "01531" && targetInst != null
+            && !attackerInst._outlawPlayerDamageThisTurn)
+        {
+            defenderOwner?.TakeDamage(2);
+            attackerInst._outlawPlayerDamageThisTurn = true;
+        }
+
+        // ── 攻击空位 → 对玩家伤害 ──
+        if (targetCard == null)
+        {
+            if (targetSlot.prisonBlocked || targetSlot.isBlocked)
+            {
+                // blocked slot, no damage
+            }
+            else if (IsShadowHost(attackerInst))
+            {
+                int myTier = attackerInst.currentTier;
+                if (HasSuppressorOnField(attackerSlotID) && attackerInst.summonType == SummonType.Hero)
+                    myTier += 1;
+                pendingDamageToOpponent += myTier;
+                attackerInst.currentHealth -= attackerInst.currentAttack;
+                if (attackerInst.currentHealth < 0) attackerInst.currentHealth = 0;
+                attackerSlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+            }
+            else if (!attackerSilenced && attackerInst.templateID == "01531")
+            {
+                pendingDamageToOpponent += attackerInst.currentTier + 2;
+            }
+            else if (attackerInst.templateID == "03014")
+            {
+                // 死光：对方全场 2 伤害
+                for (int j = defenderHalfStart; j <= defenderHalfEnd; j++)
+                {
+                    BoardSlot es = FindObjectOfType<BoardManager>()?.GetSlot(j);
+                    if (es?.currentCard3D != null && !es.prisonBlocked && !es.isBlocked)
+                    {
+                        Card3DInstance e3d = es.currentCard3D.GetComponent<Card3DInstance>();
+                        if (e3d?.cardInstance != null)
+                        {
+                            ApplyDamageToMinionPublic(e3d.cardInstance, 2, attackerCard);
+                            e3d.UpdateValues();
+                        }
+                    }
+                }
+                BoardSlot.CheckAndHandleDeaths();
             }
             else
             {
-                if (!mySlot.prisonBlocked && !mySlot.isBlocked)
-                {
-                    pendingDamageToMe += enemyInst.currentTier;
-                }
+                int myTier = attackerInst.currentTier;
+                if (HasSuppressorOnField(attackerSlotID) && attackerInst.summonType == SummonType.Hero)
+                    myTier += 1;
+                pendingDamageToOpponent += myTier;
             }
         }
     }
+
+    bool HasBreakerOnSide(int slotID)
+    {
+        BoardManager.GetSideRange(slotID, out int brS, out int brE);
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return false;
+        for (int i = brS; i <= brE; i++)
+        {
+            BoardSlot s = bm.GetSlot(i);
+            if (s?.currentCard3D == null) continue;
+            CardInstance ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci != null && ci.templateID == "01328"
+                && (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(ci)))
+                return true;
+        }
+        return false;
+    }
+
     IEnumerator ApplyDamageLoop(List<(GameObject target, int damage, GameObject source)> initialDamage, string phase)
     {
         List<(GameObject, int, GameObject)> pending = new List<(GameObject, int, GameObject)>(initialDamage);
@@ -1067,7 +1076,9 @@ public class BattleManager : MonoBehaviour
             {
                 CardInstance deadInst = dead.GetComponent<Card3DInstance>()?.cardInstance;
                 DamageSourceMarker marker = dead.GetComponent<DamageSourceMarker>();
+                int deadSlotID = FindSlotOfGameObject(dead);
 
+                // Dragon (01530) revenge: destroy random card from dragon's opponent's hand
                 if (deadInst != null && deadInst.damageSourceInstanceIDs.Count > 0)
                 {
                     BoardManager bm = FindObjectOfType<BoardManager>();
@@ -1083,11 +1094,12 @@ public class BattleManager : MonoBehaviour
                                 string dragonInstanceID = c3d.cardInstance.instanceID;
                                 if (deadInst.damageSourceInstanceIDs.Contains(dragonInstanceID))
                                 {
-                                    if (NetworkPlayer.Remote != null && NetworkPlayer.Remote.handCards.Count > 0)
+                                    NetworkPlayer dragonOpponent = BoardManager.GetOpponentPlayer(i);
+                                    if (dragonOpponent != null && dragonOpponent.handCards.Count > 0)
                                     {
-                                        int randomIndex = UnityEngine.Random.Range(0, NetworkPlayer.Remote.handCards.Count);
-                                        GameObject card = NetworkPlayer.Remote.handCards[randomIndex];
-                                        NetworkPlayer.Remote.handCards.RemoveAt(randomIndex);
+                                        int randomIndex = UnityEngine.Random.Range(0, dragonOpponent.handCards.Count);
+                                        GameObject card = dragonOpponent.handCards[randomIndex];
+                                        dragonOpponent.handCards.RemoveAt(randomIndex);
                                         Destroy(card);
                                     }
                                 }
@@ -1098,16 +1110,17 @@ public class BattleManager : MonoBehaviour
 
                 if (deadInst != null && deadInst.revengeEffect != null && deadInst.revengeEffect.Contains("对方摸两张牌"))
                 {
+                    NetworkPlayer opponent = BoardManager.GetOpponentPlayer(deadSlotID);
                     for (int j = 0; j < 2; j++)
                     {
                         CardData data = DeckManager.Instance?.DrawFromMain();
-                        if (data != null)
-                            NetworkPlayer.Remote.AddCardToHand(data);
+                        if (data != null && opponent != null)
+                            opponent.AddCardToHand(data);
                     }
                 }
                 else if (deadInst != null && deadInst.revengeEffect != null && deadInst.revengeEffect.Contains("+1能量"))
                 {
-                    NetworkPlayer.Local.AddEnergy(1);
+                    BoardManager.GetOwnerPlayer(deadSlotID)?.AddEnergy(1);
                 }
                 else if (deadInst != null && deadInst.revengeEffect != null && deadInst.revengeEffect.Contains("选定一个格子，该格子上的召唤物临时+0-1（最少为0）并且每阶段开始扣一生命值"))
                 {
@@ -1136,11 +1149,12 @@ public class BattleManager : MonoBehaviour
                 }
                 else if (deadInst != null && deadInst.revengeEffect != null && deadInst.revengeEffect.Contains("为己方一召唤物+2+1"))
                 {
+                    BoardManager.GetSideRange(deadSlotID, out int allyStart, out int allyEnd);
                     yield return StartCoroutine(WaitForSelection((onDone) =>
                     {
                         BoardManager bm = FindObjectOfType<BoardManager>();
                         bool hasAlly = false;
-                        for (int j = 6; j <= 11; j++)
+                        for (int j = allyStart; j <= allyEnd; j++)
                             if (bm?.GetSlot(j)?.currentCard3D != null) { hasAlly = true; break; }
                         if (hasAlly)
                         {
@@ -1228,11 +1242,13 @@ public class BattleManager : MonoBehaviour
         }
         else if (effect.Contains("为己方一召唤物+2+1"))
         {
+            int deadSlot = FindSlotOfGameObject(deadCard);
+            BoardManager.GetSideRange(deadSlot, out int allyS, out int allyE);
             yield return StartCoroutine(WaitForSelection((onDone) =>
             {
                 BoardManager bm = FindObjectOfType<BoardManager>();
                 bool hasAlly = false;
-                for (int j = 6; j <= 11; j++)
+                for (int j = allyS; j <= allyE; j++)
                 {
                     if (bm?.GetSlot(j)?.currentCard3D != null) { hasAlly = true; break; }
                 }
@@ -1264,11 +1280,13 @@ public class BattleManager : MonoBehaviour
         }
         else if (effect.Contains("对方摸两张牌"))
         {
+            int deadSlot2 = FindSlotOfGameObject(deadCard);
+            NetworkPlayer opponent2 = BoardManager.GetOpponentPlayer(deadSlot2);
             for (int j = 0; j < 2; j++)
             {
                 CardData data = DeckManager.Instance?.DrawFromMain();
-                if (data != null)
-                    NetworkPlayer.Remote.AddCardToHand(data);
+                if (data != null && opponent2 != null)
+                    opponent2.AddCardToHand(data);
             }
         }
         else if (effect.Contains("选定一个格子，该格子上的召唤物临时+0-1（最少为0）并且每阶段开始扣一生命值"))
@@ -1298,7 +1316,8 @@ public class BattleManager : MonoBehaviour
         }
         else if (effect.Contains("+1能量"))
         {
-            NetworkPlayer.Local.AddEnergy(1);
+            int deadSlot3 = FindSlotOfGameObject(deadCard);
+            BoardManager.GetOwnerPlayer(deadSlot3)?.AddEnergy(1);
         }
         else
         {
@@ -1309,6 +1328,7 @@ public class BattleManager : MonoBehaviour
     void CompareSurvivors()
     {
         int my = 0, enemy = 0;
+        BoardManager bm = FindObjectOfType<BoardManager>();
         for (int i = 0; i < 6; i++)
         {
             if (allSlots[i + 6]?.currentCard3D != null && !allSlots[i + 6].currentCard3D.GetComponent<Card3DInstance>()?.cardInstance?.isAttached == true)
@@ -1317,24 +1337,27 @@ public class BattleManager : MonoBehaviour
                 enemy++;
         }
 
-        // 超数故障：己方存活人数+1
-        BoardManager bm = FindObjectOfType<BoardManager>();
+        // 超数故障(01128)：所在半场存活人数+1。检查两个半场。
         if (bm != null)
         {
-            for (int i = 6; i <= 11; i++)
+            for (int half = 0; half < 2; half++)
             {
-                BoardSlot slot = bm.GetSlot(i);
-                if (slot?.currentCard3D == null) continue;
-                CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                if (ci != null && ci.templateID == "01128")
+                int start = half * 6, end = start + 5;
+                bool isHostHalf = (half == 1);
+                for (int i = start; i <= end; i++)
                 {
-                    if (GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(ci))
-                        continue;
-                    my++;
+                    BoardSlot slot = bm.GetSlot(i);
+                    if (slot?.currentCard3D == null) continue;
+                    CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                    if (ci != null && ci.templateID == "01128")
+                    {
+                        if (GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(ci))
+                            continue;
+                        if (isHostHalf) my++; else enemy++;
+                    }
                 }
             }
             bm.attachedModels.RemoveAll(a => a == null || a.transform == null);
-        // 检查对方是否有合法目标
             foreach (GameObject obj in bm.attachedModels)
             {
                 CardInstance ci = obj?.GetComponent<Card3DInstance>()?.cardInstance;
@@ -1342,7 +1365,7 @@ public class BattleManager : MonoBehaviour
                 {
                     if (GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(ci))
                         continue;
-                    my++;
+                    if (ci.hostSlotID >= 6) my++; else enemy++;
                 }
             }
         }
@@ -1424,9 +1447,9 @@ public class BattleManager : MonoBehaviour
             ci.tempAttackBoost = 0;
             ci.tempHealthBoost = 0;
         }
-        // 检查对方是否有合法目标
+        // 影之终幕：任意半场有影子存活 → 全局加成生效，影子自身 +1阶 +2攻
         bool hasShadow = false;
-        for (int i = 6; i <= 11; i++)
+        for (int i = 0; i < 12; i++)
         {
             BoardSlot s = allSlots[i];
             if (s?.currentCard3D != null)
@@ -1439,8 +1462,7 @@ public class BattleManager : MonoBehaviour
         {
             CardInstance.shadowTierBonus += 1;
             CardInstance.shadowAtkBonus += 2;
-        // 检查对方是否有合法目标
-            for (int i = 6; i <= 11; i++)
+            for (int i = 0; i < 12; i++)
             {
                 BoardSlot s = allSlots[i];
                 if (s?.currentCard3D != null)
@@ -1456,17 +1478,18 @@ public class BattleManager : MonoBehaviour
             }
         }
     }
-    public bool HasSuppressorOnField()
+    /// <summary>检查指定槽位所在半场是否有激活的压制者(03501)。</summary>
+    public bool HasSuppressorOnField(int mySlotID)
     {
         if (allSlots == null) return false;
-        for (int i = 6; i <= 11; i++)
+        BoardManager.GetSideRange(mySlotID, out int start, out int end);
+        for (int i = start; i <= end; i++)
         {
             BoardSlot slot = allSlots[i];
             if (slot?.currentCard3D == null) continue;
             CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
             if (ci != null && ci.templateID == "03501")
             {
-        // 检查对方是否有合法目标
                 if (GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(ci))
                     continue;
                 return true;
@@ -1490,11 +1513,12 @@ public class BattleManager : MonoBehaviour
         // 护盾吸收/领主重定向/追随者挡死/祭司复活 → DamagePipeline 内全处理。
         // 调用方后续读 target.currentHealth 即可判断生死。
     }
-    IEnumerator TroubleMakerEffect(CardInstance giver)
+    IEnumerator TroubleMakerEffect(CardInstance giver, int mySlotID)
     {
-        // 检查对方是否有合法目标
+        // Check enemy half for existing trouble-maker trait
+        BoardManager.GetEnemySideRange(mySlotID, out int enemyStart, out int enemyEnd);
         bool alreadyHas = false;
-        for (int i = 0; i <= 5; i++)
+        for (int i = enemyStart; i <= enemyEnd; i++)
         {
             BoardSlot slot = allSlots[i];
             if (slot?.currentCard3D == null) continue;
@@ -1507,13 +1531,13 @@ public class BattleManager : MonoBehaviour
         }
         if (alreadyHas)
         {
-            Debug.Log("麻烦制造者：对方场上无召唤物，跳过");
+            Debug.Log("麻烦制造者：对方场上已有此特性，跳过");
             yield break;
         }
 
-        // 检查对方是否有合法目标
+        // Check enemy half has any minion
         bool hasEnemy = false;
-        for (int i = 0; i <= 5; i++)
+        for (int i = enemyStart; i <= enemyEnd; i++)
         {
             if (allSlots[i]?.currentCard3D != null) { hasEnemy = true; break; }
         }
@@ -1686,7 +1710,7 @@ public class BattleManager : MonoBehaviour
 
             if (targetCI.currentHealth <= 0)
             {
-                NetworkPlayer.Remote.TakeDamage(2);
+                BoardManager.GetOpponentPlayer(swordSlot.slotID)?.TakeDamage(2);
             }
         }
     }
@@ -1753,9 +1777,20 @@ public class BattleManager : MonoBehaviour
         }
         return null;
     }
+
+    int FindSlotOfGameObject(GameObject go)
+    {
+        if (go == null) return -1;
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return -1;
+        for (int i = 0; i < 12; i++)
+            if (bm.GetSlot(i)?.currentCard3D == go) return i;
+        return -1;
+    }
     void CheckConquerorTrigger()
     {
-        for (int i = 6; i <= 11; i++)
+        // 征服者(01508) 可在任意半场
+        for (int i = 0; i < 12; i++)
         {
             BoardSlot s = allSlots[i];
             if (s?.currentCard3D == null) continue;
@@ -1778,7 +1813,7 @@ public class BattleManager : MonoBehaviour
                 conquerorCI.currentHealth += excessDamage;
             }
             s.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
-            NetworkPlayer.Local.Heal(1);
+            BoardManager.GetOwnerPlayer(i)?.Heal(1);
             conquerorCI._conquerorPendingCheck = false;
         }
     }

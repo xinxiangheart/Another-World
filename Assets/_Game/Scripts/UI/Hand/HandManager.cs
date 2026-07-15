@@ -295,8 +295,7 @@ public class HandManager : MonoBehaviour
                                 BoardSlot.CleanupAttachSelect();
                                 if (template.hasOnEnter)
                                 {
-                                    CardInstance hostInst = selectedSlot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
-                                    selectedSlot.StartOnEnterEffect(template, hostInst ?? sourceInstance);
+                                    selectedSlot.StartOnEnterEffect(template, sourceInstance);
                                 }
                                 CardView cvAttach = cardObj.GetComponent<CardView>();
                                 if (cvAttach != null) RemoveCard(cvAttach);
@@ -314,8 +313,7 @@ public class HandManager : MonoBehaviour
                     BoardSlot.CleanupAttachSelect();
                     if (template.hasOnEnter)
                     {
-                        CardInstance hostInst = selectedSlot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
-                        selectedSlot.StartOnEnterEffect(template, hostInst ?? sourceInstance);
+                        selectedSlot.StartOnEnterEffect(template, sourceInstance);
                     }
                     CardView cvAttach2 = cardObj.GetComponent<CardView>();
                     if (cvAttach2 != null) RemoveCard(cvAttach2);

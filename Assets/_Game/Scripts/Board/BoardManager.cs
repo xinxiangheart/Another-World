@@ -129,6 +129,74 @@ public class BoardManager : MonoBehaviour
         return false;
     }
 
+    /// <summary>返回指定槽位所属的玩家（true=己方/6-11半场, false=对方/0-5半场）。
+    /// 在服务端和客户端语义一致：6-11永远是"本地玩家"的半场。</summary>
+    public static bool IsAllySide(int slotID) => slotID >= 6;
+
+    /// <summary>返回指定槽位的所有者 NetworkPlayer（6-11→Local, 0-5→Remote）。
+    /// 非联网模式下 slotID 无效时返回 Local。</summary>
+    public static NetworkPlayer GetOwnerPlayer(int slotID)
+    {
+        if (slotID < 0 || slotID >= 12) return NetworkPlayer.Local;
+        return IsAllySide(slotID) ? NetworkPlayer.Local : NetworkPlayer.Remote;
+    }
+
+    /// <summary>返回指定槽位的对手 NetworkPlayer（6-11→Remote, 0-5→Local）。</summary>
+    public static NetworkPlayer GetOpponentPlayer(int slotID)
+    {
+        if (slotID < 0 || slotID >= 12) return NetworkPlayer.Remote;
+        return IsAllySide(slotID) ? NetworkPlayer.Remote : NetworkPlayer.Local;
+    }
+
+    /// <summary>遍历对方半场的所有槽位，对每个有卡槽位执行 action。
+    /// 自动根据 slotID 判断对方是 0-5 还是 6-11。</summary>
+    public static void ForEachEnemySlot(int mySlotID, System.Action<BoardSlot> action)
+    {
+        var bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return;
+        GetEnemySideRange(mySlotID, out int start, out int end);
+        for (int i = start; i <= end; i++)
+        {
+            BoardSlot s = bm.GetSlot(i);
+            if (s?.currentCard3D != null) action(s);
+        }
+    }
+
+    /// <summary>遍历己方半场的所有槽位，对每个有卡槽位执行 action。</summary>
+    public static void ForEachAllySlot(int mySlotID, System.Action<BoardSlot> action)
+    {
+        var bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return;
+        GetSideRange(mySlotID, out int start, out int end);
+        for (int i = start; i <= end; i++)
+        {
+            BoardSlot s = bm.GetSlot(i);
+            if (s?.currentCard3D != null) action(s);
+        }
+    }
+
+    /// <summary>对方半场是否有任何召唤物。</summary>
+    public static bool HasEnemyMinion(int mySlotID)
+    {
+        var bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return false;
+        GetEnemySideRange(mySlotID, out int start, out int end);
+        for (int i = start; i <= end; i++)
+            if (bm.GetSlot(i)?.currentCard3D != null) return true;
+        return false;
+    }
+
+    /// <summary>己方半场是否有除 excludeSlotID 外的其他召唤物。</summary>
+    public static bool HasAllyMinionExcept(int mySlotID, int excludeSlotID = -1)
+    {
+        var bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return false;
+        GetSideRange(mySlotID, out int start, out int end);
+        for (int i = start; i <= end; i++)
+            if (i != excludeSlotID && bm.GetSlot(i)?.currentCard3D != null) return true;
+        return false;
+    }
+
     public static void SyncAttachedModels(BoardSlot slot)
     {
         if (slot == null) return;
