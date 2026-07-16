@@ -1,73 +1,42 @@
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using Mirror;
 
+/// <summary>
+/// 高仿兼容层：所有牌库逻辑已迁至 CardZoneManager。
+/// DrawFromMain() 仍返回 CardData（兼容旧代码），但每张卡携带唯一 _instanceID。
+/// </summary>
 public class DeckManager : MonoBehaviour
 {
     public static DeckManager Instance { get; private set; }
 
+    /// <summary>兼容 GetCardPanel 等直接遍历牌库的旧代码。</summary>
     public List<CardData> mainDeck = new List<CardData>();
 
     void Awake()
     {
-        if (Instance != null)
-        {
-            Destroy(gameObject);
-            return;
-        }
+        if (Instance != null) { Destroy(gameObject); return; }
         Instance = this;
-
-        // Only server initializes the shared deck in online mode.
-        // Clients get cards via TargetRpc from the server.
-        if (NetworkServer.active || !NetworkClient.isConnected)
-        {
-            InitializeDeck();
-        }
-        else
-        {
-            Debug.Log("[DeckManager] Client: skipping deck init, server owns the deck");
-        }
     }
 
-    void InitializeDeck()
-    {
-        CardData[] allCards = Resources.LoadAll<CardData>("CardData");
-        foreach (CardData template in allCards)
-        {
-            if (!template.addToMainDeck)
-                continue;
-
-            int copies = template.copyCount;
-            for (int i = 0; i < copies; i++)
-            {
-                CardData instance = Instantiate(template);
-                instance.templateID = template.templateID;
-                mainDeck.Add(instance);
-            }
-        }
-        Shuffle(mainDeck);
-        Debug.Log($"Deck initialized: {mainDeck.Count} cards");
-    }
-
+    /// <summary>从牌库抽一张（兼容旧调用）。返回的 CardData._instanceID 为全局唯一。</summary>
     public CardData DrawFromMain()
     {
-        if (mainDeck.Count == 0) return null;
-        CardData card = mainDeck[0];
-        mainDeck.RemoveAt(0);
-        return card;
+        var czm = CardZoneManager.Instance;
+        if (czm == null) return null;
+
+        var result = czm.DrawFromDeck();
+        if (result == null) return null;
+
+        CardData template = CardDatabase.Instance?.GetTemplate(result.Value.templateID);
+        if (template == null) return null;
+
+        CardData clone = Instantiate(template);
+        clone.templateID = template.templateID;
+        clone._instanceID = result.Value.instanceID;
+        return clone;
     }
 
-    public int RemainingCards => mainDeck.Count;
-
-    void Shuffle<T>(List<T> list)
-    {
-        for (int i = list.Count - 1; i > 0; i--)
-        {
-            int j = Random.Range(0, i + 1);
-            T temp = list[i];
-            list[i] = list[j];
-            list[j] = temp;
-        }
-    }
+    /// <summary>兼容旧调用：剩余卡数。</summary>
+    public int RemainingCards => CardZoneManager.Instance?.DeckCount ?? 0;
 }

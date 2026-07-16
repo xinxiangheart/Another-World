@@ -57,6 +57,7 @@ public static class EnterHandlers
         Register("01520", Handle01520);
         Register("01521", Handle01521);
         Register("01523", Handle01523);
+        Register("01533", Handle01533);
         Register("01524", Handle01524);
         Register("01528", Handle01528);
 
@@ -494,4 +495,14 @@ public static class EnterHandlers
 
     static void Handle01523(EffectContext ctx)
         => ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.InkEnterEffect(ctx.source));
+
+    static void Handle01533(EffectContext ctx)
+    {
+        // 1. 注册光环：对方召唤物进场受到己方血歌前缀召唤物数量的伤害
+        var aura = new ScarletSaintAura { source = ctx.source };
+        GlobalEventManager.Instance.RegisterAura(aura);
+
+        // 2. 进场：为己方手牌或场上一召唤物附加血歌前缀
+        ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.ScarletSaintEnterEffect(ctx.source));
+    }
 }

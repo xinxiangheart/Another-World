@@ -40,7 +40,11 @@ public class ChosenOneManager : MonoBehaviour
         if (chosenOneDeck.Count == 0) return null;
         CardData card = chosenOneDeck[0];
         chosenOneDeck.RemoveAt(0);
-        return card;
+        // Clone 并分配唯一 instanceID
+        CardData clone = Instantiate(card);
+        clone.templateID = card.templateID;
+        clone._instanceID = CardZoneManager.GenerateInstanceID(card.templateID);
+        return clone;
     }
 
     public int RemainingCards => chosenOneDeck.Count;

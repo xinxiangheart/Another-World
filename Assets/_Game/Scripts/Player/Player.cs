@@ -205,7 +205,12 @@ public class Player : MonoBehaviour
         GameObject card = Instantiate(prefab, handArea);
         CardInstance instance = card.GetComponent<CardInstance>();
         if (instance != null)
-            instance.InitFromTemplate(data, GetCopyIndex(data.templateID));
+        {
+            string iid = data._instanceID;
+            instance.InitFromTemplate(data, 0, iid);
+            if (!string.IsNullOrEmpty(iid))
+                CardZoneManager.Instance?.RegisterInstanceID(iid);
+        }
 
         CardDisplay2D display = card.GetComponent<CardDisplay2D>();
         display.RefreshWithInstance(instance);
@@ -266,7 +271,12 @@ public class Player : MonoBehaviour
         GameObject card = Instantiate(prefab, handArea);
         CardInstance instance = card.GetComponent<CardInstance>();
         if (instance != null)
-            instance.InitFromTemplate(data, GetCopyIndex(data.templateID));
+        {
+            string iid = data._instanceID;
+            instance.InitFromTemplate(data, 0, iid);
+            if (!string.IsNullOrEmpty(iid))
+                CardZoneManager.Instance?.RegisterInstanceID(iid);
+        }
 
         CardDisplay2D display = card.GetComponent<CardDisplay2D>();
         display.RefreshWithInstance(instance);

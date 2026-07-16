@@ -89,15 +89,17 @@ public partial class TurnManager : MonoBehaviour
                 CardData card = DeckManager.Instance?.DrawFromMain();
                 if (card != null)
                 {
-                    remote.TargetReceiveCard(remote.connectionToClient, card.templateID);
-                    remote.AddServerSideCard(card);
+                    string iid = card._instanceID ?? CardZoneManager.GenerateInstanceID(card.templateID);
+                    remote.TargetReceiveCard(remote.connectionToClient, card.templateID, iid);
+                    remote.AddServerSideCard(card, iid);
                 }
             }
             CardData choRemote = ChosenOneManager.Instance?.DrawChosenOne();
             if (choRemote != null)
             {
-                remote.TargetReceiveCard(remote.connectionToClient, choRemote.templateID);
-                remote.AddServerSideCard(choRemote);
+                string choIid = choRemote._instanceID ?? CardZoneManager.GenerateInstanceID(choRemote.templateID);
+                remote.TargetReceiveCard(remote.connectionToClient, choRemote.templateID, choIid);
+                remote.AddServerSideCard(choRemote, choIid);
             }
         }
         else

@@ -455,7 +455,7 @@ public class CounterManager : MonoBehaviour
         if (!NetworkServer.active || player == null) return;
         CardData data = DeckManager.Instance?.DrawFromMain();
         if (data == null) return;
-        player.TargetReceiveCard(player.connectionToClient, data.templateID);
+        player.TargetReceiveCard(player.connectionToClient, data.templateID, "");
         player.AddServerSideCard(data);
     }
 

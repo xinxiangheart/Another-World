@@ -2,6 +2,9 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
+/// <summary>
+/// 向后兼容层。所有弃牌堆操作委托给 CardZoneManager。
+/// </summary>
 [Serializable]
 public class GraveEntry
 {
@@ -24,7 +27,6 @@ public class GraveEntry
 public class GraveyardManager : MonoBehaviour
 {
     public static GraveyardManager Instance { get; private set; }
-    public List<GraveEntry> graveyard = new List<GraveEntry>();
 
     void Awake()
     {
@@ -32,23 +34,18 @@ public class GraveyardManager : MonoBehaviour
         Instance = this;
     }
 
+    /// <summary>弃牌堆列表（兼容旧代码直接访问 graveyard 字段）。</summary>
+    public List<GraveEntry> graveyard => CardZoneManager.Instance?.AllGraveEntries ?? new List<GraveEntry>();
+
+    /// <summary>添加进弃牌堆。</summary>
     public void AddToGraveyard(GraveEntry entry)
     {
-        if (entry != null)
-            graveyard.Add(entry);
+        CardZoneManager.Instance?.AddToGraveyard(entry);
     }
 
+    /// <summary>按 instanceID 查找并移出。</summary>
     public GraveEntry FindByInstanceID(string instanceID)
     {
-        for (int i = graveyard.Count - 1; i >= 0; i--)
-        {
-            if (graveyard[i].instanceID == instanceID)
-            {
-                GraveEntry target = graveyard[i];
-                graveyard.RemoveAt(i);
-                return target;
-            }
-        }
-        return null;
+        return CardZoneManager.Instance?.RemoveFromGraveyard(instanceID);
     }
 }

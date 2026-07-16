@@ -46,7 +46,10 @@ public class CardData : ScriptableObject
     public Sprite cardSprite2D;
     public GameObject prefab3D;
     public GameObject spellPrefab3D;
-    
+
     [Header("目标选择")]
     public TargetType targetType = TargetType.None;
+
+    /// <summary>牌库唯一实例 ID（运行时由 CardZoneManager 生成，非持久化）。</summary>
+    [System.NonSerialized] public string _instanceID;
 }

@@ -724,9 +724,10 @@ public class BattleManager : MonoBehaviour
             }
         }
 
-        // ── Step 6: 死亡递归走 DeathCheckAction（替代同步 do-while）───
+        // ── 先手同时窗口结束 → 处理死亡（退场快照伤害来源） → 处理反击（新同时窗口）──
         BoardSlot.CheckAndHandleDeaths();
         yield return ActionQueueManager.WaitForDrain();
+        yield return StartCoroutine(ResolveRevengesFromSnapshot());
     }
 
     void FirstStrike()
@@ -1074,137 +1075,18 @@ public class BattleManager : MonoBehaviour
                     died.Add(card);
             }
 
-            foreach (GameObject dead in died)
-            {
-                CardInstance deadInst = dead.GetComponent<Card3DInstance>()?.cardInstance;
-                DamageSourceMarker marker = dead.GetComponent<DamageSourceMarker>();
-                int deadSlotID = FindSlotOfGameObject(dead);
-
-                // Dragon (01530) revenge: destroy random card from dragon's opponent's hand
-                if (deadInst != null && deadInst.damageSourceInstanceIDs.Count > 0)
-                {
-                    BoardManager bm = FindObjectOfType<BoardManager>();
-                    if (bm != null)
-                    {
-                        for (int i = 0; i < 12; i++)
-                        {
-                            BoardSlot dragonSlot = bm.GetSlot(i);
-                            if (dragonSlot?.currentCard3D == null) continue;
-                            Card3DInstance c3d = dragonSlot.currentCard3D.GetComponent<Card3DInstance>();
-                            if (c3d?.cardInstance?.templateID == "01530")
-                            {
-                                string dragonInstanceID = c3d.cardInstance.instanceID;
-                                if (deadInst.damageSourceInstanceIDs.Contains(dragonInstanceID))
-                                {
-                                    NetworkPlayer dragonOpponent = BoardManager.GetOpponentPlayer(i);
-                                    if (dragonOpponent != null && dragonOpponent.handCards.Count > 0)
-                                    {
-                                        int randomIndex = UnityEngine.Random.Range(0, dragonOpponent.handCards.Count);
-                                        GameObject card = dragonOpponent.handCards[randomIndex];
-                                        dragonOpponent.handCards.RemoveAt(randomIndex);
-                                        Destroy(card);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if (deadInst != null && deadInst.revengeEffect != null && deadInst.revengeEffect.Contains("对方摸两张牌"))
-                {
-                    NetworkPlayer opponent = BoardManager.GetOpponentPlayer(deadSlotID);
-                    for (int j = 0; j < 2; j++)
-                    {
-                        CardData data = DeckManager.Instance?.DrawFromMain();
-                        if (data != null && opponent != null)
-                        {
-                            // 使用 TargetRpc 让卡牌生成在对方客户端上，而不是服务端的 EnemyHandArea 测试占位
-                            opponent.TargetReceiveCard(opponent.connectionToClient, data.templateID);
-                            opponent.AddServerSideCard(data); // 服务端追踪，供 CmdPlayCard 验证
-                        }
-                    }
-                }
-                else if (deadInst != null && deadInst.revengeEffect != null && deadInst.revengeEffect.Contains("+1能量"))
-                {
-                    BoardManager.GetOwnerPlayer(deadSlotID)?.AddEnergy(1);
-                }
-                else if (deadInst != null && deadInst.revengeEffect != null && deadInst.revengeEffect.Contains("选定一个格子，该格子上的召唤物临时+0-1（最少为0）并且每阶段开始扣一生命值"))
-                {
-                    yield return StartCoroutine(WaitForSelection((onDone) =>
-                    {
-                        SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (targetSlot) =>
-                        {
-                            if (targetSlot != null && !targetSlot.isBlocked)
-                            {
-                                targetSlot.deepSeaAttackDebuff++;
-                                targetSlot.deepSeaHealthDebuff = true;
-                                if (targetSlot.currentCard3D != null)
-                                {
-                                    CardInstance ci = targetSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                                    if (ci != null)
-                                    {
-                                        ci.currentAttack = Mathf.Max(0, ci.currentAttack - 1);
-                                        targetSlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
-                                    }
-                                }
-                            }
-                            onDone();
-                        });
-                        BoardSlot.isStrengtheningSlot = true;
-                    }));
-                }
-                else if (deadInst != null && deadInst.revengeEffect != null && deadInst.revengeEffect.Contains("为己方一召唤物+2+1"))
-                {
-                    BoardManager.GetSideRange(deadSlotID, out int allyStart, out int allyEnd);
-                    yield return StartCoroutine(WaitForSelection((onDone) =>
-                    {
-                        BoardManager bm = FindObjectOfType<BoardManager>();
-                        bool hasAlly = false;
-                        for (int j = allyStart; j <= allyEnd; j++)
-                            if (bm?.GetSlot(j)?.currentCard3D != null) { hasAlly = true; break; }
-                        if (hasAlly)
-                        {
-                            SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (targetSlot) =>
-                            {
-                                if (targetSlot?.currentCard3D != null)
-                                {
-                                    CardInstance ci = targetSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                                    if (ci != null)
-                                    {
-                                        ci.currentHealth += 2;
-                                        ci.currentMaxHealth += 2;
-                                        ci.currentAttack += 1;
-                                        targetSlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
-                                    }
-                                }
-                                onDone();
-                            });
-                        }
-                        else onDone();
-                    }));
-                }
-                else if (deadInst != null && !string.IsNullOrEmpty(deadInst.revengeEffect))
-                {
-                    List<GameObject> revengeTargets = marker?.GetMinionDamageSources();
-                    if (revengeTargets != null && revengeTargets.Count > 0)
-                    {
-                        yield return StartCoroutine(ResolveRevengeEffect(deadInst.revengeEffect, dead, revengeTargets));
-                    }
-                }
-            }
-
-            // ── Step 6: 死亡递归走 DeathCheckAction（替代逐个 HandleDeath 调用）──
+            // ── 同时窗口：处理死亡 → 退场 → 反击（反伤在新同时窗口执行）──
             if (died.Count > 0)
             {
                 BoardSlot.CheckAndHandleDeaths();
                 yield return ActionQueueManager.WaitForDrain();
                 yield return null;
                 yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
-                // 等待退场召唤类效果完成（01309 无赖退场招手牌英雄，01314 万人迷进场招手牌英雄）
                 yield return new WaitWhile(() => BoardSlot.isPlacingCard);
-                // 等待手牌选择型 UI 完成（ConfirmQueueManager 的 EnterSelectionMode）
                 var cqm = ConfirmQueueManager.Instance;
                 if (cqm != null) yield return new WaitWhile(() => cqm.IsBusy());
+                // 反击窗口
+                yield return StartCoroutine(ResolveRevengesFromSnapshot());
             }
         }
     }
@@ -1212,29 +1094,18 @@ public class BattleManager : MonoBehaviour
     {
         Debug.Log($"ResolveRevengeEffect: effect={effect}");
 
-        if (effect.Contains("对击杀它的召唤物造成3伤害"))
+        // 通用：对击杀它的召唤物造成{X}伤害（含 1/2/3/999 等任意数值）
+        int revengeDmg = ParseRevengeDamage(effect);
+        if (revengeDmg > 0)
         {
             foreach (GameObject target in targets)
             {
                 Card3DInstance tInst = target.GetComponent<Card3DInstance>();
                 if (tInst != null)
                 {
-                    tInst.cardInstance.currentHealth -= 3;
+                    tInst.cardInstance.currentHealth -= revengeDmg;
                     tInst.UpdateValues();
-                    target.GetComponent<DamageSourceMarker>()?.RegisterDamage(deadCard, 3);
-                }
-            }
-        }
-        else if (effect.Contains("对击杀它的召唤物造成999伤害"))
-        {
-            foreach (GameObject target in targets)
-            {
-                Card3DInstance tInst = target.GetComponent<Card3DInstance>();
-                if (tInst != null)
-                {
-                    tInst.cardInstance.currentHealth -= 999;
-                    tInst.UpdateValues();
-                    target.GetComponent<DamageSourceMarker>()?.RegisterDamage(deadCard, 999);
+                    target.GetComponent<DamageSourceMarker>()?.RegisterDamage(deadCard, revengeDmg);
                 }
             }
         }
@@ -1298,8 +1169,8 @@ public class BattleManager : MonoBehaviour
                 CardData data = DeckManager.Instance?.DrawFromMain();
                 if (data != null && opponent2 != null)
                 {
-                    opponent2.TargetReceiveCard(opponent2.connectionToClient, data.templateID);
-                    opponent2.AddServerSideCard(data);
+                    opponent2.TargetReceiveCard(opponent2.connectionToClient, data.templateID, data._instanceID ?? "");
+                    opponent2.AddServerSideCard(data, data._instanceID);
                 }
             }
         }
@@ -1337,6 +1208,137 @@ public class BattleManager : MonoBehaviour
         {
             Debug.Log($"未实现的反击效果：{effect}");
         }
+    }
+
+    /// <summary>
+    /// 反击窗口（新的同时窗口）— 在退场/模型销毁后执行。
+    /// 读取 BoardSlot.pendingRevenges 快照，处理伤害型反伤和非伤害型反伤。
+    /// </summary>
+    public static IEnumerator ResolveRevengesFromSnapshot()
+    {
+        var bm = FindObjectOfType<BoardManager>();
+        var bmInstance = BattleManager.Instance;
+        int safety = 0;
+        while (BoardSlot.pendingRevenges.Count > 0 && safety++ < 20)
+        {
+            var batch = new List<(int deadSlotID, string effect, List<string> sourceIDs)>(BoardSlot.pendingRevenges);
+            BoardSlot.pendingRevenges.Clear();
+
+            foreach (var (deadSlotID, effect, sourceIDs) in batch)
+            {
+                // ── 非伤害型反击（无目标迭代）──
+                if (sourceIDs == null || sourceIDs.Count == 0)
+                {
+                    // 对方摸两张牌
+                    if (effect.Contains("对方摸两张牌"))
+                    {
+                        NetworkPlayer opponent = BoardManager.GetOpponentPlayer(deadSlotID);
+                        for (int j = 0; j < 2; j++)
+                        {
+                            CardData data = DeckManager.Instance?.DrawFromMain();
+                            if (data != null && opponent != null)
+                            {
+                                opponent.TargetReceiveCard(opponent.connectionToClient, data.templateID, "");
+                                opponent.AddServerSideCard(data);
+                            }
+                        }
+                    }
+                    // +1能量
+                    else if (effect.Contains("+1能量"))
+                    {
+                        BoardManager.GetOwnerPlayer(deadSlotID)?.AddEnergy(1);
+                    }
+                    // 选定一个格子 → debuff
+                    else if (effect.Contains("选定一个格子"))
+                    {
+                        yield return bmInstance.StartCoroutine(bmInstance.WaitForSelection((onDone) =>
+                        {
+                            SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (targetSlot) =>
+                            {
+                                if (targetSlot != null && !targetSlot.isBlocked)
+                                {
+                                    targetSlot.deepSeaAttackDebuff++;
+                                    targetSlot.deepSeaHealthDebuff = true;
+                                    if (targetSlot.currentCard3D != null)
+                                    {
+                                        CardInstance ci = targetSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                                        if (ci != null)
+                                        {
+                                            ci.currentAttack = Mathf.Max(0, ci.currentAttack - 1);
+                                            targetSlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+                                        }
+                                    }
+                                }
+                                onDone();
+                            });
+                            BoardSlot.isStrengtheningSlot = true;
+                        }));
+                    }
+                    // 为己方一召唤物+2+1
+                    else if (effect.Contains("为己方一召唤物+2+1"))
+                    {
+                        BoardManager.GetSideRange(deadSlotID, out int aStart, out int aEnd);
+                        yield return bmInstance.StartCoroutine(bmInstance.WaitForSelection((onDone) =>
+                        {
+                            BoardManager bm2 = FindObjectOfType<BoardManager>();
+                            bool hasAlly = false;
+                            for (int j = aStart; j <= aEnd; j++)
+                                if (bm2?.GetSlot(j)?.currentCard3D != null) { hasAlly = true; break; }
+                            if (hasAlly)
+                            {
+                                SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (targetSlot) =>
+                                {
+                                    if (targetSlot?.currentCard3D != null)
+                                    {
+                                        CardInstance ci = targetSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                                        if (ci != null)
+                                        {
+                                            if (!ci.cannotHealOrGainMaxHP)
+                                            { ci.currentHealth += 2; ci.currentMaxHealth += 2; }
+                                            ci.currentAttack += 1;
+                                            targetSlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+                                        }
+                                    }
+                                    onDone();
+                                });
+                            }
+                            else onDone();
+                        }));
+                    }
+                    continue;
+                }
+
+                // ── 伤害型反击（遍历来源目标）──
+                var targets = new List<GameObject>();
+                for (int i = 0; i < 12; i++)
+                {
+                    var go = bm.GetSlot(i)?.currentCard3D;
+                    if (go == null) continue;
+                    var ci = go.GetComponent<Card3DInstance>()?.cardInstance;
+                    if (ci != null && sourceIDs.Contains(ci.instanceID))
+                        targets.Add(go);
+                }
+                if (targets.Count == 0) continue;
+
+                yield return bmInstance.StartCoroutine(
+                    bmInstance.ResolveRevengeEffect(effect, null, targets));
+            }
+
+            // 反伤可能造成新死亡 → 递归
+            BoardSlot.CheckAndHandleDeaths();
+            yield return ActionQueueManager.WaitForDrain();
+        }
+    }
+
+    /// <summary>从反击文本中解析伤害数值："对击杀它的召唤物造成{X}伤害" → X</summary>
+    static int ParseRevengeDamage(string effect)
+    {
+        if (string.IsNullOrEmpty(effect)) return 0;
+        // 匹配 "造成N伤害" 模式
+        var m = System.Text.RegularExpressions.Regex.Match(effect, @"造成(\d+)伤害");
+        if (m.Success && int.TryParse(m.Groups[1].Value, out int dmg))
+            return dmg;
+        return 0;
     }
 
     void CompareSurvivors()

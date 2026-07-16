@@ -60,6 +60,11 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public int slotTempAttackBoost;
     private GameObject _currentCard;
     public static bool isStrengtheningSlot = false;
+
+    /// <summary>退场后待处理的反击队列（同时窗口分界线）。
+    /// 存储(死卡槽位ID, 反击效果文本, 伤害来源实例ID列表)。</summary>
+    public static List<(int deadSlotID, string revengeEffect, List<string> sourceInstanceIDs)> pendingRevenges
+        = new List<(int, string, List<string>)>();
     public bool prisonBlocked;      // 囚牢封锁
     public bool prisonAllowYuan;    // 允许放置渊前缀召唤物（仅己方封锁格子）
     public int deepSeaAttackDebuff; // 格子攻击力减益
@@ -589,6 +594,14 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
     public void CleanupAfterPlacement()
     {
+        // Fire global minion-entered event for aura triggers (01533 etc.)
+        if (currentCard3D != null)
+        {
+            var ci = currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci != null && !ci.isAttached)
+                GlobalEventManager.Instance?.TriggerMinionEntered(ci);
+        }
+
         isPlacingCard = false;
         cardToPlace = null;
 
@@ -633,7 +646,6 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     {
         currentCard3D = card3D;
         hasCard = card3D != null;
-        // 记录放置时间戳，用于同步保护（防止 EnsureEmpty 误杀刚放的卡）
         if (card3D != null)
         {
             var ci = card3D.GetComponent<Card3DInstance>()?.cardInstance;
@@ -676,6 +688,28 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
         if (bm == null) return;
+
+        // ── 同时窗口：退场前快照伤害来源 → 存入全局待反击队列 ──
+        pendingRevenges.Clear();
+        for (int i = 0; i < 12; i++)
+        {
+            var s = bm.GetSlot(i);
+            if (s?.currentCard3D == null) continue;
+            var ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci == null || ci.currentHealth > 0) continue;
+            if (!ci.hasRevenge || string.IsNullOrEmpty(ci.revengeEffect)) continue;
+
+            var sourceIDs = new List<string>();
+            var marker = s.currentCard3D.GetComponent<DamageSourceMarker>();
+            if (marker != null)
+            {
+                sourceIDs = marker.GetMinionDamageSources()
+                    .FindAll(g => g != null && g.GetComponent<Card3DInstance>()?.cardInstance != null)
+                    .ConvertAll(g => g.GetComponent<Card3DInstance>().cardInstance.instanceID);
+            }
+            pendingRevenges.Add((s.slotID, ci.revengeEffect, sourceIDs));
+            ci.revengeSnapshotIDs = sourceIDs;
+        }
 
         // ── Step 2c: DeathCheckAction 替代同步 do-while ─────────────────
         ActionQueueManager.Enqueue(new DeathCheckAction(
@@ -1951,6 +1985,81 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
         return null;
     }
+
+    /// <summary>猩红圣徒(01533)：进场为己方手牌或场上一召唤物附加血歌前缀。</summary>
+    public IEnumerator ScarletSaintEnterEffect(CardInstance giver)
+    {
+        yield return null;
+        NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
+
+        SelectionManager.Instance.BeginOpenSelection(TargetType.SingleAlly, null);
+
+        List<GameObject> spellCards = new List<GameObject>();
+        foreach (GameObject card in NetworkPlayer.Local.handCards)
+        {
+            if (card == null) continue;
+            CardInstance ci = card.GetComponent<CardInstance>();
+            if (ci == null) continue;
+            CardData t = CardDatabase.Instance?.GetTemplate(ci.templateID);
+            if (t?.cardType == CardType.Spell) { card.SetActive(false); spellCards.Add(card); }
+        }
+
+        bool done = false;
+
+        // Click handler for hand summon cards
+        foreach (GameObject card in NetworkPlayer.Local.handCards)
+        {
+            CardInstance ci = card?.GetComponent<CardInstance>();
+            if (ci == null) continue;
+            CardData t = CardDatabase.Instance?.GetTemplate(ci.templateID);
+            if (t?.cardType == CardType.Spell) continue;
+            CardClickHandler h = card.GetComponent<CardClickHandler>() ?? card.AddComponent<CardClickHandler>();
+            h.onClick = () =>
+            {
+                if (!ci.prefixes.Contains("血歌"))
+                {
+                    ci.prefixes = string.IsNullOrEmpty(ci.prefixes) || ci.prefixes == "无"
+                        ? "血歌" : ci.prefixes + " 血歌";
+                    CardDisplay2D d2d = card.GetComponent<CardDisplay2D>();
+                    d2d?.Refresh();
+                }
+                SelectionManager.Instance.ForceEndAll();
+                foreach (var sc in spellCards) sc?.SetActive(true);
+                done = true;
+            };
+        }
+
+        // Click handler for board ally slots
+        BoardSlot.onTargetSelected = (targetSlot) =>
+        {
+            if (targetSlot?.currentCard3D != null)
+            {
+                Card3DInstance c3d = targetSlot.currentCard3D.GetComponent<Card3DInstance>();
+                if (c3d?.cardInstance != null && !c3d.cardInstance.prefixes.Contains("血歌"))
+                {
+                    c3d.cardInstance.prefixes = string.IsNullOrEmpty(c3d.cardInstance.prefixes) || c3d.cardInstance.prefixes == "无"
+                        ? "血歌" : c3d.cardInstance.prefixes + " 血歌";
+                    c3d.UpdateValues();
+                }
+            }
+            SelectionManager.Instance.ForceEndAll();
+            foreach (var sc in spellCards) sc?.SetActive(true);
+            done = true;
+        };
+
+        yield return new WaitUntil(() => done);
+
+        // Cleanup click handlers
+        foreach (GameObject card in NetworkPlayer.Local.handCards)
+        {
+            var h = card?.GetComponent<CardClickHandler>();
+            if (h != null) Destroy(h);
+        }
+        foreach (var sc in spellCards) sc?.SetActive(true);
+
+        CleanupAfterPlacement();
+    }
+
     public IEnumerator ApprenticeMageEnterEffect(CardInstance giver)
     {
         yield return null;

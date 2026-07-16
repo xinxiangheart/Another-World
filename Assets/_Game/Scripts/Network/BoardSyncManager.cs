@@ -233,17 +233,8 @@ public class BoardSyncManager : MonoBehaviour
 
     void EnsureEmpty(int idx, BoardSlot slot, BoardManager bm)
     {
-        // 保护最近放置的卡（< 1 秒），防止同步竞态误杀
-        if (slot.currentCard3D != null)
-        {
-            var ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-            if (ci != null && Time.time - ci._placedAtTime < 1f)
-            {
-                Debug.LogWarning($"[BoardSync] EnsureEmpty 跳过 slot {idx}: 卡 {ci.templateID} 刚放置 {Time.time - ci._placedAtTime:F2}s 前，拒绝销毁");
-                return;
-            }
-            SafeDestroy(slot.currentCard3D); slot.SetCard(null);
-        }
+        // 客户端不因服务端空报而销毁已在场的卡牌模型。本地的卡由退场/死亡销毁，
+        // 同步只更新槽位标记位（isBlocked/prisonBlocked/plague 等）。
         slot.isBlocked = false; slot.prisonBlocked = false; slot.hasPlague = false; slot.hasSpotlight = false;
         slot.plagueRoundCount = 0; slot.spotlightTierBoost = 0; slot.slotTempAttackBoost = 0;
     }
@@ -254,30 +245,10 @@ public class BoardSyncManager : MonoBehaviour
         var cur = slot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
         if (cur != null && cur.templateID != tid)
         {
-            // 保护最近放置的卡：templateID 不匹配可能是同步竞态，而非真正的变身
-            if (Time.time - cur._placedAtTime < 2f)
-            {
-                Debug.LogWarning($"[BoardSync] EnsureCard 跳过销毁 slot {idx}: 现有 {cur.templateID} ≠ 同步 tid {tid}，但卡刚放置 {Time.time - cur._placedAtTime:F2}s 前");
-                return;
-            }
             SafeDestroy(slot.currentCard3D); slot.SetCard(null); cur = null;
         }
         if (cur == null && hm != null)
         {
-            // 去重：同步竞态可能把同一个实例写进多个槽位。
-            // 检查同侧(0-5 或 6-11 按 idx)是否已有同名同 templateID 且无其他区分手段的牌，
-            // 限严格匹配 instanceID 时才跳过（多 copy 同卡有不同 instanceID，不会被误拦）。
-            int halfStart = idx >= 6 ? 6 : 0;
-            int otherSlot = -1;
-            for (int check = halfStart; check < halfStart + 6; check++)
-            {
-                if (check == idx) continue;
-                var checkCard = bm.GetSlot(check)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
-                if (checkCard != null && checkCard.templateID == tid)
-                    { otherSlot = check; break; }
-            }
-            if (otherSlot >= 0) return;
-
             var t = CardDatabase.Instance?.GetTemplate(tid);
             if (t?.prefab3D != null)
             {

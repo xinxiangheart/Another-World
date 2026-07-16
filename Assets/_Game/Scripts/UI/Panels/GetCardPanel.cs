@@ -142,20 +142,21 @@ public class GetCardPanel : MonoBehaviour
             }
         }
 
-        // 5. 检查牌库
-        DeckManager dm = FindObjectOfType<DeckManager>();
-        if (dm != null)
+        // 5. 检查牌库（CardZoneManager）
+        var czm = CardZoneManager.Instance;
+        if (czm != null && !czm.IsDeckEmpty)
         {
-            for (int i = dm.mainDeck.Count - 1; i >= 0; i--)
+            string tid = instanceID.Length >= 5 ? instanceID.Substring(0, 5) : instanceID;
+            if (czm.RemoveFromDeckByTemplateID(tid, out string removedIid))
             {
-                if (dm.mainDeck[i].templateID == instanceID || dm.mainDeck[i].templateID == instanceID.Substring(0, 5))
+                CardData template = CardDatabase.Instance?.GetTemplate(tid);
+                if (template != null)
                 {
-                    CardData data = dm.mainDeck[i];
-                    dm.mainDeck.RemoveAt(i);
-                    NetworkPlayer.Local.AddCardToHand(data);
-                    Debug.Log($"从牌库获取 {data.templateID}，已加入手牌");
-                    return;
+                    template._instanceID = removedIid;
+                    NetworkPlayer.Local.AddCardToHand(template, removedIid);
                 }
+                Debug.Log($"从牌库获取 {tid} iid={removedIid}，已加入手牌");
+                return;
             }
         }
 

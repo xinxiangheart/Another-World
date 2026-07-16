@@ -29,15 +29,15 @@ public class DamageSourceMarker : MonoBehaviour
         }
 
         totalDamageThisPhase += amount;
-        // 记录敌方来源
-        if (source3D?.cardInstance != null)
+
+        // 记录敌方来源：对比攻击方和防守方的半场，不同半场=敌方
+        if (source3D?.cardInstance != null && targetInst != null)
         {
             int sourceSlot = GetSlotOf(source3D.cardInstance);
-            if (sourceSlot >= 0 && sourceSlot <= 5) // 敌方
-            {
-                if (!targetInst.enemyDamageSourceIDs.Contains(sourceInstanceID))
-                    targetInst.enemyDamageSourceIDs.Add(sourceInstanceID);
-            }
+            int targetSlot = GetSlotOf(targetInst);
+            bool isEnemy = (sourceSlot >= 6) != (targetSlot >= 6); // 不同半场=敌方
+            if (isEnemy && !targetInst.enemyDamageSourceIDs.Contains(sourceInstanceID))
+                targetInst.enemyDamageSourceIDs.Add(sourceInstanceID);
         }
     }
     // 检查是否死于敌方召唤物的伤害（用于触发反击）

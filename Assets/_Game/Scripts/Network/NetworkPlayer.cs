@@ -276,11 +276,12 @@ public class NetworkPlayer : NetworkBehaviour
         if (data == null) { Debug.Log("[NetworkPlayer] CmdRequestDraw: deck empty"); return; }
 
         currentEnergy -= 1;
-        TargetReceiveCard(connectionToClient, data.templateID);
+        string iid = data._instanceID ?? "";
+        TargetReceiveCard(connectionToClient, data.templateID, iid);
         TargetConfirmDraw(connectionToClient);
 
         // Server-side tracking: add a lightweight card so CmdPlayCard can find it
-        AddServerSideCard(data);
+        AddServerSideCard(data, iid);
     }
 
     /// <summary>
@@ -542,7 +543,13 @@ public class NetworkPlayer : NetworkBehaviour
         GameObject card = Instantiate(prefab, handArea);
         CardInstance instance = card.GetComponent<CardInstance>();
         if (instance != null)
-            instance.InitFromTemplate(data, GetCopyIndex(data.templateID));
+        {
+            // 使用牌库预生成的唯一 instanceID
+            string iid = data._instanceID;
+            instance.InitFromTemplate(data, 0, iid);
+            if (!string.IsNullOrEmpty(iid))
+                CardZoneManager.Instance?.RegisterInstanceID(iid);
+        }
 
         CardDisplay2D display = card.GetComponent<CardDisplay2D>();
         if (display != null)
@@ -557,7 +564,7 @@ public class NetworkPlayer : NetworkBehaviour
         }
 
         handCardCount = handCards.Count;
-        Debug.Log($"[NetworkPlayer] DrawCard: templateID={data.templateID}, handCount={handCardCount}");
+        Debug.Log($"[NetworkPlayer] DrawCard: templateID={data.templateID}, instanceID={data._instanceID}, handCount={handCardCount}");
     }
 
     public void DrawCardWithoutLimit()
@@ -587,7 +594,12 @@ public class NetworkPlayer : NetworkBehaviour
         GameObject card = Instantiate(prefab, handArea);
         CardInstance instance = card.GetComponent<CardInstance>();
         if (instance != null)
-            instance.InitFromTemplate(data, GetCopyIndex(data.templateID));
+        {
+            string iid = data._instanceID;
+            instance.InitFromTemplate(data, 0, iid);
+            if (!string.IsNullOrEmpty(iid))
+                CardZoneManager.Instance?.RegisterInstanceID(iid);
+        }
 
         CardDisplay2D display = card.GetComponent<CardDisplay2D>();
         if (display != null)
@@ -623,7 +635,7 @@ public class NetworkPlayer : NetworkBehaviour
         return cardType == CardType.Spell ? spellCardPrefab2D : cardPrefab2D;
     }
 
-    public void AddCardToHand(CardData template)
+    public void AddCardToHand(CardData template, string instanceID = null)
     {
         // 先清理已打出/销毁的手牌（GameObject 被 Destroy 后仅剩 null 残留在列表里），
         // 否则陈旧计数会把未满手误判为满手，导致抽牌被错误拦截。
@@ -642,7 +654,9 @@ public class NetworkPlayer : NetworkBehaviour
         CardInstance inst = card.GetComponent<CardInstance>();
         if (inst == null)
             inst = card.AddComponent<CardInstance>();
-        inst.InitFromTemplate(template, 0);
+        inst.InitFromTemplate(template, 0, instanceID);
+        if (!string.IsNullOrEmpty(instanceID))
+            CardZoneManager.Instance?.RegisterInstanceID(instanceID);
 
         CardDisplay2D display = card.GetComponent<CardDisplay2D>();
         if (display != null) display.RefreshWithInstance(inst);
@@ -761,14 +775,16 @@ public class NetworkPlayer : NetworkBehaviour
     }
 
     /// <summary>Create a lightweight card object on the server for hand tracking.</summary>
-    public void AddServerSideCard(CardData data)
+    public void AddServerSideCard(CardData data, string instanceID = null)
     {
         GameObject card = new GameObject($"ServerCard_{data.templateID}");
         CardInstance ci = card.AddComponent<CardInstance>();
-        ci.InitFromTemplate(data, 0);
+        ci.InitFromTemplate(data, 0, instanceID);
+        if (!string.IsNullOrEmpty(instanceID))
+            CardZoneManager.Instance?.RegisterInstanceID(instanceID);
         handCards.Add(card);
         handCardCount = handCards.Count;
-        Debug.Log($"[NetworkPlayer] AddServerSideCard: {data.templateID}, handCount={handCardCount}");
+        Debug.Log($"[NetworkPlayer] AddServerSideCard: {data.templateID} iid={instanceID}, handCount={handCardCount}");
     }
 
     int GetCopyIndex(string templateID)
@@ -787,13 +803,13 @@ public class NetworkPlayer : NetworkBehaviour
     // ========== Network RPCs ==========
 
     [TargetRpc]
-    public void TargetReceiveCard(NetworkConnectionToClient target, string templateID)
+    public void TargetReceiveCard(NetworkConnectionToClient target, string templateID, string instanceID)
     {
         CardData template = CardDatabase.Instance?.GetTemplate(templateID);
         if (template != null)
         {
-            AddCardToHand(template);
-            Debug.Log($"[NetworkPlayer] TargetReceiveCard: {templateID}");
+            AddCardToHand(template, instanceID);
+            Debug.Log($"[NetworkPlayer] TargetReceiveCard: {templateID} iid={instanceID}");
         }
     }
 

@@ -396,10 +396,23 @@ public static class DamagePipeline
         def.currentHealth -= actual;
         ShowFloaterAt(def, actual, FloaterType.Damage);
 
-        // ── DamageSourceMarker ────────────────────────────────────────
+        // ── DamageSourceMarker(防守方) ──────────────────────────────
+        GameObject defenderGO = null;
         if (ctx.input.sourceObject != null)
-            ctx.input.sourceObject.GetComponent<DamageSourceMarker>()
-                ?.RegisterDamage(ctx.input.sourceObject, actual);
+        {
+            defenderGO = GetGameObjectOf(def);
+            if (defenderGO != null)
+                defenderGO.GetComponent<DamageSourceMarker>()
+                    ?.RegisterDamage(ctx.input.sourceObject, actual);
+        }
+        // 同时记录防守方的 instanceID 到攻击方（用于阴影聚合体等"被谁打过"追踪）
+        if (ctx.Attacker != null && defenderGO != null)
+        {
+            Card3DInstance attacker3D = FindAttacker3D(ctx.Attacker);
+            if (attacker3D != null)
+                attacker3D.cardInstance.damageSourceInstanceIDs
+                    .Add(def.instanceID);
+        }
 
         return new DamageResult
         {
@@ -583,6 +596,28 @@ public static class DamagePipeline
         redirectedToLord = ctx.redirectedToLord,
         negatedByFollower = ctx.negatedByFollower,
     };
+
+    /// <summary>从 CardInstance 反查其所在槽位的当前 3D 模型 GameObject。</summary>
+    static GameObject GetGameObjectOf(CardInstance ci)
+    {
+        if (ci == null) return null;
+        var bm = UnityEngine.Object.FindObjectOfType<BoardManager>();
+        if (bm == null) return null;
+        for (int i = 0; i < 12; i++)
+        {
+            var s = bm.GetSlot(i);
+            if (s?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance == ci)
+                return s.currentCard3D;
+        }
+        return null;
+    }
+
+    /// <summary>从 CardInstance 反查 Card3DInstance。</summary>
+    static Card3DInstance FindAttacker3D(CardInstance ci)
+    {
+        var go = GetGameObjectOf(ci);
+        return go?.GetComponent<Card3DInstance>();
+    }
 
     // ═══════════════════════════════════════════════════════════════════
     // 浮动数字

@@ -127,3 +127,64 @@ public class EnergyReaperAura : AuraBase
 {
     public override bool IsActive() => source != null;
 }
+
+/// <summary>猩红圣徒(01533)：对手召唤物进场后受到己方血歌前缀召唤物数量伤害。</summary>
+public class ScarletSaintAura : AuraBase
+{
+    System.Action<CardInstance> _handler;
+
+    public ScarletSaintAura()
+    {
+        _handler = OnAnyMinionEntered;
+        var g = GlobalEventManager.Instance;
+        if (g != null) g.OnMinionEntered += _handler;
+    }
+
+    public override bool IsActive() => source != null;
+
+    void OnAnyMinionEntered(CardInstance entered)
+    {
+        if (source == null || entered == null) return;
+        if (GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(source))
+            return;
+
+        int saintSlot = GetSlotOf(source);
+        int enteredSlot = GetSlotOf(entered);
+        // 同一半场 = 友方进场，不触发
+        if ((saintSlot >= 6) == (enteredSlot >= 6)) return;
+
+        // 数己方半场血歌前缀召唤物数量
+        int bloodCount = 0;
+        var bm = Object.FindObjectOfType<BoardManager>();
+        if (bm != null)
+        {
+            int sideStart = saintSlot >= 6 ? 6 : 0;
+            for (int i = sideStart; i < sideStart + 6; i++)
+            {
+                var ci = bm.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                if (ci != null && ci.prefixes != null && ci.prefixes.Contains("血歌"))
+                    bloodCount++;
+            }
+        }
+
+        if (bloodCount > 0)
+        {
+            entered.currentHealth -= bloodCount;
+            var e3d = Find3DOf(entered);
+            e3d?.UpdateValues();
+            DamagePipeline.ShowFloaterAt(entered, bloodCount, FloaterType.Damage);
+        }
+    }
+
+    Card3DInstance Find3DOf(CardInstance ci)
+    {
+        var bm = Object.FindObjectOfType<BoardManager>();
+        if (bm == null) return null;
+        for (int i = 0; i < 12; i++)
+        {
+            var c3d = bm.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>();
+            if (c3d?.cardInstance == ci) return c3d;
+        }
+        return null;
+    }
+}

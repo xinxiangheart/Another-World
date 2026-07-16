@@ -64,6 +64,9 @@ public class CardInstance : MonoBehaviour
     public int consumedSpellCost; // 执行之剑消耗的法术费用
     public bool _rebornSummon;
     public List<string> enemyDamageSourceIDs = new List<string>();
+    /// <summary>反击快照：CheckAndHandleDeaths 在模型销毁前从 DamageSourceMarker 迁移到此处。
+    /// 退场后同一同时窗口结束→下一个同时窗口反伤读取此快照。</summary>
+    public List<string> revengeSnapshotIDs;
     public bool _outlawPlayerDamageThisTurn;
     public bool cannotHealOrGainMaxHP;
     public List<string> damageSourceInstanceIDs = new List<string>();
@@ -189,10 +192,12 @@ public class CardInstance : MonoBehaviour
         shieldEndAtBattleStart = false;
         shieldEndAtBattleEnd = false;
     }
-    public void InitFromTemplate(CardData template, int copyIndex)
+    /// <summary>使用预生成 instanceID 初始化（从牌库抽取时使用）。</summary>
+    public void InitFromTemplate(CardData template, int copyIndex, string overrideInstanceID = null)
     {
         templateID = template.templateID;
-        instanceID = templateID + (copyIndex + 1).ToString("D2");
+        // 优先使用预生成的唯一 instanceID（CardZoneManager 生成），其次旧格式
+        instanceID = overrideInstanceID ?? (templateID + (copyIndex + 1).ToString("D2"));
 
         currentCost = template.baseCost;
         currentAttack = template.baseAttack;
