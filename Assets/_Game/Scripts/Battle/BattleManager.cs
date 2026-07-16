@@ -197,6 +197,9 @@ public class BattleManager : MonoBehaviour
         // 检查对方是否有合法目标
             if (ci.templateID == "01312")
             {
+                // 先手交互选择只能在拥有者客户端上展示；对方半场(0-5)暂时跳过
+                if (i < 6) continue;
+
                 int mySlot = i;
                 int row = mySlot < 9 ? 0 : 3;
                 int col = mySlot % 3;
@@ -290,11 +293,13 @@ public class BattleManager : MonoBehaviour
             }
             if (ci.templateID == "01513")
             {
+                if (i < 6) continue; // 交互先手：UI 只能展示给卡牌拥有者
                 yield return StartCoroutine(MechRearrangementEffect());
                 continue;
             }
             if (ci.templateID == "01516")
             {
+                if (i < 6) continue;
                 yield return StartCoroutine(QuickShadowRearrangeEffect(ci));
                 continue;
             }
@@ -311,6 +316,7 @@ public class BattleManager : MonoBehaviour
         // 检查对方是否有合法目标
             if (ci.templateID == "03012")
             {
+                if (i < 6) continue; // 交互先手：UI 只能展示给卡牌拥有者
                 bool yinYangDone = false;
                 SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (targetSlot) =>
                 {
@@ -388,6 +394,7 @@ public class BattleManager : MonoBehaviour
         // 检查对方是否有合法目标
             if (ci.templateID == "01519")
             {
+                if (i < 6) continue; // 交互先手：UI 只能展示给卡牌拥有者
                 // 判断 GK 所在半场，只给自己的友方上盾
                 bool isOnHostSide = (i >= 6);
                 int sideStart = isOnHostSide ? 6 : 0;
@@ -491,6 +498,7 @@ public class BattleManager : MonoBehaviour
             // 毒巫：清除护盾+中毒
             if (ci.templateID == "03502")
             {
+                if (i < 6) continue; // 交互先手：UI 只能展示给卡牌拥有者
                 int myStart = i >= 6 ? 0 : 6;
                 bool hasEnemy = false;
                 for (int j = myStart; j < myStart + 6; j++) if (allSlots[j]?.currentCard3D != null) { hasEnemy = true; break; }
@@ -523,6 +531,7 @@ public class BattleManager : MonoBehaviour
         // 万象镜面：单次伤害最高为1
             if (ci.templateID == "01318")
             {
+                if (i < 6) continue; // 交互先手：UI 只能展示给卡牌拥有者
                 bool anyTarget = false;
                 for (int j = 0; j < 12; j++)
                 {
@@ -945,14 +954,7 @@ public class BattleManager : MonoBehaviour
                 targetInst.currentHealth -= 2;
                 targetInst.GetComponent<Card3DInstance>()?.UpdateValues();
             }
-            // 猎犬(01118)：攻击有退场特性的+2
-            if (!attackerSilenced && attackerInst.templateID == "01118"
-                && (targetInst.HasOnDeath || targetInst.HasActiveExit))
-                atk += 2;
-            // 投机者(01125)：攻击有先手/进场特性的+2
-            if (!attackerSilenced && attackerInst.templateID == "01125"
-                && (targetInst.HasFirstStrike || targetInst.HasOnEnter))
-                atk += 2;
+            // 01118/01125 攻击修正已在 DamagePipeline.Stage1_Give 统一处理，此处不重复
             damageList.Add((targetCard, atk, attackerCard));
             // 影寄主：自伤
             if (IsShadowHost(attackerInst) && targetInst != null)
@@ -1115,7 +1117,11 @@ public class BattleManager : MonoBehaviour
                     {
                         CardData data = DeckManager.Instance?.DrawFromMain();
                         if (data != null && opponent != null)
-                            opponent.AddCardToHand(data);
+                        {
+                            // 使用 TargetRpc 让卡牌生成在对方客户端上，而不是服务端的 EnemyHandArea 测试占位
+                            opponent.TargetReceiveCard(opponent.connectionToClient, data.templateID);
+                            opponent.AddServerSideCard(data); // 服务端追踪，供 CmdPlayCard 验证
+                        }
                     }
                 }
                 else if (deadInst != null && deadInst.revengeEffect != null && deadInst.revengeEffect.Contains("+1能量"))
@@ -1194,6 +1200,11 @@ public class BattleManager : MonoBehaviour
                 yield return ActionQueueManager.WaitForDrain();
                 yield return null;
                 yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
+                // 等待退场召唤类效果完成（01309 无赖退场招手牌英雄，01314 万人迷进场招手牌英雄）
+                yield return new WaitWhile(() => BoardSlot.isPlacingCard);
+                // 等待手牌选择型 UI 完成（ConfirmQueueManager 的 EnterSelectionMode）
+                var cqm = ConfirmQueueManager.Instance;
+                if (cqm != null) yield return new WaitWhile(() => cqm.IsBusy());
             }
         }
     }
@@ -1286,7 +1297,10 @@ public class BattleManager : MonoBehaviour
             {
                 CardData data = DeckManager.Instance?.DrawFromMain();
                 if (data != null && opponent2 != null)
-                    opponent2.AddCardToHand(data);
+                {
+                    opponent2.TargetReceiveCard(opponent2.connectionToClient, data.templateID);
+                    opponent2.AddServerSideCard(data);
+                }
             }
         }
         else if (effect.Contains("选定一个格子，该格子上的召唤物临时+0-1（最少为0）并且每阶段开始扣一生命值"))

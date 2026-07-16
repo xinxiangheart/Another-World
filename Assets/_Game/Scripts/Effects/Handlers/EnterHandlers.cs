@@ -207,6 +207,8 @@ public static class EnterHandlers
                 }
             }
             BoardSlot.CheckAndHandleDeaths();
+            // Sync enemy damage to opponent via full 12-slot report
+            TurnManager.SyncMyBoardToOpponent();
             slot.CleanupAfterPlacement();
         });
         BoardSlot.SyncMistHiderDisplay();

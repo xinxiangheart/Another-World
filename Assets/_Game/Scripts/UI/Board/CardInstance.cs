@@ -82,6 +82,8 @@ public class CardInstance : MonoBehaviour
     public bool _conquerorPendingCheck;
     public GameObject _conquerorTargetEnemyCard;
     public bool immuneToEnemySpell;
+    /// <summary>记录此卡被放置到槽位的时间（用于同步保护）</summary>
+    [System.NonSerialized] public float _placedAtTime = -999f;
     // 动态赋予的特性文本
     public List<string> grantedTraitTexts = new List<string>();
     // 苦难给予者专用

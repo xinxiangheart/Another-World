@@ -20,26 +20,26 @@ public class BoardSyncManager : MonoBehaviour
         BoardManager bm = FindObjectOfType<BoardManager>();
         if (bm == null) return;
 
-        // ---- 服务器端去重 ----
-        // 同一半场（0-5 或 6-11）不应有两个不同槽位持有相同 templateID 的非空牌。
-        // 若发生，说明某张牌被错误写入两个槽——清理幻影，防止主机和客户端都看到重复模型。
+        // ---- 服务器端去重（按 instanceID，不是 templateID） ----
+        // 同一半场同一 instanceID 出现在两个槽位 = 竞态幻影，清除。
+        // 同名同费同模板的不同 copy 有不同 instanceID，不会被误杀。
         for (int half = 0; half <= 6; half += 6)
         {
-            var seen = new System.Collections.Generic.Dictionary<string, int>(); // tid → 槽号
+            var seen = new System.Collections.Generic.Dictionary<string, int>(); // instanceID → 槽号
             for (int i = half; i < half + 6; i++)
             {
                 BoardSlot slot = bm.GetSlot(i);
                 var ci = slot?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
-                string tid = ci?.templateID;
-                if (string.IsNullOrEmpty(tid)) continue;
-                if (seen.TryGetValue(tid, out int firstSlot))
+                string iid = ci?.instanceID;
+                if (string.IsNullOrEmpty(iid)) continue;
+                if (seen.TryGetValue(iid, out int firstSlot))
                 {
                     var dupSlot = bm.GetSlot(i);
                     if (dupSlot?.currentCard3D != null) { SafeDestroy(dupSlot.currentCard3D); dupSlot.SetCard(null); }
                 }
                 else
                 {
-                    seen[tid] = i;
+                    seen[iid] = i;
                 }
             }
         }
@@ -233,7 +233,17 @@ public class BoardSyncManager : MonoBehaviour
 
     void EnsureEmpty(int idx, BoardSlot slot, BoardManager bm)
     {
-        if (slot.currentCard3D != null) { SafeDestroy(slot.currentCard3D); slot.SetCard(null); }
+        // 保护最近放置的卡（< 1 秒），防止同步竞态误杀
+        if (slot.currentCard3D != null)
+        {
+            var ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci != null && Time.time - ci._placedAtTime < 1f)
+            {
+                Debug.LogWarning($"[BoardSync] EnsureEmpty 跳过 slot {idx}: 卡 {ci.templateID} 刚放置 {Time.time - ci._placedAtTime:F2}s 前，拒绝销毁");
+                return;
+            }
+            SafeDestroy(slot.currentCard3D); slot.SetCard(null);
+        }
         slot.isBlocked = false; slot.prisonBlocked = false; slot.hasPlague = false; slot.hasSpotlight = false;
         slot.plagueRoundCount = 0; slot.spotlightTierBoost = 0; slot.slotTempAttackBoost = 0;
     }
@@ -242,14 +252,24 @@ public class BoardSyncManager : MonoBehaviour
     {
         string tid = parts[0];
         var cur = slot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
-        if (cur != null && cur.templateID != tid) { SafeDestroy(slot.currentCard3D); slot.SetCard(null); cur = null; }
+        if (cur != null && cur.templateID != tid)
+        {
+            // 保护最近放置的卡：templateID 不匹配可能是同步竞态，而非真正的变身
+            if (Time.time - cur._placedAtTime < 2f)
+            {
+                Debug.LogWarning($"[BoardSync] EnsureCard 跳过销毁 slot {idx}: 现有 {cur.templateID} ≠ 同步 tid {tid}，但卡刚放置 {Time.time - cur._placedAtTime:F2}s 前");
+                return;
+            }
+            SafeDestroy(slot.currentCard3D); slot.SetCard(null); cur = null;
+        }
         if (cur == null && hm != null)
         {
-            // 去重：同步竞态可能把同一张牌的数据写进多个槽位。
-            // 若同侧(6-11)已有同 templateID 的牌（=刚才正常放置的，如 PlaceIndependentCard），
-            // 且本方当前不在该目标槽，则跳过创建，防止"一个放置变两个模型"。
+            // 去重：同步竞态可能把同一个实例写进多个槽位。
+            // 检查同侧(0-5 或 6-11 按 idx)是否已有同名同 templateID 且无其他区分手段的牌，
+            // 限严格匹配 instanceID 时才跳过（多 copy 同卡有不同 instanceID，不会被误拦）。
+            int halfStart = idx >= 6 ? 6 : 0;
             int otherSlot = -1;
-            for (int check = 6; check <= 11; check++)
+            for (int check = halfStart; check < halfStart + 6; check++)
             {
                 if (check == idx) continue;
                 var checkCard = bm.GetSlot(check)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;

@@ -350,11 +350,21 @@ public class NetworkPlayer : NetworkBehaviour
                     TargetSpawnCard3D(other, templateID, slotID, overrideAtk, overrideHP, overrideMaxHP);
             }
         }
-        // Non-counter cards: trigger opponent's OnCardPlayed counters on server
-        if ((template.spellType & SpellType.Counter) == 0)
+        // Non-counter cards: trigger opponent's OnCardPlayed counters on server.
+        // Host's own placement already checks in OnPointerClick before enter effect runs.
+        // Here we only need to handle the Remote→Host counter direction.
+        if ((template.spellType & SpellType.Counter) == 0 && this != NetworkPlayer.Local)
         {
-            bool hostPlayed = (this == NetworkPlayer.Local);
-            CounterManager.Instance?.ServerCheckOnCardPlayed(template, hostPlayed);
+            CounterManager.Instance?.ServerCheckOnCardPlayed(template, false);
+
+            // 蛊惑之音(02304): if Host's counter redirected this Remote card's enter effect,
+            // tell Host client to select an ally and run the redirected enter effect.
+            if (GlobalEventManager.Instance != null &&
+                GlobalEventManager.Instance.PendingEnterRedirectTemplate == template)
+            {
+                GlobalEventManager.Instance.PendingEnterRedirectTemplate = null;
+                TargetHandleEnterRedirect(NetworkPlayer.Local.connectionToClient, templateID);
+            }
         }
 
         // Always sync after placement so the other side sees the new model
@@ -965,9 +975,39 @@ public class NetworkPlayer : NetworkBehaviour
             BoardSlot slot = bm.GetSlot(serverSlot);
             if (slot == null) continue;
 
-            string tid = string.IsNullOrEmpty(raw) ? "" : raw.Split('|')[0];
+            // 判断该槽位是否属于上报方：
+            //   Host(isLocalPlayer) 上报 → 仅更新其己方 6-11（serverSlot=6-11），对方 0-5 只读取不销毁
+            //   Remote 上报 → 仅更新其己方 0-5（serverSlot=0-5），对方 6-11 只读取不销毁
+            bool isReportingOwnSlot = isLocalPlayer ? (serverSlot >= 6) : (serverSlot <= 5);
+
+            string[] parts = raw.Split('|');
+            string tid = parts.Length > 0 ? parts[0] : "";
+
+            // ── 槽位标记（始终应用，包含 isBlocked/prisonBlocked 等）──
+            if (parts.Length >= 4)
+            {
+                string flags = parts[parts.Length - 4];
+                if (flags.Length >= 4)
+                {
+                    slot.isBlocked = flags[0] == '1';
+                    slot.prisonBlocked = flags[1] == '1';
+                    slot.hasPlague = flags[2] == '1';
+                    slot.hasSpotlight = flags[3] == '1';
+                    slot.SyncVisual();
+                }
+                if (int.TryParse(parts[parts.Length - 3], out int prc)) slot.plagueRoundCount = prc;
+                if (int.TryParse(parts[parts.Length - 2], out int stb)) slot.spotlightTierBoost = stb;
+                if (int.TryParse(parts[parts.Length - 1], out int boost)) slot.slotTempAttackBoost = boost;
+            }
+
+            if (!isReportingOwnSlot) continue; // 不销毁/修改对方玩家槽位卡牌
+
+            // ── 上报方自己的槽位：空 → 销毁，有数据 → 更新 ──
             if (string.IsNullOrEmpty(tid))
-            { if (slot.currentCard3D != null) { Destroy(slot.currentCard3D); slot.SetCard(null); } continue; }
+            {
+                if (slot.currentCard3D != null) { Destroy(slot.currentCard3D); slot.SetCard(null); }
+                continue;
+            }
 
             var ci = slot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
             if (ci == null) continue; // stale report guard
@@ -1292,6 +1332,44 @@ public class NetworkPlayer : NetworkBehaviour
         CardData template = CardDatabase.Instance?.GetTemplate(templateID);
         if (template != null)
             AddCardToHand(template);
+    }
+
+    // ========== 蛊惑之音(02304) 进场重定向 ==========
+
+    /// <summary>
+    /// Server → Host client: enemy's enter effect countered by 02304.
+    /// Host selects an ally to receive the redirected enter effect.
+    /// </summary>
+    [TargetRpc]
+    public void TargetHandleEnterRedirect(NetworkConnectionToClient target, string redirectTemplateID)
+    {
+        CardData redirectTemplate = CardDatabase.Instance?.GetTemplate(redirectTemplateID);
+        if (redirectTemplate == null) return;
+
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return;
+
+        bool hasAlly = false;
+        for (int i = 6; i <= 11; i++)
+            if (bm.GetSlot(i)?.currentCard3D != null) { hasAlly = true; break; }
+
+        if (!hasAlly)
+        {
+            Debug.Log($"[02304] No ally to redirect — enter effect of {redirectTemplateID} blocked");
+            return;
+        }
+
+        SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (targetSlot) =>
+        {
+            if (targetSlot?.currentCard3D != null)
+            {
+                CardInstance targetInst = targetSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                if (targetInst != null)
+                    targetSlot.StartOnEnterEffect(redirectTemplate, targetInst);
+            }
+            SelectionManager.Instance.ForceEndAll();
+            BoardSyncManager.MarkDirty();
+        });
     }
 
     // ========== Damage floater broadcast ==========

@@ -34,6 +34,8 @@ public class GlobalEventManager : MonoBehaviour
     /// <summary>待重定向的进场效果（对方召唤物被反制后，进场由己方触发）</summary>
     public CardData PendingEnterRedirectTemplate;
     public CardInstance PendingEnterRedirectInstance;
+    /// <summary>重定向目标是否为 Host（true=Host 己方6-11, false=Remote 己方0-5）</summary>
+    public bool PendingEnterRedirectToHost;
 
     // ===== 光环管理 =====
     private List<AuraBase> auras = new List<AuraBase>();

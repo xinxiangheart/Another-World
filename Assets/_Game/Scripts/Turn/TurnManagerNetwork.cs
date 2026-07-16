@@ -159,18 +159,26 @@ public partial class TurnManager
         string[] all = new string[12];
         for (int i = 0; i < 12; i++)
         {
-            var c3d = bm.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>();
+            BoardSlot slot = bm.GetSlot(i);
+            var c3d = slot?.currentCard3D?.GetComponent<Card3DInstance>();
             var ci = c3d?.cardInstance;
-            if (ci == null) { all[i] = ""; continue; }
-            all[i] = string.Join("|",
-                ci.templateID ?? "",
-                ci.currentHealth, ci.currentAttack, ci.currentMaxHealth,
-                ci.currentCost, ci.currentTier,
-                ci.hasShield ? "1" : "0",
-                ci.silencedThisPhase ? "1" : "0",
-                ci.isAttached ? "1" : "0",
-                ci.poisoned ? "1" : "0",
-                ci.prefixes ?? "");
+            // Card stats (11 fields) + slot flags (4 fields: isBlocked.prisonBlocked.hasPlague.hasSpotlight)
+            string cardPart;
+            if (ci == null)
+                cardPart = "";
+            else
+                cardPart = string.Join("|",
+                    ci.templateID ?? "",
+                    ci.currentHealth, ci.currentAttack, ci.currentMaxHealth,
+                    ci.currentCost, ci.currentTier,
+                    ci.hasShield ? "1" : "0",
+                    ci.silencedThisPhase ? "1" : "0",
+                    ci.isAttached ? "1" : "0",
+                    ci.poisoned ? "1" : "0",
+                    ci.prefixes ?? "");
+            string flagPart = slot == null ? "0000|0|0|0" :
+                $"{(slot.isBlocked?1:0)}{(slot.prisonBlocked?1:0)}{(slot.hasPlague?1:0)}{(slot.hasSpotlight?1:0)}|{slot.plagueRoundCount}|{slot.spotlightTierBoost}|{slot.slotTempAttackBoost}";
+            all[i] = $"{cardPart}|{flagPart}";
         }
 
         bm.attachedModels.RemoveAll(a => a == null);

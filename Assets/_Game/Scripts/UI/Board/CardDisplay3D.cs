@@ -10,12 +10,52 @@ public class CardDisplay3D : MonoBehaviour
     public TextMeshPro costText;
     public TextMeshPro prefixText;
     public TextMeshPro effectText;
+
+    [Header("卡面合成材质")]
+    public Material compositeMaterial;   // 使用 CardComposite shader 的材质实例
+
+    Material _materialInstance;          // 运行时克隆的材质实例（避免修改共享材质）
+
+    void Awake()
+    {
+        // 克隆材质，每张卡独立实例避免互相覆盖
+        if (compositeMaterial != null)
+        {
+            _materialInstance = new Material(compositeMaterial);
+            var mr = GetComponent<MeshRenderer>();
+            if (mr != null) mr.material = _materialInstance;
+        }
+    }
+
+    /// <summary>设置三层合成贴图（底图→边框→卡面），调用后自动刷新。</summary>
+    public void SetCompositeTextures(Texture2D bg, Texture2D border, Texture2D art)
+    {
+        if (_materialInstance == null) return;
+        if (bg     != null) _materialInstance.SetTexture("_BgTex", bg);
+        if (border != null) _materialInstance.SetTexture("_BorderTex", border);
+        if (art    != null) _materialInstance.SetTexture("_ArtTex", art);
+    }
+
+    /// <summary>根据卡牌数据和实例自动选择三张贴图并应用。</summary>
+    public void ApplyArtFromCard(CardInstance instance)
+    {
+        if (instance == null) return;
+        CardData template = CardDatabase.Instance?.GetTemplate(instance.templateID);
+        if (template == null) return;
+
+        var (bg, border, art) = CardArtConfig.Get3DTextures(template, instance);
+        SetCompositeTextures(bg, border, art);
+    }
+
     public void Refresh()
     {
         Card3DInstance c3d = GetComponent<Card3DInstance>();
         if (c3d == null || c3d.cardInstance == null) return;
         CardInstance instance = c3d.cardInstance;
         CardData template = CardDatabase.Instance?.GetTemplate(instance.templateID);
+
+        // 应用卡面合成贴图
+        ApplyArtFromCard(instance);
 
         if (nameText != null) nameText.text = template?.cardName ?? "";
         if (prefixText != null) prefixText.text = instance.prefixes;
@@ -36,7 +76,7 @@ public class CardDisplay3D : MonoBehaviour
         if (attackText != null) attackText.text = instance.Attack.ToString();
         if (healthText != null)
         {
-           
+
             healthText.text = instance.currentHealth.ToString();
         }
     }

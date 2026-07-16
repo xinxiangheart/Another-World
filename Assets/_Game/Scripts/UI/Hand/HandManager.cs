@@ -993,6 +993,7 @@ public class HandManager : MonoBehaviour
     private void ProcessAuras(BoardSlot slot, CardInstance sourceInstance)
     {
         // 智者自身进场光环
+        bool sageBuffed = false;
         if (sourceInstance != null && sourceInstance.templateID == "03503")
         {
             BoardManager bm = FindObjectOfType<BoardManager>();
@@ -1014,19 +1015,27 @@ public class HandManager : MonoBehaviour
                         allyCard.currentAttack += 1;
                         allyCard.buffedBySage = true;
                         allyInst.UpdateValues();
+                        sageBuffed = true;
                     }
                 }
             }
+            if (sageBuffed)
+                TurnManager.SyncMyBoardToOpponent();
         }
 
-        // 新英雄进场：如果是渊前缀且皇帝在场，+1+1
+        // 新英雄进场：如果智者/皇帝在场，应用对应的光环加成
         if (sourceInstance != null && sourceInstance.summonType == SummonType.Hero)
         {
             CardInstance placedCI = slot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
             if (placedCI != null)
+            {
                 ApplySageAura(placedCI, slot.slotID);
+                // Sync buffed hero stats to opponent
+                if (placedCI.buffedBySage)
+                    TurnManager.SyncMyBoardToOpponent();
+            }
         }
-        // 无赖：进场获得护盾（攻击回合开始消失）
+        // 无赖：进场获得护盾（攻击回合开始消失）/ 压制者(03501)：英雄阶位+1
         if (sourceInstance != null && sourceInstance.summonType == SummonType.Hero)
         {
             if (IsSuppressorOnField())
@@ -1036,6 +1045,9 @@ public class HandManager : MonoBehaviour
                 {
                     hero3D.cardInstance.currentTier += 1;
                     hero3D.UpdateValues();
+                    // Sync the tier buff to opponent
+                    if (NetworkClient.isConnected)
+                        TurnManager.SyncMyBoardToOpponent();
                 }
             }
         }

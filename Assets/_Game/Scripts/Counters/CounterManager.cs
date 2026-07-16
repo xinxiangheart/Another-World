@@ -133,6 +133,9 @@ public class CounterManager : MonoBehaviour
     /// <summary>Server-side: check counters matching a played card. hostPlayed = who played the card.</summary>
     public void ServerCheckOnCardPlayed(CardData playedCard, bool hostPlayed)
     {
+        // 无畏者(01319)：该召唤物不触发任何反制牌，无论计数型还是触发型
+        if (playedCard != null && playedCard.templateID == "01319") return;
+
         if (hostPlayed)
         {
             // Host played — check Remote's counters (enemyCounters). Effect benefits Remote.
@@ -141,6 +144,15 @@ public class CounterManager : MonoBehaviour
                 CounterCard counter = enemyCounters[i];
                 if (counter.template.counterTiming != CounterTriggerTiming.OnCardPlayed) continue;
                 if (!MatchCondition(counter, playedCard)) continue;
+
+                // 蛊惑之音 special: redirect enter effect to Remote's ally
+                if (counter.template.templateID == "02304")
+                {
+                    GlobalEventManager.Instance.PendingEnterRedirectTemplate = playedCard;
+                    GlobalEventManager.Instance.PendingEnterRedirectToHost = false;
+                    CounterOwner(false).AddEnergy(1);
+                }
+
                 TriggerCounter(counter, i, false);
             }
         }
@@ -153,10 +165,11 @@ public class CounterManager : MonoBehaviour
                 if (counter.template.counterTiming != CounterTriggerTiming.OnCardPlayed) continue;
                 if (!MatchCondition(counter, playedCard)) continue;
 
-                // 蛊惑之音 special
+                // 蛊惑之音 special: redirect enter effect to Host's ally
                 if (counter.template.templateID == "02304")
                 {
                     GlobalEventManager.Instance.PendingEnterRedirectTemplate = playedCard;
+                    GlobalEventManager.Instance.PendingEnterRedirectToHost = true;
                     CounterOwner(true).AddEnergy(1);
                 }
 
