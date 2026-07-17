@@ -581,6 +581,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         if (template.templateID == "01309") {CleanupAfterPlacement();return;}
 
         // ── Step 3: 进场效果分发（新 → EffectRegistry，回退 → 旧 switch）──
+        if (inst != null) inst._enterEffectRunning = true;
         var enterCtx = EffectContext.ForEnter(template, inst, this);
         if (EffectDispatcher.Dispatch(Trigger.Enter, enterCtx))
             return; // handler 已处理全部逻辑（含 CleanupAfterPlacement）
@@ -594,14 +595,11 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
     public void CleanupAfterPlacement()
     {
-        // Fire global minion-entered event for aura triggers (01533 etc.)
         if (currentCard3D != null)
         {
-            var ci = currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-            if (ci != null && !ci.isAttached)
-                GlobalEventManager.Instance?.TriggerMinionEntered(ci);
+            var crd = currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+            if (crd != null) crd._enterEffectRunning = false;
         }
-
         isPlacingCard = false;
         cardToPlace = null;
 
@@ -697,6 +695,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             if (s?.currentCard3D == null) continue;
             var ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
             if (ci == null || ci.currentHealth > 0) continue;
+            if (ci._enterEffectRunning) continue; // 进场中，不参与死亡/反击
             if (!ci.hasRevenge || string.IsNullOrEmpty(ci.revengeEffect)) continue;
 
             var sourceIDs = new List<string>();
@@ -724,15 +723,18 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     BoardSlot s = bmScan.GetSlot(i);
                     if (s?.currentCard3D == null) continue;
                     Card3DInstance c3d = s.currentCard3D.GetComponent<Card3DInstance>();
-                    if (c3d?.cardInstance != null && c3d.cardInstance.currentHealth <= 0)
+                    var sc = c3d?.cardInstance;
+                    if (sc != null && sc.currentHealth <= 0)
                     {
+                        // 进场效果执行中的卡跳过死亡扫描——等 CleanupAfterPlacement 后再判定
+                        if (sc._enterEffectRunning) continue;
                         list.Add(new DeathInfo
                         {
                             slotID = s.slotID,
-                            templateID = c3d.cardInstance.templateID,
+                            templateID = sc.templateID,
                             cardObject = s.currentCard3D,
-                            cardInstance = c3d.cardInstance,
-                            isActiveExit = c3d.cardInstance.isActiveExit,
+                            cardInstance = sc,
+                            isActiveExit = sc.isActiveExit,
                         });
                     }
                 }

@@ -233,8 +233,24 @@ public class BoardSyncManager : MonoBehaviour
 
     void EnsureEmpty(int idx, BoardSlot slot, BoardManager bm)
     {
-        // 客户端不因服务端空报而销毁已在场的卡牌模型。本地的卡由退场/死亡销毁，
-        // 同步只更新槽位标记位（isBlocked/prisonBlocked/plague 等）。
+        // idx 是客户端槽位：
+        //   6-11 = 己方半场 — 仅保护最近放置的卡（< 4s），防止同步竞态误杀
+        //   0-5  = 对方半场 — 服务端权威，信任空报
+        bool isOwnSide = idx >= 6;
+
+        if (slot.currentCard3D != null)
+        {
+            var ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+            if (isOwnSide && ci != null && Time.time - ci._placedAtTime < 4f)
+            {
+                // 近期放置的卡：保护，不销毁
+            }
+            else
+            {
+                SafeDestroy(slot.currentCard3D); slot.SetCard(null);
+            }
+        }
+
         slot.isBlocked = false; slot.prisonBlocked = false; slot.hasPlague = false; slot.hasSpotlight = false;
         slot.plagueRoundCount = 0; slot.spotlightTierBoost = 0; slot.slotTempAttackBoost = 0;
     }

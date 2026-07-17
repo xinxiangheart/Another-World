@@ -42,6 +42,9 @@ public partial class TurnManager
             // Host handles this in EndCurrentTurn/StartNewPhase directly.
             if (!NetworkServer.active)
                 ProcessPhaseStartTriggers();
+            // Client processes "下阶段退场" deaths (host does it in StartNewPhase)
+            if (!NetworkServer.active)
+                ProcessPhaseStartDeaths();
             // Send updated stats to server so other client sees phase-start effects.
             // Only pure client reports — host IS the server.
             if (NetworkClient.isConnected && !NetworkServer.active)

@@ -17,6 +17,23 @@ public class DeckManager : MonoBehaviour
     {
         if (Instance != null) { Destroy(gameObject); return; }
         Instance = this;
+
+        // Ensure CardZoneManager exists and deck is initialized
+        var czm = CardZoneManager.Instance;
+        if (czm == null)
+        {
+            var go = new GameObject("CardZoneManager");
+            go.AddComponent<CardZoneManager>();
+            czm = CardZoneManager.Instance;
+        }
+        if (NetworkServer.active || !NetworkClient.isConnected)
+        {
+            czm?.InitializeDeck();
+        }
+        else
+        {
+            Debug.Log("[DeckManager] Client: skipping deck init, server owns the deck");
+        }
     }
 
     /// <summary>从牌库抽一张（兼容旧调用）。返回的 CardData._instanceID 为全局唯一。</summary>

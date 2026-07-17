@@ -482,6 +482,7 @@ public static class DeathHandlers
                     {
                         ti.GrantShield(true, false, false);
                         target.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+                        TurnManager.SyncMyBoardToOpponent();
                     }
                 }
             });

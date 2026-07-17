@@ -1106,6 +1106,8 @@ public class BattleManager : MonoBehaviour
                     tInst.cardInstance.currentHealth -= revengeDmg;
                     tInst.UpdateValues();
                     target.GetComponent<DamageSourceMarker>()?.RegisterDamage(deadCard, revengeDmg);
+                    // 浮动数字
+                    DamagePipeline.ShowFloaterAt(tInst.cardInstance, revengeDmg, FloaterType.Damage);
                 }
             }
         }

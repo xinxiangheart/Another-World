@@ -108,52 +108,51 @@ public partial class TurnManager : MonoBehaviour
         }
     }
 
-    public void StartNewPhase()
+    /// <summary>处理"下阶段开始退场"等阶段转换死亡。服务端和客户端都需要执行。</summary>
+    public static void ProcessPhaseStartDeaths()
     {
-       
         BoardSlot[] slots = FindObjectOfType<BoardManager>()?.GetAllSlots();
+        if (slots == null) return;
 
-        if (slots != null)
+        // 先收集再处理，避免迭代中修改
+        var toDie = new System.Collections.Generic.List<BoardSlot>();
+        foreach (BoardSlot slot in slots)
         {
-            foreach (BoardSlot slot in slots)
+            if (slot?.currentCard3D == null) continue;
+            var ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci != null && ci.templateID == "01101")
+                toDie.Add(slot);
+        }
+        foreach (var s in toDie)
+            s.HandleDeath(s.currentCard3D);
+
+        // 清理本阶段标记（双方都要）
+        foreach (BoardSlot slot in slots)
+        {
+            if (slot?.currentCard3D == null) continue;
+            var c3d = slot.currentCard3D.GetComponent<Card3DInstance>();
+            if (c3d?.cardInstance == null) continue;
+            var ci = c3d.cardInstance;
+            if (ci.templateID == "01531")
+                ci._outlawPlayerDamageThisTurn = false;
+            ci.silencedThisPhase = false;
+            ci.poisoned = false;
+            ci.enemyDamageSourceIDs.Clear();
+            ci.damageSourceInstanceIDs.Clear();
+            ci.ironSmithOneCostConsumedCount = 0;
+            if (ci.templateID == "01124" || ci.templateID == "01312" || ci.templateID == "01516")
+                ci.hasFirstStrike = true;
+            if (ci.templateID == "01511")
             {
-                if (slot == null || slot.currentCard3D == null) continue;
-                Card3DInstance c3d = slot.currentCard3D.GetComponent<Card3DInstance>();
-                if (c3d != null && c3d.cardInstance != null)
-                {
-                    if (c3d.cardInstance.templateID == "01101")
-                    {
-                        slot.HandleDeath(slot.currentCard3D);
-                        continue;
-                    }
-                }
-            }
-            for (int i = 0; i < 12; i++)
-            {
-                BoardSlot slot = slots[i];
-                if (slot == null || slot.currentCard3D == null) continue;
-                Card3DInstance c3d = slot.currentCard3D.GetComponent<Card3DInstance>();
-                if (c3d != null && c3d.cardInstance != null)
-                {
-                    if (c3d.cardInstance.templateID == "01531")
-                        c3d.cardInstance._outlawPlayerDamageThisTurn = false;
-                    c3d.cardInstance.silencedThisPhase = false;
-                    c3d.cardInstance.poisoned = false;
-                    c3d.cardInstance.enemyDamageSourceIDs.Clear();
-                    c3d.cardInstance.damageSourceInstanceIDs.Clear();
-                    c3d.cardInstance.ironSmithOneCostConsumedCount = 0;
-                    if (c3d.cardInstance.templateID == "01124" || c3d.cardInstance.templateID == "01312" || c3d.cardInstance.templateID == "01516")
-                    {
-                        c3d.cardInstance.hasFirstStrike = true;
-                    }
-                    if (c3d.cardInstance.templateID == "01511")
-                    {
-                        c3d.cardInstance.mindScholarEnterTriggeredThisPhase = false;
-                        c3d.cardInstance.mindScholarDiscardTriggeredThisPhase = false;
-                    }
-                }
+                ci.mindScholarEnterTriggeredThisPhase = false;
+                ci.mindScholarDiscardTriggeredThisPhase = false;
             }
         }
+    }
+
+    public void StartNewPhase()
+    {
+        ProcessPhaseStartDeaths();
 
         currentPhase = TurnPhase.PhaseStart;
         phaseCount++;
@@ -165,6 +164,9 @@ public partial class TurnManager : MonoBehaviour
 
         string firstPlayer = isMyTurnFirst ? "Me" : "Enemy";
         Debug.Log(string.Format("\n========== Phase {0} Start, {1} First ==========", phaseCount, firstPlayer));
+
+        BoardSlot[] slots = FindObjectOfType<BoardManager>()?.GetAllSlots();
+
         if (CardInstance.shadowMasterAlive)
         {
             BoardSlot bs = FindObjectOfType<BoardSlot>();
