@@ -98,7 +98,22 @@ public class NetworkTurnSync : NetworkBehaviour
             Debug.Log("[NetworkTurnSync] Game start signal received!");
             turnManager.enabled = true;
             // Host already started via InitialDraw. Phase arrives via BroadcastTurnPhase TargetRpc.
+
+            // 服务端立即广播一次全量板面快照，确保新连入的客户端看到正确初始状态
+            if (NetworkServer.active)
+                BoardSyncManager.MarkDirty();
         }
+    }
+
+    /// <summary>
+    /// 客户端重连时服务端强制广播全量状态：12 槽 + 附着物 + 血量 + 能量 + 手牌数。
+    /// SyncVar 自动同步血量/能量/手牌数，板面通过 MarkDirty 触发。
+    /// </summary>
+    [Server]
+    public static void ForceFullSync()
+    {
+        BoardSyncManager.MarkDirty();
+        // SyncVars (currentHealth/currentEnergy/handCardCount) auto-replicate on next NetworkServer.SendToAll
     }
 
     [Command(requiresAuthority = false)]

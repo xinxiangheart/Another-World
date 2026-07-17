@@ -987,7 +987,7 @@ public class NetworkPlayer : NetworkBehaviour
         for (int i = 0; i < 12; i++)
         {
             string raw = allStats[i];
-            int serverSlot = isLocalPlayer ? i : i ^ 6;
+            int serverSlot = isLocalPlayer ? i : (i >= 6 ? i - 6 : i + 6);
             BoardSlot slot = bm.GetSlot(serverSlot);
             if (slot == null) continue;
 
@@ -1042,13 +1042,32 @@ public class NetworkPlayer : NetworkBehaviour
                 if (p.Length > 1 && int.TryParse(p[1], out v)) ci.currentHealth = v;
                 if (p.Length > 2 && int.TryParse(p[2], out v)) ci.currentAttack = v;
                 if (p.Length > 3 && int.TryParse(p[3], out v)) ci.currentMaxHealth = v;
-                if (p.Length > 4 && int.TryParse(p[4], out v)) ci.currentCost = v;
-                if (p.Length > 5 && int.TryParse(p[5], out v)) ci.currentTier = v;
-                if (p.Length > 6) ci.hasShield = (p[6] == "1");
-                if (p.Length > 7) ci.silencedThisPhase = (p[7] == "1");
-                if (p.Length > 8) ci.isAttached = (p[8] == "1");
-                if (p.Length > 9) ci.poisoned = (p[9] == "1");
-                if (p.Length > 10) ci.prefixes = p[10];
+                if (p.Length > 4 && int.TryParse(p[4], out v)) ci.baseAttack = v;
+                if (p.Length > 5 && int.TryParse(p[5], out v)) ci.baseHealth = v;
+                if (p.Length > 6 && int.TryParse(p[6], out v)) ci.baseMaxHealth = v;
+                if (p.Length > 7 && int.TryParse(p[7], out v)) ci.currentCost = v;
+                if (p.Length > 8 && int.TryParse(p[8], out v)) ci.currentTier = v;
+                if (p.Length > 9 && int.TryParse(p[9], out v)) ci.baseTier = v;
+                if (p.Length > 10) ci.hasShield = (p[10] == "1");
+                if (p.Length > 11) ci.silencedThisPhase = (p[11] == "1");
+                if (p.Length > 12) ci.isAttached = (p[12] == "1");
+                if (p.Length > 13) ci.poisoned = (p[13] == "1");
+                if (p.Length > 14) ci.prefixes = p[14];
+                // granted trait texts (16th field)
+                if (p.Length > 15 && !string.IsNullOrEmpty(p[15]))
+                {
+                    // 清除旧的 granted 标记，再逐个 GrantTrait 设正确的 bool
+                    var newList = new System.Collections.Generic.List<string>(
+                        p[15].Split(new[] { ";;" }, System.StringSplitOptions.None));
+                    newList.RemoveAll(t => string.IsNullOrEmpty(t));
+                    // 先剥离再赋予——避免旧标记残留
+                    var oldCopy = ci.grantedTraitTexts != null
+                        ? new System.Collections.Generic.List<string>(ci.grantedTraitTexts) : new System.Collections.Generic.List<string>();
+                    foreach (var t in oldCopy)
+                        if (!newList.Contains(t)) ci.RemoveGrantedTrait(t);
+                    foreach (var t in newList)
+                        if (!oldCopy.Contains(t)) ci.GrantTrait(t);
+                }
                 slot.currentCard3D?.GetComponent<Card3DInstance>()?.UpdateValues();
             }
         }
@@ -1066,7 +1085,7 @@ public class NetworkPlayer : NetworkBehaviour
                 var p = item.Split('|');
                 if (p.Length < 3) continue;
                 if (!int.TryParse(p[1], out int hs) || !int.TryParse(p[2], out int o)) continue;
-                int mapped = isLocalPlayer ? hs : hs ^ 6;
+                int mapped = isLocalPlayer ? hs : (hs >= 6 ? hs - 6 : hs + 6);
                 var t = CardDatabase.Instance?.GetTemplate(p[0]);
                 if (t?.prefab3D == null || hm == null) continue;
                 var m = Instantiate(t.prefab3D, hm.GetSlotWorldPosition(mapped)
@@ -1139,17 +1158,36 @@ public class NetworkPlayer : NetworkBehaviour
             if (ci != null && ci.templateID == tid)
             {
                 string[] p = raw.Split('|');
-                int hp2, atk2, mh2, cost2, tier2;
+                int hp2, atk2, mh2, ba2, bh2, bmh2, cost2, tier2, bt2;
                 if (p.Length > 1 && int.TryParse(p[1], out hp2)) ci.currentHealth = hp2;
                 if (p.Length > 2 && int.TryParse(p[2], out atk2)) ci.currentAttack = atk2;
                 if (p.Length > 3 && int.TryParse(p[3], out mh2)) ci.currentMaxHealth = mh2;
-                if (p.Length > 4 && int.TryParse(p[4], out cost2)) ci.currentCost = cost2;
-                if (p.Length > 5 && int.TryParse(p[5], out tier2)) ci.currentTier = tier2;
-                if (p.Length > 6) ci.hasShield = (p[6] == "1");
-                if (p.Length > 7) ci.silencedThisPhase = (p[7] == "1");
-                if (p.Length > 8) ci.isAttached = (p[8] == "1");
-                if (p.Length > 9) ci.poisoned = (p[9] == "1");
-                if (p.Length > 10) ci.prefixes = p[10];
+                if (p.Length > 4 && int.TryParse(p[4], out ba2)) ci.baseAttack = ba2;
+                if (p.Length > 5 && int.TryParse(p[5], out bh2)) ci.baseHealth = bh2;
+                if (p.Length > 6 && int.TryParse(p[6], out bmh2)) ci.baseMaxHealth = bmh2;
+                if (p.Length > 7 && int.TryParse(p[7], out cost2)) ci.currentCost = cost2;
+                if (p.Length > 8 && int.TryParse(p[8], out tier2)) ci.currentTier = tier2;
+                if (p.Length > 9 && int.TryParse(p[9], out bt2)) ci.baseTier = bt2;
+                if (p.Length > 10) ci.hasShield = (p[10] == "1");
+                if (p.Length > 11) ci.silencedThisPhase = (p[11] == "1");
+                if (p.Length > 12) ci.isAttached = (p[12] == "1");
+                if (p.Length > 13) ci.poisoned = (p[13] == "1");
+                if (p.Length > 14) ci.prefixes = p[14];
+                // granted trait texts (16th field)
+                if (p.Length > 15 && !string.IsNullOrEmpty(p[15]))
+                {
+                    // 清除旧的 granted 标记，再逐个 GrantTrait 设正确的 bool
+                    var newList = new System.Collections.Generic.List<string>(
+                        p[15].Split(new[] { ";;" }, System.StringSplitOptions.None));
+                    newList.RemoveAll(t => string.IsNullOrEmpty(t));
+                    // 先剥离再赋予——避免旧标记残留
+                    var oldCopy = ci.grantedTraitTexts != null
+                        ? new System.Collections.Generic.List<string>(ci.grantedTraitTexts) : new System.Collections.Generic.List<string>();
+                    foreach (var t in oldCopy)
+                        if (!newList.Contains(t)) ci.RemoveGrantedTrait(t);
+                    foreach (var t in newList)
+                        if (!oldCopy.Contains(t)) ci.GrantTrait(t);
+                }
                 slot.currentCard3D?.GetComponent<Card3DInstance>()?.UpdateValues();
             }
         }
@@ -1398,7 +1436,7 @@ public class NetworkPlayer : NetworkBehaviour
         if (isLocalPlayer) return;
 
         // Map server slot to this client's local board layout.
-        int localSlot = serverSlotID ^ 6;
+        int localSlot = serverSlotID >= 6 ? serverSlotID - 6 : serverSlotID + 6;
 
         BoardManager bm = FindObjectOfType<BoardManager>();
         Vector3 worldPos;

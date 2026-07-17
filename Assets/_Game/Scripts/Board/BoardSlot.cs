@@ -423,7 +423,6 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             // Sync to remote client after placement is fully complete.
             if (NetworkClient.isConnected && !string.IsNullOrEmpty(playTemplateID))
             {
-                // Read current stats (may have been modified by enter effect)
                 Card3DInstance placedC3D = currentCard3D?.GetComponent<Card3DInstance>();
                 int atk = placedC3D?.cardInstance?.currentAttack ?? -1;
                 int hp = placedC3D?.cardInstance?.currentHealth ?? -1;
@@ -431,6 +430,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 NetworkPlayer.Local?.CmdPlayCard(playTemplateID, slotID, atk, hp, maxHp);
                 BoardSyncManager.MarkDirty();
             }
+
+            // 协程型进场效果尚未完成——跳过 CleanupAfterPlacement，由协程末尾自行清理
+            CardInstance ciAfter = currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ciAfter != null && ciAfter._hasPendingCoroutine) return;
 
             CleanupAfterPlacement();
             return;
@@ -772,6 +775,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         if (dyingCard == null) return;
         Card3DInstance c3d = dyingCard.GetComponent<Card3DInstance>();
         if (c3d == null || c3d.cardInstance == null) return;
+        // 标记本帧已被本地处理——防 ApplySync 的 EnsureEmpty 双杀（问题 8）
+        c3d.cardInstance._deathProcessed = true;
         c3d.cardInstance.hasLifePriestBlessing = false;
         c3d.cardInstance.lifePriestBlessingSource = null;
         string templateID = c3d.cardInstance.templateID;
@@ -958,6 +963,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         giver.RemoveGrantedTrait(chosenTrait);
         target.GrantTrait(chosenTrait);
         RefreshCardDisplay(target);
+        // 同步赋予的特性文本到对方视角（target 在对方半场，需要上报板面变化）
+        TurnManager.SyncMyBoardToOpponent();
     }
     public static void ClearAllHighlights()
     {
@@ -1069,6 +1076,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             c3d?.UpdateValues();
             CardDisplay2D d2d = target.GetComponent<CardDisplay2D>();
             d2d?.Refresh();
+            // 前缀修改同步到对方
+            TurnManager.SyncMyBoardToOpponent();
         }
     }
 
@@ -2220,7 +2229,47 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             }
         }
 
-                // 清理重定向标记
+        // ── 赋予的死亡特性（非 01117 自身——01117 走旧分支避免双发）──
+        if (id != "01117" && data.grantedTraitTexts != null && data.grantedTraitTexts.Count > 0)
+        {
+            NetworkPlayer owner = BoardManager.GetOwnerPlayer(data.slotID);
+            foreach (string trait in data.grantedTraitTexts)
+            {
+                switch (trait)
+                {
+                    case "退场：减一能量":
+                        if (owner != null) { owner.currentEnergy -= 1; owner.UpdateUI(); }
+                        break;
+                    case "退场：己方全体受一点伤害":
+                        BoardManager bmG = FindObjectOfType<BoardManager>();
+                        if (bmG != null)
+                        {
+                            BoardManager.GetSideRange(data.slotID, out int gs, out int ge);
+                            for (int i = gs; i <= ge; i++)
+                            {
+                                var si = bmG.GetSlot(i);
+                                if (si?.currentCard3D != null)
+                                {
+                                    var ci = si.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                                    if (ci != null)
+                                    {
+                                        ci.currentHealth -= 1;
+                                        si.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+                                        DamagePipeline.ShowFloaterAt(ci, 1, FloaterType.Damage);
+                                    }
+                                }
+                            }
+                        }
+                        BoardSlot.CheckAndHandleDeaths();
+                        break;
+                    case "退场：己方玩家扣一血":
+                        if (owner != null) owner.TakeDamage(1);
+                        break;
+                }
+            }
+        }
+
+        // ── 01117 自己的可给予退场列表（旧路径，保留）──
         if (id == "01117" && data.giveableDeathTraits != null)
         {
             bool shouldReturn = !data.isActiveExit;
@@ -2229,8 +2278,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 switch (trait)
                 {
                     case "退场：摸一张牌":
-                        NetworkPlayer.Local.currentEnergy -= 1;
-                        NetworkPlayer.Local.UpdateUI();
+                        owner?.currentEnergy -= 1;
+                        owner?.UpdateUI();
                         break;
                     case "退场：己方全体受一点伤害":
                         BoardManager bmDH = FindObjectOfType<BoardManager>();
@@ -2244,10 +2293,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                                     BattleManager.Instance.ApplyDamageToMinionPublic(slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance, 1, null);
                             }
                         }
-                        
                         break;
                     case "退场：己方玩家扣一血":
-                        NetworkPlayer.Local.TakeDamage(1);
+                        owner?.TakeDamage(1);
                         break;
                 }
             }
@@ -2261,6 +2309,48 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             }
         }
     }
+    /// <summary>碎片(01110)：进场选择己方召唤物触发主动退场。</summary>
+    public IEnumerator FragmentEnterEffect(CardInstance giver, BoardSlot mySlot)
+    {
+        if (!HasAllyTargetExceptSelf())
+        {
+            giver._hasPendingCoroutine = false;
+            CleanupAfterPlacement();
+            yield break;
+        }
+
+        BoardSlot selectedTarget = null;
+        bool done = false;
+        SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (targetSlot) =>
+        {
+            if (targetSlot?.currentCard3D != null && targetSlot != mySlot)
+                selectedTarget = targetSlot;
+            done = true;
+        });
+
+        yield return new WaitUntil(() => done);
+
+        if (selectedTarget != null)
+        {
+            // 等一帧确保 EndSelection 完全执行完，选择栈清空
+            yield return null;
+            var t3d = selectedTarget.currentCard3D?.GetComponent<Card3DInstance>();
+            if (t3d?.cardInstance != null)
+            {
+                t3d.cardInstance.isActiveExit = true;
+                selectedTarget.HandleDeath(selectedTarget.currentCard3D);
+                // 等主动退场内的交互完成（如妖精的护盾选择）
+                yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
+                yield return null;
+                // 退场完成后广播板面变化到对方
+                TurnManager.SyncMyBoardToOpponent();
+            }
+        }
+
+        giver._hasPendingCoroutine = false;
+        CleanupAfterPlacement();
+    }
+
     public IEnumerator ConductorEnterEffect(CardInstance giver)
     {
         if (!HasAllyTargetExceptSelf()) { CleanupAfterPlacement(); yield break; }

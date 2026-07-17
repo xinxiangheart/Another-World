@@ -20,26 +20,39 @@ public class BoardSyncManager : MonoBehaviour
         BoardManager bm = FindObjectOfType<BoardManager>();
         if (bm == null) return;
 
-        // ---- 服务器端去重（按 instanceID，不是 templateID） ----
-        // 同一半场同一 instanceID 出现在两个槽位 = 竞态幻影，清除。
-        // 同名同费同模板的不同 copy 有不同 instanceID，不会被误杀。
+        // ---- 服务器端去重（按 instanceID + 放置时间戳） ----
+        // 同一半场同一 instanceID 出现在两个槽位 = 竞态幻影。
+        // 销毁放置时间较旧的那个，保留最新的。
         for (int half = 0; half <= 6; half += 6)
         {
-            var seen = new System.Collections.Generic.Dictionary<string, int>(); // instanceID → 槽号
+            var seen = new System.Collections.Generic.Dictionary<string, (int slotID, float placedAt)>(); // instanceID → (槽号, 放置时间)
             for (int i = half; i < half + 6; i++)
             {
                 BoardSlot slot = bm.GetSlot(i);
                 var ci = slot?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
                 string iid = ci?.instanceID;
                 if (string.IsNullOrEmpty(iid)) continue;
-                if (seen.TryGetValue(iid, out int firstSlot))
+
+                if (seen.TryGetValue(iid, out var prev))
                 {
-                    var dupSlot = bm.GetSlot(i);
-                    if (dupSlot?.currentCard3D != null) { SafeDestroy(dupSlot.currentCard3D); dupSlot.SetCard(null); }
+                    // 两个槽位有同一 instanceID → 保留放置时间较新的
+                    float curTime = ci._placedAtTime;
+                    if (curTime > prev.placedAt)
+                    {
+                        // 当前槽位的卡更新 → 销毁旧槽位的
+                        var oldSlot = bm.GetSlot(prev.slotID);
+                        if (oldSlot?.currentCard3D != null) { SafeDestroy(oldSlot.currentCard3D); oldSlot.SetCard(null); }
+                        seen[iid] = (i, curTime);
+                    }
+                    else
+                    {
+                        // 当前槽位的卡更旧 → 销毁当前
+                        SafeDestroy(slot.currentCard3D); slot.SetCard(null);
+                    }
                 }
                 else
                 {
-                    seen[iid] = i;
+                    seen[iid] = (i, ci._placedAtTime);
                 }
             }
         }
@@ -105,7 +118,9 @@ public class BoardSyncManager : MonoBehaviour
         if (o == null) return "";
         var ci = o.GetComponent<Card3DInstance>()?.cardInstance;
         if (ci == null) return "";
-        return $"{ci.templateID}|{ci.currentHealth}|{ci.currentAttack}|{ci.currentMaxHealth}|{ci.currentCost}|{ci.currentTier}|{(ci.hasShield?1:0)}|{(ci.silencedThisPhase?1:0)}|{(ci.isAttached?1:0)}|{(ci.poisoned?1:0)}|{ci.prefixes??""}";
+        string gtt = ci.grantedTraitTexts != null && ci.grantedTraitTexts.Count > 0
+            ? string.Join(";;", ci.grantedTraitTexts) : "";
+        return $"{ci.templateID}|{ci.currentHealth}|{ci.currentAttack}|{ci.currentMaxHealth}|{ci.baseAttack}|{ci.baseHealth}|{ci.baseMaxHealth}|{ci.currentCost}|{ci.currentTier}|{ci.baseTier}|{(ci.hasShield?1:0)}|{(ci.silencedThisPhase?1:0)}|{(ci.isAttached?1:0)}|{(ci.poisoned?1:0)}|{ci.prefixes??""}|{gtt}";
     }
 
     // ============= Client =============
@@ -207,14 +222,14 @@ public class BoardSyncManager : MonoBehaviour
         string[] parts = raw.Split('|');
         if (parts.Length == 0) { EnsureEmpty(idx, slot, bm); return; }
 
-        // Card part: first 11 tokens (or fewer if empty)
+        // Card part: templateID|hp|atk|maxHp|baseAtk|baseHp|baseMaxHp|cost|tier|baseTier|shield|silenced|attached|poisoned|prefixes (15 fields)
         string tid = parts[0];
         if (string.IsNullOrEmpty(tid)) { EnsureEmpty(idx, slot, bm); return; }
 
         EnsureCard(idx, parts, slot, bm, hm);
 
-        // Slot flags: last 4 tokens = "BBBB" | plagueRoundCount | spotlightTierBoost | slotTempAttackBoost
-        if (parts.Length >= 14)
+        // Slot flags: last 4 fields = "BBBB" | plagueRoundCount | spotlightTierBoost | slotTempAttackBoost
+        if (parts.Length >= 6)
         {
             string f = parts[parts.Length - 4];
             if (f.Length >= 4)
@@ -233,22 +248,20 @@ public class BoardSyncManager : MonoBehaviour
 
     void EnsureEmpty(int idx, BoardSlot slot, BoardManager bm)
     {
-        // idx 是客户端槽位：
-        //   6-11 = 己方半场 — 仅保护最近放置的卡（< 4s），防止同步竞态误杀
-        //   0-5  = 对方半场 — 服务端权威，信任空报
-        bool isOwnSide = idx >= 6;
-
         if (slot.currentCard3D != null)
         {
             var ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-            if (isOwnSide && ci != null && Time.time - ci._placedAtTime < 4f)
+
+            // 保护 1：本地刚处理过死亡 → 跳过（防双杀）
+            if (ci != null && ci._deathProcessed) return;
+
+            if (idx >= 6)
             {
-                // 近期放置的卡：保护，不销毁
+                // 保护 2：己方半场 0.5s 内刚放置的卡 → 防网络竞态
+                if (ci != null && Time.time - ci._placedAtTime < 0.5f) return;
             }
-            else
-            {
-                SafeDestroy(slot.currentCard3D); slot.SetCard(null);
-            }
+
+            SafeDestroy(slot.currentCard3D); slot.SetCard(null);
         }
 
         slot.isBlocked = false; slot.prisonBlocked = false; slot.hasPlague = false; slot.hasSpotlight = false;
@@ -275,19 +288,36 @@ public class BoardSyncManager : MonoBehaviour
                 cur = c?.cardInstance;
             }
         }
-        if (cur != null && cur.templateID == tid && parts.Length >= 11)
+        if (cur != null && cur.templateID == tid && parts.Length >= 15)
         {
             var p = parts; int v;
             if (int.TryParse(p[1], out v)) cur.currentHealth = v;
             if (int.TryParse(p[2], out v)) cur.currentAttack = v;
             if (int.TryParse(p[3], out v)) cur.currentMaxHealth = v;
-            if (int.TryParse(p[4], out v)) cur.currentCost = v;
-            if (int.TryParse(p[5], out v)) cur.currentTier = v;
-            cur.hasShield = (p[6] == "1");
-            cur.silencedThisPhase = (p[7] == "1");
-            cur.isAttached = (p[8] == "1");
-            cur.poisoned = (p[9] == "1");
-            cur.prefixes = p[10];
+            if (int.TryParse(p[4], out v)) cur.baseAttack = v;
+            if (int.TryParse(p[5], out v)) cur.baseHealth = v;
+            if (int.TryParse(p[6], out v)) cur.baseMaxHealth = v;
+            if (int.TryParse(p[7], out v)) cur.currentCost = v;
+            if (int.TryParse(p[8], out v)) cur.currentTier = v;
+            if (int.TryParse(p[9], out v)) cur.baseTier = v;
+            cur.hasShield = (p[10] == "1");
+            cur.silencedThisPhase = (p[11] == "1");
+            cur.isAttached = (p[12] == "1");
+            cur.poisoned = (p[13] == "1");
+            cur.prefixes = p[14];
+            // granted trait texts (16th field, ";;" separated)
+            if (p.Length > 15)
+            {
+                var newList = new System.Collections.Generic.List<string>(
+                    p[15].Split(new[] { ";;" }, System.StringSplitOptions.None));
+                newList.RemoveAll(t => string.IsNullOrEmpty(t));
+                var oldCopy = cur.grantedTraitTexts != null
+                    ? new System.Collections.Generic.List<string>(cur.grantedTraitTexts) : new System.Collections.Generic.List<string>();
+                foreach (var t in oldCopy)
+                    if (!newList.Contains(t)) cur.RemoveGrantedTrait(t);
+                foreach (var t in newList)
+                    if (!oldCopy.Contains(t)) cur.GrantTrait(t);
+            }
             slot.currentCard3D?.GetComponent<Card3DInstance>()?.UpdateValues();
         }
     }

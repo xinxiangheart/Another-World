@@ -173,12 +173,15 @@ public partial class TurnManager
                 cardPart = string.Join("|",
                     ci.templateID ?? "",
                     ci.currentHealth, ci.currentAttack, ci.currentMaxHealth,
-                    ci.currentCost, ci.currentTier,
+                    ci.baseAttack, ci.baseHealth, ci.baseMaxHealth,
+                    ci.currentCost, ci.currentTier, ci.baseTier,
                     ci.hasShield ? "1" : "0",
                     ci.silencedThisPhase ? "1" : "0",
                     ci.isAttached ? "1" : "0",
                     ci.poisoned ? "1" : "0",
-                    ci.prefixes ?? "");
+                    ci.prefixes ?? "",
+                    ci.grantedTraitTexts != null && ci.grantedTraitTexts.Count > 0
+                        ? string.Join(";;", ci.grantedTraitTexts) : "");
             string flagPart = slot == null ? "0000|0|0|0" :
                 $"{(slot.isBlocked?1:0)}{(slot.prisonBlocked?1:0)}{(slot.hasPlague?1:0)}{(slot.hasSpotlight?1:0)}|{slot.plagueRoundCount}|{slot.spotlightTierBoost}|{slot.slotTempAttackBoost}";
             all[i] = $"{cardPart}|{flagPart}";

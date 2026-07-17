@@ -47,8 +47,72 @@ public class GetCardPanel : MonoBehaviour
             return;
         }
 
-        GetCardByID(id);
+        // 输入的是 templateID（如 01310），直接从牌库抽一张到手牌
+        DrawFromDeckByTemplateID(id);
         Hide();
+    }
+
+    /// <summary>从牌库中查找匹配 templateID 的卡，抽出并加入手牌。走正规抽取流程，有唯一 instanceID。</summary>
+    void DrawFromDeckByTemplateID(string templateID)
+    {
+        NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
+
+        // 1. 先查牌库
+        var czm = CardZoneManager.Instance;
+        if (czm != null && !czm.IsDeckEmpty)
+        {
+            if (czm.RemoveFromDeckByTemplateID(templateID, out string iid))
+            {
+                CardData template = CardDatabase.Instance?.GetTemplate(templateID);
+                if (template != null)
+                {
+                    template._instanceID = iid;
+                    NetworkPlayer.Local.AddCardToHand(template, iid);
+                    Debug.Log($"从牌库抽取 {templateID} iid={iid}，已加入手牌，牌库剩余 {czm.DeckCount} 张");
+                    return;
+                }
+            }
+        }
+
+        // 2. 牌库没有 → 检查弃牌堆
+        var graveList = GraveyardManager.Instance?.graveyard;
+        if (graveList != null)
+        {
+            for (int i = graveList.Count - 1; i >= 0; i--)
+            {
+                if (graveList[i].templateID == templateID)
+                {
+                    var target = graveList[i];
+                    var entry = CardZoneManager.Instance?.RemoveFromGraveyard(target.instanceID);
+                    if (entry != null || graveList[i] == target)
+                        graveList.RemoveAt(i);
+
+                    // 从弃牌堆数据重建进手牌
+                    GameObject temp = new GameObject("TempGrave");
+                    CardInstance ci = temp.AddComponent<CardInstance>();
+                    ci.templateID = target.templateID;
+                    ci.instanceID = target.instanceID;
+                    ci.currentCost = target.currentCost;
+                    ci.currentAttack = target.baseAttack;
+                    ci.baseAttack = target.baseAttack;
+                    ci.currentHealth = target.baseHealth;
+                    ci.baseHealth = target.baseHealth;
+                    ci.baseMaxHealth = target.baseMaxHealth;
+                    ci.currentMaxHealth = target.baseMaxHealth;
+                    ci.currentTier = target.currentTier;
+                    ci.baseTier = target.baseTier;
+                    ci.prefixes = target.prefixes;
+                    CardData template = CardDatabase.Instance?.GetTemplate(target.templateID);
+                    if (template != null)
+                        NetworkPlayer.Local.AddCardToHandFromInstance(template, ci);
+                    Destroy(temp);
+                    Debug.Log($"从弃牌堆获取 {templateID}，已加入手牌");
+                    return;
+                }
+            }
+        }
+
+        Debug.LogWarning($"未在任何区域找到 templateID={templateID} 的卡牌");
     }
 
     void GetCardByID(string instanceID)
@@ -142,20 +206,20 @@ public class GetCardPanel : MonoBehaviour
             }
         }
 
-        // 5. 检查牌库（CardZoneManager）
+        // 5. 检查牌库（CardZoneManager）——按 templateID 抽牌
+        string searchTid = instanceID.Length >= 5 ? instanceID.Substring(0, 5) : instanceID;
         var czm = CardZoneManager.Instance;
         if (czm != null && !czm.IsDeckEmpty)
         {
-            string tid = instanceID.Length >= 5 ? instanceID.Substring(0, 5) : instanceID;
-            if (czm.RemoveFromDeckByTemplateID(tid, out string removedIid))
+            if (czm.RemoveFromDeckByTemplateID(searchTid, out string removedIid))
             {
-                CardData template = CardDatabase.Instance?.GetTemplate(tid);
+                CardData template = CardDatabase.Instance?.GetTemplate(searchTid);
                 if (template != null)
                 {
                     template._instanceID = removedIid;
                     NetworkPlayer.Local.AddCardToHand(template, removedIid);
                 }
-                Debug.Log($"从牌库获取 {tid} iid={removedIid}，已加入手牌");
+                Debug.Log($"从牌库抽取 {searchTid} iid={removedIid}，已加入手牌，牌库剩余 {czm.DeckCount} 张");
                 return;
             }
         }

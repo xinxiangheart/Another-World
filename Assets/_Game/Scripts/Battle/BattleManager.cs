@@ -1058,7 +1058,9 @@ public class BattleManager : MonoBehaviour
                 Card3DInstance inst = dmg.Item1.GetComponent<Card3DInstance>();
                 CardInstance sourceCI = dmg.Item3?.GetComponent<Card3DInstance>()?.cardInstance;
                 if (inst?.cardInstance != null)
-                    DamagePipeline.Process(new DamageInput(sourceCI, inst.cardInstance, dmg.Item2, dmg.Item3, DamagePhase.Battle));
+                {
+                        DamagePipeline.Process(new DamageInput(sourceCI, inst.cardInstance, dmg.Item2, dmg.Item3, DamagePhase.Battle));
+                }
             }
             pending.Clear();
 
@@ -1111,16 +1113,20 @@ public class BattleManager : MonoBehaviour
                 }
             }
         }
-        else if (effect.Contains("对方摸两张牌"))
+        // 通用：攻击力永久减{N}（如 01109 尖啸者）
+        int permAtkDebuff = ParseRevengeAtkDebuff(effect);
+        if (permAtkDebuff > 0)
         {
             foreach (GameObject target in targets)
             {
                 Card3DInstance tInst = target.GetComponent<Card3DInstance>();
                 if (tInst != null)
                 {
-                    tInst.cardInstance.baseAttack -= 1;
-                    tInst.cardInstance.currentAttack = tInst.cardInstance.baseAttack;
+                    tInst.cardInstance.baseAttack -= permAtkDebuff;
+                    tInst.cardInstance.currentAttack -= permAtkDebuff;
                     tInst.UpdateValues();
+                    Refresh2DDisplayOf(tInst.cardInstance);
+                    DamagePipeline.ShowFloaterAt(tInst.cardInstance, permAtkDebuff, FloaterType.Debuff);
                 }
             }
         }
@@ -1326,20 +1332,36 @@ public class BattleManager : MonoBehaviour
                     bmInstance.ResolveRevengeEffect(effect, null, targets));
             }
 
-            // 反伤可能造成新死亡 → 递归
+            // 反伤造成新死亡 → 递归
             BoardSlot.CheckAndHandleDeaths();
             yield return ActionQueueManager.WaitForDrain();
+            // 广播反伤修改的属性（攻击力减益等）到客户端
+            if (Mirror.NetworkServer.active)
+                BoardSyncManager.MarkDirty();
         }
     }
 
-    /// <summary>从反击文本中解析伤害数值："对击杀它的召唤物造成{X}伤害" → X</summary>
+    /// <summary>从反击文本中解析伤害数值："造成{X}伤害" → X</summary>
     static int ParseRevengeDamage(string effect)
     {
         if (string.IsNullOrEmpty(effect)) return 0;
-        // 匹配 "造成N伤害" 模式
         var m = System.Text.RegularExpressions.Regex.Match(effect, @"造成(\d+)伤害");
         if (m.Success && int.TryParse(m.Groups[1].Value, out int dmg))
             return dmg;
+        return 0;
+    }
+
+    /// <summary>从反击文本中解析攻击力永久减值："攻击力永久减{N}" → N（默认为 1）</summary>
+    static int ParseRevengeAtkDebuff(string effect)
+    {
+        if (string.IsNullOrEmpty(effect)) return 0;
+        if (effect.Contains("攻击力永久减"))
+        {
+            var m = System.Text.RegularExpressions.Regex.Match(effect, @"攻击力永久减(\d+)");
+            if (m.Success && int.TryParse(m.Groups[1].Value, out int d))
+                return d;
+            return 1; // "攻击力永久减一" 中的 "一" 不是数字 → 默认 1
+        }
         return 0;
     }
 
@@ -1835,6 +1857,33 @@ public class BattleManager : MonoBehaviour
             conquerorCI._conquerorPendingCheck = false;
         }
     }
+    /// <summary>刷新与指定 CardInstance 同 instanceID 的 2D 手牌显示。</summary>
+    static void Refresh2DDisplayOf(CardInstance ci)
+    {
+        if (ci == null) return;
+        var player = BoardManager.GetOwnerPlayer(GetSlotOfComp(ci));
+        if (player == null) return;
+        // 清理已销毁的 GameObject 残留
+        player.handCards.RemoveAll(c => c == null);
+        foreach (GameObject card in player.handCards)
+        {
+            var inst = card?.GetComponent<CardInstance>();
+            if (inst != null && inst.instanceID == ci.instanceID)
+            {
+                card.GetComponent<CardDisplay2D>()?.RefreshWithInstance(inst);
+                break;
+            }
+        }
+    }
+
+    static int GetSlotOfComp(CardInstance ci)
+    {
+        var bm = FindObjectOfType<BoardManager>();
+        for (int i = 0; i < 12; i++)
+            if (bm?.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance == ci) return i;
+        return -1;
+    }
+
     bool IsShadowHost(CardInstance ci)
     {
         if (ci == null) return false;

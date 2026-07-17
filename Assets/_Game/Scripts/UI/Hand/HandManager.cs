@@ -293,6 +293,7 @@ public class HandManager : MonoBehaviour
                                 PlaceAttachedCard(slot, sourceInstance, template, selectedSlot, cardObj);
                                 BoardSlot.isReplaceMode = false;
                                 BoardSlot.CleanupAttachSelect();
+                                TurnManager.SyncMyBoardToOpponent();
                                 if (template.hasOnEnter)
                                 {
                                     selectedSlot.StartOnEnterEffect(template, sourceInstance);
@@ -311,6 +312,7 @@ public class HandManager : MonoBehaviour
                 {
                     PlaceAttachedCard(slot, sourceInstance, template, selectedSlot, cardObj);
                     BoardSlot.CleanupAttachSelect();
+                    TurnManager.SyncMyBoardToOpponent();
                     if (template.hasOnEnter)
                     {
                         selectedSlot.StartOnEnterEffect(template, sourceInstance);

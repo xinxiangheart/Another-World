@@ -217,18 +217,8 @@ public static class EnterHandlers
 
     static void Handle01110(EffectContext ctx)
     {
-        var slot = ctx.sourceSlot;
-        if (!slot.HasAllyTargetExceptSelf()) { slot.CleanupAfterPlacement(); BoardSlot.SyncMistHiderDisplay(); return; }
-        SM().BeginSelection(TargetType.SingleAlly, (targetSlot) =>
-        {
-            if (targetSlot?.currentCard3D != null && targetSlot != slot)
-            {
-                targetSlot.currentCard3D.GetComponent<Card3DInstance>().cardInstance.isActiveExit = true;
-                targetSlot.HandleDeath(targetSlot.currentCard3D);
-            }
-            slot.CleanupAfterPlacement();
-        });
-        BoardSlot.SyncMistHiderDisplay();
+        if (ctx.source != null) ctx.source._hasPendingCoroutine = true;
+        ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.FragmentEnterEffect(ctx.source, ctx.sourceSlot));
     }
 
     static void Handle01313(EffectContext ctx)
@@ -283,8 +273,12 @@ public static class EnterHandlers
         var slot = ctx.sourceSlot;
         if (CounterManager.Instance != null && CounterManager.Instance.enemyCounters.Count > 0)
         {
-            NetworkPlayer.Local.currentEnergy -= 1;
-            NetworkPlayer.Local.UpdateUI();
+            NetworkPlayer opponent = BoardManager.GetOpponentPlayer(slot.slotID);
+            if (opponent != null)
+            {
+                opponent.currentEnergy -= 1;
+                opponent.UpdateUI();
+            }
         }
         slot.CleanupAfterPlacement();
     }
