@@ -192,7 +192,8 @@ public static class DiscardHandlers
     {
         var ci = ctx.source;
         int lostHealth = ci.currentMaxHealth - ci.currentHealth;
-        NetworkPlayer.Local.AddEnergy(lostHealth);
+        NetworkPlayer owner = BoardManager.GetOwnerPlayer(ctx.discardSlotID);
+        if (owner != null) owner.AddEnergy(lostHealth);
         Debug.Log($"投资者抛置：获得{lostHealth}能量");
         RestoreInteraction();
     }

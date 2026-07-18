@@ -360,6 +360,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             CardInstance ciPre = cardToPlace?.GetComponent<CardInstance>();
             if (ciPre != null) playTemplateID = ciPre.templateID;
 
+            bool wasAttachFlow = ciPre != null && ciPre.canAttach;
+
             HandManager hm = FindObjectOfType<HandManager>();
             if (hm != null)
             {
@@ -419,6 +421,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     GlobalEventManager.Instance.PendingEnterRedirectInstance = null;
                 }
             }
+
+            // 附着流程：模型尚未放置（PlaceCardToSlot 异步等待选择目标），由 HandManager.PlaceCardToSlot 回调处理同步和清理
+            if (wasAttachFlow) return;
 
             // Sync to remote client after placement is fully complete.
             if (NetworkClient.isConnected && !string.IsNullOrEmpty(playTemplateID))

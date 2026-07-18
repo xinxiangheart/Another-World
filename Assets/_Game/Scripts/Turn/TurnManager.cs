@@ -175,50 +175,54 @@ public partial class TurnManager : MonoBehaviour
         }
         if (slots != null)
         {
-            int mechCount = 0;
-            for (int i = 6; i <= 11; i++)
+            // 增幅结构(01506)：每方独立统计机械数量，分别加进
+            for (int half = 0; half <= 6; half += 6)
             {
-                BoardSlot s = slots[i];
-                if (s?.currentCard3D != null)
-                {
-                    CardInstance ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                    if (ci != null && ci.prefixes.Contains("机械")) mechCount++;
-                }
-            }
-            if (mechCount >= 3)
-            {
-                bool amplifierActive = true;
-                for (int i = 6; i <= 11; i++)
+                int mechCount = 0;
+                for (int i = half; i < half + 6; i++)
                 {
                     BoardSlot s = slots[i];
                     if (s?.currentCard3D != null)
                     {
                         CardInstance ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                        if (ci != null && ci.templateID == "01506" && GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(ci))
-                        {
-                            amplifierActive = false;
-                            break;
-                        }
+                        if (ci != null && ci.prefixes.Contains("机械")) mechCount++;
                     }
                 }
-                if (amplifierActive)
+                if (mechCount >= 3)
                 {
-                    for (int i = 6; i <= 11; i++)
+                    bool amplifierActive = true;
+                    for (int i = half; i < half + 6; i++)
                     {
                         BoardSlot s = slots[i];
                         if (s?.currentCard3D != null)
                         {
                             CardInstance ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                            if (ci != null)
+                            if (ci != null && ci.templateID == "01506" && GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(ci))
                             {
-                                if (!ci.cannotHealOrGainMaxHP)
+                                amplifierActive = false;
+                                break;
+                            }
+                        }
+                    }
+                    if (amplifierActive)
+                    {
+                        for (int i = half; i < half + 6; i++)
+                        {
+                            BoardSlot s = slots[i];
+                            if (s?.currentCard3D != null)
+                            {
+                                CardInstance ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                                if (ci != null)
                                 {
-                                    ci.currentHealth += 1;
-                                    ci.currentMaxHealth += 1;
+                                    if (!ci.cannotHealOrGainMaxHP)
+                                    {
+                                        ci.currentHealth += 1;
+                                        ci.currentMaxHealth += 1;
+                                    }
+                                    ci.currentAttack += 1;
+                                    ci.buffedByEmperor = true;
+                                    s.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
                                 }
-                                ci.currentAttack += 1;
-                                ci.buffedByEmperor = true;
-                                s.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
                             }
                         }
                     }
@@ -254,10 +258,10 @@ public partial class TurnManager : MonoBehaviour
                 }
             }
         }
-        // 聚光灯：每阶段开始恢复2生命值
+        // 聚光灯：每阶段开始恢复2生命值 — 双方都要检查
         if (slots != null)
         {
-            for (int i = 6; i <= 11; i++)
+            for (int i = 0; i < 12; i++)
             {
                 BoardSlot slot = slots[i];
                 if (slot == null || !slot.hasSpotlight || slot.currentCard3D == null) continue;
@@ -309,7 +313,7 @@ public partial class TurnManager : MonoBehaviour
             BoardManager bm = FindObjectOfType<BoardManager>();
             if (bm != null)
             {
-                for (int i = 6; i <= 11; i++)
+                for (int i = 0; i < 12; i++)
                 {
                     BoardSlot slot = bm.GetSlot(i);
                     if (slot?.currentCard3D == null) continue;
@@ -339,10 +343,10 @@ public partial class TurnManager : MonoBehaviour
             }
             BoardSlot.CheckAndHandleDeaths();
         }
-        // 检测是否触发额外回合
+        // 打工人(03009)/小团恶念(03010)/大团恶念(03011) — 双方都要检查
         if (slots != null)
         {
-            for (int i = 6; i <= 11; i++)
+            for (int i = 0; i < 12; i++)
             {
                 BoardSlot slot = slots[i];
                 if (slot?.currentCard3D == null) continue;
@@ -355,10 +359,9 @@ public partial class TurnManager : MonoBehaviour
                 }
             }
         }
-        // 检测是否触发额外回合
         if (slots != null)
         {
-            for (int i = 6; i <= 11; i++)
+            for (int i = 0; i < 12; i++)
             {
                 BoardSlot slot = slots[i];
                 if (slot?.currentCard3D == null) continue;
@@ -386,10 +389,9 @@ public partial class TurnManager : MonoBehaviour
                 }
             }
         }
-        // 检测是否触发额外回合
         if (slots != null)
         {
-            for (int i = 6; i <= 11; i++)
+            for (int i = 0; i < 12; i++)
             {
                 BoardSlot slot = slots[i];
                 if (slot?.currentCard3D == null) continue;
@@ -397,16 +399,15 @@ public partial class TurnManager : MonoBehaviour
                 if (ci != null && ci.templateID == "03011" && !ci._justTransformed)
                 {
                     slot.HandleDeath(slot.currentCard3D);
-                    NetworkPlayer.Local.AddEnergy(5);
+                    BoardManager.GetOwnerPlayer(i)?.AddEnergy(5);
                     StartCoroutine(SummonSmallEvilOnSlot());
                     break;
                 }
             }
         }
-        // 检测是否触发额外回合
         if (slots != null)
         {
-            for (int i = 6; i <= 11; i++)
+            for (int i = 0; i < 12; i++)
             {
                 BoardSlot slot = slots[i];
                 if (slot?.currentCard3D == null) continue;
@@ -487,13 +488,13 @@ public partial class TurnManager : MonoBehaviour
             BoardManager bm = FindObjectOfType<BoardManager>();
             if (bm != null)
             {
-                for (int i = 6; i <= 11; i++)
+                for (int i = 0; i < 12; i++)
                 {
                     BoardSlot slot = bm.GetSlot(i);
                     if (slot?.currentCard3D != null)
                     {
                         CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                        if (ci != null && !ci.isAttached)
+                        if (ci != null && !ci.isAttached && i >= 6)
                         {
                             ci.ReceiveHeal(2, CardInstance.HealSourceType.Spell);
                             slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
@@ -630,7 +631,8 @@ public partial class TurnManager : MonoBehaviour
         BoardSlot[] slots = FindObjectOfType<BoardManager>()?.GetAllSlots();
         if (slots == null) return;
 
-        for (int i = 6; i <= 11; i++)
+        // 滋养者(01129)自愈 — 双方都要检查
+        for (int i = 0; i < 12; i++)
         {
             BoardSlot slot = slots[i];
             if (slot?.currentCard3D == null) continue;
@@ -642,8 +644,8 @@ public partial class TurnManager : MonoBehaviour
                 slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
             }
         }
-        // 回合开始退场+2能量（己方回合开始分支中）
-        for (int i = 6; i <= 11; i++)
+        // 心灵学者(01511)回合开始退场+2能量 — 双方都要检查
+        for (int i = 0; i < 12; i++)
         {
             BoardSlot slot = slots[i];
             if (slot?.currentCard3D == null) continue;
@@ -652,11 +654,12 @@ public partial class TurnManager : MonoBehaviour
             {
                 ci.isActiveExit = false;
                 slot.HandleDeath(slot.currentCard3D);
-                NetworkPlayer.Local.AddEnergy(2);
+                BoardManager.GetOwnerPlayer(i)?.AddEnergy(2);
                 break;
             }
         }
-        for (int i = 6; i <= 11; i++)
+        // 滋养者(01129)附着宿主回血 — 双方都要检查
+        for (int i = 0; i < 12; i++)
         {
             BoardSlot slot = slots[i];
             if (slot?.currentCard3D == null) continue;
@@ -675,7 +678,7 @@ public partial class TurnManager : MonoBehaviour
         BoardManager bmHeal = FindObjectOfType<BoardManager>();
         if (bmHeal != null && slots != null)
         {
-            for (int i = 6; i <= 11; i++)
+            for (int i = 0; i < 12; i++)
             {
                 BoardSlot slot = bmHeal.GetSlot(i);
                 if (slot?.currentCard3D == null) continue;
@@ -683,8 +686,9 @@ public partial class TurnManager : MonoBehaviour
                 if (c3d?.cardInstance?.templateID == "01302")
                 {
                     if (!c3d.cardInstance.CanTriggerTrait("回合开始")) continue;
-                    int myRow = i < 9 ? 0 : 3;
-                    int rowStart = 6 + myRow;
+                    int ownHalfStart = i >= 6 ? 6 : 0;
+                    int myRow = (i - ownHalfStart) < 3 ? 0 : 3;
+                    int rowStart = ownHalfStart + myRow;
                     int rowEnd = rowStart + 3;
                     for (int j = rowStart; j < rowEnd; j++)
                     {
