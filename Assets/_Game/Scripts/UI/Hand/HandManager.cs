@@ -1244,16 +1244,27 @@ public class HandManager : MonoBehaviour
         if (bm == null) return;
 
         bool isYinYang = ci.templateID == "03012";
-        int searchStart = isYinYang ? 0 : 0;
-        int searchEnd = isYinYang ? 12 : 6;
+        BoardSlot mySlot = FindMySlot(ci);
+        int mySlotID = mySlot?.slotID ?? 6;
+
+        // 阴/阳(01306/01307)：读取对方半场。阴阳(03012)：读取全场。
+        int searchStart, searchEnd;
+        if (isYinYang)
+        {
+            searchStart = 0;
+            searchEnd = 12;
+        }
+        else
+        {
+            BoardManager.GetEnemySideRange(mySlotID, out searchStart, out searchEnd);
+            searchEnd++; // GetEnemySideRange returns end inclusive, loop needs exclusive
+        }
 
         int highestAttack = 0;
         int lowestAttack = int.MaxValue;
         int highestHealth = 0;
         int lowestHealth = int.MaxValue;
         bool anyMinion = false;
-
-        BoardSlot mySlot = FindMySlot(ci);
 
         for (int i = searchStart; i < searchEnd; i++)
         {

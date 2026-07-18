@@ -165,7 +165,6 @@ public partial class TurnManager
             BoardSlot slot = bm.GetSlot(i);
             var c3d = slot?.currentCard3D?.GetComponent<Card3DInstance>();
             var ci = c3d?.cardInstance;
-            // Card stats (11 fields) + slot flags (4 fields: isBlocked.prisonBlocked.hasPlague.hasSpotlight)
             string cardPart;
             if (ci == null)
                 cardPart = "";

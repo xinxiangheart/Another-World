@@ -1031,9 +1031,7 @@ public class NetworkPlayer : NetworkBehaviour
                 if (int.TryParse(parts[parts.Length - 1], out int boost)) slot.slotTempAttackBoost = boost;
             }
 
-            if (!isReportingOwnSlot) continue; // 不销毁/修改对方玩家槽位卡牌
-
-            // ── 卡牌数据（始终应用——双方都能上报对方卡牌的属性变化如血量/特性）──
+            // ── 属性数据更新（全部 12 槽通用——客户端上报的对方卡牌属性是"我刚打过的"，信任它）──
             if (!string.IsNullOrEmpty(tid))
             {
                 var ci = slot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
@@ -1069,10 +1067,10 @@ public class NetworkPlayer : NetworkBehaviour
                     slot.currentCard3D?.GetComponent<Card3DInstance>()?.UpdateValues();
                 }
             }
-            // 仅上报方自己的槽位：空→销毁
-            else if (isReportingOwnSlot)
+            // 仅上报方自己的槽位空→销毁（不销毁对方卡模型）
+            else if (isReportingOwnSlot && slot.currentCard3D != null)
             {
-                if (slot.currentCard3D != null) { Destroy(slot.currentCard3D); slot.SetCard(null); }
+                Destroy(slot.currentCard3D); slot.SetCard(null);
             }
         }
         ApplyAttachDiff(bm, attachBlock, isLocalPlayer);
