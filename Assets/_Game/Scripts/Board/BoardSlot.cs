@@ -427,7 +427,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 int atk = placedC3D?.cardInstance?.currentAttack ?? -1;
                 int hp = placedC3D?.cardInstance?.currentHealth ?? -1;
                 int maxHp = placedC3D?.cardInstance?.currentMaxHealth ?? -1;
-                NetworkPlayer.Local?.CmdPlayCard(playTemplateID, slotID, atk, hp, maxHp);
+                string iid = placedC3D?.cardInstance?.instanceID ?? "";
+                NetworkPlayer.Local?.CmdPlayCard(playTemplateID, slotID, atk, hp, maxHp, iid);
                 BoardSyncManager.MarkDirty();
             }
 
@@ -852,6 +853,14 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         Trigger exitTrigger = isActiveExit ? Trigger.ActiveExit : Trigger.Exit;
         EffectDispatcher.Dispatch(exitTrigger, exitCtx);
 
+        // ── 动态赋予的死亡特性（01117/苦难给予者赋予的"退场：减一能量"等）──
+        if (c3d.cardInstance.templateID != "01117" &&
+            c3d.cardInstance.grantedTraitTexts != null &&
+            c3d.cardInstance.grantedTraitTexts.Count > 0)
+        {
+            ProcessGrantedDeathTraits(c3d.cardInstance, slotID);
+        }
+
         shouldReturn03504 = exitCtx.shouldReturn03504;
         template03504 = exitCtx.template03504;
         shouldReturn01117 = exitCtx.shouldReturn01117;
@@ -874,17 +883,69 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         });
     }
 
+    /// <summary>处理动态赋予的死亡特性（苦难给予者等）。HandleDeath 中调用。</summary>
+    static void ProcessGrantedDeathTraits(CardInstance ci, int slotID)
+    {
+        if (ci.grantedTraitTexts == null || ci.grantedTraitTexts.Count == 0) return;
+        NetworkPlayer traitOwner = BoardManager.GetOwnerPlayer(slotID);
+
+        foreach (string trait in ci.grantedTraitTexts)
+        {
+            switch (trait)
+            {
+                case "退场：减一能量":
+                    if (traitOwner != null) { traitOwner.currentEnergy -= 1; traitOwner.UpdateUI(); }
+                    break;
+                case "退场：己方全体受到一伤害":
+                    BoardManager bmG = FindObjectOfType<BoardManager>();
+                    if (bmG != null)
+                    {
+                        BoardManager.GetSideRange(slotID, out int gs, out int ge);
+                        for (int i = gs; i <= ge; i++)
+                        {
+                            var si = bmG.GetSlot(i);
+                            if (si?.currentCard3D != null)
+                            {
+                                var tci = si.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                                if (tci != null)
+                                {
+                                    tci.currentHealth -= 1;
+                                    si.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+                                    DamagePipeline.ShowFloaterAt(tci, 1, FloaterType.Damage);
+                                }
+                            }
+                        }
+                    }
+                    CheckAndHandleDeaths();
+                    break;
+                case "退场：己方玩家扣一血":
+                    traitOwner?.TakeDamage(1);
+                    break;
+            }
+        }
+    }
+
+    static int FindSlotID(CardInstance ci)
+    {
+        var bm = FindObjectOfType<BoardManager>();
+        for (int i = 0; i < 12; i++)
+            if (bm?.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance == ci) return i;
+        return -1;
+    }
+
     public static void TriggerDeathEffect(CardInstance ci, bool isActive)
     {
         if (ci == null) return;
+        NetworkPlayer dp = BoardManager.GetOwnerPlayer(FindSlotID(ci));
         string id = ci.templateID;
+        // dp is already set above: NetworkPlayer dp = BoardManager.GetOwnerPlayer(FindSlotID(ci));
         if (isActive)
         {
             switch (id)
             {
-                case "01106": NetworkPlayer.Local.AddEnergy(3); break;
+                case "01106": dp?.AddEnergy(3); break;
                 case "01107":
-                    NetworkPlayer.Local.AddEnergy(2);
+                    dp?.AddEnergy(2);
                     {
                         bool hasAlly = false;
                         BoardManager bm = FindObjectOfType<BoardManager>();
@@ -916,7 +977,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         {
             switch (id)
             {
-                case "01106": NetworkPlayer.Local.AddEnergy(1); break;
+                case "01106": dp?.AddEnergy(1); break;
                 case "03513":
                     Do03513AOE(ci);
                     break;
@@ -963,8 +1024,19 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         giver.RemoveGrantedTrait(chosenTrait);
         target.GrantTrait(chosenTrait);
         RefreshCardDisplay(target);
+        // 如果详情面板正打开着，即时刷新显示
+        RefreshTest1Panel(giver);
+        RefreshTest1Panel(target);
         // 同步赋予的特性文本到对方视角（target 在对方半场，需要上报板面变化）
         TurnManager.SyncMyBoardToOpponent();
+    }
+
+    static void RefreshTest1Panel(CardInstance ci)
+    {
+        if (ci == null) return;
+        var panel = Test1Panel.Instance;
+        if (panel == null || !panel.panelRoot.activeSelf) return;
+        panel.Show(ci);
     }
     public static void ClearAllHighlights()
     {
@@ -984,16 +1056,26 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     {
         if (ci == null) return;
         BoardManager bm = FindObjectOfType<BoardManager>();
+        // 1) 3D 模型刷新
         if (bm != null)
             for (int i = 0; i < 12; i++)
             {
-                BoardSlot slot = bm.GetSlot(i);
-                if (slot?.currentCard3D != null)
-                {
-                    Card3DInstance c3d = slot.currentCard3D.GetComponent<Card3DInstance>();
-                    if (c3d?.cardInstance == ci) { c3d.UpdateValues(); return; }
-                }
+                Card3DInstance c3d = bm.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>();
+                if (c3d?.cardInstance == ci) { c3d.UpdateValues(); break; }
             }
+        // 2) 2D 手牌刷新（如果同 instanceID 在手牌中）
+        if (NetworkPlayer.Local == null) return;
+        NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
+        foreach (GameObject card in NetworkPlayer.Local.handCards)
+        {
+            if (card == null) continue;
+            var inst = card.GetComponent<CardInstance>();
+            if (inst != null && inst.instanceID == ci.instanceID)
+            {
+                card.GetComponent<CardDisplay2D>()?.RefreshWithInstance(inst);
+                break;
+            }
+        }
     }
 
     void CleanupAfterSelection() { }
@@ -2183,14 +2265,16 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         if (data.isFullySilenced) return;
         if (data.isDeathBlocked) return;
+        NetworkPlayer tOwner = BoardManager.GetOwnerPlayer(data.slotID);
+        var dp = tOwner;
         string id = data.templateID;
         if (data.isActiveExit)
         {
             switch (id)
             {
-                case "01106": NetworkPlayer.Local.AddEnergy(3); break;
+                case "01106": tOwner?.AddEnergy(3); break;
                 case "01107":
-                    NetworkPlayer.Local.AddEnergy(2);
+                    tOwner?.AddEnergy(2);
                     {
                         bool hasAlly = false;
                         BoardManager bm = FindObjectOfType<BoardManager>();
@@ -2222,52 +2306,14 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         {
             switch (id)
             {
-                case "01106": NetworkPlayer.Local.AddEnergy(1); break;
+                case "01106": dp?.AddEnergy(1); break;
                 case "03513":
                     Do03513AOE(this);
                     break;
             }
         }
 
-        // ── 赋予的死亡特性（非 01117 自身——01117 走旧分支避免双发）──
-        if (id != "01117" && data.grantedTraitTexts != null && data.grantedTraitTexts.Count > 0)
-        {
-            NetworkPlayer owner = BoardManager.GetOwnerPlayer(data.slotID);
-            foreach (string trait in data.grantedTraitTexts)
-            {
-                switch (trait)
-                {
-                    case "退场：减一能量":
-                        if (owner != null) { owner.currentEnergy -= 1; owner.UpdateUI(); }
-                        break;
-                    case "退场：己方全体受一点伤害":
-                        BoardManager bmG = FindObjectOfType<BoardManager>();
-                        if (bmG != null)
-                        {
-                            BoardManager.GetSideRange(data.slotID, out int gs, out int ge);
-                            for (int i = gs; i <= ge; i++)
-                            {
-                                var si = bmG.GetSlot(i);
-                                if (si?.currentCard3D != null)
-                                {
-                                    var ci = si.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                                    if (ci != null)
-                                    {
-                                        ci.currentHealth -= 1;
-                                        si.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
-                                        DamagePipeline.ShowFloaterAt(ci, 1, FloaterType.Damage);
-                                    }
-                                }
-                            }
-                        }
-                        BoardSlot.CheckAndHandleDeaths();
-                        break;
-                    case "退场：己方玩家扣一血":
-                        if (owner != null) owner.TakeDamage(1);
-                        break;
-                }
-            }
-        }
+        NetworkPlayer traitOwner = BoardManager.GetOwnerPlayer(data.slotID);
 
         // ── 01117 自己的可给予退场列表（旧路径，保留）──
         if (id == "01117" && data.giveableDeathTraits != null)
@@ -2278,10 +2324,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 switch (trait)
                 {
                     case "退场：摸一张牌":
-                        owner?.currentEnergy -= 1;
-                        owner?.UpdateUI();
+                        if (traitOwner != null) { traitOwner.currentEnergy -= 1; traitOwner.UpdateUI(); }
                         break;
-                    case "退场：己方全体受一点伤害":
+                    case "退场：己方全体受到一伤害":
                         BoardManager bmDH = FindObjectOfType<BoardManager>();
                         if (bmDH != null)
                         {
@@ -2295,7 +2340,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                         }
                         break;
                     case "退场：己方玩家扣一血":
-                        owner?.TakeDamage(1);
+                        traitOwner?.TakeDamage(1);
                         break;
                 }
             }
@@ -2467,9 +2512,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             BoardSlot.onTargetSelected = (selectedSlot) =>
             {
                 if (selectedSlot == null || selectedSlot.isBlocked || selectedSlot.slotID < 6) return;
+                string shid = CardZoneManager.GenerateInstanceID(shadowTemplate.templateID);
                 GameObject temp = new GameObject("TempShadow");
                 CardInstance ti = temp.AddComponent<CardInstance>();
-                ti.InitFromTemplate(shadowTemplate, k);
+                ti.InitFromTemplate(shadowTemplate, 0, shid);
                 ti.isShadow = true;
                 ti.currentAttack += CardInstance.shadowAtkBonus;
                 ti.currentTier += CardInstance.shadowTierBonus;
@@ -2480,7 +2526,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 // Sync shadow to opponent
                 if (NetworkClient.isConnected)
                     NetworkPlayer.Local?.CmdPlayCard(shadowTemplate.templateID, selectedSlot.slotID,
-                        ti.currentAttack, ti.currentHealth, ti.currentMaxHealth);
+                        ti.currentAttack, ti.currentHealth, ti.currentMaxHealth, ti.instanceID);
 
                 placed = true;
                 SelectionManager.Instance.ForceEndAll();
@@ -2519,15 +2565,15 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 if (selectedSlot == null || selectedSlot.isBlocked || selectedSlot.slotID < 6) return;
                 GameObject temp = new GameObject("TempGhost");
                 CardInstance ti = temp.AddComponent<CardInstance>();
-                ti.InitFromTemplate(ghostTemplate, k);
+                string giid = CardZoneManager.GenerateInstanceID(ghostTemplate.templateID);
+                ti.InitFromTemplate(ghostTemplate, 0, giid);
                 HandManager hm = FindObjectOfType<HandManager>();
                 hm.PlaceCardToSlot(selectedSlot, temp);
                 Destroy(temp);
 
-                // Sync ghost to opponent — CmdPlayCard is not called by PlaceCardToSlot,
-                // and ghosts are placed outside the normal OnPointerClick flow.
+                // Sync ghost to opponent — same instanceID as placed model
                 if (NetworkClient.isConnected)
-                    NetworkPlayer.Local?.CmdPlayCard(ghostTemplate.templateID, selectedSlot.slotID, -1, -1, -1);
+                    NetworkPlayer.Local?.CmdPlayCard(ghostTemplate.templateID, selectedSlot.slotID, -1, -1, -1, giid);
 
                 placed = true;
                 SelectionManager.Instance.ForceEndAll();
@@ -2554,16 +2600,17 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 BoardSlot.onTargetSelected = (selectedSlot) =>
                 {
                     if (selectedSlot == null || selectedSlot.isBlocked || selectedSlot.slotID < 6) return;
+                    string siid = CardZoneManager.GenerateInstanceID(soldierTemplate.templateID);
                     GameObject temp = new GameObject("TempSoldier");
                     CardInstance ti = temp.AddComponent<CardInstance>();
-                    ti.InitFromTemplate(soldierTemplate, k);
+                    ti.InitFromTemplate(soldierTemplate, 0, siid);
                     HandManager hm = FindObjectOfType<HandManager>();
                     hm.PlaceCardToSlot(selectedSlot, temp);
                     Destroy(temp);
 
-                    // Sync soldier to opponent
+                    // Sync soldier to opponent — same instanceID as the placed model
                     if (NetworkClient.isConnected)
-                        NetworkPlayer.Local?.CmdPlayCard(soldierTemplate.templateID, selectedSlot.slotID, -1, -1, -1);
+                        NetworkPlayer.Local?.CmdPlayCard(soldierTemplate.templateID, selectedSlot.slotID, -1, -1, -1, siid);
 
                     placed = true;
                     SelectionManager.Instance.ForceEndAll();

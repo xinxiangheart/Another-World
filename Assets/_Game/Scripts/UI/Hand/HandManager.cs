@@ -73,7 +73,7 @@ public class HandManager : MonoBehaviour
         // Sync to remote client after spell/counter cast is fully processed
         if (NetworkClient.isConnected && !string.IsNullOrEmpty(removedTemplateID))
         {
-            NetworkPlayer.Local?.CmdPlayCard(removedTemplateID, -1, -1, -1, -1);
+            NetworkPlayer.Local?.CmdPlayCard(removedTemplateID, -1, -1, -1, -1, "");
             BoardSyncManager.MarkDirty();
         }
 
@@ -582,6 +582,22 @@ public class HandManager : MonoBehaviour
         return new Vector3(x, y, z);
     }
 
+    /// <summary>附着物在指定槽位 + 附着序号下的世界坐标。</summary>
+    public static Vector3 GetAttachWorldPos(int slotID, int attachOrder)
+    {
+        var bm = FindObjectOfType<BoardManager>();
+        var hm = FindObjectOfType<HandManager>();
+        Vector3 basePos;
+        var card3D = bm?.GetSlot(slotID)?.currentCard3D;
+        if (card3D != null && card3D.transform != null)
+            basePos = card3D.transform.position;
+        else if (hm != null)
+            basePos = hm.GetSlotWorldPosition(slotID);
+        else
+            basePos = Vector3.zero;
+        return new Vector3(basePos.x - 0.5f - attachOrder * 0.5f, basePos.y, basePos.z + 0.1f + attachOrder * 0.1f);
+    }
+
     public void HideAllCards()
     {
         foreach (CardView cv in handCards)
@@ -615,9 +631,16 @@ public class HandManager : MonoBehaviour
         BoardSyncManager.MarkDirty();
         if (instance3D != null) instance3D.UpdateValues();
 
-        // Sync 3D model to opponent
-        if (NetworkClient.isConnected && !string.IsNullOrEmpty(sourceInstance.templateID))
-            NetworkPlayer.Local?.CmdPlayCard(sourceInstance.templateID, slot.slotID, -1, -1, -1);
+        // 附着专用卡（baseHealth==0）永远不放独立槽位模型到服务器
+        if (sourceInstance.canAttach && sourceInstance.baseHealth == 0)
+        {
+            Debug.LogWarning($"[PlaceIndependentCard] 附着专用卡 {sourceInstance.templateID} 被错误放置为独立卡！已拦截 CmdPlayCard，仅本地保留。");
+        }
+        else if (NetworkClient.isConnected && !string.IsNullOrEmpty(sourceInstance.templateID))
+        {
+            string iid = sourceInstance.instanceID ?? CardZoneManager.GenerateInstanceID(sourceInstance.templateID);
+            NetworkPlayer.Local?.CmdPlayCard(sourceInstance.templateID, slot.slotID, -1, -1, -1, iid);
+        }
 
         ProcessAuras(slot, sourceInstance);
 
@@ -660,8 +683,7 @@ public class HandManager : MonoBehaviour
             }
         }
 
-        Vector3 hostPos = hostSlot.currentCard3D.transform.position;
-        Vector3 attachPos = new Vector3(hostPos.x - 0.5f - attachOrder * 0.5f, hostPos.y, hostPos.z + 0.1f + attachOrder * 0.1f);
+        Vector3 attachPos = GetAttachWorldPos(hostSlot.slotID, attachOrder);
 
         GameObject model = Instantiate(template.prefab3D, attachPos, Quaternion.Euler(0, 180, 0));
         model.name = sourceInstance.instanceID + "_attach_" + attachOrder;
@@ -1488,10 +1510,10 @@ public class HandManager : MonoBehaviour
             BoardSlot.isStrengtheningSlot = true;
             BoardSlot.cardToPlace = null;
 
-            // 创建临时手牌走正常召唤流程
+            // 创建临时手牌走正常召唤流程 — 每名 03004 有全局唯一 instanceID
             GameObject temp = new GameObject("TempSpawn");
             CardInstance ti = temp.AddComponent<CardInstance>();
-            ti.InitFromTemplate(template, round);
+            ti.InitFromTemplate(template, 0, CardZoneManager.GenerateInstanceID("03004"));
             BoardSlot.cardToPlace = temp;
 
             // 等玩家点槽位，OnPointerClick 的放置分支会处理

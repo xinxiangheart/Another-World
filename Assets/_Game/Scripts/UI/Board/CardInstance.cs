@@ -205,6 +205,14 @@ public class CardInstance : MonoBehaviour
         // 优先使用预生成的唯一 instanceID（CardZoneManager 生成），其次旧格式
         instanceID = overrideInstanceID ?? (templateID + (copyIndex + 1).ToString("D2"));
 
+        // 初始化所有可变集合（同步 diff 需非 null）
+        grantedTraitTexts = new List<string>();
+        giveableDeathTraits = new List<string>();
+        enemyDamageSourceIDs = new List<string>();
+        damageSourceInstanceIDs = new List<string>();
+        mindScholarCopiedTraits = new List<string>();
+        revengeSnapshotIDs = new List<string>();
+
         currentCost = template.baseCost;
         currentAttack = template.baseAttack;
         baseAttack = template.baseAttack;
@@ -425,6 +433,7 @@ public class CardInstance : MonoBehaviour
     }
     public void GrantTrait(string fullTraitText)
     {
+        if (grantedTraitTexts == null) grantedTraitTexts = new List<string>();
         if (grantedTraitTexts.Contains(fullTraitText)) return;
         grantedTraitTexts.Add(fullTraitText);
 
@@ -441,6 +450,7 @@ public class CardInstance : MonoBehaviour
 
     public void RemoveGrantedTrait(string fullTraitText)
     {
+        if (grantedTraitTexts == null) grantedTraitTexts = new List<string>();
         grantedTraitTexts.Remove(fullTraitText);
 
         bool stillHasFirstStrike = grantedTraitTexts.Exists(t => t.Contains("先手"));

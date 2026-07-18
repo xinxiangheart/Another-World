@@ -205,6 +205,10 @@ public class BoardManager : MonoBehaviour
 
         Vector3 hostPos = FindObjectOfType<HandManager>().GetSlotWorldPosition(slot.slotID);
 
+        // 优先取实卡 3D 世界坐标做宿主参考（与 PlaceAttachedCard 同级）
+        if (slot.currentCard3D != null)
+            hostPos = slot.currentCard3D.transform.position;
+
         List<GameObject> attached = new List<GameObject>();
         foreach (GameObject obj in bm.attachedModels)
         {

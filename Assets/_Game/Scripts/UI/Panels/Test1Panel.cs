@@ -10,6 +10,9 @@ public class Test1Panel : MonoBehaviour
     public GameObject panelRoot;
     public TextMeshProUGUI infoText;
 
+    /// <summary>当前正在显示的卡片索引信息，同步回调中刷新</summary>
+    CardInstance _cachedInstance;
+
     void Awake()
     {
         if (Instance != null) { Destroy(gameObject); return; }
@@ -18,10 +21,19 @@ public class Test1Panel : MonoBehaviour
 
     void Start() => Hide();
 
+    /// <summary>如果面板正打开，用最新的 CardInstance 重新渲染</summary>
+    public void RefreshIfOpen()
+    {
+        if (panelRoot.activeSelf && _cachedInstance != null)
+            Show(_cachedInstance);
+    }
+
     public void Show(CardInstance instance)
     {
         Debug.Log($"Test1Panel.Show: instanceID={instance?.instanceID}, templateID={instance?.templateID}");
         if (instance == null) return;
+
+        _cachedInstance = instance;
 
         CardData template = CardDatabase.Instance?.GetTemplate(instance.templateID);
         if (template == null) return;
@@ -106,28 +118,31 @@ public class Test1Panel : MonoBehaviour
         CardData template = CardDatabase.Instance?.GetTemplate(ci.templateID);
         List<string> traits = new List<string>();
 
-        // 苦难给予者特殊处理
+        // 普通卡牌：显示模板特性
+        if (template != null && !string.IsNullOrEmpty(template.traits) && template.traits != "无")
+        {
+            // 01117 的模板特性不显示——用 grantedTraitTexts 替代（可被同步）
+            if (ci.templateID != "01117")
+                traits.Add(template.traits);
+        }
+
+        // 01117 专属：用 grantedTraitTexts 显示剩余可给予特性（已同步，giveableDeathTraits 未同步）
         if (ci.templateID == "01117")
         {
             traits.Add("进场：永久给予对方一召唤物一个自己的退场（自己的退场给予后消失）");
             traits.Add("退场：回到手牌（该退场无法给予）");
-            foreach (string t in ci.giveableDeathTraits)
+            foreach (string t in ci.grantedTraitTexts)
             {
                 traits.Add(t);
             }
-            return string.Join("\n", traits); // 直接返回，不走通用赋予
         }
-
-        // 普通卡牌：显示模板特性
-        if (template != null && !string.IsNullOrEmpty(template.traits) && template.traits != "无")
+        else
         {
-            traits.Add(template.traits);
-        }
-
-        // 通用：动态赋予的特性
-        foreach (string granted in ci.grantedTraitTexts)
-        {
-            traits.Add($"(赋予){granted}");
+            // 通用：动态赋予的特性（非 01117 的卡用标准格式）
+            foreach (string granted in ci.grantedTraitTexts)
+            {
+                traits.Add($"(赋予){granted}");
+            }
         }
 
         return traits.Count > 0 ? string.Join("\n", traits) : "无";

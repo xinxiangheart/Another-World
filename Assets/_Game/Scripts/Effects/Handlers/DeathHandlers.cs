@@ -93,6 +93,8 @@ public static class DeathHandlers
     }
 
     static BoardManager BM() => UnityEngine.Object.FindObjectOfType<BoardManager>();
+    /// <summary>根据 EffectContext 返回退场卡牌的所属玩家。</summary>
+    static NetworkPlayer NP(EffectContext ctx) => BoardManager.GetOwnerPlayer(ctx.sourceSlot?.slotID ?? -1);
     static HandManager HM() => UnityEngine.Object.FindObjectOfType<HandManager>();
 
     // ═══════════════════════════════════════════════════════════════════
@@ -156,9 +158,9 @@ public static class DeathHandlers
 
     static void Handle01520(EffectContext ctx)
     {
-        NetworkPlayer.Local.DrawCardWithoutLimit();
+        NP(ctx).DrawCardWithoutLimit();
         GlobalEventManager.Instance?.UnregisterAuraOfSource(ctx.source);
-        foreach (var card in NetworkPlayer.Local.handCards)
+        foreach (var card in NP(ctx).handCards)
         {
             if (card == null) continue;
             var ci = card.GetComponent<CardInstance>();
@@ -173,7 +175,7 @@ public static class DeathHandlers
     static void Handle01528(EffectContext ctx)
     {
         GlobalEventManager.Instance?.UnregisterAuraOfSource(ctx.source);
-        foreach (var card in NetworkPlayer.Local.handCards)
+        foreach (var card in NP(ctx).handCards)
         {
             if (card == null) continue;
             var ci = card.GetComponent<CardInstance>();
@@ -196,7 +198,7 @@ public static class DeathHandlers
             ctx.source.handledReturnToHand = true;
             var template = CardDatabase.Instance?.GetTemplate(ctx.TemplateID);
             if (template != null)
-                NetworkPlayer.Local.AddCardToHandFromInstance(template, ctx.source);
+                NP(ctx).AddCardToHandFromInstance(template, ctx.source);
         }
     }
 
@@ -217,7 +219,7 @@ public static class DeathHandlers
             if (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(ctx.source))
             {
                 var next = CardDatabase.Instance?.GetTemplate("03021");
-                if (next != null) NetworkPlayer.Local.AddCardToHand(next);
+                if (next != null) NP(ctx).AddCardToHand(next);
             }
         }
     }
@@ -229,7 +231,7 @@ public static class DeathHandlers
             if (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(ctx.source))
             {
                 var next = CardDatabase.Instance?.GetTemplate("03022");
-                if (next != null) NetworkPlayer.Local.AddCardToHand(next);
+                if (next != null) NP(ctx).AddCardToHand(next);
             }
         }
     }
@@ -244,8 +246,8 @@ public static class DeathHandlers
             switch (trait)
             {
                 case "退场：摸一张牌":
-                    NetworkPlayer.Local.currentEnergy -= 1;
-                    NetworkPlayer.Local.UpdateUI();
+                    NP(ctx).currentEnergy -= 1;
+                    NP(ctx).UpdateUI();
                     break;
                 case "退场：己方全体受一点伤害":
                     var bm = BM();
@@ -265,7 +267,7 @@ public static class DeathHandlers
                         }
                     break;
                 case "退场：己方玩家扣一血":
-                    NetworkPlayer.Local.TakeDamage(1);
+                    NP(ctx).TakeDamage(1);
                     break;
             }
         }
@@ -383,18 +385,18 @@ public static class DeathHandlers
 
     static void Handle01106Exit(EffectContext ctx)
     {
-        NetworkPlayer.Local.AddEnergy(1);
+        NP(ctx).AddEnergy(1);
     }
 
     static void Handle01106ActiveExit(EffectContext ctx)
     {
-        NetworkPlayer.Local.AddEnergy(3);
+        NP(ctx).AddEnergy(3);
     }
 
     static void Handle01316Exit(EffectContext ctx)
     {
-        NetworkPlayer.Local.DrawCardWithoutLimit();
-        NetworkPlayer.Local.DrawCardWithoutLimit();
+        NP(ctx).DrawCardWithoutLimit();
+        NP(ctx).DrawCardWithoutLimit();
     }
 
     static void Handle01316ActiveExit(EffectContext ctx)
@@ -410,7 +412,7 @@ public static class DeathHandlers
         {
             var data = DeckManager.Instance?.DrawFromMain();
             if (data == null) break;
-            NetworkPlayer.Local.AddCardToHand(data);
+            NP(ctx).AddCardToHand(data);
             totalCost += data.baseCost;
             drawnCount++;
         }
@@ -425,7 +427,7 @@ public static class DeathHandlers
         {
             var data = DeckManager.Instance?.DrawFromMain();
             if (data == null) break;
-            NetworkPlayer.Local.AddCardToHand(data);
+            NP(ctx).AddCardToHand(data);
             totalCost += data.baseCost;
             drawnCount++;
         }
@@ -463,7 +465,7 @@ public static class DeathHandlers
 
     static void Handle01107(EffectContext ctx)
     {
-        NetworkPlayer.Local.AddEnergy(2);
+        NP(ctx).AddEnergy(2);
         var bm = BM();
         bool hasAlly = false;
         BoardManager.GetSideRangeOf(ctx.source, out int f1007S, out int f1007E);
@@ -564,7 +566,7 @@ public static class DeathHandlers
                     var targetCI = targetSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
                     if (targetCI != null)
                     {
-                        NetworkPlayer.Local.AddEnergy(targetCI.currentCost);
+                        NP(ctx).AddEnergy(targetCI.currentCost);
                         targetCI.isActiveExit = true;
                         targetCI._conductorDoubleDeath = true;
                         targetSlot.HandleDeath(targetSlot.currentCard3D);
@@ -578,8 +580,8 @@ public static class DeathHandlers
     {
         int baseHP = Mathf.Max(0, ctx.source.currentHealth);
         int energyGain = baseHP * 2;
-        NetworkPlayer.Local._energyCanExceedLimit = true;
-        NetworkPlayer.Local.AddEnergy(energyGain);
+        NP(ctx)._energyCanExceedLimit = true;
+        NP(ctx).AddEnergy(energyGain);
     }
 
     static void Handle01338(EffectContext ctx)

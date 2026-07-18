@@ -159,32 +159,75 @@ public class BoardSyncManager : MonoBehaviour
             if (card != null) Card3DHover.SetHidden(card, mistHiderActive, false);
         }
 
-        // attachments
-        for (int i = bm.attachedModels.Count - 1; i >= 0; i--)
-        { if (bm.attachedModels[i] != null) SafeDestroy(bm.attachedModels[i]); bm.attachedModels.RemoveAt(i); }
+        // attachments — 不再盲目清空重建，做 diff
+        SyncAttachmentsFromBlock(bm, hm, attachBlock, mistHiderActive);
+    }
 
+    static void SyncAttachmentsFromBlock(BoardManager bm, HandManager hm, string attachBlock, bool mistHiderActive)
+    {
         if (string.IsNullOrEmpty(attachBlock)) return;
-        // 客户端附着物去重：收集当前所有 slot 的 templateID，防附着块重建同模板幻影
-        var clientSlotTids = new System.Collections.Generic.HashSet<string>();
-        for (int si = 0; si < 12; si++)
-        {
-            var sci = bm.GetSlot(si)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
-            if (sci != null && !string.IsNullOrEmpty(sci.templateID)) clientSlotTids.Add(sci.templateID);
-        }
+
+        // 解析附着块为列表
+        var incoming = new System.Collections.Generic.List<(string tid, int hs, int order)>();
         foreach (var item in attachBlock.Split(new[] { "||" }, System.StringSplitOptions.None))
         {
             if (string.IsNullOrEmpty(item)) continue;
             var p = item.Split('|');
-            int hs = 0, o = 0;
-            if (p.Length > 1 && int.TryParse(p[1], out int h)) hs = h;
-            if (p.Length > 2 && int.TryParse(p[2], out int od)) o = od;
-            // 去重：同模板已存在于 slot 则跳过
-            if (clientSlotTids.Contains(p[0])) continue;
-            var t = CardDatabase.Instance?.GetTemplate(p[0]);
+            if (p.Length < 3) continue;
+            if (!int.TryParse(p[1], out int hs) || !int.TryParse(p[2], out int o)) continue;
+            incoming.Add((p[0], hs, o));
+        }
+
+        // 去重 slot 侧已有的模板（独立放置过的牌 → 不是附着物，不重复造）
+        var slotTids = new System.Collections.Generic.HashSet<string>();
+        for (int si = 0; si < 12; si++)
+        {
+            var sci = bm.GetSlot(si)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (sci != null && !string.IsNullOrEmpty(sci.templateID)) slotTids.Add(sci.templateID);
+        }
+
+        // 移除多余的附着物（incoming 中没有的 → 销毁）
+        for (int i = bm.attachedModels.Count - 1; i >= 0; i--)
+        {
+            var obj = bm.attachedModels[i];
+            if (obj == null) { bm.attachedModels.RemoveAt(i); continue; }
+            var ci = obj.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci == null || !ci.isAttached) { bm.attachedModels.RemoveAt(i); continue; }
+            // 按 (templateID, hostSlot半场, attachOrder) 三元组匹配不同实例
+            bool stillExists = incoming.Exists(x => x.tid == ci.templateID
+                && (x.hs >= 6) == (ci.hostSlotID >= 6) && x.order == ci.attachOrder);
+            if (!stillExists) { SafeDestroy(obj); bm.attachedModels.RemoveAt(i); }
+        }
+
+        // 添加/更新 incoming 中的附着物
+        foreach (var (tid, hs, o) in incoming)
+        {
+            if (slotTids.Contains(tid)) continue;
+
+            int cs = hs >= 6 ? hs - 6 : hs + 6;
+
+            // 检查是否已有同模板同附着序号的模型
+            GameObject existing = null;
+            foreach (var obj in bm.attachedModels)
+            {
+                var ci = obj?.GetComponent<Card3DInstance>()?.cardInstance;
+                if (ci != null && ci.templateID == tid && ci.attachOrder == o && ci.hostSlotID == cs)
+                { existing = obj; break; }
+            }
+
+            if (existing != null)
+            {
+                // 已有 — 仅更新坐标和宿主
+                var eci = existing.GetComponent<Card3DInstance>()?.cardInstance;
+                if (eci != null) eci.hostSlotID = cs;
+                existing.transform.position = HandManager.GetAttachWorldPos(cs, o);
+                continue;
+            }
+
+            // 没有 — 新建
+            var t = CardDatabase.Instance?.GetTemplate(tid);
             if (t?.prefab3D == null || hm == null) continue;
-            int cs = hs >= 6 ? hs - 6 : hs + 6;  // mirror 6-11↔0-5
-            var m = Instantiate(t.prefab3D, hm.GetSlotWorldPosition(cs)
-                + new Vector3(-0.5f - o * 0.5f, 0, 0.1f + o * 0.1f), Quaternion.Euler(0, 180, 0));
+            var m = Instantiate(t.prefab3D, HandManager.GetAttachWorldPos(cs, o), Quaternion.Euler(0, 180, 0));
             var c = m.GetComponent<Card3DInstance>();
             if (c != null)
             {
@@ -192,11 +235,7 @@ public class BoardSyncManager : MonoBehaviour
                 n.isAttached = true; n.hostSlotID = cs; n.attachOrder = o;
                 c.cardInstance = n; c.UpdateValues();
             }
-            // Attachments: always text-hidden. Use same pattern as PlaceAttachedCard.
-            // If MistHider active, also flip + disable hover.
             Card3DHover.SetHidden(m, mistHiderActive, true);
-            // Duplicate the manual SetActive(false) calls — SetHidden's HideAllInfo
-            // silently no-ops if CardDisplay3D text fields are null on this prefab.
             CardDisplay3D d2 = m.GetComponent<CardDisplay3D>();
             if (d2 != null)
             {
@@ -261,6 +300,19 @@ public class BoardSyncManager : MonoBehaviour
                 if (ci != null && Time.time - ci._placedAtTime < 0.5f) return;
             }
 
+            // 销毁附着在宿主槽位上的附着模型
+            for (int i = bm.attachedModels.Count - 1; i >= 0; i--)
+            {
+                var am = bm.attachedModels[i];
+                if (am == null) { bm.attachedModels.RemoveAt(i); continue; }
+                var aci = am.GetComponent<Card3DInstance>()?.cardInstance;
+                if (aci != null && aci.isAttached && aci.hostSlotID == idx)
+                {
+                    SafeDestroy(am);
+                    bm.attachedModels.RemoveAt(i);
+                }
+            }
+
             SafeDestroy(slot.currentCard3D); slot.SetCard(null);
         }
 
@@ -279,6 +331,8 @@ public class BoardSyncManager : MonoBehaviour
         if (cur == null && hm != null)
         {
             var t = CardDatabase.Instance?.GetTemplate(tid);
+            // 附着专用卡不放槽位模型
+            if (t != null && t.canAttach && t.baseHealth == 0) return;
             if (t?.prefab3D != null)
             {
                 var m = Instantiate(t.prefab3D, hm.GetSlotWorldPosition(idx), Quaternion.Euler(0, 180, 0));
@@ -311,8 +365,8 @@ public class BoardSyncManager : MonoBehaviour
                 var newList = new System.Collections.Generic.List<string>(
                     p[15].Split(new[] { ";;" }, System.StringSplitOptions.None));
                 newList.RemoveAll(t => string.IsNullOrEmpty(t));
-                var oldCopy = cur.grantedTraitTexts != null
-                    ? new System.Collections.Generic.List<string>(cur.grantedTraitTexts) : new System.Collections.Generic.List<string>();
+                if (cur.grantedTraitTexts == null) cur.grantedTraitTexts = new System.Collections.Generic.List<string>();
+                var oldCopy = new System.Collections.Generic.List<string>(cur.grantedTraitTexts);
                 foreach (var t in oldCopy)
                     if (!newList.Contains(t)) cur.RemoveGrantedTrait(t);
                 foreach (var t in newList)
@@ -320,6 +374,7 @@ public class BoardSyncManager : MonoBehaviour
             }
             slot.currentCard3D?.GetComponent<Card3DInstance>()?.UpdateValues();
         }
+        Test1Panel.Instance?.RefreshIfOpen();
     }
 
     static void SafeDestroy(GameObject o) { var ni = o.GetComponent<NetworkIdentity>(); if (ni != null) Object.Destroy(ni); Object.Destroy(o); }

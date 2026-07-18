@@ -289,7 +289,7 @@ public class NetworkPlayer : NetworkBehaviour
     /// are applied after InitFromTemplate so enter-effect stat boosts survive the server's fresh spawn.
     /// </summary>
     [Command]
-    public void CmdPlayCard(string templateID, int slotID, int overrideAtk, int overrideHP, int overrideMaxHP)
+    public void CmdPlayCard(string templateID, int slotID, int overrideAtk, int overrideHP, int overrideMaxHP, string instanceID)
     {
         Debug.Log($"[NetworkPlayer] CmdPlayCard: templateID={templateID}, slotID={slotID}, netId={netId}");
         TurnManager tm = FindObjectOfType<TurnManager>();
@@ -298,6 +298,14 @@ public class NetworkPlayer : NetworkBehaviour
 
         CardData template = CardDatabase.Instance?.GetTemplate(templateID);
         if (template == null) return;
+
+        // 附着专用卡（baseHealth==0 && canAttach）不应作为独立槽位模型 — 防同步竞态产生幻影
+        if (template.cardType == CardType.Summon && template.canAttach && template.baseHealth == 0)
+        {
+            Debug.LogWarning($"[CmdPlayCard] 拒绝为附着专用卡 {templateID} 建独立槽位模型");
+            BoardSyncManager.MarkDirty();
+            return;
+        }
 
         if (template.cardType == CardType.Summon)
         {
@@ -319,7 +327,7 @@ public class NetworkPlayer : NetworkBehaviour
                         if (c3d != null)
                         {
                             CardInstance ci = model.AddComponent<CardInstance>();
-                            ci.InitFromTemplate(template, 0);
+                            ci.InitFromTemplate(template, 0, instanceID);
 
                             // Apply enter-effect stat overrides before first sync
                             if (overrideAtk >= 0) ci.currentAttack = overrideAtk;
@@ -348,7 +356,7 @@ public class NetworkPlayer : NetworkBehaviour
                 foreach (var kv in NetworkServer.connections)
                     if (kv.Value != connectionToClient) { other = kv.Value; break; }
                 if (other != null)
-                    TargetSpawnCard3D(other, templateID, slotID, overrideAtk, overrideHP, overrideMaxHP);
+                    TargetSpawnCard3D(other, templateID, slotID, overrideAtk, overrideHP, overrideMaxHP, instanceID);
             }
         }
         // Non-counter cards: trigger opponent's OnCardPlayed counters on server.
@@ -833,10 +841,17 @@ public class NetworkPlayer : NetworkBehaviour
     /// </summary>
     [TargetRpc]
     public void TargetSpawnCard3D(NetworkConnectionToClient target, string templateID, int slotID,
-        int overrideAtk, int overrideHP, int overrideMaxHP)
+        int overrideAtk, int overrideHP, int overrideMaxHP, string instanceID)
     {
         CardData template = CardDatabase.Instance?.GetTemplate(templateID);
         if (template?.prefab3D == null) return;
+
+        // 附着专用卡不应建独立槽位模型
+        if (template.canAttach && template.baseHealth == 0)
+        {
+            Debug.LogWarning($"[TargetSpawnCard3D] 拒绝为附着专用卡 {templateID} 建独立模型");
+            return;
+        }
 
         // Mirror slot for other client: 6-11↔0-5 (both directions)
         int enemySlot = slotID >= 6 ? slotID - 6 : slotID + 6;
@@ -858,7 +873,7 @@ public class NetworkPlayer : NetworkBehaviour
         if (c3d != null)
         {
             CardInstance ci = model.AddComponent<CardInstance>();
-            ci.InitFromTemplate(template, 0);
+            ci.InitFromTemplate(template, 0, instanceID);
 
             // Apply enter-effect stat overrides
             if (overrideAtk >= 0) ci.currentAttack = overrideAtk;
@@ -1018,86 +1033,131 @@ public class NetworkPlayer : NetworkBehaviour
 
             if (!isReportingOwnSlot) continue; // 不销毁/修改对方玩家槽位卡牌
 
-            // ── 上报方自己的槽位：空 → 销毁，有数据 → 更新 ──
-            if (string.IsNullOrEmpty(tid))
+            // ── 卡牌数据（始终应用——双方都能上报对方卡牌的属性变化如血量/特性）──
+            if (!string.IsNullOrEmpty(tid))
             {
-                if (slot.currentCard3D != null) { Destroy(slot.currentCard3D); slot.SetCard(null); }
-                continue;
-            }
-
-            var ci = slot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
-            if (ci == null) continue; // stale report guard
-
-            if (ci.templateID != tid)
-            {
-                if (slot.currentCard3D != null) { Destroy(slot.currentCard3D); slot.SetCard(null); }
-                CardData t = CardDatabase.Instance?.GetTemplate(tid);
-                if (t?.prefab3D != null)
-                { RebuildSlotModel(serverSlot, tid); ci = slot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance; }
-            }
-
-            if (ci != null && ci.templateID == tid)
-            {
-                string[] p = raw.Split('|'); int v;
-                if (p.Length > 1 && int.TryParse(p[1], out v)) ci.currentHealth = v;
-                if (p.Length > 2 && int.TryParse(p[2], out v)) ci.currentAttack = v;
-                if (p.Length > 3 && int.TryParse(p[3], out v)) ci.currentMaxHealth = v;
-                if (p.Length > 4 && int.TryParse(p[4], out v)) ci.baseAttack = v;
-                if (p.Length > 5 && int.TryParse(p[5], out v)) ci.baseHealth = v;
-                if (p.Length > 6 && int.TryParse(p[6], out v)) ci.baseMaxHealth = v;
-                if (p.Length > 7 && int.TryParse(p[7], out v)) ci.currentCost = v;
-                if (p.Length > 8 && int.TryParse(p[8], out v)) ci.currentTier = v;
-                if (p.Length > 9 && int.TryParse(p[9], out v)) ci.baseTier = v;
-                if (p.Length > 10) ci.hasShield = (p[10] == "1");
-                if (p.Length > 11) ci.silencedThisPhase = (p[11] == "1");
-                if (p.Length > 12) ci.isAttached = (p[12] == "1");
-                if (p.Length > 13) ci.poisoned = (p[13] == "1");
-                if (p.Length > 14) ci.prefixes = p[14];
-                // granted trait texts (16th field)
-                if (p.Length > 15 && !string.IsNullOrEmpty(p[15]))
+                var ci = slot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                if (ci != null && ci.templateID == tid)
                 {
-                    // 清除旧的 granted 标记，再逐个 GrantTrait 设正确的 bool
-                    var newList = new System.Collections.Generic.List<string>(
-                        p[15].Split(new[] { ";;" }, System.StringSplitOptions.None));
-                    newList.RemoveAll(t => string.IsNullOrEmpty(t));
-                    // 先剥离再赋予——避免旧标记残留
-                    var oldCopy = ci.grantedTraitTexts != null
-                        ? new System.Collections.Generic.List<string>(ci.grantedTraitTexts) : new System.Collections.Generic.List<string>();
-                    foreach (var t in oldCopy)
-                        if (!newList.Contains(t)) ci.RemoveGrantedTrait(t);
-                    foreach (var t in newList)
-                        if (!oldCopy.Contains(t)) ci.GrantTrait(t);
+                    string[] p = raw.Split('|'); int v;
+                    if (p.Length > 1 && int.TryParse(p[1], out v)) ci.currentHealth = v;
+                    if (p.Length > 2 && int.TryParse(p[2], out v)) ci.currentAttack = v;
+                    if (p.Length > 3 && int.TryParse(p[3], out v)) ci.currentMaxHealth = v;
+                    if (p.Length > 4 && int.TryParse(p[4], out v)) ci.baseAttack = v;
+                    if (p.Length > 5 && int.TryParse(p[5], out v)) ci.baseHealth = v;
+                    if (p.Length > 6 && int.TryParse(p[6], out v)) ci.baseMaxHealth = v;
+                    if (p.Length > 7 && int.TryParse(p[7], out v)) ci.currentCost = v;
+                    if (p.Length > 8 && int.TryParse(p[8], out v)) ci.currentTier = v;
+                    if (p.Length > 9 && int.TryParse(p[9], out v)) ci.baseTier = v;
+                    if (p.Length > 10) ci.hasShield = (p[10] == "1");
+                    if (p.Length > 11) ci.silencedThisPhase = (p[11] == "1");
+                    if (p.Length > 12) ci.isAttached = (p[12] == "1");
+                    if (p.Length > 13) ci.poisoned = (p[13] == "1");
+                    if (p.Length > 14) ci.prefixes = p[14];
+                    if (p.Length > 15)
+                    {
+                        var newList = new System.Collections.Generic.List<string>(
+                            p[15].Split(new[] { ";;" }, System.StringSplitOptions.None));
+                        newList.RemoveAll(t => string.IsNullOrEmpty(t));
+                        if (ci.grantedTraitTexts == null) ci.grantedTraitTexts = new System.Collections.Generic.List<string>();
+                        var oldCopy = new System.Collections.Generic.List<string>(ci.grantedTraitTexts);
+                        foreach (var t in oldCopy)
+                            if (!newList.Contains(t)) ci.RemoveGrantedTrait(t);
+                        foreach (var t in newList)
+                            if (!oldCopy.Contains(t)) ci.GrantTrait(t);
+                    }
+                    slot.currentCard3D?.GetComponent<Card3DInstance>()?.UpdateValues();
                 }
-                slot.currentCard3D?.GetComponent<Card3DInstance>()?.UpdateValues();
+            }
+            // 仅上报方自己的槽位：空→销毁
+            else if (isReportingOwnSlot)
+            {
+                if (slot.currentCard3D != null) { Destroy(slot.currentCard3D); slot.SetCard(null); }
             }
         }
+        ApplyAttachDiff(bm, attachBlock, isLocalPlayer);
 
-        // Attachments
+        BoardSlot.CheckAndHandleDeaths();
+        BoardSyncManager.MarkDirty();
+    }
+
+    /// <summary>附着物 diff 更新：已有→移坐标，不存在→创建。服务端从不基于客户端上报删除附着模型。</summary>
+    static void ApplyAttachDiff(BoardManager bm, string attachBlock, bool isLocalPlayer)
+    {
         bm.attachedModels.RemoveAll(a => a == null);
-        for (int i = bm.attachedModels.Count - 1; i >= 0; i--)
-        { Destroy(bm.attachedModels[i]); bm.attachedModels.RemoveAt(i); }
+
+        var incoming = new System.Collections.Generic.List<(string tid, int hs, int order)>();
         if (!string.IsNullOrEmpty(attachBlock))
         {
-            var hm = FindObjectOfType<HandManager>();
             foreach (var item in attachBlock.Split(new[] { "||" }, System.StringSplitOptions.None))
             {
                 if (string.IsNullOrEmpty(item)) continue;
                 var p = item.Split('|');
                 if (p.Length < 3) continue;
-                if (!int.TryParse(p[1], out int hs) || !int.TryParse(p[2], out int o)) continue;
-                int mapped = isLocalPlayer ? hs : (hs >= 6 ? hs - 6 : hs + 6);
-                var t = CardDatabase.Instance?.GetTemplate(p[0]);
-                if (t?.prefab3D == null || hm == null) continue;
-                var m = Instantiate(t.prefab3D, hm.GetSlotWorldPosition(mapped)
-                    + new Vector3(-0.5f - o * 0.5f, 0, 0.1f + o * 0.1f), Quaternion.Euler(0, 180, 0));
-                var c = m.GetComponent<Card3DInstance>();
-                if (c != null) { var n = m.AddComponent<CardInstance>(); n.InitFromTemplate(t, 0); n.isAttached = true; n.hostSlotID = mapped; n.attachOrder = o; c.cardInstance = n; c.UpdateValues(); }
-                bm.attachedModels.Add(m);
+                if (!int.TryParse(p[1], out int h) || !int.TryParse(p[2], out int o)) continue;
+                incoming.Add((p[0], h, o));
             }
         }
 
-        BoardSlot.CheckAndHandleDeaths();
-        BoardSyncManager.MarkDirty();
+        // 服务端收到客户端上报时，不删除现有附着模型（客户端可能尚未同步到最新状态）
+        bool isServerProcessingClientReport = Mirror.NetworkServer.active && !isLocalPlayer;
+
+        var slotTids = new System.Collections.Generic.HashSet<string>();
+        for (int si = 0; si < 12; si++)
+        {
+            var sci = bm.GetSlot(si)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (sci != null && !string.IsNullOrEmpty(sci.templateID)) slotTids.Add(sci.templateID);
+        }
+
+        // 仅在非"服务端处理客户端上报"时删除 incoming 中不存在的附着物
+        if (!isServerProcessingClientReport)
+        {
+            for (int i = bm.attachedModels.Count - 1; i >= 0; i--)
+            {
+                var obj = bm.attachedModels[i];
+                if (obj == null) { bm.attachedModels.RemoveAt(i); continue; }
+                var ci = obj.GetComponent<Card3DInstance>()?.cardInstance;
+                if (ci == null || !ci.isAttached) { bm.attachedModels.RemoveAt(i); continue; }
+                bool stillExists = incoming.Exists(x => x.tid == ci.templateID
+                    && (x.hs >= 6) == (ci.hostSlotID >= 6) && x.order == ci.attachOrder);
+                if (!stillExists) { Destroy(obj); bm.attachedModels.RemoveAt(i); }
+            }
+        }
+
+        var hm = FindObjectOfType<HandManager>();
+        foreach (var (tid, hs, o) in incoming)
+        {
+            if (slotTids.Contains(tid)) continue;
+            int mapped = isLocalPlayer ? hs : (hs >= 6 ? hs - 6 : hs + 6);
+
+            GameObject existing = null;
+            foreach (var obj in bm.attachedModels)
+            {
+                var ci = obj?.GetComponent<Card3DInstance>()?.cardInstance;
+                if (ci != null && ci.templateID == tid && ci.attachOrder == o && ci.hostSlotID == mapped)
+                { existing = obj; break; }
+            }
+
+            if (existing != null)
+            {
+                existing.transform.position = HandManager.GetAttachWorldPos(mapped, o);
+                var eci = existing.GetComponent<Card3DInstance>()?.cardInstance;
+                if (eci != null) eci.hostSlotID = mapped;
+                continue;
+            }
+
+            var t = CardDatabase.Instance?.GetTemplate(tid);
+            if (t?.prefab3D == null || hm == null) continue;
+            var m = Instantiate(t.prefab3D, HandManager.GetAttachWorldPos(mapped, o), Quaternion.Euler(0, 180, 0));
+            var c = m.GetComponent<Card3DInstance>();
+            if (c != null)
+            {
+                var n = m.AddComponent<CardInstance>(); n.InitFromTemplate(t, 0);
+                n.isAttached = true; n.hostSlotID = mapped; n.attachOrder = o;
+                c.cardInstance = n; c.UpdateValues();
+            }
+            bm.attachedModels.Add(m);
+        }
     }
 
     /// <summary>Client → server: report my 6-11 stats + attachments, server updates its 0-5 then re-syncs.</summary>
@@ -1174,15 +1234,13 @@ public class NetworkPlayer : NetworkBehaviour
                 if (p.Length > 13) ci.poisoned = (p[13] == "1");
                 if (p.Length > 14) ci.prefixes = p[14];
                 // granted trait texts (16th field)
-                if (p.Length > 15 && !string.IsNullOrEmpty(p[15]))
+                if (p.Length > 15)
                 {
-                    // 清除旧的 granted 标记，再逐个 GrantTrait 设正确的 bool
                     var newList = new System.Collections.Generic.List<string>(
                         p[15].Split(new[] { ";;" }, System.StringSplitOptions.None));
                     newList.RemoveAll(t => string.IsNullOrEmpty(t));
-                    // 先剥离再赋予——避免旧标记残留
-                    var oldCopy = ci.grantedTraitTexts != null
-                        ? new System.Collections.Generic.List<string>(ci.grantedTraitTexts) : new System.Collections.Generic.List<string>();
+                    if (ci.grantedTraitTexts == null) ci.grantedTraitTexts = new System.Collections.Generic.List<string>();
+                    var oldCopy = new System.Collections.Generic.List<string>(ci.grantedTraitTexts);
                     foreach (var t in oldCopy)
                         if (!newList.Contains(t)) ci.RemoveGrantedTrait(t);
                     foreach (var t in newList)
@@ -1223,10 +1281,7 @@ public class NetworkPlayer : NetworkBehaviour
                 if (slotTids.Contains(p[0])) continue;
                 var t = CardDatabase.Instance?.GetTemplate(p[0]);
                 if (t?.prefab3D == null || hm2 == null) continue;
-                Vector3 hostPos = hm2.GetSlotWorldPosition(serverHostSlot);
-                Vector3 attachPos = new Vector3(hostPos.x - 0.5f - o * 0.5f, hostPos.y,
-                    hostPos.z + 0.1f + o * 0.1f);
-                GameObject model = Instantiate(t.prefab3D, attachPos, Quaternion.Euler(0, 180, 0));
+                GameObject model = Instantiate(t.prefab3D, HandManager.GetAttachWorldPos(serverHostSlot, o), Quaternion.Euler(0, 180, 0));
                 Card3DInstance c3dAtt = model.GetComponent<Card3DInstance>();
                 if (c3dAtt != null)
                 {

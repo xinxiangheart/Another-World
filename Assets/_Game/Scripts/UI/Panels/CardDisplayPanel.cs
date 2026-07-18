@@ -70,6 +70,10 @@ public class CardDisplayPanel : MonoBehaviour
             di.currentMaxHealth = ci.currentMaxHealth;
             di.currentTier = ci.currentTier;
             di.prefixes = ci.prefixes;
+            // 赋予的特性文本也复制 — 详情面板需要展示
+            di.grantedTraitTexts = ci.grantedTraitTexts != null ? new System.Collections.Generic.List<string>(ci.grantedTraitTexts) : null;
+            di.hasShield = ci.hasShield;
+            di.poisoned = ci.poisoned;
             go.GetComponent<CardDisplay2D>()?.RefreshWithInstance(di);
 
             int row = i / cardsPerRow, col = i % cardsPerRow;

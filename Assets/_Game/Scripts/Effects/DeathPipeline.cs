@@ -161,7 +161,7 @@ public static class DeathPipeline
             {
                 GameObject temp = new GameObject("TempSoldier");
                 CardInstance ti = temp.AddComponent<CardInstance>();
-                ti.InitFromTemplate(soldierTemplate, 0);
+                ti.InitFromTemplate(soldierTemplate, 0, CardZoneManager.GenerateInstanceID("03004"));
                 HandManager hm = Object.FindObjectOfType<HandManager>();
                 hm.PlaceCardToSlot(slot, temp);
                 Object.Destroy(temp);
@@ -177,9 +177,15 @@ public static class DeathPipeline
                 NetworkPlayer.Local.AddCardToHandFromInstance(p.template03504, ci);
         }
         if (p.shouldReturn01117 && p.template01117 != null)
-            NetworkPlayer.Local.AddCardToHandFromInstance(p.template01117, ci);
+        {
+            NetworkPlayer owner = BoardManager.GetOwnerPlayer(p.slot.slotID);
+            if (owner != null) owner.AddCardToHandFromInstance(p.template01117, ci);
+        }
         if (p.shouldReturn03009 && p.template03009 != null)
-            NetworkPlayer.Local.AddCardToHandFromInstance(p.template03009, ci);
+        {
+            NetworkPlayer owner = BoardManager.GetOwnerPlayer(p.slot.slotID);
+            if (owner != null) owner.AddCardToHandFromInstance(p.template03009, ci);
+        }
 
         // ── 8. Destroy ─────────────────────────────────────────────────
         Object.Destroy(p.dyingCard);
