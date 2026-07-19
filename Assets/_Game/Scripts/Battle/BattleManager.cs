@@ -1085,6 +1085,7 @@ public class BattleManager : MonoBehaviour
                 yield return null;
                 yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
                 yield return new WaitWhile(() => BoardSlot.isPlacingCard);
+                yield return new WaitWhile(() => BoardSlot._roguePhaseBlock);
                 var cqm = ConfirmQueueManager.Instance;
                 if (cqm != null) yield return new WaitWhile(() => cqm.IsBusy());
                 // 反击窗口
@@ -1168,20 +1169,6 @@ public class BattleManager : MonoBehaviour
                 }
             }));
         }
-        else if (effect.Contains("对方摸两张牌"))
-        {
-            int deadSlot2 = FindSlotOfGameObject(deadCard);
-            NetworkPlayer opponent2 = BoardManager.GetOpponentPlayer(deadSlot2);
-            for (int j = 0; j < 2; j++)
-            {
-                CardData data = DeckManager.Instance?.DrawFromMain();
-                if (data != null && opponent2 != null)
-                {
-                    opponent2.TargetReceiveCard(opponent2.connectionToClient, data.templateID, data._instanceID ?? "");
-                    opponent2.AddServerSideCard(data, data._instanceID);
-                }
-            }
-        }
         else if (effect.Contains("选定一个格子，该格子上的召唤物临时+0-1（最少为0）并且每阶段开始扣一生命值"))
         {
             yield return StartCoroutine(WaitForSelection((onDone) =>
@@ -1234,25 +1221,27 @@ public class BattleManager : MonoBehaviour
 
             foreach (var (deadSlotID, effect, sourceIDs) in batch)
             {
+                // 对方摸两张牌——始终用 deadSlotID 的对手（与 sourceIDs 是否为空无关）
+                if (effect.Contains("对方摸两张牌"))
+                {
+                    NetworkPlayer opponent = BoardManager.GetOpponentPlayer(deadSlotID);
+                    for (int j = 0; j < 2; j++)
+                    {
+                        CardData data = DeckManager.Instance?.DrawFromMain();
+                        if (data != null && opponent != null)
+                        {
+                            opponent.TargetReceiveCard(opponent.connectionToClient, data.templateID, data._instanceID ?? "");
+                            opponent.AddServerSideCard(data, data._instanceID);
+                        }
+                    }
+                    continue;
+                }
+
                 // ── 非伤害型反击（无目标迭代）──
                 if (sourceIDs == null || sourceIDs.Count == 0)
                 {
-                    // 对方摸两张牌
-                    if (effect.Contains("对方摸两张牌"))
-                    {
-                        NetworkPlayer opponent = BoardManager.GetOpponentPlayer(deadSlotID);
-                        for (int j = 0; j < 2; j++)
-                        {
-                            CardData data = DeckManager.Instance?.DrawFromMain();
-                            if (data != null && opponent != null)
-                            {
-                                opponent.TargetReceiveCard(opponent.connectionToClient, data.templateID, "");
-                                opponent.AddServerSideCard(data);
-                            }
-                        }
-                    }
                     // +1能量
-                    else if (effect.Contains("+1能量"))
+                    if (effect.Contains("+1能量"))
                     {
                         BoardManager.GetOwnerPlayer(deadSlotID)?.AddEnergy(1);
                     }

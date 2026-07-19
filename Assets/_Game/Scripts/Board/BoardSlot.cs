@@ -65,6 +65,12 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     /// 存储(死卡槽位ID, 反击效果文本, 伤害来源实例ID列表)。</summary>
     public static List<(int deadSlotID, string revengeEffect, List<string> sourceInstanceIDs)> pendingRevenges
         = new List<(int, string, List<string>)>();
+
+    /// <summary>无赖(01309)退场召唤阶段阻塞标记——ApplyDamageLoop 检查此标记暂停推进。</summary>
+    public static bool _roguePhaseBlock;
+    /// <summary>服务端等待远端客户端完成无赖(01309)召唤。</summary>
+    public static bool _rogueRpcDone;
+    public static void NotifyRogueRpcDone() { _rogueRpcDone = true; }
     public bool prisonBlocked;      // 囚牢封锁
     public bool prisonAllowYuan;    // 允许放置渊前缀召唤物（仅己方封锁格子）
     public int deepSeaAttackDebuff; // 格子攻击力减益
@@ -1432,10 +1438,38 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     }
     public IEnumerator RogueDeathEffect(CardInstance giver)
     {
-        NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
+        NetworkPlayer owner = BoardManager.GetOwnerPlayer(slotID);
+        if (owner == null) yield break;
+
+        _roguePhaseBlock = true;
+
+        if (!owner.isLocalPlayer)
+        {
+            owner.TargetRogueDeathEffect(owner.connectionToClient, slotID);
+            float t = Time.time;
+            while (!_rogueRpcDone && Time.time - t < 30f) yield return null;
+            _rogueRpcDone = false;
+            _roguePhaseBlock = false;
+            yield break;
+        }
+
+        yield return StartCoroutine(RogueDoSummon(owner));
+        _roguePhaseBlock = false;
+    }
+
+    /// <summary>远端客户端执行：走与本地完全相同的 isPlacingCard+cardToPlace 放置流程。</summary>
+    public IEnumerator RogueSummonRemote()
+    {
+        yield return StartCoroutine(RogueDoSummon(NetworkPlayer.Local));
+        NetworkPlayer.Local?.CmdRogueDone();
+    }
+
+    IEnumerator RogueDoSummon(NetworkPlayer player)
+    {
+        player.handCards.RemoveAll(c => c == null);
 
         List<GameObject> heroCards = new List<GameObject>();
-        foreach (GameObject card in NetworkPlayer.Local.handCards)
+        foreach (GameObject card in player.handCards)
         {
             if (card == null) continue;
             CardInstance ci = card.GetComponent<CardInstance>();
@@ -1445,11 +1479,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 heroCards.Add(card);
         }
 
-        if (heroCards.Count == 0)
-        {
-            Debug.Log("妖精护盾选择前");
-            yield break;
-        }
+        if (heroCards.Count == 0) yield break;
 
         ConfirmQueueManager.EnterSelectionMode();
         var validCards = ConfirmQueueManager.FilterHandCards(ci =>
@@ -1477,19 +1507,18 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         if (selectedCard != null)
         {
-            NetworkPlayer.Local.handCards.Remove(selectedCard);
+            player.handCards.Remove(selectedCard);
             BoardSlot.isPlacingCard = true;
             BoardSlot.isStrengtheningSlot = true;
             BoardSlot.cardToPlace = selectedCard;
-            HandManager hm = FindObjectOfType<HandManager>();
-            hm?.HideAllCards();
-            hm?.SetHandAreaRaycast(false);
-            FindObjectOfType<CardDrag>()?.SetButtonsInteractable(false);
-            Card3DHover.allowDiscard = false;
             yield return new WaitWhile(() => BoardSlot.isPlacingCard);
-            NetworkPlayer.Local.handCards.Remove(selectedCard);
+            // 等进场效果完成（可能重新置 isPlacingCard 触发子召唤如影舞者）
+            yield return new WaitWhile(() => BoardSlot.isPlacingCard);
+            yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
+            player.handCards.Remove(selectedCard);
         }
     }
+
     public IEnumerator GreedySnakeCopyProcess(CardInstance giver, CardInstance target)
     {
         List<(string key, string fullText)> traits = new List<(string, string)>();

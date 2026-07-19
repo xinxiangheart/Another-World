@@ -334,6 +334,9 @@ public class NetworkPlayer : NetworkBehaviour
                             if (overrideHP >= 0) ci.currentHealth = overrideHP;
                             if (overrideMaxHP >= 0) ci.currentMaxHealth = overrideMaxHP;
 
+                            // 01309: 进场护盾（攻击回合开始消失）
+                            if (ci.templateID == "01309") ci.GrantShield(false, true, false);
+
                             c3d.cardInstance = ci;
                             c3d.UpdateValues();
 
@@ -879,6 +882,9 @@ public class NetworkPlayer : NetworkBehaviour
             if (overrideAtk >= 0) ci.currentAttack = overrideAtk;
             if (overrideHP >= 0) ci.currentHealth = overrideHP;
             if (overrideMaxHP >= 0) ci.currentMaxHealth = overrideMaxHP;
+
+            // 01309: 进场护盾（攻击回合开始消失）
+            if (ci.templateID == "01309") ci.GrantShield(false, true, false);
 
             c3d.cardInstance = ci;
             c3d.UpdateValues();
@@ -1441,6 +1447,10 @@ public class NetworkPlayer : NetworkBehaviour
             AddCardToHand(template);
     }
 
+
+
+
+
     // ========== 蛊惑之音(02304) 进场重定向 ==========
 
     /// <summary>
@@ -1631,5 +1641,23 @@ public class NetworkPlayer : NetworkBehaviour
                 return;
             }
         }
+    }
+
+    // ========== 无赖(01309) 跨端退场召唤 ==========
+
+    /// <summary>服务端→远端客户端：你的01309死了，在你本地执行选择召唤。</summary>
+    [TargetRpc]
+    public void TargetRogueDeathEffect(NetworkConnectionToClient target, int originalDeadSlotID)
+    {
+        BoardSlot slot = FindObjectOfType<BoardSlot>();
+        if (slot != null)
+            slot.StartCoroutine(slot.RogueSummonRemote());
+    }
+
+    /// <summary>远端客户端完成召唤后通知服务端解除阻塞。</summary>
+    [Command]
+    public void CmdRogueDone()
+    {
+        BoardSlot.NotifyRogueRpcDone();
     }
 }
