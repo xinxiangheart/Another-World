@@ -282,7 +282,7 @@ public static class SpellHandlers
             var t3d = ts.currentCard3D.GetComponent<Card3DInstance>();
             if (t3d?.cardInstance != null)
             {
-                t3d.cardInstance.isActiveExit = false;
+                t3d.cardInstance.isActiveExit = true;
                 t3d.cardInstance.handledReturnToHand = true;
                 var rt = CardDatabase.Instance?.GetTemplate(t3d.cardInstance.templateID);
                 ts.HandleDeath(ts.currentCard3D);

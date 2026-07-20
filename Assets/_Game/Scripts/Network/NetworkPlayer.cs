@@ -176,11 +176,57 @@ public class NetworkPlayer : NetworkBehaviour
             Remote = this;
             Debug.Log($"[NetworkPlayer] OnStartClient: Remote set to netId={netId}");
         }
-        handArea = FindTransform("EnemyHandArea");
-        handManager = FindObjectOfType<HandManager>();
+        // UI-only references — only used on the actual client for enemy health/energy display.
+        // Do NOT set handArea/handManager for Remote — server-side draws for Remote must
+        // use TargetReceiveCard RPC, never local Instantiate (which would land on EnemyHandArea).
         _healthText = FindTMP("EnemyHealthLabel");
         _energyText = FindTMP("EnemyEnergyLabel");
         RefreshUI();
+    }
+
+    /// <summary>
+    /// Network-safe card draw for a player. On the server, draws for Remote use
+    /// TargetReceiveCard RPC; draws for Local use the local Instantiate path.
+    /// </summary>
+    public static void DrawCardForPlayer(NetworkPlayer player)
+    {
+        if (player == null) return;
+        if (NetworkServer.active && player != Local)
+        {
+            CardData data = DeckManager.Instance?.DrawFromMain();
+            if (data != null)
+            {
+                string iid = data._instanceID ?? "";
+                player.TargetReceiveCard(player.connectionToClient, data.templateID, iid);
+                player.AddServerSideCard(data, iid);
+            }
+        }
+        else
+        {
+            player.DrawCardWithoutLimit();
+        }
+    }
+
+    /// <summary>
+    /// Network-safe AddCardToHand for a player. On the server, adds for Remote use
+    /// TargetReceiveCard RPC; adds for Local use the local path.
+    /// </summary>
+    public static void AddCardToHandForPlayer(NetworkPlayer player, CardData data, string oldInstanceID = null)
+    {
+        if (player == null || data == null) return;
+        if (NetworkServer.active && player != Local)
+        {
+            string iid = data._instanceID ?? "";
+            player.TargetReceiveCard(player.connectionToClient, data.templateID, iid);
+            player.AddServerSideCard(data, iid);
+        }
+        else
+        {
+            if (!string.IsNullOrEmpty(oldInstanceID))
+                player.AddCardToHandFromInstance(data, null, false);
+            else
+                player.AddCardToHand(data);
+        }
     }
 
     TextMeshProUGUI FindTMP(string name)
@@ -819,7 +865,7 @@ public class NetworkPlayer : NetworkBehaviour
         CardData template = CardDatabase.Instance?.GetTemplate(templateID);
         if (template != null)
         {
-            AddCardToHand(template, instanceID);
+            Local.AddCardToHand(template, instanceID);
             Debug.Log($"[NetworkPlayer] TargetReceiveCard: {templateID} iid={instanceID}");
         }
     }
@@ -1037,10 +1083,14 @@ public class NetworkPlayer : NetworkBehaviour
                 if (int.TryParse(parts[parts.Length - 1], out int boost)) slot.slotTempAttackBoost = boost;
             }
 
-            // ── 属性数据更新（全部 12 槽通用——客户端上报的对方卡牌属性是"我刚打过的"，信任它）──
+            // ── 属性/模板数据更新（全部 12 槽通用——客户端上报的对方卡牌属性是"我刚打过的"，信任它）──
             if (!string.IsNullOrEmpty(tid))
             {
                 var ci = slot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                // 换位/附体/变身导致 templateID 不一致 → 无法判断是换位（应等RPC）还是变身（应重建），
+                // 直接跳过不修补——等下次同步数据一致后再应用属性更新。
+                if (ci != null && ci.templateID != tid)
+                    continue;
                 if (ci != null && ci.templateID == tid)
                 {
                     string[] p = raw.Split('|'); int v;
@@ -1122,8 +1172,12 @@ public class NetworkPlayer : NetworkBehaviour
                 if (obj == null) { bm.attachedModels.RemoveAt(i); continue; }
                 var ci = obj.GetComponent<Card3DInstance>()?.cardInstance;
                 if (ci == null || !ci.isAttached) { bm.attachedModels.RemoveAt(i); continue; }
-                bool stillExists = incoming.Exists(x => x.tid == ci.templateID
-                    && (x.hs >= 6) == (ci.hostSlotID >= 6) && x.order == ci.attachOrder);
+                // incoming hs is CLIENT coordinate; ci.hostSlotID is SERVER coordinate.
+                // Map incoming to server space for exact comparison.
+                bool stillExists = incoming.Exists(x => {
+                    int xServerHS = isLocalPlayer ? x.hs : (x.hs >= 6 ? x.hs - 6 : x.hs + 6);
+                    return x.tid == ci.templateID && xServerHS == ci.hostSlotID && x.order == ci.attachOrder;
+                });
                 if (!stillExists) { Destroy(obj); bm.attachedModels.RemoveAt(i); }
             }
         }
@@ -1358,28 +1412,7 @@ public class NetworkPlayer : NetworkBehaviour
     /// <summary>Swap the currentCard3D GameObjects between two board slots.</summary>
     static void SwapBoardSlots(BoardManager bm, int slotA, int slotB)
     {
-        if (bm == null) return;
-        BoardSlot sa = bm.GetSlot(slotA);
-        BoardSlot sb = bm.GetSlot(slotB);
-        if (sa == null || sb == null) return;
-
-        GameObject cardA = sa.currentCard3D;
-        GameObject cardB = sb.currentCard3D;
-
-        sa.SetCard(null);
-        sb.SetCard(null);
-
-        HandManager hm = FindObjectOfType<HandManager>();
-        if (cardB != null)
-        {
-            cardB.transform.position = hm.GetSlotWorldPosition(slotA);
-            sa.SetCard(cardB);
-        }
-        if (cardA != null)
-        {
-            cardA.transform.position = hm.GetSlotWorldPosition(slotB);
-            sb.SetCard(cardA);
-        }
+        BoardManager.SwapCards(slotA, slotB);
     }
 
     // ========== Enemy board damage sync (03504 on-enter, etc.) ==========
@@ -1659,5 +1692,233 @@ public class NetworkPlayer : NetworkBehaviour
     public void CmdRogueDone()
     {
         BoardSlot.NotifyRogueRpcDone();
+    }
+
+    /// <summary>服务端→远端客户端：运行你己方的交互式先手。</summary>
+    [TargetRpc]
+    public void TargetRunRemoteFirstStrikes(NetworkConnectionToClient target)
+    {
+        BoardSlot slot = FindObjectOfType<BoardSlot>();
+        if (slot != null)
+            slot.StartCoroutine(slot.RunRemoteFirstStrikes());
+    }
+
+    /// <summary>服务端→远端客户端：交换己方（服务端6-11）两个槽位的卡牌。
+    /// slotA/slotB 已映射为远端视角索引（0-5）。</summary>
+    [TargetRpc]
+    public void TargetSwapCards(NetworkConnectionToClient target, int slotA, int slotB)
+    {
+        BoardManager.SwapCards(slotA, slotB);
+    }
+
+    /// <summary>远端客户端→服务端：交换己方（远端6-11）两个槽位的卡牌。
+    /// 服务端将其映射为对手侧（0-5）后执行交换。</summary>
+    [Command]
+    public void CmdSwapCards(int slotA, int slotB)
+    {
+        BoardManager.SwapCards(slotA - 6, slotB - 6);
+        BoardSyncManager.MarkDirty();
+    }
+
+    /// <summary>远端客户端完成全部交互式先手后通知服务端。</summary>
+    [Command]
+    public void CmdRemoteFirstStrikeDone()
+    {
+        BoardSlot.NotifyRemoteFirstStrikeDone();
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // 手牌上报：客户端 → 服务端，确保服务端始终有双方手牌数据
+    // ═══════════════════════════════════════════════════════════════
+
+    public static bool _handReportDone;
+
+    /// <summary>服务端要求某个客户端上报手牌数据。</summary>
+    [TargetRpc]
+    public void TargetRequestHandReport(NetworkConnectionToClient target)
+    {
+        List<string> list = new List<string>();
+        foreach (var card in Local.handCards)
+        {
+            if (card == null) continue;
+            var ci = card.GetComponent<CardInstance>();
+            if (ci != null && !string.IsNullOrEmpty(ci.templateID))
+                list.Add($"{ci.templateID}|{ci.instanceID}");
+        }
+        Local.CmdReportHand(list.ToArray());
+    }
+
+    /// <summary>客户端上报手牌给服务端，服务端重建轻量跟踪数据。</summary>
+    [Command]
+    public void CmdReportHand(string[] handData)
+    {
+        // 仅 Remote 侧用：this 是 Remote，handCards 存轻量跟踪，可以安全清空重建
+        // Host 侧由 ServerThiefFlow 直接读 Local.handCards，不走此路
+        handCards.Clear();
+        foreach (string entry in handData)
+        {
+            string[] parts = entry.Split('|');
+            if (parts.Length < 2) continue;
+            var data = CardDatabase.Instance?.GetTemplate(parts[0]);
+            if (data != null) AddServerSideCard(data, parts[1]);
+        }
+        _handReportDone = true;
+    }
+
+    /// <summary>服务端告知客户端：从手牌移除指定 instanceID 的卡。</summary>
+    [TargetRpc]
+    public void TargetRemoveHandCard(NetworkConnectionToClient target, string instanceID)
+    {
+        RemoveCardFromLocalHand(instanceID);
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // 窃贼主动退场 RPC 链：客户端→服务器→对手客户端→服务器→本客户端
+    // ═══════════════════════════════════════════════════════
+
+    public static bool _thiefDone;
+    public static string[] _thiefResult;
+
+    /// <summary>客户端→服务器：请求对手手牌用于窃贼弹窗。</summary>
+    [Command]
+    public void CmdRequestThiefHand(int slotID)
+    {
+        NetworkPlayer owner = BoardManager.GetOwnerPlayer(slotID);
+        NetworkPlayer oppNp = BoardManager.GetOpponentPlayer(slotID);
+        if (oppNp == null || oppNp == owner) return;
+        StartCoroutine(WaitAndSendThiefHand(slotID, owner, oppNp));
+    }
+
+    IEnumerator WaitAndSendThiefHand(int slotID, NetworkPlayer owner, NetworkPlayer oppNp)
+    {
+        List<string> handData = new List<string>();
+
+        if (oppNp == Local)
+        {
+            // 对手是主机：直接读 Local.handCards，不通过网络
+            foreach (var card in Local.handCards)
+            {
+                if (card == null) continue;
+                var ci = card.GetComponent<CardInstance>();
+                if (ci != null && !string.IsNullOrEmpty(ci.templateID))
+                    handData.Add($"{ci.templateID}|{ci.instanceID}|{ci.currentCost}|{ci.currentAttack}|{ci.currentHealth}|{ci.currentMaxHealth}|{ci.currentTier}|{ci.prefixes ?? ""}|{(ci.hasShield ? "1" : "0")}|{(ci.poisoned ? "1" : "0")}");
+            }
+        }
+        else
+        {
+            // 对手是远端：请求上报然后读 oppNp.handCards
+            _handReportDone = false;
+            oppNp.TargetRequestHandReport(oppNp.connectionToClient);
+            yield return new WaitWhile(() => !_handReportDone);
+            foreach (var card in oppNp.handCards)
+            {
+                if (card == null) continue;
+                var ci = card.GetComponent<CardInstance>();
+                if (ci != null && !string.IsNullOrEmpty(ci.templateID))
+                    handData.Add($"{ci.templateID}|{ci.instanceID}|{ci.currentCost}|{ci.currentAttack}|{ci.currentHealth}|{ci.currentMaxHealth}|{ci.currentTier}|{ci.prefixes ?? ""}|{(ci.hasShield ? "1" : "0")}|{(ci.poisoned ? "1" : "0")}");
+            }
+        }
+
+        // 发送给窃贼客户端展示
+        Local.TargetShowThiefHand(owner.connectionToClient, handData.ToArray(), slotID);
+
+        // 等待客户端选完回报 — _thiefDone 在服务器进程被 CmdConfirmThiefSteal 设置
+        _thiefDone = false;
+        yield return new WaitWhile(() => !_thiefDone);
+
+        // 处理后通知客户端结束（解除客户端的 WaitWhile 阻塞）
+        owner.TargetThiefComplete(owner.connectionToClient);
+
+        if (_thiefResult != null && _thiefResult.Length >= 2)
+        {
+            string stolenTID = _thiefResult[0];
+            string stolenIID = _thiefResult[1];
+
+            // 从对手删除手牌
+            if (oppNp == Local)
+                RemoveCardFromLocalHand(stolenIID);
+            else
+                oppNp.TargetRemoveHandCard(oppNp.connectionToClient, stolenIID);
+
+            CardData template = CardDatabase.Instance?.GetTemplate(stolenTID);
+            if (template != null) AddCardToHandForPlayer(owner, template);
+        }
+    }
+
+    static void RemoveCardFromLocalHand(string instanceID)
+    {
+        var cards = Local?.handCards;
+        if (cards == null) return;
+        for (int i = cards.Count - 1; i >= 0; i--)
+        {
+            var ci = cards[i]?.GetComponent<CardInstance>();
+            if (ci != null && ci.instanceID == instanceID)
+            {
+                CardView cv = cards[i].GetComponent<CardView>();
+                if (cv != null) FindObjectOfType<HandManager>()?.RemoveCard(cv);
+                else Destroy(cards[i]);
+                cards.RemoveAt(i);
+                FindObjectOfType<HandManager>()?.RefreshLayout(true);
+                return;
+            }
+        }
+    }
+
+    /// <summary>服务器→请求客户端：展示对手手牌选单。</summary>
+    [TargetRpc]
+    public void TargetShowThiefHand(NetworkConnectionToClient target, string[] handData, int slotID)
+    {
+        if (handData == null || handData.Length == 0) return;
+
+        List<CardInstance> cards = new List<CardInstance>();
+        foreach (string entry in handData)
+        {
+            string[] p = entry.Split('|');
+            if (p.Length < 2) continue;
+            var go = new GameObject("ThiefCard");
+            var ci = go.AddComponent<CardInstance>();
+            ci.templateID = p[0];
+            ci.instanceID = p[1];
+            if (p.Length > 2 && int.TryParse(p[2], out int v)) ci.currentCost = v;
+            if (p.Length > 3 && int.TryParse(p[3], out v)) ci.currentAttack = v;
+            if (p.Length > 4 && int.TryParse(p[4], out v)) ci.currentHealth = v;
+            if (p.Length > 5 && int.TryParse(p[5], out v)) ci.currentMaxHealth = v;
+            if (p.Length > 6 && int.TryParse(p[6], out v)) ci.currentTier = v;
+            if (p.Length > 7) ci.prefixes = p[7];
+            if (p.Length > 8) ci.hasShield = p[8] == "1";
+            if (p.Length > 9) ci.poisoned = p[9] == "1";
+            cards.Add(ci);
+        }
+
+        int capturedSlot = slotID;
+
+        CardDisplayPanel.Instance.multiSelect = false;
+        CardDisplayPanel.Instance.ShowWithCallback(cards, ci => true, () =>
+        {
+            var sel = CardDisplayPanel.Instance.GetSelectedCard();
+            if (sel != null)
+                Local.CmdConfirmThiefSteal(sel.templateID, sel.instanceID, capturedSlot);
+            else
+                Local.CmdConfirmThiefSteal("", "", capturedSlot);
+
+            foreach (var t in FindObjectsOfType<GameObject>())
+                if (t.name == "ThiefCard") Destroy(t);
+            CardDisplayPanel.Instance.Hide();
+        }, "窃取");
+    }
+
+    /// <summary>客户端→服务器：确认窃取选择。</summary>
+    [Command]
+    public void CmdConfirmThiefSteal(string templateID, string instanceID, int slotID)
+    {
+        _thiefResult = string.IsNullOrEmpty(instanceID) ? null : new[] { templateID, instanceID };
+        _thiefDone = true;
+    }
+
+    /// <summary>服务器→客户端：窃贼流程完成，解除客户端阻塞。</summary>
+    [TargetRpc]
+    public void TargetThiefComplete(NetworkConnectionToClient target)
+    {
+        _thiefDone = true;
     }
 }

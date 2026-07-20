@@ -66,15 +66,228 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public static List<(int deadSlotID, string revengeEffect, List<string> sourceInstanceIDs)> pendingRevenges
         = new List<(int, string, List<string>)>();
 
-    /// <summary>无赖(01309)退场召唤阶段阻塞标记——ApplyDamageLoop 检查此标记暂停推进。</summary>
+    /// <summary>无赖(01309)退场召唤阶段阻塞标记。ApplyDamageLoop 检查此标记。</summary>
     public static bool _roguePhaseBlock;
     /// <summary>服务端等待远端客户端完成无赖(01309)召唤。</summary>
     public static bool _rogueRpcDone;
     public static void NotifyRogueRpcDone() { _rogueRpcDone = true; }
+    /// <summary>远端客户端先手交互完成标记。服务端 FirstStrikeCoroutine 后检查此标记。</summary>
+    public static bool _remoteFirstStrikeDone;
+    public static void NotifyRemoteFirstStrikeDone() { _remoteFirstStrikeDone = true; }
+
+    /// <summary>远端客户端执行己方的交互式先手（槽位6-11）。完成后通知服务端解除阻塞。</summary>
+    public IEnumerator RunRemoteFirstStrikes()
+    {
+        var bm = FindObjectOfType<BoardManager>();
+        if (bm == null) { NetworkPlayer.Local?.CmdRemoteFirstStrikeDone(); yield break; }
+
+        // 只处理己方半场(6-11)，与 BattleManager.FirstStrikeCoroutine 的交互式先手逻辑完全一致
+        for (int i = 6; i <= 11; i++)
+        {
+            BoardSlot slot = bm.GetSlot(i);
+            if (slot?.currentCard3D == null) continue;
+            CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci == null || !ci.hasFirstStrike) continue;
+
+            // 排队——等前一个交互弹窗完成
+            yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
+            yield return null;
+
+            switch (ci.templateID)
+            {
+                case "01312":
+                {
+                    int mySlot = i;
+                    int ownHalfStart = 6;
+                    int col = mySlot % 3;
+                    int row = (mySlot - ownHalfStart) < 3 ? 0 : 3;
+                    int rowStart = ownHalfStart + row;
+                    int otherRowStart = ownHalfStart + (row == 0 ? 3 : 0);
+                    var slots = bm.GetAllSlots();
+
+                    List<int> adjacent = new List<int>();
+                    if (col > 0) adjacent.Add(rowStart + col - 1);
+                    if (col < 2) adjacent.Add(rowStart + col + 1);
+                    adjacent.Add(otherRowStart + col);
+                    adjacent.RemoveAll(s => slots[s].isBlocked);
+                    if (adjacent.Count == 0) continue;
+
+                    bool confirmed = false, choseYes = false;
+                    ConfirmPanel.Instance.Show("是否与相邻格子互换位置？",
+                        () => { choseYes = true; confirmed = true; },
+                        () => { confirmed = true; });
+                    yield return new WaitUntil(() => confirmed);
+                    if (!choseYes) continue;
+
+                    bool done = false;
+                    string layerId = SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, null);
+                    BoardSlot.extraTargetFilter = (s) => adjacent.Contains(s.slotID);
+                    BoardSlot.isStrengtheningSlot = true;
+                    BoardSlot ts = null;
+                    BoardSlot.onTargetSelected = (t) =>
+                    {
+                        if (t != null && adjacent.Contains(t.slotID))
+                        { ts = t; SelectionManager.Instance.EndSelection(layerId); BoardSlot.isStrengtheningSlot = false; BoardSlot.extraTargetFilter = null; done = true; }
+                    };
+                    yield return new WaitUntil(() => done);
+                    if (ts == null) continue;
+
+                    int slotA = mySlot;
+                    int slotB = ts.slotID;
+                    BoardManager.SwapCards(slotA, slotB);
+                    ci.hasFirstStrike = false;
+
+                    // 通知服务端同步交换结果（远端 6-11 → 服务端映射为 0-5）
+                    NetworkPlayer.Local?.CmdSwapCards(slotA, slotB);
+                    break;
+                }
+                case "01513":
+                {
+                    BoardSlot.isStrengtheningSlot = true;
+                    BoardSlot.extraTargetFilter = (s2) => { var c = s2?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance; return c != null && c.prefixes.Contains("机械"); };
+                    SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, null);
+                    BoardSlot first = null; bool dd = false;
+                    ConfirmSelectionButton.Instance.Show(() => dd = true);
+                    BoardSlot.onTargetSelected = (s2) =>
+                    {
+                        if (first == null) first = s2;
+                        else if (s2 != first)
+                        {
+                            BoardManager.SwapCards(first.slotID, s2.slotID);
+                            NetworkPlayer.Local?.CmdSwapCards(first.slotID, s2.slotID);
+                            first = null;
+                        }
+                    };
+                    yield return new WaitUntil(() => dd);
+                    SelectionManager.Instance.ForceEndAll();
+                    BoardSlot.isStrengtheningSlot = false;
+                    BoardSlot.extraTargetFilter = null;
+                    ConfirmSelectionButton.Instance.Hide();
+                    ci.hasFirstStrike = false;
+                    break;
+                }
+                case "01516":
+                {
+                    BoardSlot.isStrengtheningSlot = true;
+                    SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, null);
+                    BoardSlot first = null; bool dd = false;
+                    ConfirmSelectionButton.Instance.Show(() => dd = true);
+                    BoardSlot.onTargetSelected = (s2) =>
+                    {
+                        if (first == null) first = s2;
+                        else if (s2 != first)
+                        {
+                            BoardManager.SwapCards(first.slotID, s2.slotID);
+                            NetworkPlayer.Local?.CmdSwapCards(first.slotID, s2.slotID);
+                            first = null;
+                        }
+                    };
+                    yield return new WaitUntil(() => dd);
+                    SelectionManager.Instance.ForceEndAll();
+                    BoardSlot.isStrengtheningSlot = false;
+                    ConfirmSelectionButton.Instance.Hide();
+                    ci.hasFirstStrike = false;
+                    break;
+                }
+                case "03012":
+                {
+                    bool dd = false;
+                    SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (t) =>
+                    {
+                        if (t != null && t != slot && t.currentCard3D != null)
+                        {
+                            var t3d = t.currentCard3D.GetComponent<Card3DInstance>();
+                            var tci = t3d?.cardInstance;
+                            if (tci != null)
+                            {
+                                int atk = tci.Attack;
+                                int hp = tci.currentHealth - tci.tempHealthBoost;
+                                if (atk > hp) tci.AddTempHealth(atk - hp);
+                                else if (hp > atk) tci.AddTempAttack(hp - atk);
+                                t3d.UpdateValues();
+                            }
+                        }
+                        dd = true;
+                    });
+                    while (!dd) yield return null;
+                    ci.hasFirstStrike = false;
+                    break;
+                }
+                case "01519":
+                {
+                    var cdd = new List<BoardSlot>();
+                    for (int j = 6; j <= 11; j++)
+                    { var s3 = bm.GetSlot(j); if (s3?.currentCard3D != null && j != i) { var bc = s3.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance; if (bc != null && !bc.hasShield && !bc.isAttached) cdd.Add(s3); } }
+                    if (cdd.Count == 0) continue;
+                    if (cdd.Count <= 3) { foreach (var cs in cdd) { var bc = cs.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance; if (bc != null) { bc.GrantShield(false, false, true); cs.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues(); } } }
+                    else
+                    {
+                        string lid2 = SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, null);
+                        BoardSlot.isStrengtheningSlot = true;
+                        var sel = new List<BoardSlot>();
+                        BoardSlot.onTargetSelected = (t) =>
+                        {
+                            if (t == null || !cdd.Contains(t)) return;
+                            if (sel.Contains(t)) { sel.Remove(t); t.SetHighlightColor(t.GetNormalColor()); }
+                            else if (sel.Count < 3) { sel.Add(t); t.SetHighlightColor(Color.yellow); }
+                            if (sel.Count == 3) { foreach (var s3 in sel) { var bc = s3.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance; if (bc != null) { bc.GrantShield(false, false, true); s3.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues(); s3.SetHighlightColor(s3.GetNormalColor()); } } SelectionManager.Instance.EndSelection(lid2); }
+                        };
+                        yield return new WaitUntil(() => !SelectionManager.Instance.IsSelecting);
+                        BoardSlot.isStrengtheningSlot = false;
+                    }
+                    ci.hasFirstStrike = false;
+                    break;
+                }
+                case "03502":
+                {
+                    bool hasEnemy = false;
+                    for (int j = 0; j <= 5; j++) if (bm.GetSlot(j)?.currentCard3D != null) { hasEnemy = true; break; }
+                    if (!hasEnemy) continue;
+                    bool dd = false;
+                    SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (t) =>
+                    {
+                        if (t?.currentCard3D != null) { var ti2 = t.currentCard3D.GetComponent<Card3DInstance>(); if (ti2?.cardInstance != null) { ti2.cardInstance.RemoveShield(); ti2.cardInstance.poisoned = true; } }
+                        dd = true;
+                    });
+                    while (!dd) yield return null;
+                    ci.hasFirstStrike = false;
+                    break;
+                }
+                case "01318":
+                {
+                    bool anyTarget = false;
+                    for (int j = 0; j < 12; j++) if (bm.GetSlot(j)?.currentCard3D != null) { anyTarget = true; break; }
+                    if (!anyTarget) continue;
+                    bool dd = false;
+                    SelectionManager.Instance.BeginSelection(TargetType.AllMinions, (t) =>
+                    {
+                        if (t?.currentCard3D != null) { var tci2 = t.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance; if (tci2 != null) { tci2.originalAttackBeforeDebuff = tci2.currentAttack; tci2.currentAttack = 1; t.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues(); } }
+                        dd = true;
+                    });
+                    yield return new WaitUntil(() => dd);
+                    ci.hasFirstStrike = false;
+                    break;
+                }
+            }
+        }
+
+        // 全部完成——刷新己方所有卡牌放置时间（防止换位后被同步周期误杀），再上报并同步
+        var bmRefresh = FindObjectOfType<BoardManager>();
+        if (bmRefresh != null)
+            for (int ri = 6; ri <= 11; ri++)
+            {
+                var rci = bmRefresh.GetSlot(ri)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                if (rci != null) rci._placedAtTime = Time.time;
+            }
+        TurnManager.SyncMyBoardToOpponent();
+        NetworkPlayer.Local?.CmdRemoteFirstStrikeDone();
+    }
     public bool prisonBlocked;      // 囚牢封锁
     public bool prisonAllowYuan;    // 允许放置渊前缀召唤物（仅己方封锁格子）
     public int deepSeaAttackDebuff; // 格子攻击力减益
     public bool deepSeaHealthDebuff; // 格子每阶段扣血标记
+    /// <summary>本槽位上最后一次 HandleDeath 触发时间（秒）。EnsureCard 检查此时间戳防止从过期同步数据重建已死亡模型。</summary>
+    public float lastHandleDeathTime = -1f;
     public static int ignoreNextClickSlot = -1;
     void Start()
     {
@@ -663,6 +876,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         {
             var ci = card3D.GetComponent<Card3DInstance>()?.cardInstance;
             if (ci != null) ci._placedAtTime = Time.time;
+            lastHandleDeathTime = -1f; // 新卡入槽，重置死亡时间戳
         }
     }
 
@@ -787,8 +1001,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         if (dyingCard == null) return;
         Card3DInstance c3d = dyingCard.GetComponent<Card3DInstance>();
         if (c3d == null || c3d.cardInstance == null) return;
-        // 标记本帧已被本地处理——防 ApplySync 的 EnsureEmpty 双杀（问题 8）
+        // 标记本帧已被本地处理——防 ApplySync 的 EnsureCard 从过期同步重建已死亡模型
         c3d.cardInstance._deathProcessed = true;
+        lastHandleDeathTime = Time.time;
         c3d.cardInstance.hasLifePriestBlessing = false;
         c3d.cardInstance.lifePriestBlessingSource = null;
         string templateID = c3d.cardInstance.templateID;
@@ -1755,6 +1970,23 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     if (!secondSlot.CanPlaceCard(c1.GetComponent<Card3DInstance>()?.cardInstance)) { firstSlot = null; return; }
                     c1.transform.position = p2;
                     secondSlot.SetCard(c1);
+                }
+
+                // Update attached model hostSlotIDs and reposition
+                BoardManager bmSwap = FindObjectOfType<BoardManager>();
+                if (bmSwap != null)
+                {
+                    foreach (GameObject obj in bmSwap.attachedModels)
+                    {
+                        CardInstance ci = obj?.GetComponent<Card3DInstance>()?.cardInstance;
+                        if (ci != null && ci.isAttached)
+                        {
+                            if (ci.hostSlotID == idA) ci.hostSlotID = idB;
+                            else if (ci.hostSlotID == idB) ci.hostSlotID = idA;
+                        }
+                    }
+                    BoardManager.SyncAttachedModels(firstSlot);
+                    BoardManager.SyncAttachedModels(secondSlot);
                 }
                 firstSlot = null;
 
@@ -3182,65 +3414,103 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
         return null;
     }
+    /// <summary>
+    /// 窃贼(01316)主动退场：从对手手牌选择一张获得（窃取，非复制，对方手牌消失）。
+    /// </summary>
     public IEnumerator ThiefActiveExitEffect()
     {
+        // ═══ 联机：客户端需服务器中转获取对手手牌 ═══
+        if (NetworkClient.isConnected && !NetworkServer.active)
+        {
+            // 槽位映射：客户端 6-11 → 服务器 0-5；客户端 0-5 → 服务器 6-11
+            int serverSlot = slotID >= 6 ? slotID - 6 : slotID + 6;
+            NetworkPlayer._thiefDone = false;
+            NetworkPlayer.Local.CmdRequestThiefHand(serverSlot);
+            yield return new WaitWhile(() => !NetworkPlayer._thiefDone);
+            yield break;
+        }
+
+        // ═══ 服务器/单机：直接读对手手牌 ═══
+        NetworkPlayer owner = BoardManager.GetOwnerPlayer(slotID);
+        NetworkPlayer oppNp = BoardManager.GetOpponentPlayer(slotID);
+
+        // 联机服务器：向对手请求手牌
+        if (NetworkServer.active && oppNp != null && oppNp != owner)
+        {
+            NetworkPlayer._handReportDone = false;
+            oppNp.TargetRequestHandReport(oppNp.connectionToClient);
+            yield return new WaitWhile(() => !NetworkPlayer._handReportDone);
+        }
+
+        List<GameObject> handSource = (oppNp != null && oppNp != owner && oppNp.handCards.Count > 0)
+            ? oppNp.handCards : NetworkPlayer.Local.handCards;
+
         List<CardInstance> enemyCards = new List<CardInstance>();
-        foreach (GameObject card in NetworkPlayer.Local.handCards)
+        foreach (GameObject card in handSource)
         {
             if (card == null) continue;
             CardInstance ci = card.GetComponent<CardInstance>();
             if (ci != null) enemyCards.Add(ci);
         }
 
-        if (enemyCards.Count == 0)
-        {
-            Debug.Log("妖精护盾选择前");
-            yield break;
-        }
+        if (enemyCards.Count == 0) { yield break; }
 
         CardDisplayPanel.Instance.multiSelect = false;
         bool confirmed = false;
         CardInstance selected = null;
-
         CardDisplayPanel.Instance.ShowWithCallback(enemyCards, ci => true, () =>
         {
             selected = CardDisplayPanel.Instance.GetSelectedCard();
             confirmed = true;
-        }, "打出");
-
+        }, "窃取");
         yield return new WaitUntil(() => confirmed);
 
         if (selected != null)
         {
             GameObject toRemove = null;
-            foreach (GameObject card in NetworkPlayer.Local.handCards)
+            foreach (GameObject card in handSource)
             {
                 CardInstance ci = card?.GetComponent<CardInstance>();
                 if (ci != null && ci.instanceID == selected.instanceID)
-                {
-                    toRemove = card;
-                    break;
-                }
+                { toRemove = card; break; }
             }
             if (toRemove != null)
             {
-                NetworkPlayer.Local.handCards.Remove(toRemove);
+                string stolenIID = selected.instanceID;
+                handSource.Remove(toRemove);
+                Destroy(toRemove);
+                if (oppNp != null && oppNp != owner)
+                    oppNp.TargetRemoveHandCard(oppNp.connectionToClient, stolenIID);
                 CardData template = CardDatabase.Instance?.GetTemplate(selected.templateID);
                 if (template != null)
-                    NetworkPlayer.Local.AddCardToHand(template);
-                Destroy(toRemove);
+                    NetworkPlayer.AddCardToHandForPlayer(owner, template);
             }
         }
-
         CardDisplayPanel.Instance.Hide();
     }
+    /// <summary>
+    /// 荣誉侍者(01347)主动退场：+2能量，展示对手手牌并弃掉所有邪恶法术。
+    /// </summary>
     public IEnumerator HonorAttendantActiveExit()
     {
-        NetworkPlayer.Local.AddEnergy(2);
+        NetworkPlayer owner = BoardManager.GetOwnerPlayer(slotID);
+        owner.AddEnergy(2);
 
-                // 清理重定向标记
+        NetworkPlayer oppNp = BoardManager.GetOpponentPlayer(slotID);
+
+        // ── 联机：向对手请求最新手牌数据 ──
+        if (NetworkServer.active && oppNp != null && oppNp != owner)
+        {
+            NetworkPlayer._handReportDone = false;
+            oppNp.TargetRequestHandReport(oppNp.connectionToClient);
+            yield return new WaitWhile(() => !NetworkPlayer._handReportDone);
+        }
+
+        List<GameObject> opponentHand = (oppNp != null && oppNp != owner && oppNp.handCards.Count > 0)
+            ? oppNp.handCards : NetworkPlayer.Local.handCards;
+
         List<CardInstance> enemyCards = new List<CardInstance>();
-        foreach (GameObject card in NetworkPlayer.Local.handCards)
+        foreach (GameObject card in opponentHand)
         {
             if (card == null) continue;
             CardInstance ci = card.GetComponent<CardInstance>();
@@ -3249,19 +3519,17 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         if (enemyCards.Count == 0)
         {
-            Debug.Log("妖精护盾选择前");
+            Debug.Log("荣誉侍者主动退场：对手无手牌");
             yield break;
         }
 
-                // 清理重定向标记
         CardDisplayPanel.Instance.multiSelect = false;
         bool confirmed = false;
         CardDisplayPanel.Instance.ShowWithCallback(enemyCards, ci => true, () =>
         {
             confirmed = true;
-        }, "打出");
+        }, "确认");
 
-                // 清理重定向标记
         ConfirmSelectionButton.Instance?.gameObject.SetActive(true);
         ConfirmSelectionButton.Instance?.Show(() =>
         {
@@ -3270,9 +3538,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         yield return new WaitUntil(() => confirmed);
 
-                // 清理重定向标记
         List<GameObject> toRemove = new List<GameObject>();
-        foreach (GameObject card in NetworkPlayer.Local.handCards)
+        foreach (GameObject card in opponentHand)
         {
             if (card == null) continue;
             CardInstance ci = card.GetComponent<CardInstance>();
@@ -3286,7 +3553,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         foreach (GameObject card in toRemove)
         {
-            NetworkPlayer.Local.handCards.Remove(card);
+            opponentHand.Remove(card);
             Destroy(card);
         }
 

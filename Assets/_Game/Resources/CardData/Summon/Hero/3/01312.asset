@@ -24,7 +24,7 @@ MonoBehaviour:
   baseHealth: 5
   baseAttack: 1
   hasFirstStrike: 1
-  hasOnEnter: 0
+  hasOnEnter: 1
   hasOnDeath: 0
   hasActiveExit: 0
   hasRevenge: 0

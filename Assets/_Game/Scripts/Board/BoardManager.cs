@@ -197,6 +197,65 @@ public class BoardManager : MonoBehaviour
         return false;
     }
 
+    /// <summary>
+    /// Atomically swap the card GameObjects between two board slots.
+    /// No intermediate null state — safe to call during sync or network processing.
+    /// Handles: currentCard3D/hasCard swap, transform reposition, _placedAtTime refresh,
+    /// and attached model hostSlotID re-targeting.
+    /// Both slots must be on the same half (both 0-5 or both 6-11).
+    /// </summary>
+    public static void SwapCards(int slotA, int slotB)
+    {
+        if (slotA == slotB) return;
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return;
+        BoardSlot slotObjA = bm.GetSlot(slotA);
+        BoardSlot slotObjB = bm.GetSlot(slotB);
+        if (slotObjA == null || slotObjB == null) return;
+
+        GameObject cardA = slotObjA.currentCard3D;
+        GameObject cardB = slotObjB.currentCard3D;
+
+        Vector3 posA = FindObjectOfType<HandManager>().GetSlotWorldPosition(slotA);
+        Vector3 posB = FindObjectOfType<HandManager>().GetSlotWorldPosition(slotB);
+
+        // Atomic reference swap — never exposes null to sync/network observers
+        slotObjA.currentCard3D = cardB;
+        slotObjA.hasCard = cardB != null;
+        slotObjB.currentCard3D = cardA;
+        slotObjB.hasCard = cardA != null;
+
+        float now = Time.time;
+        if (cardA != null)
+        {
+            cardA.transform.position = posB;
+            var ci = cardA.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci != null) ci._placedAtTime = now;
+        }
+        if (cardB != null)
+        {
+            cardB.transform.position = posA;
+            var ci = cardB.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci != null) ci._placedAtTime = now;
+        }
+
+        // Swap attached model hostSlotIDs
+        for (int i = bm.attachedModels.Count - 1; i >= 0; i--)
+        {
+            var am = bm.attachedModels[i];
+            if (am == null) { bm.attachedModels.RemoveAt(i); continue; }
+            var aci = am.GetComponent<Card3DInstance>()?.cardInstance;
+            if (aci != null && aci.isAttached)
+            {
+                if (aci.hostSlotID == slotA) aci.hostSlotID = slotB;
+                else if (aci.hostSlotID == slotB) aci.hostSlotID = slotA;
+            }
+        }
+
+        SyncAttachedModels(slotObjA);
+        SyncAttachedModels(slotObjB);
+    }
+
     public static void SyncAttachedModels(BoardSlot slot)
     {
         if (slot == null) return;

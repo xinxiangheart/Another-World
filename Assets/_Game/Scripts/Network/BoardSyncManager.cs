@@ -193,9 +193,11 @@ public class BoardSyncManager : MonoBehaviour
             if (obj == null) { bm.attachedModels.RemoveAt(i); continue; }
             var ci = obj.GetComponent<Card3DInstance>()?.cardInstance;
             if (ci == null || !ci.isAttached) { bm.attachedModels.RemoveAt(i); continue; }
-            // 按 (templateID, hostSlot半场, attachOrder) 三元组匹配不同实例
+            // incoming hs is SERVER coordinate. ci.hostSlotID is CLIENT coordinate.
+            // Map client hostSlotID back to server space for exact comparison.
+            int ciServerHS = ci.hostSlotID >= 6 ? ci.hostSlotID - 6 : ci.hostSlotID + 6;
             bool stillExists = incoming.Exists(x => x.tid == ci.templateID
-                && (x.hs >= 6) == (ci.hostSlotID >= 6) && x.order == ci.attachOrder);
+                && x.hs == ciServerHS && x.order == ci.attachOrder);
             if (!stillExists) { SafeDestroy(obj); bm.attachedModels.RemoveAt(i); }
         }
 
@@ -291,16 +293,11 @@ public class BoardSyncManager : MonoBehaviour
         {
             var ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
 
-            // 保护 1：本地刚处理过死亡 → 跳过（防双杀）
-            if (ci != null && ci._deathProcessed) return;
+            // 保护：己方半场(6-11) 0.5s 内刚放置的卡 → 防网络竞态
+            // 敌方半场(0-5)不保护——服务端权威，过期数据必须清理
+            if (idx >= 6 && ci != null && Time.time - ci._placedAtTime < 0.5f) return;
 
-            if (idx >= 6)
-            {
-                // 保护 2：己方半场 0.5s 内刚放置的卡 → 防网络竞态
-                if (ci != null && Time.time - ci._placedAtTime < 0.5f) return;
-            }
-
-            // 销毁附着在宿主槽位上的附着模型
+            // 清理附着在此槽位的附着模型
             for (int i = bm.attachedModels.Count - 1; i >= 0; i--)
             {
                 var am = bm.attachedModels[i];
@@ -324,12 +321,33 @@ public class BoardSyncManager : MonoBehaviour
     {
         string tid = parts[0];
         var cur = slot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+
+        // templateID 不匹配 → 当前模型已过时（换位后、死亡替换后等），销毁后按同步数据重建
         if (cur != null && cur.templateID != tid)
         {
+            // 保护：0.3s 内刚放置 → 可能是换位 RPC 尚未到达，暂不销毁
+            if (Time.time - cur._placedAtTime < 0.3f) return;
+
+            // 销毁旧模型 + 其附着物，清空槽位以便重建
+            for (int i = bm.attachedModels.Count - 1; i >= 0; i--)
+            {
+                var am = bm.attachedModels[i];
+                if (am == null) { bm.attachedModels.RemoveAt(i); continue; }
+                var aci = am.GetComponent<Card3DInstance>()?.cardInstance;
+                if (aci != null && aci.isAttached && aci.hostSlotID == idx)
+                {
+                    SafeDestroy(am);
+                    bm.attachedModels.RemoveAt(i);
+                }
+            }
             SafeDestroy(slot.currentCard3D); slot.SetCard(null); cur = null;
         }
         if (cur == null && hm != null)
         {
+            // 保护：本槽位刚刚被 HandleDeath 清空 → 不重建（等 DeathPipeline 的网络同步完成后自然一致）
+            if (slot.lastHandleDeathTime > 0 && Time.time - slot.lastHandleDeathTime < 2f)
+                return;
+
             var t = CardDatabase.Instance?.GetTemplate(tid);
             // 附着专用卡不放槽位模型
             if (t != null && t.canAttach && t.baseHealth == 0) return;
@@ -337,7 +355,7 @@ public class BoardSyncManager : MonoBehaviour
             {
                 var m = Instantiate(t.prefab3D, hm.GetSlotWorldPosition(idx), Quaternion.Euler(0, 180, 0));
                 var c = m.GetComponent<Card3DInstance>();
-                if (c != null) { var n = m.AddComponent<CardInstance>(); n.InitFromTemplate(t, 0); c.cardInstance = n; c.UpdateValues(); }
+                if (c != null) { var n = m.AddComponent<CardInstance>(); n.InitFromTemplate(t, 0); n._placedAtTime = Time.time; c.cardInstance = n; c.UpdateValues(); }
                 slot.SetCard(m);
                 cur = c?.cardInstance;
             }

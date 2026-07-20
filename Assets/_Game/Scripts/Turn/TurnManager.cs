@@ -1110,6 +1110,8 @@ public partial class TurnManager : MonoBehaviour
                     else if (ci.hostSlotID == slot2.slotID) ci.hostSlotID = slot1.slotID;
                 }
             }
+            BoardManager.SyncAttachedModels(slot1);
+            BoardManager.SyncAttachedModels(slot2);
         }
     }
     IEnumerator SummonSmallEvilOnSlot()

@@ -634,7 +634,9 @@ public class HandManager : MonoBehaviour
         // 附着专用卡（baseHealth==0）永远不放独立槽位模型到服务器
         if (sourceInstance.canAttach && sourceInstance.baseHealth == 0)
         {
-            Debug.LogWarning($"[PlaceIndependentCard] 附着专用卡 {sourceInstance.templateID} 被错误放置为独立卡！已拦截 CmdPlayCard，仅本地保留。");
+            Debug.LogWarning($"[PlaceIndependentCard] 附着专用卡 {sourceInstance.templateID} 被错误放置为独立卡！已拦截 CmdPlayCard，销毁本地模型。");
+            Destroy(model);
+            slot.SetCard(null);
         }
         else if (NetworkClient.isConnected && !string.IsNullOrEmpty(sourceInstance.templateID))
         {
@@ -1420,37 +1422,7 @@ public class HandManager : MonoBehaviour
             if (firstSlot == null) { firstSlot = selected; }
             else
             {
-                BoardSlot secondSlot = selected;
-                GameObject c1 = firstSlot.currentCard3D;
-                GameObject c2 = secondSlot.currentCard3D;
-                Vector3 p1 = GetSlotWorldPosition(firstSlot.slotID);
-                Vector3 p2 = GetSlotWorldPosition(secondSlot.slotID);
-                firstSlot.SetCard(null); secondSlot.SetCard(null);
-                if (c2 != null)
-                {
-                    if (!firstSlot.CanPlaceCard(c2.GetComponent<Card3DInstance>()?.cardInstance)) { firstSlot = null; return; }
-                    c2.transform.position = p1;
-                    firstSlot.SetCard(c2);
-                }
-                if (c1 != null)
-                {
-                    if (!secondSlot.CanPlaceCard(c1.GetComponent<Card3DInstance>()?.cardInstance)) { firstSlot = null; return; }
-                    c1.transform.position = p2;
-                    secondSlot.SetCard(c1);
-                }
-                BoardManager bm = FindObjectOfType<BoardManager>();
-                if (bm != null)
-                    foreach (GameObject obj in bm.attachedModels)
-                    {
-                        CardInstance ci = obj?.GetComponent<Card3DInstance>()?.cardInstance;
-                        if (ci != null && ci.isAttached)
-                        {
-                            if (ci.hostSlotID == firstSlot.slotID) ci.hostSlotID = secondSlot.slotID;
-                            else if (ci.hostSlotID == secondSlot.slotID) ci.hostSlotID = firstSlot.slotID;
-                        }
-                    }
-                BoardManager.SyncAttachedModels(firstSlot);
-                BoardManager.SyncAttachedModels(secondSlot);
+                BoardManager.SwapCards(firstSlot.slotID, selected.slotID);
                 firstSlot = null;
             }
         };
@@ -1644,46 +1616,7 @@ public class HandManager : MonoBehaviour
             {
                 BoardSlot secondSlot = selected;
 
-                GameObject card1 = firstSlot.currentCard3D;
-                GameObject card2 = secondSlot.currentCard3D;
-
-                Vector3 pos1 = GetSlotWorldPosition(firstSlot.slotID);
-                Vector3 pos2 = GetSlotWorldPosition(secondSlot.slotID);
-
-                firstSlot.SetCard(null);
-                secondSlot.SetCard(null);
-
-                if (card2 != null)
-                {
-                    if (!firstSlot.CanPlaceCard(card2.GetComponent<Card3DInstance>()?.cardInstance)) { firstSlot = null; return; }
-                    card2.transform.position = pos1;
-                    firstSlot.SetCard(card2);
-                }
-                if (card1 != null)
-                {
-                    if (!secondSlot.CanPlaceCard(card1.GetComponent<Card3DInstance>()?.cardInstance)) { firstSlot = null; return; }
-                    card1.transform.position = pos2;
-                    secondSlot.SetCard(card1);
-                }
-
-                BoardManager bmSwap = FindObjectOfType<BoardManager>();
-                if (bmSwap != null)
-                {
-                    foreach (GameObject obj in bmSwap.attachedModels)
-                    {
-                        CardInstance ci = obj.GetComponent<Card3DInstance>()?.cardInstance;
-                        if (ci != null && ci.isAttached)
-                        {
-                            if (ci.hostSlotID == firstSlot.slotID)
-                                ci.hostSlotID = secondSlot.slotID;
-                            else if (ci.hostSlotID == secondSlot.slotID)
-                                ci.hostSlotID = firstSlot.slotID;
-                        }
-                    }
-                }
-
-                BoardManager.SyncAttachedModels(firstSlot);
-                BoardManager.SyncAttachedModels(secondSlot);
+                BoardManager.SwapCards(firstSlot.slotID, secondSlot.slotID);
 
                 SelectionManager.Instance.ForceEndAll();
                 TurnManager.SyncMyBoardToOpponent();

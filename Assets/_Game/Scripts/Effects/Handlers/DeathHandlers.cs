@@ -158,8 +158,10 @@ public static class DeathHandlers
 
     static void Handle01520(EffectContext ctx)
     {
-        NP(ctx).DrawCardWithoutLimit();
+        NetworkPlayer.DrawCardForPlayer(NP(ctx));
         GlobalEventManager.Instance?.UnregisterAuraOfSource(ctx.source);
+        // Remote handCards are lightweight server-side tracking objects —
+        // merchant discount flags live on the client; iterate is no-op on server.
         foreach (var card in NP(ctx).handCards)
         {
             if (card == null) continue;
@@ -198,7 +200,7 @@ public static class DeathHandlers
             ctx.source.handledReturnToHand = true;
             var template = CardDatabase.Instance?.GetTemplate(ctx.TemplateID);
             if (template != null)
-                NP(ctx).AddCardToHandFromInstance(template, ctx.source);
+                NetworkPlayer.AddCardToHandForPlayer(NP(ctx), template, ctx.source.instanceID);
         }
     }
 
@@ -219,7 +221,7 @@ public static class DeathHandlers
             if (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(ctx.source))
             {
                 var next = CardDatabase.Instance?.GetTemplate("03021");
-                if (next != null) NP(ctx).AddCardToHand(next);
+                if (next != null) NetworkPlayer.AddCardToHandForPlayer(NP(ctx), next);
             }
         }
     }
@@ -231,7 +233,7 @@ public static class DeathHandlers
             if (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(ctx.source))
             {
                 var next = CardDatabase.Instance?.GetTemplate("03022");
-                if (next != null) NP(ctx).AddCardToHand(next);
+                if (next != null) NetworkPlayer.AddCardToHandForPlayer(NP(ctx), next);
             }
         }
     }
@@ -395,8 +397,8 @@ public static class DeathHandlers
 
     static void Handle01316Exit(EffectContext ctx)
     {
-        NP(ctx).DrawCardWithoutLimit();
-        NP(ctx).DrawCardWithoutLimit();
+        NetworkPlayer.DrawCardForPlayer(NP(ctx));
+        NetworkPlayer.DrawCardForPlayer(NP(ctx));
     }
 
     static void Handle01316ActiveExit(EffectContext ctx)
@@ -412,7 +414,7 @@ public static class DeathHandlers
         {
             var data = DeckManager.Instance?.DrawFromMain();
             if (data == null) break;
-            NP(ctx).AddCardToHand(data);
+            NetworkPlayer.AddCardToHandForPlayer(NP(ctx), data);
             totalCost += data.baseCost;
             drawnCount++;
         }
@@ -427,7 +429,7 @@ public static class DeathHandlers
         {
             var data = DeckManager.Instance?.DrawFromMain();
             if (data == null) break;
-            NP(ctx).AddCardToHand(data);
+            NetworkPlayer.AddCardToHandForPlayer(NP(ctx), data);
             totalCost += data.baseCost;
             drawnCount++;
         }

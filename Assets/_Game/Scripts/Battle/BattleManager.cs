@@ -118,6 +118,8 @@ public class BattleManager : MonoBehaviour
             slot.plagueRoundCount++;
         }
         BoardSlot.CheckAndHandleDeaths();
+        if (Mirror.NetworkServer.active)
+            BoardSyncManager.MarkDirty();
         Debug.Log("[战斗] 阶段1：战斗回合开始特性");
     }
     IEnumerator FirstStrikeCoroutine()
@@ -245,48 +247,14 @@ public class BattleManager : MonoBehaviour
 
                 if (targetSlot != null)
                 {
-                    GameObject myCard = allSlots[mySlot].currentCard3D;
-                    GameObject targetCard = targetSlot.currentCard3D;
-
-                    Vector3 myPos = FindObjectOfType<HandManager>().GetSlotWorldPosition(mySlot);
-                    Vector3 targetPos = FindObjectOfType<HandManager>().GetSlotWorldPosition(targetSlot.slotID);
-
-                    allSlots[mySlot].SetCard(null);
-                    targetSlot.SetCard(null);
-
-                    if (targetCard != null)
-                    {
-                        if (!allSlots[mySlot].CanPlaceCard(targetCard.GetComponent<Card3DInstance>()?.cardInstance)) { done = true; continue; }
-                        targetCard.transform.position = myPos;
-                        allSlots[mySlot].SetCard(targetCard);
-                    }
-                    if (myCard != null)
-                    {
-                        if (!targetSlot.CanPlaceCard(myCard.GetComponent<Card3DInstance>()?.cardInstance)) { done = true; continue; }
-                        myCard.transform.position = targetPos;
-                        targetSlot.SetCard(myCard);
-                    }
-
-                    BoardManager bmAtt = FindObjectOfType<BoardManager>();
-                    if (bmAtt != null)
-                    {
-                        foreach (GameObject obj in bmAtt.attachedModels)
-                        {
-                            CardInstance attCI = obj.GetComponent<Card3DInstance>()?.cardInstance;
-                            if (attCI != null && attCI.isAttached)
-                            {
-                                if (attCI.hostSlotID == mySlot)
-                                    attCI.hostSlotID = targetSlot.slotID;
-                                else if (attCI.hostSlotID == targetSlot.slotID)
-                                    attCI.hostSlotID = mySlot;
-                            }
-                        }
-                    }
-                    BoardManager.SyncAttachedModels(allSlots[mySlot]);
-                    BoardManager.SyncAttachedModels(targetSlot);
-
-        // 检查对方是否有合法目标
+                    int slotA = mySlot;
+                    int slotB = targetSlot.slotID;
+                    BoardManager.SwapCards(slotA, slotB);
                     ci.hasFirstStrike = false;
+
+                    // 通知远端客户端同步交换结果（服务端 6-11 → 远端视角 0-5）
+                    if (Mirror.NetworkServer.active && NetworkPlayer.Remote != null)
+                        NetworkPlayer.Remote.TargetSwapCards(NetworkPlayer.Remote.connectionToClient, slotA - 6, slotB - 6);
                 }
 
                 continue;
@@ -724,9 +692,29 @@ public class BattleManager : MonoBehaviour
             }
         }
 
-        // ── 先手同时窗口结束 → 处理死亡（退场快照伤害来源） → 处理反击（新同时窗口）──
+        // ── 先手同时窗口结束 → 等待远端先手完成 → 处理死亡 → 反击 ──
+        // 触发远端客户端运行己方的交互式先手（Remote 的 6-11 = 服务器的 0-5）
+        if (Mirror.NetworkServer.active && NetworkPlayer.Remote != null)
+        {
+            BoardSlot._remoteFirstStrikeDone = false;
+            NetworkPlayer.Remote.TargetRunRemoteFirstStrikes(NetworkPlayer.Remote.connectionToClient);
+            yield return new WaitWhile(() => !BoardSlot._remoteFirstStrikeDone);
+            // 立即广播一次完整板面给远端客户端，确保交换后的正确状态同步出去
+            BoardSyncManager.MarkDirty();
+            yield return null; // 让 LateUpdate 中的 SyncNow 执行
+        }
+        // 刷新全部 12 槽卡牌放置时间——先手阶段的换位和交互会改变卡牌位置，
+        // 必须刷新 _placedAtTime 防止后续同步周期中 EnsureCard/EnsureEmpty 误杀
+        for (int ri = 0; ri < 12; ri++)
+        {
+            var rci = allSlots[ri]?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (rci != null) rci._placedAtTime = Time.time;
+        }
         BoardSlot.CheckAndHandleDeaths();
         yield return ActionQueueManager.WaitForDrain();
+        // 广播死亡结果给远端客户端——先手阶段的清理/伤害可能造成死亡，远端必须同步
+        if (Mirror.NetworkServer.active)
+            BoardSyncManager.MarkDirty();
         yield return StartCoroutine(ResolveRevengesFromSnapshot());
     }
 
@@ -775,28 +763,7 @@ public class BattleManager : MonoBehaviour
             BoardSlot targetEnemySlot = allSlots[targetEnemySlotIndex];
             if (targetEnemySlot.isBlocked || targetEnemySlot.prisonBlocked) continue;
 
-            GameObject enemyCard = enemySlot?.currentCard3D;
-            GameObject targetCard = targetEnemySlot?.currentCard3D;
-
-            Vector3 pos1 = FindObjectOfType<HandManager>().GetSlotWorldPosition(enemySlotIndex);
-            Vector3 pos2 = FindObjectOfType<HandManager>().GetSlotWorldPosition(targetEnemySlotIndex);
-
-            enemySlot.SetCard(null);
-            targetEnemySlot.SetCard(null);
-
-            if (targetCard != null)
-            {
-                targetCard.transform.position = pos1;
-                enemySlot.SetCard(targetCard);
-            }
-            if (enemyCard != null)
-            {
-                enemyCard.transform.position = pos2;
-                targetEnemySlot.SetCard(enemyCard);
-            }
-
-            BoardManager.SyncAttachedModels(enemySlot);
-            BoardManager.SyncAttachedModels(targetEnemySlot);
+            BoardManager.SwapCards(enemySlotIndex, targetEnemySlotIndex);
         }
         BoardSlot.CheckAndHandleDeaths();
         // 检查对方是否有合法目标
@@ -1082,6 +1049,9 @@ public class BattleManager : MonoBehaviour
             {
                 BoardSlot.CheckAndHandleDeaths();
                 yield return ActionQueueManager.WaitForDrain();
+                // 广播死亡结果给远端客户端——对战死亡必须立即同步，否则远端残留死牌模型
+                if (Mirror.NetworkServer.active)
+                    BoardSyncManager.MarkDirty();
                 yield return null;
                 yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
                 yield return new WaitWhile(() => BoardSlot.isPlacingCard);
