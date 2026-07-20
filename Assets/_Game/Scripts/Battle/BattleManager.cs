@@ -1449,6 +1449,14 @@ public class BattleManager : MonoBehaviour
             ci.currentAttack -= ci.tempAttackBoost;
             ci.tempAttackBoost = 0;
             ci.tempHealthBoost = 0;
+            // 兜底恢复 originalAttackBeforeDebuff（弱化棱晶等，远程先手路径可能未在
+            // MinionAttacksCoroutine 中恢复——服务器端未追踪该字段）
+            if (ci.originalAttackBeforeDebuff > 0)
+            {
+                ci.currentAttack = ci.originalAttackBeforeDebuff;
+                ci.originalAttackBeforeDebuff = 0;
+            }
+            c3d?.UpdateValues();
         }
         // 影之终幕：任意半场有影子存活 → 全局加成生效，影子自身 +1阶 +2攻
         bool hasShadow = false;

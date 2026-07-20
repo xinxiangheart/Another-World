@@ -1114,7 +1114,15 @@ public class NetworkPlayer : NetworkBehaviour
                 {
                     string[] p = raw.Split('|'); int v;
                     if (p.Length > 1 && int.TryParse(p[1], out v)) ci.currentHealth = v;
-                    if (p.Length > 2 && int.TryParse(p[2], out v)) ci.currentAttack = v;
+                    if (p.Length > 2 && int.TryParse(p[2], out v))
+                    {
+                        // 保存原始攻击力——远程客户端上报的值可能包含先手临时debuff
+                        // （如弱化棱晶将ATK临时设为1）。若尚未追踪且上报值不同，保存
+                        // 服务器当前值以便 FinalDamage 中恢复。
+                        if (ci.originalAttackBeforeDebuff <= 0 && v != ci.currentAttack)
+                            ci.originalAttackBeforeDebuff = ci.currentAttack;
+                        ci.currentAttack = v;
+                    }
                     if (p.Length > 3 && int.TryParse(p[3], out v)) ci.currentMaxHealth = v;
                     if (p.Length > 4 && int.TryParse(p[4], out v)) ci.baseAttack = v;
                     if (p.Length > 5 && int.TryParse(p[5], out v)) ci.baseHealth = v;
