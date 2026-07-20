@@ -89,8 +89,6 @@ public class CardInstance : MonoBehaviour
     [System.NonSerialized] public float _placedAtTime = -999f;
     /// <summary>进场效果正在执行中——死亡扫描应跳过此卡。</summary>
     [System.NonSerialized] public bool _enterEffectRunning;
-    /// <summary>本帧已被本地 HandleDeath 处理过——ApplySync 的 EnsureEmpty 应跳过。</summary>
-    [System.NonSerialized] public bool _deathProcessed;
     /// <summary>协程型进场效果尚未完成——OnPointerClick 的 CleanupAfterPlacement 应跳过，由协程自行清理。</summary>
     [System.NonSerialized] public bool _hasPendingCoroutine;
     // 动态赋予的特性文本

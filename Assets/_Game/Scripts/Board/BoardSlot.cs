@@ -877,6 +877,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             var ci = card3D.GetComponent<Card3DInstance>()?.cardInstance;
             if (ci != null) ci._placedAtTime = Time.time;
             lastHandleDeathTime = -1f; // 新卡入槽，重置死亡时间戳
+            // Registry: 板面入槽
+            if (ci != null && RegistrySyncManager.Instance != null)
+                RegistrySyncManager.Instance.UpdateCard(ci, slotID >= 6 ? 0 : 1, CardZone.Board, slotID);
         }
     }
 
@@ -1001,8 +1004,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         if (dyingCard == null) return;
         Card3DInstance c3d = dyingCard.GetComponent<Card3DInstance>();
         if (c3d == null || c3d.cardInstance == null) return;
-        // 标记本帧已被本地处理——防 ApplySync 的 EnsureCard 从过期同步重建已死亡模型
-        c3d.cardInstance._deathProcessed = true;
+        // Registry: 板面退场 → 墓地
+        RegistrySyncManager.Instance?.UpdateCard(c3d.cardInstance, slotID >= 6 ? 0 : 1, CardZone.Graveyard, slotID);
         lastHandleDeathTime = Time.time;
         c3d.cardInstance.hasLifePriestBlessing = false;
         c3d.cardInstance.lifePriestBlessingSource = null;

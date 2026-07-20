@@ -622,6 +622,8 @@ public class NetworkPlayer : NetworkBehaviour
 
         handCardCount = handCards.Count;
         Debug.Log($"[NetworkPlayer] DrawCard: templateID={data.templateID}, instanceID={data._instanceID}, handCount={handCardCount}");
+        // Registry
+        RegistrySyncManager.Instance?.UpdateCard(instance, this == Local ? 0 : 1, CardZone.Hand, -1);
     }
 
     public void DrawCardWithoutLimit()
@@ -671,16 +673,22 @@ public class NetworkPlayer : NetworkBehaviour
         }
 
         handCardCount = handCards.Count;
+        // Registry: 本地抽牌入区
+        RegistrySyncManager.Instance?.UpdateCard(instance, this == Local ? 0 : 1, CardZone.Hand, -1);
     }
 
     public void RemoveCardFromHand(GameObject card)
     {
         if (handCards.Contains(card))
         {
+            var ciRemove = card.GetComponent<CardInstance>();
             handCards.Remove(card);
             Destroy(card);
             handCards.RemoveAll(c => c == null);
             FindObjectOfType<HandManager>()?.RefreshLayout(true);
+            // Registry: 手牌移除
+            if (ciRemove != null)
+                RegistrySyncManager.Instance?.Remove(ciRemove.instanceID, this == Local ? 0 : 1);
             handCardCount = handCards.Count;
         }
     }
@@ -728,6 +736,8 @@ public class NetworkPlayer : NetworkBehaviour
         }
 
         handCardCount = handCards.Count;
+        // Registry
+        RegistrySyncManager.Instance?.UpdateCard(inst, this == Local ? 0 : 1, CardZone.Hand, -1);
     }
 
     public void AddCardToHandFromInstance(CardData template, CardInstance oldInstance, bool isEnemy = false)
@@ -793,6 +803,13 @@ public class NetworkPlayer : NetworkBehaviour
                 hm?.RegisterCard(cv);
             }
             handCardCount = handCards.Count;
+            // Registry
+            RegistrySyncManager.Instance?.UpdateCard(inst, this == Local ? 0 : 1, CardZone.Hand, -1);
+        }
+        else
+        {
+            // isEnemy 路径：对手手牌增加 → 注册到 Remote 侧
+            RegistrySyncManager.Instance?.UpdateCard(inst, 1, CardZone.Hand, -1);
         }
     }
 
@@ -842,6 +859,8 @@ public class NetworkPlayer : NetworkBehaviour
         handCards.Add(card);
         handCardCount = handCards.Count;
         Debug.Log($"[NetworkPlayer] AddServerSideCard: {data.templateID} iid={instanceID}, handCount={handCardCount}");
+        // Registry: 手牌入区
+        RegistrySyncManager.Instance?.UpdateCard(ci, this == Local ? 0 : 1, CardZone.Hand, -1);
     }
 
     int GetCopyIndex(string templateID)
@@ -1920,5 +1939,16 @@ public class NetworkPlayer : NetworkBehaviour
     public void TargetThiefComplete(NetworkConnectionToClient target)
     {
         _thiefDone = true;
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // Registry 通用 RPC 管道
+    // ═══════════════════════════════════════════════════════
+
+    /// <summary>服务端增量推送 Registry delta 到远端客户端。</summary>
+    [TargetRpc]
+    public void RpcSyncRegistry(NetworkConnectionToClient target, string payload)
+    {
+        RegistrySyncManager.Instance?.ApplyDelta(payload);
     }
 }

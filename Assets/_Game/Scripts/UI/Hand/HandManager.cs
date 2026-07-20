@@ -992,6 +992,11 @@ public class HandManager : MonoBehaviour
         bm.attachedModels.Add(model);
         BoardSyncManager.MarkDirty();
 
+        // Registry: 附着卡入板面追踪
+        var attachedCI = model.GetComponent<Card3DInstance>()?.cardInstance;
+        if (attachedCI != null)
+            RegistrySyncManager.Instance?.UpdateCard(attachedCI, hostSlot.slotID >= 6 ? 0 : 1, CardZone.Board, hostSlot.slotID);
+
         // 删除手牌
         CardView cv = cardObject?.GetComponent<CardView>();
         if (cv != null)
