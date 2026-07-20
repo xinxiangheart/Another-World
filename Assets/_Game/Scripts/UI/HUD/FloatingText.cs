@@ -9,6 +9,6 @@ public class FloatingText : MonoBehaviour
 {
     public static void Show(Vector3 worldPos, string text, Color color, float duration = 1f)
     {
-        // Instantiate a TMP text at worldPos → animate upward → fade out → destroy
+        // TODO: 待实现 — Instantiate a TMP text at worldPos → animate upward → fade out → destroy
     }
 }

@@ -8,6 +8,7 @@ using Mirror;
 public partial class TurnManager
 {
     /// <summary>Check if game has started (delegates to NetworkTurnSync.Instance.gameStarted)</summary>
+    [System.Obsolete]
     public bool HasGameStarted()
     {
         if (NetworkTurnSync.Instance != null)

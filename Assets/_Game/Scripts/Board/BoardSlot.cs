@@ -24,7 +24,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public static bool isTargetingMode
     {
         get => SelectionManager.Instance != null && SelectionManager.Instance.IsSelecting;
-        set { }
+        set { Debug.LogWarning("[BoardSlot] isTargetingMode setter is deprecated — use SelectionManager directly."); }
     }
 
     private static bool _isPlacingCard = false;
@@ -268,6 +268,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     ci.hasFirstStrike = false;
                     break;
                 }
+                default:
+                    Debug.LogWarning($"[BoardSlot] RunRemoteFirstStrikes 未处理的 templateID: {ci.templateID}");
+                    break;
             }
         }
 
@@ -726,7 +729,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     if (slotID >= 6 && slotID <= 11 && hasCard) return new int[] { slotID };
                 }
                 break;
-
+            default:
+                Debug.LogWarning($"[BoardSlot] GetRowSlots 未处理的 TargetType: {type}");
+                break;
         }
         return new int[0];
     }
@@ -1150,6 +1155,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 case "退场：己方玩家扣一血":
                     traitOwner?.TakeDamage(1);
                     break;
+                default:
+                    Debug.LogWarning($"[BoardSlot] ProcessGrantedDeathTraits 未处理的 trait: {trait}");
+                    break;
             }
         }
     }
@@ -1200,6 +1208,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                         }
                     }
                     break;
+                default:
+                    Debug.LogWarning($"[BoardSlot] TriggerDeathEffect(active) 未处理的 templateID: {id}");
+                    break;
             }
         }
         else
@@ -1209,6 +1220,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 case "01106": dp?.AddEnergy(1); break;
                 case "03513":
                     Do03513AOE(ci);
+                    break;
+                default:
+                    Debug.LogWarning($"[BoardSlot] TriggerDeathEffect(inactive) 未处理的 templateID: {id}");
                     break;
             }
         }
@@ -2569,6 +2583,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                         }
                     }
                     break;
+                default:
+                    Debug.LogWarning($"[BoardSlot] HandleDeath(active) 未处理的 templateID: {id}");
+                    break;
             }
         }
         else
@@ -2578,6 +2595,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 case "01106": dp?.AddEnergy(1); break;
                 case "03513":
                     Do03513AOE(this);
+                    break;
+                default:
+                    Debug.LogWarning($"[BoardSlot] HandleDeath(inactive) 未处理的 templateID: {id}");
                     break;
             }
         }
@@ -2610,6 +2630,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                         break;
                     case "退场：己方玩家扣一血":
                         traitOwner?.TakeDamage(1);
+                        break;
+                    default:
+                        Debug.LogWarning($"[BoardSlot] HandleDeath(giveableDeathTraits) 未处理的 trait: {trait}");
                         break;
                 }
             }
@@ -3840,7 +3863,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     hm.StartCoroutine(hm.SwapTwoAllies());
                 }
                 break;
-           
+            default:
+                Debug.LogWarning($"[BoardSlot] TriggerDiscardEffectFromTrait 未处理的 templateID: {templateID}");
+                break;
         }
     }
     bool HasAllyTarget(CardInstance source)

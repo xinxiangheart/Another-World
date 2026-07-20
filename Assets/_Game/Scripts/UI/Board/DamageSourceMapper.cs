@@ -41,6 +41,7 @@ public class DamageSourceMarker : MonoBehaviour
         }
     }
     // 检查是否死于敌方召唤物的伤害（用于触发反击）
+    [System.Obsolete]
     public bool DiedFromMinionDamage()
     {
         if (totalDamageThisPhase <= 0) return false;

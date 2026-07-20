@@ -131,7 +131,7 @@ public class EnergyReaperAura : AuraBase
 /// <summary>猩红圣徒(01533)：对手召唤物进场后受到己方血歌前缀召唤物数量伤害。</summary>
 public class ScarletSaintAura : AuraBase
 {
-    System.Action<CardInstance> _handler;
+    internal System.Action<CardInstance> _handler;
 
     public ScarletSaintAura()
     {

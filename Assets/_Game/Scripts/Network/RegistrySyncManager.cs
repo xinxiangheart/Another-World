@@ -147,9 +147,10 @@ public class RegistrySyncManager : MonoBehaviour
         }
 
         if (stats == "" && changed.Count == 0 && removed.Count == 0) return "";
-        return (stats == "" ? "-" : stats) + "||" +
-               string.Join("||", changed) + "|||" +
-               string.Join("||", removed);
+        // 分隔符 ~|~ 和 ~||~ 互不包含，避免 changed 为空时与 section 分隔符合并
+        return (stats == "" ? "-" : stats) + "~||~" +
+               string.Join("~|~", changed) + "~||~" +
+               string.Join("~|~", removed);
     }
 
     void OnZoneChanged(string iid, CardZone from, CardZone to)
@@ -178,13 +179,12 @@ public class RegistrySyncManager : MonoBehaviour
     public void ApplyDelta(string payload)
     {
         if (string.IsNullOrEmpty(payload)) return;
-        int sep1 = payload.IndexOf("||");
-        int sep2 = payload.IndexOf("|||");
-        if (sep1 < 0 || sep2 < 0) return;
+        string[] sections = payload.Split(new[] { "~||~" }, System.StringSplitOptions.None);
+        if (sections.Length < 3) return;
 
-        string statsPart = payload.Substring(0, sep1);
-        string changedPart = payload.Substring(sep1 + 2, sep2 - sep1 - 2);
-        string removedPart = payload.Substring(sep2 + 3);
+        string statsPart = sections[0];
+        string changedPart = sections[1];
+        string removedPart = sections[2];
 
         if (statsPart != "-" && statsPart.StartsWith("S|"))
         {
@@ -195,7 +195,7 @@ public class RegistrySyncManager : MonoBehaviour
         }
 
         if (changedPart.Length > 0)
-            foreach (var entry in changedPart.Split(new[] { "||" }, System.StringSplitOptions.None))
+            foreach (var entry in changedPart.Split(new[] { "~|~" }, System.StringSplitOptions.None))
             {
                 if (!entry.StartsWith("C|")) continue;
                 var parts = entry.Split('|');
@@ -209,7 +209,7 @@ public class RegistrySyncManager : MonoBehaviour
             }
 
         if (removedPart.Length > 0)
-            foreach (var entry in removedPart.Split(new[] { "||" }, System.StringSplitOptions.None))
+            foreach (var entry in removedPart.Split(new[] { "~|~" }, System.StringSplitOptions.None))
             {
                 if (!entry.StartsWith("R|")) continue;
                 _mirror.Remove(entry.Substring(2));

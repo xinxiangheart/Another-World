@@ -110,6 +110,7 @@ public class NetworkTurnSync : NetworkBehaviour
     /// SyncVar 自动同步血量/能量/手牌数，板面通过 MarkDirty 触发。
     /// </summary>
     [Server]
+    [System.Obsolete]
     public static void ForceFullSync()
     {
         BoardSyncManager.MarkDirty();

@@ -281,6 +281,7 @@ public class CardZoneManager : MonoBehaviour
     // ═══════════════════════════════════════════════════════════════════
 
     /// <summary>兼容旧代码：只返回 templateID（不返回 instanceID）。</summary>
+    [System.Obsolete]
     public CardData DrawFromMain_Legacy()
     {
         var result = DrawFromDeck();

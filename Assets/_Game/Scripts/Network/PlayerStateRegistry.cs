@@ -67,6 +67,9 @@ public class PlayerStateRegistry
                 graveyard.Add(new GraveEntry { templateID = card.templateID, instanceID = card.instanceID }); break;
             case CardZone.Exile:
                 if (!exile.Contains(card.instanceID)) exile.Add(card.instanceID); break;
+            default:
+                UnityEngine.Debug.LogWarning($"[PlayerStateRegistry] 未知 CardZone: {card.zone} for {card.instanceID}");
+                break;
         }
     }
 

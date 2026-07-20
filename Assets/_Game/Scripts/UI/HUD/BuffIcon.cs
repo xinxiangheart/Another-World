@@ -12,6 +12,6 @@ public class BuffIcon : MonoBehaviour
     public Image icon;
     public Text amountText;
 
-    public void Setup(string id, int amt, Sprite sprite) { }
-    public void UpdateAmount(int newAmt) { }
+    public void Setup(string id, int amt, Sprite sprite) { /* TODO: 待实现 */ }
+    public void UpdateAmount(int newAmt) { /* TODO: 待实现 */ }
 }

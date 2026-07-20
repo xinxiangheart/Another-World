@@ -115,6 +115,7 @@ public class GetCardPanel : MonoBehaviour
         Debug.LogWarning($"未在任何区域找到 templateID={templateID} 的卡牌");
     }
 
+    [System.Obsolete]
     void GetCardByID(string instanceID)
     {
         NetworkPlayer.Local.handCards.RemoveAll(c => c == null);

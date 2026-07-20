@@ -75,46 +75,4 @@ public class FakeEnemyPlayButton : MonoBehaviour
             max = 11;
         }
     }
-
-    /// <summary>
-    /// 获取替换模式下的槽位范围。
-    /// </summary>
-    public static void GetReplaceSlotRange(out int min, out int max)
-    {
-        if (nextPlayAsEnemy)
-        {
-            min = 0;
-            max = 5;
-        }
-        else
-        {
-            min = 6;
-            max = 11;
-        }
-    }
-
-    /// <summary>
-    /// 放置完成后调整3D模型朝向。
-    /// 敌方槽位朝向己方(180)，己方槽位朝向敌方(0)。
-    /// </summary>
-    public static void AdjustModelRotation(GameObject model)
-    {
-        if (model == null) return;
-        if (nextPlayAsEnemy)
-        {
-            model.transform.rotation = Quaternion.Euler(0, 0, 0);
-        }
-        else
-        {
-            model.transform.rotation = Quaternion.Euler(0, 180, 0);
-        }
-    }
-
-    /// <summary>
-    /// 是否为敌方出牌模式（在放置阶段读取，此时标志还未被消费）
-    /// </summary>
-    public static bool IsEnemyPlacement()
-    {
-        return nextPlayAsEnemy;
-    }
 }

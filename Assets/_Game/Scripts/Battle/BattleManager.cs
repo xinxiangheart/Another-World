@@ -58,11 +58,12 @@ public class BattleManager : MonoBehaviour
         foreach (BoardSlot slot in allSlots)
         {
             if (slot?.currentCard3D == null) continue;
-            CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+            var c3d = slot.currentCard3D.GetComponent<Card3DInstance>();
+            CardInstance ci = c3d?.cardInstance;
             if (ci != null && ci.hasShield && ci.shieldEndAtBattleStart)
             {
                 ci.RemoveShield();
-                slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+                c3d?.UpdateValues();
             }
         }
 
@@ -105,7 +106,8 @@ public class BattleManager : MonoBehaviour
             BoardSlot slot = allSlots[i];
             if (slot == null || !slot.hasPlague || slot.currentCard3D == null) continue;
 
-            CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+            var c3d = slot.currentCard3D.GetComponent<Card3DInstance>();
+            CardInstance ci = c3d?.cardInstance;
             if (ci != null)
             {
                 ci.currentHealth -= slot.plagueRoundCount;
@@ -113,7 +115,7 @@ public class BattleManager : MonoBehaviour
                 ci.baseAttack = Mathf.Max(0, ci.baseAttack - 1);
                 DamagePipeline.ShowFloaterAt(ci, slot.plagueRoundCount, FloaterType.Debuff);
                 DamagePipeline.ShowFloaterAt(ci, 1, FloaterType.Debuff);
-                slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+                c3d?.UpdateValues();
             }
             slot.plagueRoundCount++;
         }
@@ -1184,9 +1186,11 @@ public class BattleManager : MonoBehaviour
         var bm = FindObjectOfType<BoardManager>();
         var bmInstance = BattleManager.Instance;
         int safety = 0;
+        var batch = new List<(int deadSlotID, string effect, List<string> sourceIDs)>();
         while (BoardSlot.pendingRevenges.Count > 0 && safety++ < 20)
         {
-            var batch = new List<(int deadSlotID, string effect, List<string> sourceIDs)>(BoardSlot.pendingRevenges);
+            batch.Clear();
+            batch.AddRange(BoardSlot.pendingRevenges);
             BoardSlot.pendingRevenges.Clear();
 
             foreach (var (deadSlotID, effect, sourceIDs) in batch)
@@ -1673,17 +1677,6 @@ public class BattleManager : MonoBehaviour
                 return;
             }
         }
-    }
-    bool IsAllyUnit(CardInstance ci)
-    {
-        BoardManager bm = FindObjectOfType<BoardManager>();
-        if (bm == null) return false;
-        for (int i = 6; i <= 11; i++)
-        {
-            if (bm.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance == ci)
-                return true;
-        }
-        return false;
     }
     IEnumerator ExecutionSwordDamage(CardInstance sword, int damage, BoardSlot swordSlot)
     {

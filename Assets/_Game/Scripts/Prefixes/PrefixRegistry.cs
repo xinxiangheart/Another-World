@@ -19,8 +19,8 @@ public static class PrefixRegistry
         public PrefixHook onBattleEnd;
     }
 
-    public static void Register(string key, PrefixDef def) { }
-    public static PrefixDef Get(string key) => null;
+    public static void Register(string key, PrefixDef def) { /* TODO: 待实现 */ }
+    public static PrefixDef Get(string key) { /* TODO: 待实现 */ return null; }
     public static bool HasPrefix(CardInstance ci, string key) =>
         ci != null && ci.prefixes != null && ci.prefixes.Contains(key);
 }

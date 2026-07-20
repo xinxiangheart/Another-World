@@ -10,8 +10,8 @@ public static class SaveManager
     private const string SETTINGS_KEY = "game_settings";
     private const string STATS_KEY = "match_history";
 
-    public static void SaveDeck(string name, string[] templateIDs) { }
-    public static string[] LoadDeck(string name) => null;
-    public static void SaveSettings() { }
-    public static void LoadSettings() { }
+    public static void SaveDeck(string name, string[] templateIDs) { /* TODO: 待实现 */ }
+    public static string[] LoadDeck(string name) { /* TODO: 待实现 */ return null; }
+    public static void SaveSettings() { /* TODO: 待实现 */ }
+    public static void LoadSettings() { /* TODO: 待实现 */ }
 }

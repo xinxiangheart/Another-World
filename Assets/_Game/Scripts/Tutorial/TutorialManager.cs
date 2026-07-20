@@ -16,7 +16,7 @@ public class TutorialManager : MonoBehaviour
     private List<TutorialStep> _steps = new List<TutorialStep>();
     private int _currentStep;
 
-    public void StartTutorial() { }
-    public void NextStep() { }
-    public void SkipAll() { HasCompletedTutorial = true; }
+    public void StartTutorial() { /* TODO: 待实现 */ }
+    public void NextStep() { /* TODO: 待实现 */ }
+    public void SkipAll() { /* TODO: 待实现 */ HasCompletedTutorial = true; }
 }

@@ -72,7 +72,7 @@ public class CardView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
 
     public void OnPointerClick(PointerEventData e)
     {
-        if (!IsAnyCardDragging && !IsAnyCardDragging && OnCardClicked != null)
+        if (!IsAnyCardDragging && OnCardClicked != null)
         {
             CardInstance ci = GetComponent<CardInstance>();
             OnCardClicked?.Invoke(ci);

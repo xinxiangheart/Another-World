@@ -128,6 +128,13 @@ public class GlobalEventManager : MonoBehaviour
     }
     public void UnregisterAuraOfSource(CardInstance source)
     {
+        foreach (var a in auras)
+        {
+            if (a.source == source && a is ScarletSaintAura s)
+            {
+                OnMinionEntered -= s._handler;
+            }
+        }
         auras.RemoveAll(a => a.source == source);
     }
     /// <summary>己方玩家受到伤害时触发，参数为伤害量</summary>

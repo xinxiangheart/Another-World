@@ -10,7 +10,7 @@ public class SimpleAI : MonoBehaviour
 
     public Difficulty difficulty = Difficulty.Normal;
 
-    public void StartTurn() { }
-    public void EvaluateAndPlay() { }
-    private float ScoreCard(CardInstance ci) => 0f;
+    public void StartTurn() { /* TODO: 待实现 */ }
+    public void EvaluateAndPlay() { /* TODO: 待实现 */ }
+    private float ScoreCard(CardInstance ci) { /* TODO: 待实现 */ return 0f; }
 }

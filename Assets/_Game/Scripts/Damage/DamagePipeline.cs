@@ -647,7 +647,7 @@ public static class DamagePipeline
     {
         var bm = UnityEngine.Object.FindObjectOfType<BoardManager>();
         if (bm == null) return Vector3.zero;
-        float offset = _floaterOffsetY ?? 2.5f;
+        float offset = 2.5f;
         for (int i = 0; i < 12; i++)
         {
             var s = bm.GetSlot(i);
@@ -658,14 +658,9 @@ public static class DamagePipeline
         return Vector3.zero;
     }
 
-    static float? _floaterOffsetY;
     static float GetFloaterOffsetY()
     {
-        if (!_floaterOffsetY.HasValue)
-        {
-            var cfg = Resources.Load<FloaterConfig>("FloaterConfig");
-            _floaterOffsetY = cfg != null ? cfg.worldOffsetY : 2.5f;
-        }
-        return _floaterOffsetY.Value;
+        var cfg = Resources.Load<FloaterConfig>("FloaterConfig");
+        return cfg != null ? cfg.worldOffsetY : 2.5f;
     }
 }

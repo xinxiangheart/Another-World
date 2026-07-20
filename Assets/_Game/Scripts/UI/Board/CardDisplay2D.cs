@@ -14,6 +14,7 @@ public class CardDisplay2D : MonoBehaviour
     private CardInstance instance;
 
     // 恢复 instance 引用的备用方法
+    [System.Obsolete]
     private void EnsureInstance()
     {
         if (instance == null)

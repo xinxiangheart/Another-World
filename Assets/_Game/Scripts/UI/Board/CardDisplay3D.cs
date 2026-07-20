@@ -80,6 +80,7 @@ public class CardDisplay3D : MonoBehaviour
             healthText.text = instance.currentHealth.ToString();
         }
     }
+    [System.Obsolete]
     private bool IsSuppressorOnField()
     {
         BoardManager bm = FindObjectOfType<BoardManager>();

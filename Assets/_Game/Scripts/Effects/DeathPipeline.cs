@@ -106,6 +106,7 @@ public static class DeathPipeline
         if (ci.isAttached == false)
         {
             BoardManager bm = Object.FindObjectOfType<BoardManager>();
+            if (bm == null) return;
             List<GameObject> fairies = new List<GameObject>();
             foreach (GameObject obj in bm.attachedModels)
             {
@@ -163,7 +164,7 @@ public static class DeathPipeline
                 CardInstance ti = temp.AddComponent<CardInstance>();
                 ti.InitFromTemplate(soldierTemplate, 0, CardZoneManager.GenerateInstanceID("03004"));
                 HandManager hm = Object.FindObjectOfType<HandManager>();
-                hm.PlaceCardToSlot(slot, temp);
+                hm?.PlaceCardToSlot(slot, temp);
                 Object.Destroy(temp);
             }
         }
