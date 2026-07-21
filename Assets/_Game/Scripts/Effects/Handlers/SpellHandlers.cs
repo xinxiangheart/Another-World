@@ -215,7 +215,7 @@ public static class SpellHandlers
             var ci = t3d?.cardInstance;
             var td = CardDatabase.Instance?.GetTemplate(ci?.templateID);
             if (td != null && td.hasOnEnter)
-                ts.StartOnEnterEffect(td, ci);
+                ts.StartCoroutine(ts.StartOnEnterEffect(td, ci));
         }
         Cleanup();
     }

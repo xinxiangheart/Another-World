@@ -306,7 +306,7 @@ public static class DamagePipeline
                 {
                     BoardSlot targetSlot = FindSlotOf(def);
                     if (targetSlot != null)
-                        targetSlot.StartOnEnterEffect(td, def);
+                        targetSlot.StartCoroutine(targetSlot.StartOnEnterEffect(td, def));
                 }
                 ctx.revivedByPriest = true;
                 ctx.priestSource = priest;

@@ -87,9 +87,9 @@ public class CardInstance : MonoBehaviour
     public bool immuneToEnemySpell;
     /// <summary>记录此卡被放置到槽位的时间（用于同步保护）</summary>
     [System.NonSerialized] public float _placedAtTime = -999f;
-    /// <summary>进场效果正在执行中——死亡扫描应跳过此卡。</summary>
+    /// <summary>[Legacy] 进场效果正在执行中——死亡扫描应跳过此卡。后续由 NestingContext.IsNested 替代。</summary>
     [System.NonSerialized] public bool _enterEffectRunning;
-    /// <summary>协程型进场效果尚未完成——OnPointerClick 的 CleanupAfterPlacement 应跳过，由协程自行清理。</summary>
+    /// <summary>[Legacy] 协程型进场效果尚未完成。后续由 EffectContext.StartedCoroutine + NestingContext 替代。</summary>
     [System.NonSerialized] public bool _hasPendingCoroutine;
     // 动态赋予的特性文本
     public List<string> grantedTraitTexts = new List<string>();

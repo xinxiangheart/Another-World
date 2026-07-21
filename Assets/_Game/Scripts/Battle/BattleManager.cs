@@ -122,6 +122,7 @@ public class BattleManager : MonoBehaviour
         BoardSlot.CheckAndHandleDeaths();
         if (Mirror.NetworkServer.active)
             BoardSyncManager.MarkDirty();
+        yield return StartCoroutine(WaitForSimultaneousWindow());
         Debug.Log("[战斗] 阶段1：战斗回合开始特性");
     }
     IEnumerator FirstStrikeCoroutine()
@@ -713,11 +714,9 @@ public class BattleManager : MonoBehaviour
             if (rci != null) rci._placedAtTime = Time.time;
         }
         BoardSlot.CheckAndHandleDeaths();
-        yield return ActionQueueManager.WaitForDrain();
-        // 广播死亡结果给远端客户端——先手阶段的清理/伤害可能造成死亡，远端必须同步
         if (Mirror.NetworkServer.active)
             BoardSyncManager.MarkDirty();
-        yield return StartCoroutine(ResolveRevengesFromSnapshot());
+        yield return StartCoroutine(WaitForSimultaneousWindow());
     }
 
     void FirstStrike()
@@ -1050,18 +1049,9 @@ public class BattleManager : MonoBehaviour
             if (died.Count > 0)
             {
                 BoardSlot.CheckAndHandleDeaths();
-                yield return ActionQueueManager.WaitForDrain();
-                // 广播死亡结果给远端客户端——对战死亡必须立即同步，否则远端残留死牌模型
                 if (Mirror.NetworkServer.active)
                     BoardSyncManager.MarkDirty();
-                yield return null;
-                yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
-                yield return new WaitWhile(() => BoardSlot.isPlacingCard);
-                yield return new WaitWhile(() => BoardSlot._roguePhaseBlock);
-                var cqm = ConfirmQueueManager.Instance;
-                if (cqm != null) yield return new WaitWhile(() => cqm.IsBusy());
-                // 反击窗口
-                yield return StartCoroutine(ResolveRevengesFromSnapshot());
+                yield return StartCoroutine(WaitForSimultaneousWindow());
             }
         }
     }
@@ -1867,5 +1857,22 @@ public class BattleManager : MonoBehaviour
                 return true;
         }
         return false;
+    }
+
+    /// <summary>
+    /// 等待当前"同时窗口"完全处理完毕：
+    /// ActionQueue 排空 → 嵌套上下文结束 → UI 选择完成 → 反击结算。
+    /// 用于替换 BattleManager 中多处重复的 ad-hoc 等待链。
+    /// </summary>
+    public static IEnumerator WaitForSimultaneousWindow()
+    {
+        yield return ActionQueueManager.WaitForDrain();
+        yield return new WaitWhile(() => NestingContext.IsNested);
+        yield return new WaitWhile(() => BoardSlot.isPlacingCard);
+        yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
+        var cqm = ConfirmQueueManager.Instance;
+        if (cqm != null) yield return new WaitWhile(() => cqm.IsBusy());
+        if (BoardSlot.pendingRevenges.Count > 0)
+            yield return Instance.StartCoroutine(ResolveRevengesFromSnapshot());
     }
 }

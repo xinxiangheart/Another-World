@@ -218,7 +218,7 @@ public static class EnterHandlers
     static void Handle01110(EffectContext ctx)
     {
         if (ctx.source != null) ctx.source._hasPendingCoroutine = true;
-        ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.FragmentEnterEffect(ctx.source, ctx.sourceSlot));
+        ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.FragmentEnterEffect(ctx.source, ctx.sourceSlot));
     }
 
     static void Handle01313(EffectContext ctx)
@@ -399,10 +399,10 @@ public static class EnterHandlers
     // ═══════════════════════════════════════════════════════════════════
 
     static void Handle01311(EffectContext ctx)
-        => ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.ConductorEnterEffect(ctx.source));
+        => ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.ConductorEnterEffect(ctx.source));
 
     static void Handle01314(EffectContext ctx)
-        => ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.HeartthrobEnterEffect(ctx.source));
+        => ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.HeartthrobEnterEffect(ctx.source));
 
     static void Handle01317(EffectContext ctx)
     {
@@ -422,73 +422,73 @@ public static class EnterHandlers
     }
 
     static void Handle01319(EffectContext ctx)
-        => ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.FearlessEnterEffect());
+        => ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.FearlessEnterEffect());
 
     static void Handle01322(EffectContext ctx)
-        => ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.RemnantEnterEffect(ctx.source));
+        => ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.RemnantEnterEffect(ctx.source));
 
     static void Handle01329(EffectContext ctx)
-        => ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.ApprenticeMageEnterEffect(ctx.source));
+        => ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.ApprenticeMageEnterEffect(ctx.source));
 
     static void Handle01331(EffectContext ctx)
-        => ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.PrisonEnterEffect(ctx.source));
+        => ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.PrisonEnterEffect(ctx.source));
 
     static void Handle01337(EffectContext ctx)
-        => ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.PirateEnterEffect(ctx.source));
+        => ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.PirateEnterEffect(ctx.source));
 
     static void Handle01349(EffectContext ctx)
     {
         var hm = UnityEngine.Object.FindObjectOfType<HandManager>();
-        hm.StartCoroutine(hm.CollectorEnterEffect(ctx.source));
+        ctx.StartedCoroutine = hm.StartCoroutine(hm.CollectorEnterEffect(ctx.source));
     }
 
     static void Handle01127(EffectContext ctx)
-        => ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.ReformerEnterEffect(ctx.source));
+        => ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.ReformerEnterEffect(ctx.source));
 
     static void Handle01501(EffectContext ctx)
-        => ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.EmperorEnterEffect(ctx.source));
+        => ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.EmperorEnterEffect(ctx.source));
 
     static void Handle01502(EffectContext ctx)
-        => ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.ShadowMasterEnterEffect(ctx.source));
+        => ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.ShadowMasterEnterEffect(ctx.source));
 
     static void Handle01503(EffectContext ctx)
-        => ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.LordEnterEffect(ctx.source));
+        => ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.LordEnterEffect(ctx.source));
 
     static void Handle01504(EffectContext ctx)
-        => ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.WolfKingEnterEffect(ctx.source));
+        => ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.WolfKingEnterEffect(ctx.source));
 
     static void Handle01505(EffectContext ctx)
-        => ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.BlockerEnterEffect(ctx.source));
+        => ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.BlockerEnterEffect(ctx.source));
 
     static void Handle01506(EffectContext ctx)
-        => ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.AmplifierEnterEffect(ctx.source));
+        => ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.AmplifierEnterEffect(ctx.source));
 
     static void Handle01509(EffectContext ctx)
-        => ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.TerroristEnterEffect(ctx.source));
+        => ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.TerroristEnterEffect(ctx.source));
 
     static void Handle01511(EffectContext ctx)
     {
         var inst = ctx.source;
         if (inst.mindScholarEnterTriggeredThisPhase) { ctx.sourceSlot.CleanupAfterPlacement(); return; }
-        ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.MindScholarEnterEffect(inst));
+        ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.MindScholarEnterEffect(inst));
     }
 
     static void Handle01515(EffectContext ctx)
-        => ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.FanaticShamanEnterEffect(ctx.source));
+        => ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.FanaticShamanEnterEffect(ctx.source));
 
     static void Handle01517(EffectContext ctx)
     {
         var aura = new MistHiderAura { source = ctx.source };
         GlobalEventManager.Instance.RegisterAura(aura);
         aura.ApplyHide();
-        ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.MistHiderEnterEffect(ctx.source));
+        ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.MistHiderEnterEffect(ctx.source));
     }
 
     static void Handle01521(EffectContext ctx)
-        => ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.BrilliantMageEnterEffect(ctx.source));
+        => ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.BrilliantMageEnterEffect(ctx.source));
 
     static void Handle01523(EffectContext ctx)
-        => ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.InkEnterEffect(ctx.source));
+        => ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.InkEnterEffect(ctx.source));
 
     static void Handle01533(EffectContext ctx)
     {
@@ -497,6 +497,6 @@ public static class EnterHandlers
         GlobalEventManager.Instance.RegisterAura(aura);
 
         // 2. 进场：为己方手牌或场上一召唤物附加血歌前缀
-        ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.ScarletSaintEnterEffect(ctx.source));
+        ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.ScarletSaintEnterEffect(ctx.source));
     }
 }

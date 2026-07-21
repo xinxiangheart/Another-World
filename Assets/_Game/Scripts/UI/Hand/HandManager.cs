@@ -296,7 +296,7 @@ public class HandManager : MonoBehaviour
                                 TurnManager.SyncMyBoardToOpponent();
                                 if (template.hasOnEnter)
                                 {
-                                    selectedSlot.StartOnEnterEffect(template, sourceInstance);
+                                    selectedSlot.StartCoroutine(selectedSlot.StartOnEnterEffect(template, sourceInstance));
                                 }
                                 CardView cvAttach = cardObj.GetComponent<CardView>();
                                 if (cvAttach != null) RemoveCard(cvAttach);
@@ -315,7 +315,7 @@ public class HandManager : MonoBehaviour
                     TurnManager.SyncMyBoardToOpponent();
                     if (template.hasOnEnter)
                     {
-                        selectedSlot.StartOnEnterEffect(template, sourceInstance);
+                        selectedSlot.StartCoroutine(selectedSlot.StartOnEnterEffect(template, sourceInstance));
                     }
                     CardView cvAttach2 = cardObj.GetComponent<CardView>();
                     if (cvAttach2 != null) RemoveCard(cvAttach2);
@@ -328,7 +328,7 @@ public class HandManager : MonoBehaviour
                     if (template.hasOnEnter)
                     {
                         CardInstance indInst = selectedSlot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
-                        selectedSlot.StartOnEnterEffect(template, indInst ?? sourceInstance);
+                        selectedSlot.StartCoroutine(selectedSlot.StartOnEnterEffect(template, indInst ?? sourceInstance));
                     }
                     CardView cvInd = cardObj.GetComponent<CardView>();
                     if (cvInd != null) RemoveCard(cvInd);

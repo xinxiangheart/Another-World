@@ -40,6 +40,9 @@ public class EffectContext
     /// <summary>触发时机（分发时写入，handler 可读）。</summary>
     public Trigger trigger;
 
+    /// <summary>handler 启动的协程引用。父协程通过 yield return 此引用来等待嵌套同时树完成。</summary>
+    public Coroutine StartedCoroutine;
+
     // ---- 死亡后处理回手标志（handler 设置 → DeathPipeline 消费） ----
 
     public bool shouldReturn03504;

@@ -66,7 +66,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public static List<(int deadSlotID, string revengeEffect, List<string> sourceInstanceIDs)> pendingRevenges
         = new List<(int, string, List<string>)>();
 
-    /// <summary>无赖(01309)退场召唤阶段阻塞标记。ApplyDamageLoop 检查此标记。</summary>
+    /// <summary>[Legacy] 无赖(01309)退场召唤阶段阻塞标记。已由 NestingContext.IsNested + WaitForSimultaneousWindow 替代外部等待链。</summary>
     public static bool _roguePhaseBlock;
     /// <summary>服务端等待远端客户端完成无赖(01309)召唤。</summary>
     public static bool _rogueRpcDone;
@@ -633,7 +633,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
                 if (template != null && template.hasOnEnter && inst != null)
                 {
-                    StartOnEnterEffect(template, inst);
+                    StartCoroutine(StartOnEnterEffect(template, inst));
                 }
 
                 // 清理重定向标记
@@ -757,15 +757,15 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
     }
 
-    public void StartOnEnterEffect(CardData template, CardInstance inst)
+    public IEnumerator StartOnEnterEffect(CardData template, CardInstance inst)
     {
-       
+
         Debug.Log($"StartOnEnterEffect: template={template?.cardName}, templateID={template?.templateID}");
-        if (template == null || string.IsNullOrEmpty(template.templateID)) return;
+        if (template == null || string.IsNullOrEmpty(template.templateID)) yield break;
         if (GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsTraitBlocked(inst, "进场"))
         {
             CleanupAfterPlacement();
-            return;
+            yield break;
         }
                 // 清理重定向标记
         if (GlobalEventManager.Instance?.PendingEnterRedirectInstance == inst)
@@ -775,12 +775,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             GlobalEventManager.Instance.PendingEnterRedirectTemplate = null;
             GlobalEventManager.Instance.PendingEnterRedirectInstance = null;
 
-            // 根据反制者所属半场选择目标类型：
-            //   Host 反制 → 选 Host 己方 (6-11) = SingleAlly
-            //   Remote 反制 → 选 Remote 己方，对 Host 来说是 SingleEnemy (0-5)
             TargetType redirectTargetType = redirectToHost ? TargetType.SingleAlly : TargetType.SingleEnemy;
 
-            // 检查目标方是否有可选槽位
             bool hasTarget = false;
             BoardManager bmRedirect = FindObjectOfType<BoardManager>();
             if (bmRedirect != null)
@@ -793,9 +789,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
             if (!hasTarget)
             {
-                // 无可用目标 → 仅阻止进场，不重定向
                 CleanupAfterPlacement();
-                return;
+                yield break;
             }
 
             SelectionManager.Instance.BeginSelection(redirectTargetType, (target) =>
@@ -804,20 +799,36 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 {
                     CardInstance targetInst = target.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
                     if (targetInst != null && redirectTemplate != null)
-                        target.StartOnEnterEffect(redirectTemplate, targetInst);
+                        target.StartCoroutine(target.StartOnEnterEffect(redirectTemplate, targetInst));
                 }
                 CleanupAfterPlacement();
             });
-            return;
+            yield break;
         }
 
-        if (template.templateID == "01309") {CleanupAfterPlacement();return;}
+        if (template.templateID == "01309") {CleanupAfterPlacement();yield break;}
 
         // ── Step 3: 进场效果分发（新 → EffectRegistry，回退 → 旧 switch）──
         if (inst != null) inst._enterEffectRunning = true;
         var enterCtx = EffectContext.ForEnter(template, inst, this);
         if (EffectDispatcher.Dispatch(Trigger.Enter, enterCtx))
-            return; // handler 已处理全部逻辑（含 CleanupAfterPlacement）
+        {
+            // handler 启动了协程 → 等待嵌套同时树完成
+            if (enterCtx.StartedCoroutine != null)
+            {
+                yield return enterCtx.StartedCoroutine;
+
+                // 法术可能已造成死亡 → 在同一嵌套树内结算
+                CheckAndHandleDeaths();
+                yield return ActionQueueManager.WaitForDrain();
+                yield return new WaitWhile(() => NestingContext.IsNested);
+                if (pendingRevenges.Count > 0 && BattleManager.Instance != null)
+                    yield return BattleManager.Instance.StartCoroutine(
+                        BattleManager.ResolveRevengesFromSnapshot());
+            }
+            // handler 已同步调用 CleanupAfterPlacement（同步型 handler）
+            yield break;
+        }
 
         // ── 未注册卡回退 ───────────────────────────────────
         Debug.LogWarning($"[StartOnEnterEffect] 未注册: {template.templateID}");
@@ -1415,7 +1426,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         CardData newTemplate = CardDatabase.Instance?.GetTemplate(newInst?.templateID);
         if (newTemplate != null && newTemplate.hasOnEnter && newInst != null)
         {
-            targetSlot.StartOnEnterEffect(newTemplate, newInst);
+            targetSlot.StartCoroutine(targetSlot.StartOnEnterEffect(newTemplate, newInst));
         }
         if (oldCard != null)
         {
@@ -2438,6 +2449,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
     public IEnumerator ApprenticeMageEnterEffect(CardInstance giver)
     {
+        NestingContext.Enter("Spell_01329");
         yield return null;
         NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
 
@@ -2511,14 +2523,26 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 // 清理重定向标记
                     NetworkPlayer.Local.handCards.Remove(selectedCard);
                     Destroy(selectedCard);
+                    bool targetSelected = false;
                     SelectionManager.Instance.BeginSelection((TargetType)spellTemplate.targetType, (slot) =>
                     {
                         SpellEffectExecutor.Execute(spellTemplate, slot);
+                        targetSelected = true;
                     });
+                    yield return new WaitUntil(() => targetSelected);
                 }
             }
         }
 
+        // 法术可能已造成死亡 → 在同一嵌套树内结算
+        CheckAndHandleDeaths();
+        yield return ActionQueueManager.WaitForDrain();
+        yield return new WaitWhile(() => NestingContext.IsNested);
+        if (pendingRevenges.Count > 0 && BattleManager.Instance != null)
+            yield return BattleManager.Instance.StartCoroutine(
+                BattleManager.ResolveRevengesFromSnapshot());
+
+        NestingContext.Exit();
         CleanupAfterPlacement();
     }
     public IEnumerator ConductorDoubleDeathEffect(DeathEffectData data)
@@ -2764,7 +2788,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             Debug.Log($"萨满检测: templateID={ci?.templateID}, hasOnEnter={td?.hasOnEnter}, td={td != null}");
             if (td != null && td.hasOnEnter && ci != null)
             {
-                s.StartOnEnterEffect(td, ci);
+                yield return StartCoroutine(s.StartOnEnterEffect(td, ci));
                 yield return null;
                 yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
             }
@@ -3298,6 +3322,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     }
     public IEnumerator BrilliantMageEnterEffect(CardInstance giver)
     {
+        NestingContext.Enter("Spell_01521");
         yield return null;
         NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
 
@@ -3354,6 +3379,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             yield break;
         }
 
+        // 按 templateID 升序排列（与"卡牌编号从小到大"规则一致）
+        selected.Sort((a, b) => string.Compare(a.templateID, b.templateID));
+
         foreach (CardInstance ci in selected)
         {
             GameObject cardObj = null;
@@ -3407,10 +3435,19 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 yield return new WaitUntil(() => targetDone);
                 yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
             }
+
+            // 每个法术独立完成其嵌套同时树
+            CheckAndHandleDeaths();
+            yield return ActionQueueManager.WaitForDrain();
+            yield return new WaitWhile(() => NestingContext.IsNested);
+            if (pendingRevenges.Count > 0 && BattleManager.Instance != null)
+                yield return BattleManager.Instance.StartCoroutine(
+                    BattleManager.ResolveRevengesFromSnapshot());
         }
 
         CardDisplayPanel.Instance.Hide();
         CardDisplayPanel.Instance.multiSelect = false;
+        NestingContext.Exit();
         CleanupAfterPlacement();
     }
     void UpdateRebornDisplay(CardInstance ci)
@@ -3652,7 +3689,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     {
                         BoardSlot mySlot = FindSlotOf(giver);
                         if (mySlot != null)
-                            mySlot.StartOnEnterEffect(originalTD, giver);
+                            yield return StartCoroutine(mySlot.StartOnEnterEffect(originalTD, giver));
                         yield return null;
                         yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
                     }
@@ -3752,7 +3789,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             {
                 BoardSlot mySlot = FindSlotOf(giver);
                 if (mySlot != null)
-                    mySlot.StartOnEnterEffect(originalTD, giver);
+                    mySlot.StartCoroutine(mySlot.StartOnEnterEffect(originalTD, giver));
             }
         }
         else if (chosenTrait == "抛置")

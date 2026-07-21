@@ -467,7 +467,22 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
             spellData.instanceID = spellInst2.instanceID;
             GraveyardManager.Instance?.AddToGraveyard(spellData);
         }
+
+        // 法术可能已造成死亡 → 启动嵌套树结算
+        StartCoroutine(WaitForSpellTree());
     }
+
+    IEnumerator WaitForSpellTree()
+    {
+        yield return null;
+        BoardSlot.CheckAndHandleDeaths();
+        yield return ActionQueueManager.WaitForDrain();
+        yield return new WaitWhile(() => NestingContext.IsNested);
+        if (BoardSlot.pendingRevenges.Count > 0 && BattleManager.Instance != null)
+            yield return BattleManager.Instance.StartCoroutine(
+                BattleManager.ResolveRevengesFromSnapshot());
+    }
+
     int[] GetTargetSlots(TargetType type, int clickedSlot)
     {
         switch (type)

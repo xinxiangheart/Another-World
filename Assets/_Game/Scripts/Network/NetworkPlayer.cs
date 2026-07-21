@@ -1553,7 +1553,7 @@ public class NetworkPlayer : NetworkBehaviour
             {
                 CardInstance targetInst = targetSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
                 if (targetInst != null)
-                    targetSlot.StartOnEnterEffect(redirectTemplate, targetInst);
+                    targetSlot.StartCoroutine(targetSlot.StartOnEnterEffect(redirectTemplate, targetInst));
             }
             SelectionManager.Instance.ForceEndAll();
             BoardSyncManager.MarkDirty();
