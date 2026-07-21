@@ -8,10 +8,18 @@ public static class NestingContext
     public static int Depth { get; private set; }
     public static bool IsNested => Depth > 0;
 
-    public static void Enter(string tag) => Depth++;
+    /// <summary>快照当前深度，用于叶子层检查"是否有子嵌套新增"。</summary>
+    public static int Snapshot() => Depth;
+
+    public static void Enter(string tag)
+    {
+        Depth++;
+        UnityEngine.Debug.Log($"[Nesting] Enter depth={Depth} tag={tag}");
+    }
 
     public static void Exit()
     {
         if (Depth > 0) Depth--;
+        UnityEngine.Debug.Log($"[Nesting] Exit depth={Depth}");
     }
 }

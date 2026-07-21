@@ -619,8 +619,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     }
                 }
 
-                isPlacingCard = false;
-                cardToPlace = null;
+                // ❗isPlacingCard 不在此处清除——由 CleanupAfterPlacement 在 StartOnEnterEffect 完成后调用。
+                // RogueDoSummon 等协程依赖 isPlacingCard 阻塞来等待进场效果子树完全结束。
 
                 // 进场效果前检查反制牌（02304 蛊惑之音等需在进场前触发重定向）。
                 // Host/server 侧同步触发——否则 GlobalEventManager 重定向标记来不及被 StartOnEnterEffect 读到。
@@ -809,30 +809,35 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         if (template.templateID == "01309") {CleanupAfterPlacement();yield break;}
 
         // ── Step 3: 进场效果分发（新 → EffectRegistry，回退 → 旧 switch）──
+        NestingContext.Enter($"Enter_{template.templateID}");
         if (inst != null) inst._enterEffectRunning = true;
         var enterCtx = EffectContext.ForEnter(template, inst, this);
         if (EffectDispatcher.Dispatch(Trigger.Enter, enterCtx))
         {
-            // handler 启动了协程 → 等待嵌套同时树完成
             if (enterCtx.StartedCoroutine != null)
             {
+                // 等待 handler 协程完成（协程末尾调用 CleanupAfterPlacement）
                 yield return enterCtx.StartedCoroutine;
 
-                // 法术可能已造成死亡 → 在同一嵌套树内结算
+                // 嵌套同时树结算（法术伤害→死亡→退场→反击）
+                int myDepth = NestingContext.Snapshot();
                 CheckAndHandleDeaths();
                 yield return ActionQueueManager.WaitForDrain();
-                yield return new WaitWhile(() => NestingContext.IsNested);
+                // 等待由本层死亡触发的所有子嵌套完成
+                yield return new WaitWhile(() => NestingContext.Depth > myDepth);
                 if (pendingRevenges.Count > 0 && BattleManager.Instance != null)
                     yield return BattleManager.Instance.StartCoroutine(
                         BattleManager.ResolveRevengesFromSnapshot());
             }
-            // handler 已同步调用 CleanupAfterPlacement（同步型 handler）
+            // 同步型 handler 已在内部调用 CleanupAfterPlacement
+            NestingContext.Exit();
             yield break;
         }
 
         // ── 未注册卡回退 ───────────────────────────────────
         Debug.LogWarning($"[StartOnEnterEffect] 未注册: {template.templateID}");
         CleanupAfterPlacement();
+        NestingContext.Exit();
     }
 
   
@@ -1684,6 +1689,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         NetworkPlayer owner = BoardManager.GetOwnerPlayer(slotID);
         if (owner == null) yield break;
 
+        NestingContext.Enter("RogueDeath");
         _roguePhaseBlock = true;
 
         if (!owner.isLocalPlayer)
@@ -1693,17 +1699,21 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             while (!_rogueRpcDone && Time.time - t < 30f) yield return null;
             _rogueRpcDone = false;
             _roguePhaseBlock = false;
+            NestingContext.Exit();
             yield break;
         }
 
         yield return StartCoroutine(RogueDoSummon(owner));
         _roguePhaseBlock = false;
+        NestingContext.Exit();
     }
 
     /// <summary>远端客户端执行：走与本地完全相同的 isPlacingCard+cardToPlace 放置流程。</summary>
     public IEnumerator RogueSummonRemote()
     {
+        NestingContext.Enter("RogueDeathRemote");
         yield return StartCoroutine(RogueDoSummon(NetworkPlayer.Local));
+        NestingContext.Exit();
         NetworkPlayer.Local?.CmdRogueDone();
     }
 
@@ -2535,9 +2545,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
 
         // 法术可能已造成死亡 → 在同一嵌套树内结算
+        int myDepth = NestingContext.Snapshot();
         CheckAndHandleDeaths();
         yield return ActionQueueManager.WaitForDrain();
-        yield return new WaitWhile(() => NestingContext.IsNested);
+        yield return new WaitWhile(() => NestingContext.Depth > myDepth);
         if (pendingRevenges.Count > 0 && BattleManager.Instance != null)
             yield return BattleManager.Instance.StartCoroutine(
                 BattleManager.ResolveRevengesFromSnapshot());
@@ -2548,9 +2559,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public IEnumerator ConductorDoubleDeathEffect(DeathEffectData data)
     {
         // 第一棵退场树由 HandleDeath 触发，正在 ActionQueue 中执行。
-        // 必须等它完全排空、嵌套上下文归零后才开始第二棵。
+        // 必须等它完全排空后才开始第二棵。
+        int myDepth = NestingContext.Snapshot();
         yield return ActionQueueManager.WaitForDrain();
-        yield return new WaitWhile(() => NestingContext.IsNested);
+        yield return new WaitWhile(() => NestingContext.Depth > myDepth);
         yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
 
         if (data != null)
@@ -2564,8 +2576,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 TriggerDeathEffectFromData(data);
 
                 // 等待第二棵退场树完全结束
+                int cdDepth = NestingContext.Snapshot();
                 yield return ActionQueueManager.WaitForDrain();
-                yield return new WaitWhile(() => NestingContext.IsNested);
+                yield return new WaitWhile(() => NestingContext.Depth > cdDepth);
                 yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
                 NestingContext.Exit();
             }

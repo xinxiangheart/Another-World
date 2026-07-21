@@ -300,12 +300,12 @@ public static class DeathHandlers
 
     static void Handle01309(EffectContext ctx)
     {
-        ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.RogueDeathEffect(ctx.source));
+        ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.RogueDeathEffect(ctx.source));
     }
 
     static void Handle01321(EffectContext ctx)
     {
-        ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.RiddlerDeathEffect(ctx.source));
+        ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.RiddlerDeathEffect(ctx.source));
     }
 
     static void Handle01331(EffectContext ctx)
@@ -340,7 +340,7 @@ public static class DeathHandlers
 
     static void Handle01522(EffectContext ctx)
     {
-        ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.MartyrDeathEffectCoroutine(ctx.source));
+        ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.MartyrDeathEffectCoroutine(ctx.source));
     }
 
     static void Handle03513(EffectContext ctx)
@@ -403,7 +403,7 @@ public static class DeathHandlers
 
     static void Handle01316ActiveExit(EffectContext ctx)
     {
-        ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.ThiefActiveExitEffect());
+        ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.ThiefActiveExitEffect());
     }
 
     static void Handle01320Exit(EffectContext ctx)
@@ -458,7 +458,7 @@ public static class DeathHandlers
 
     static void Handle01347ActiveExit(EffectContext ctx)
     {
-        ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.HonorAttendantActiveExit());
+        ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.HonorAttendantActiveExit());
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -588,6 +588,6 @@ public static class DeathHandlers
 
     static void Handle01338(EffectContext ctx)
     {
-        ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.DeepSeaActiveExitEffect());
+        ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.DeepSeaActiveExitEffect());
     }
 }
