@@ -1116,27 +1116,26 @@ public class NetworkPlayer : NetworkBehaviour
                     if (p.Length > 1 && int.TryParse(p[1], out v)) ci.currentHealth = v;
                     if (p.Length > 2 && int.TryParse(p[2], out v))
                     {
-                        // 保护服务端临时攻击力修改（01324 猎杀者 AddTempAttack 等）：
-                        // tempAttackBoost > 0 表示服务端在当前攻击回合有意增加了临时
-                        // 攻击力，不应被远程上报的旧 currentAttack 覆盖。攻击回合结束后
-                        // 由 FinalDamage 恢复。没有 tempAttackBoost 时，远程上报的
-                        // currentAttack 可能来自 RunRemoteFirstStrikes 的 debuff
-                        // （01318 弱化棱晶等），按正常流程保存原始攻击力后应用。
-                        if (ci.tempAttackBoost > 0)
+                        // 服务端在当前回合已修改了临时攻击力 → 保护不覆盖。
+                        // tempAttackBoost > 0：AddTempAttack（01324 猎杀者等）
+                        // originalAttackBeforeDebuff > 0：01318 弱化棱晶已将攻击力临时设为 1
+                        // 两种情况下远程上报的 currentAttack 都是过时旧值，不应覆盖。
+                        bool serverModified = ci.tempAttackBoost > 0 || ci.originalAttackBeforeDebuff > 0;
+                        if (serverModified)
                         {
-                            // 保留服务端已修改的 currentAttack，不覆盖
+                            // 保留服务端已修改的值，不信任远程上报的旧 currentAttack
                         }
                         else
                         {
+                            // 无服务端临时修改：远程上报值可能是 RunRemoteFirstStrikes
+                            // 的 debuff 结果，正常保存原始攻击力后应用。
                             if (ci.originalAttackBeforeDebuff <= 0 && v != ci.currentAttack)
                                 ci.originalAttackBeforeDebuff = ci.currentAttack;
                             ci.currentAttack = v;
                         }
                     }
                     if (p.Length > 3 && int.TryParse(p[3], out v)) ci.currentMaxHealth = v;
-                    // baseAttack 保护：服务端临时攻击力修改期间不覆盖基础攻击力
-                    if (p.Length > 4 && int.TryParse(p[4], out v) && ci.tempAttackBoost <= 0)
-                        ci.baseAttack = v;
+                    if (p.Length > 4 && int.TryParse(p[4], out v)) ci.baseAttack = v;
                     if (p.Length > 5 && int.TryParse(p[5], out v)) ci.baseHealth = v;
                     if (p.Length > 6 && int.TryParse(p[6], out v)) ci.baseMaxHealth = v;
                     if (p.Length > 7 && int.TryParse(p[7], out v)) ci.currentCost = v;
