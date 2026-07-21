@@ -694,14 +694,21 @@ public class BattleManager : MonoBehaviour
             }
         }
 
-        // ── 先手同时窗口结束 → 等待远端先手完成 → 处理死亡 → 反击 ──
+        // ── 先手同时窗口结束 → 同步临时值 → 等待远端先手完成 → 处理死亡 → 反击 ──
         // 触发远端客户端运行己方的交互式先手（Remote 的 6-11 = 服务器的 0-5）
         if (Mirror.NetworkServer.active && NetworkPlayer.Remote != null)
         {
+            // 关键修复：先同步一次服务器当前状态（含 01324 猎杀者临时攻击力、01318 弱化棱晶降攻等），
+            // 确保远端客户端上报时不会用旧值覆盖服务器已修改的临时数值。
+            // 否则远端 SyncMyBoardToOpponent → CmdReportAllSlots 会用旧 currentAttack 覆盖
+            // 服务器的 tempAttackBoost / originalAttackBeforeDebuff 修改。
+            BoardSyncManager.MarkDirty();
+            yield return null; // 让 LateUpdate 中的 SyncNow 先把临时值推给远端
+
             BoardSlot._remoteFirstStrikeDone = false;
             NetworkPlayer.Remote.TargetRunRemoteFirstStrikes(NetworkPlayer.Remote.connectionToClient);
             yield return new WaitWhile(() => !BoardSlot._remoteFirstStrikeDone);
-            // 立即广播一次完整板面给远端客户端，确保交换后的正确状态同步出去
+            // 再次广播完整板面给远端客户端，确保远端先手交换/修改后的正确状态同步出去
             BoardSyncManager.MarkDirty();
             yield return null; // 让 LateUpdate 中的 SyncNow 执行
         }
