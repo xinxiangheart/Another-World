@@ -2547,17 +2547,27 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     }
     public IEnumerator ConductorDoubleDeathEffect(DeathEffectData data)
     {
-        yield return null;
+        // 第一棵退场树由 HandleDeath 触发，正在 ActionQueue 中执行。
+        // 必须等它完全排空、嵌套上下文归零后才开始第二棵。
+        yield return ActionQueueManager.WaitForDrain();
+        yield return new WaitWhile(() => NestingContext.IsNested);
         yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
+
         if (data != null)
         {
-    // 基于数据包触发退场效果
-            data.isFullySilenced = GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(null); // 实际逻辑后补，暂时放这里
-        // 全局退场事件检测
+            data.isFullySilenced = GlobalEventManager.Instance != null
+                && GlobalEventManager.Instance.IsFullySilenced(null);
+
             if (!data.isFullySilenced && !data.isDeathBlocked)
             {
+                NestingContext.Enter("ConductorDouble");
                 TriggerDeathEffectFromData(data);
+
+                // 等待第二棵退场树完全结束
+                yield return ActionQueueManager.WaitForDrain();
+                yield return new WaitWhile(() => NestingContext.IsNested);
                 yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
+                NestingContext.Exit();
             }
         }
     }
@@ -2738,7 +2748,16 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 targetSlot.HandleDeath(targetSlot.currentCard3D);
         }
 
+        // 等待两棵退场树完全结束：
+        // 第一棵由 HandleDeath 触发，第二棵由 ConductorDoubleDeathEffect 协程在
+        // 第一棵结束后自动启动。WaitForDrain + IsNested 等两棵树全部排空。
+        yield return ActionQueueManager.WaitForDrain();
+        yield return new WaitWhile(() => NestingContext.IsNested);
         yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
+        if (pendingRevenges.Count > 0 && BattleManager.Instance != null)
+            yield return BattleManager.Instance.StartCoroutine(
+                BattleManager.ResolveRevengesFromSnapshot());
+
         CleanupAfterPlacement();
     }
     public IEnumerator DeepSeaActiveExitEffect()
