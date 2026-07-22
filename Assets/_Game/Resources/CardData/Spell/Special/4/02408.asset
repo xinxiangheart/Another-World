@@ -44,6 +44,7 @@ MonoBehaviour:
   spellType: 1
   effect: "1.\u6307\u5B9A\u4E24\u4E2A\u683C\u5B50\uFF0C\u8BE5\u683C\u5B50\u4E0A\u53EC\u5524\u7269\u4F1A\u5728\u653B\u51FB\u56DE\u5408\u5F00\u59CB\u53D7\u5230\u4F4D\u4E8E\u8BE5\u683C\u5B50\u56DE\u5408\u6570\u7684\u4F24\u5BB3\uFF0C\u5E76\u4E14\u6C38\u4E45-1\u653B\u51FB\u529B"
   cardSprite2D: {fileID: 21300000, guid: 0c520a0d75d9aad459733fc5a43addee, type: 3}
+  spellCardBackSprite2D: {fileID: 21300000, guid: 642e7350f6a75884e9b64d9573fcded8, type: 3}
   prefab3D: {fileID: 4634673609735818748, guid: fb0d2357614cf934fa98c1d31e9bbab7, type: 3}
   spellPrefab3D: {fileID: 4634673609735818748, guid: fb0d2357614cf934fa98c1d31e9bbab7, type: 3}
   targetType: 0

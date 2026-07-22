@@ -3665,21 +3665,46 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             yield break;
         }
 
+        // 构造临时 CardInstance 列表用于 CardDisplayPanel 弹窗
+        List<CardInstance> cardList = new List<CardInstance>();
+        List<GameObject> tempGOs = new List<GameObject>();
+        foreach (var cc in enemyCounters)
+        {
+            var td = cc.template;
+            if (td == null) continue;
+            var go = new GameObject("TempFearlessCard");
+            DontDestroyOnLoad(go);
+            go.hideFlags = HideFlags.HideAndDontSave;
+            var ci = go.AddComponent<CardInstance>();
+            ci.InitFromTemplate(td, 0);
+            cardList.Add(ci);
+            tempGOs.Add(go);
+        }
+
         CounterCard selected = null;
         bool done = false;
 
-        CounterSelectionPanel.Instance.Show(
-            enemyCounters,
-            onConfirm: (cc) => { selected = cc; done = true; },
-            onCancel: () => { done = true; }
-        );
+        var panel = CardDisplayPanel.Instance;
+        panel.multiSelect = false;
+        panel.showBack = true;
+        panel.ShowWithCallback(cardList, ci => true, () =>
+        {
+            CardInstance si = panel.GetSelectedCard();
+            if (si != null)
+            {
+                int idx = cardList.IndexOf(si);
+                if (idx >= 0 && idx < enemyCounters.Count)
+                    selected = enemyCounters[idx];
+            }
+            done = true;
+        });
 
         yield return new WaitUntil(() => done);
 
+        foreach (var go in tempGOs) Destroy(go);
+
         if (selected != null)
-        {
             CounterManager.Instance.TriggerEnemyCounterNoEffect(selected);
-        }
 
         CleanupAfterPlacement();
     }

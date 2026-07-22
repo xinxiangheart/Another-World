@@ -13,6 +13,7 @@ public class CardDisplayPanel : MonoBehaviour
     public float cardSpacing = 25f, rowSpacing = 25f, startX = -172f, startY = 282f;
 
     public bool multiSelect = false;
+    public bool showBack;        // 无畏者等：显示卡牌背面而非正面
     public bool enableCostCheck;
     public int maxTotalCost;
     private List<CardInstance> cards;
@@ -74,7 +75,11 @@ public class CardDisplayPanel : MonoBehaviour
             di.grantedTraitTexts = ci.grantedTraitTexts != null ? new System.Collections.Generic.List<string>(ci.grantedTraitTexts) : null;
             di.hasShield = ci.hasShield;
             di.poisoned = ci.poisoned;
-            go.GetComponent<CardDisplay2D>()?.RefreshWithInstance(di);
+            // 背面模式：ShowBack（无畏者等隐藏卡），正常模式：RefreshWithInstance
+            if (showBack)
+                go.GetComponent<CardDisplay2D>()?.ShowBack(td);
+            else
+                go.GetComponent<CardDisplay2D>()?.RefreshWithInstance(di);
 
             int row = i / cardsPerRow, col = i % cardsPerRow;
             var rt = go.GetComponent<RectTransform>();
@@ -210,6 +215,7 @@ public class CardDisplayPanel : MonoBehaviour
 
     public void Hide()
     {
+        showBack = false;
         enableCostCheck = false;
         panelRoot.SetActive(false);
         var csb = ConfirmSelectionButton.Instance;

@@ -44,6 +44,7 @@ MonoBehaviour:
   spellType: 0
   effect: "1.\u6062\u590D\u73A9\u5BB62\u751F\u547D\u503C"
   cardSprite2D: {fileID: 21300000, guid: 0c520a0d75d9aad459733fc5a43addee, type: 3}
+  spellCardBackSprite2D: {fileID: 21300000, guid: 642e7350f6a75884e9b64d9573fcded8, type: 3}
   prefab3D: {fileID: 4634673609735818748, guid: fb0d2357614cf934fa98c1d31e9bbab7, type: 3}
   spellPrefab3D: {fileID: 4634673609735818748, guid: fb0d2357614cf934fa98c1d31e9bbab7, type: 3}
   targetType: 0
