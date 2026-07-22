@@ -283,6 +283,17 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 if (rci != null) rci._placedAtTime = Time.time;
             }
         TurnManager.SyncMyBoardToOpponent();
+        // 远端先手完毕后立即清零临时攻击力字段——BattleCoroutine/FinalDamage 不会在远端执行
+        if (bmRefresh != null)
+            for (int ri = 6; ri <= 11; ri++)
+            {
+                var rci = bmRefresh.GetSlot(ri)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                if (rci != null)
+                {
+                    rci.tempAttackBoost = 0;
+                    rci.originalAttackBeforeDebuff = 0;
+                }
+            }
         NetworkPlayer.Local?.CmdRemoteFirstStrikeDone();
     }
     public bool prisonBlocked;      // 囚牢封锁

@@ -390,6 +390,9 @@ public class BoardSyncManager : MonoBehaviour
                 foreach (var t in newList)
                     if (!oldCopy.Contains(t)) cur.GrantTrait(t);
             }
+            // 服务端 FinalDamage 已将临时字段清零；远端本地始终信任服务端同步的 currentAttack
+            cur.tempAttackBoost = 0;
+            cur.originalAttackBeforeDebuff = 0;
             slot.currentCard3D?.GetComponent<Card3DInstance>()?.UpdateValues();
         }
         Test1Panel.Instance?.RefreshIfOpen();
