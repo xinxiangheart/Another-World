@@ -567,6 +567,12 @@ public class CounterManager : MonoBehaviour
             ExpireWithNoEffect(counter, index, false);
     }
 
+    /// <summary>公开入口：供网络命令（如 CmdFearlessTriggerCounter）调用 ExpireWithNoEffect。</summary>
+    public void ExpireWithNoEffectPublic(CounterCard counter, int index, bool isMine)
+    {
+        ExpireWithNoEffect(counter, index, isMine);
+    }
+
     public void PlayCounterWithReducedCost(CardData template, int cost)
     {
         GameObject temp = new GameObject("TempCounter");

@@ -1696,6 +1696,36 @@ public class NetworkPlayer : NetworkBehaviour
         DontDestroyOnLoad(temp);
     }
 
+    /// <summary>
+    /// 客户端→服务器：无畏者(01319)选择了要无效果触发的反制牌。
+    /// 服务器权威处理 ExpireWithNoEffect（扣能量+移除+同步）。
+    /// </summary>
+    [Command]
+    public void CmdFearlessTriggerCounter(string templateID)
+    {
+        CounterManager cm = CounterManager.Instance;
+        if (cm == null) return;
+
+        // 在两类列表中都查找，自动确定 isMine
+        for (int i = cm.myCounters.Count - 1; i >= 0; i--)
+        {
+            if (cm.myCounters[i].template.templateID == templateID)
+            {
+                cm.ExpireWithNoEffectPublic(cm.myCounters[i], i, true);
+                return;
+            }
+        }
+        for (int i = cm.enemyCounters.Count - 1; i >= 0; i--)
+        {
+            if (cm.enemyCounters[i].template.templateID == templateID)
+            {
+                cm.ExpireWithNoEffectPublic(cm.enemyCounters[i], i, false);
+                return;
+            }
+        }
+        Debug.LogWarning($"[CmdFearlessTriggerCounter] 未找到反制牌: {templateID}");
+    }
+
     /// <summary>Remove a counter model after it's been triggered/expired on the server.</summary>
     [TargetRpc]
     public void TargetRemoveCounter(NetworkConnectionToClient target, string templateID, string listType)

@@ -3704,7 +3704,18 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         foreach (var go in tempGOs) Destroy(go);
 
         if (selected != null)
-            CounterManager.Instance.TriggerEnemyCounterNoEffect(selected);
+        {
+            if (NetworkServer.active)
+            {
+                // Host/服务器：直接权威处理
+                CounterManager.Instance.TriggerEnemyCounterNoEffect(selected);
+            }
+            else
+            {
+                // 远端客户端：委托服务器权威处理（否则远端本地修改无法同步到对手）
+                NetworkPlayer.Local.CmdFearlessTriggerCounter(selected.template.templateID);
+            }
+        }
 
         CleanupAfterPlacement();
     }
