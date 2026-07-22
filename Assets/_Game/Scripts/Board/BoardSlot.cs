@@ -3661,47 +3661,27 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         List<CounterCard> enemyCounters = CounterManager.Instance?.enemyCounters;
         if (enemyCounters == null || enemyCounters.Count == 0)
         {
-            Debug.Log("妖精护盾选择前");
             CleanupAfterPlacement();
             yield break;
         }
 
-        foreach (var cc in enemyCounters)
-        {
-            if (cc.model != null)
-            {
-                Button btn = cc.model.GetComponent<Button>() ?? cc.model.AddComponent<Button>();
-                btn.onClick.RemoveAllListeners();
-                var captured = cc;
-                btn.onClick.AddListener(() => OnFearlessSelected(captured));
-            }
-        }
+        CounterCard selected = null;
+        bool done = false;
 
-        selectedFearless = null;
-        yield return new WaitUntil(() => selectedFearless != null);
+        CounterSelectionPanel.Instance.Show(
+            enemyCounters,
+            onConfirm: (cc) => { selected = cc; done = true; },
+            onCancel: () => { done = true; }
+        );
 
-        foreach (var cc in enemyCounters)
-        {
-            if (cc.model != null)
-            {
-                Button btn = cc.model.GetComponent<Button>();
-                if (btn != null) Destroy(btn);
-            }
-        }
+        yield return new WaitUntil(() => done);
 
-        if (selectedFearless != null)
+        if (selected != null)
         {
-            CounterManager.Instance.TriggerEnemyCounterNoEffect(selectedFearless);
+            CounterManager.Instance.TriggerEnemyCounterNoEffect(selected);
         }
 
         CleanupAfterPlacement();
-    }
-
-    CounterCard selectedFearless;
-
-    void OnFearlessSelected(CounterCard cc)
-    {
-        selectedFearless = cc;
     }
     public IEnumerator MindScholarEnterEffect(CardInstance giver)
     {

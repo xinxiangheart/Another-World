@@ -44,6 +44,7 @@ public class CardData : ScriptableObject
 
     [Header("表现层")]
     public Sprite cardSprite2D;
+    public Sprite spellCardBackSprite2D; // 法术/反制牌 2D 背面 — 无畏者弹窗等对方隐藏卡展示用
     public GameObject prefab3D;
     public GameObject spellPrefab3D;
 
