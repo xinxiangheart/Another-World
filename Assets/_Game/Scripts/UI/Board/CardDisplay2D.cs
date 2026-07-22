@@ -79,20 +79,26 @@ public class CardDisplay2D : MonoBehaviour
     }
 
     /// <summary>显示2D卡牌背面——无畏者弹窗等隐藏状态展示用。</summary>
-    public void ShowBack(CardData template)
+    public void ShowBack(CardData template, string label = "反制牌")
     {
-        if (nameText != null) nameText.text = "反制牌";
+        if (nameText != null) nameText.text = label;
         if (prefixText != null) prefixText.text = "";
         if (attackText != null) attackText.gameObject.SetActive(false);
         if (healthText != null) healthText.gameObject.SetActive(false);
         if (costText != null) costText.gameObject.SetActive(false);
         if (effectText != null) effectText.gameObject.SetActive(false);
 
-        // 替换为卡背贴图
-        if (template != null && template.spellCardBackSprite2D != null)
+        // 按卡牌类型取背面贴图
+        Sprite backSprite = null;
+        if (template != null)
+            backSprite = template.cardType == CardType.Spell
+                ? template.spellCardBackSprite2D
+                : template.summonCardBackSprite2D;
+
+        if (backSprite != null)
         {
             var img = GetComponent<UnityEngine.UI.Image>();
-            if (img != null) img.sprite = template.spellCardBackSprite2D;
+            if (img != null) img.sprite = backSprite;
         }
     }
 }

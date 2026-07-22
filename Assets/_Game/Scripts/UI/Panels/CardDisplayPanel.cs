@@ -14,6 +14,7 @@ public class CardDisplayPanel : MonoBehaviour
 
     public bool multiSelect = false;
     public bool showBack;        // 无畏者等：显示卡牌背面而非正面
+    public string backLabel = "反制牌"; // 背面标题（可为召唤物自定义）
     public bool enableCostCheck;
     public int maxTotalCost;
     private List<CardInstance> cards;
@@ -77,7 +78,7 @@ public class CardDisplayPanel : MonoBehaviour
             di.poisoned = ci.poisoned;
             // 背面模式：ShowBack（无畏者等隐藏卡），正常模式：RefreshWithInstance
             if (showBack)
-                go.GetComponent<CardDisplay2D>()?.ShowBack(td);
+                go.GetComponent<CardDisplay2D>()?.ShowBack(td, backLabel);
             else
                 go.GetComponent<CardDisplay2D>()?.RefreshWithInstance(di);
 
