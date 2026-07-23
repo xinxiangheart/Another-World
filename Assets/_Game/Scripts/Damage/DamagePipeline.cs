@@ -106,7 +106,9 @@ public static class DamagePipeline
 
         // ── 预检 ─────────────────────────────────────────────────────
         if (ctx.Defender.isAttached) return new DamageResult();
-        if (IsShadowHost(ctx.Defender)) return new DamageResult();
+        if (IsShadowHostImmune(ctx.Defender)) return new DamageResult();
+        // 阴影聚合体(01327)：宿主不再受伤——伤害直接避免，不参与任何伤害计算
+        if (HasShadowAggregate(ctx.Defender)) return new DamageResult();
 
         // ── S1 攻击方增益 ───────────────────────────────────────────
         ctx.damage = Stage1_Give(ctx);
@@ -432,8 +434,30 @@ public static class DamagePipeline
         => ci != null && GlobalEventManager.Instance != null
             && GlobalEventManager.Instance.IsFullySilenced(ci);
 
-    static bool IsShadowHost(CardInstance ci)
+    static bool IsShadowHostImmune(CardInstance ci)
         => ci != null && ci.templateID == "01502";
+
+    /// <summary>检查 ci 身上是否附着了 01327 阴影聚合体（未沉默）。</summary>
+    static bool HasShadowAggregate(CardInstance ci)
+    {
+        if (ci == null) return false;
+        var bm = UnityEngine.Object.FindObjectOfType<BoardManager>();
+        if (bm == null) return false;
+
+        int hostSlot = GetSlotOf(ci);
+        if (hostSlot < 0) return false;
+
+        foreach (var obj in bm.attachedModels)
+        {
+            var c3d = obj?.GetComponent<Card3DInstance>();
+            var aci = c3d?.cardInstance;
+            if (aci != null && aci.templateID == "01327"
+                && aci.hostSlotID == hostSlot
+                && (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(aci)))
+                return true;
+        }
+        return false;
+    }
 
     static bool IsAlly(CardInstance ci)
     {

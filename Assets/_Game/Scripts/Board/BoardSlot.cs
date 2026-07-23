@@ -274,17 +274,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             }
         }
 
-        // 全部完成——刷新己方所有卡牌放置时间（防止换位后被同步周期误杀），再上报并同步
-        var bmRefresh = FindObjectOfType<BoardManager>();
-        if (bmRefresh != null)
-            for (int ri = 6; ri <= 11; ri++)
-            {
-                var rci = bmRefresh.GetSlot(ri)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
-                if (rci != null) rci._placedAtTime = Time.time;
-            }
         TurnManager.SyncMyBoardToOpponent();
         // 远端先手完毕后立即清零临时攻击力字段——BattleCoroutine/FinalDamage 不会在远端执行
         // 01318 可选择任意目标(AllMinions)，需覆盖全部 12 槽（含敌方 0-5）
+        var bmRefresh = FindObjectOfType<BoardManager>();
         if (bmRefresh != null)
             for (int ri = 0; ri <= 11; ri++)
             {

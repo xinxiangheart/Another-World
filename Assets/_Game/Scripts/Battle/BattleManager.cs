@@ -49,8 +49,8 @@ public class BattleManager : MonoBehaviour
         yield return StartCoroutine(MinionAttacksCoroutine());
         CompareSurvivors();
         FinalDamage();
-        if (NetworkServer.active)
-            FindObjectOfType<TurnManager>().StartNewPhase();
+        // StartNewPhase 移至 SafeBattle——确保 BoardSyncManager.MarkDirty()+SyncNow
+        // 先于 BroadcastTurnPhase 执行，防止远端在收到恢复后的板面前就上报旧 currentAttack
     }
     IEnumerator PhaseStartCoroutine()
     {
@@ -120,8 +120,6 @@ public class BattleManager : MonoBehaviour
             slot.plagueRoundCount++;
         }
         BoardSlot.CheckAndHandleDeaths();
-        if (Mirror.NetworkServer.active)
-            BoardSyncManager.MarkDirty();
         yield return StartCoroutine(WaitForSimultaneousWindow());
         Debug.Log("[战斗] 阶段1：战斗回合开始特性");
     }
@@ -198,6 +196,12 @@ public class BattleManager : MonoBehaviour
                     BoardManager.SyncAttachedModels(targetSlot);
 
                 Debug.Log($"舞者换位完成：{mySlotIndex}->{targetSlotIndex}");
+                // 刷新换位卡牌放置时间（替代全局12槽全量刷新，避免
+                // _placedAtTime 过新导致后续死亡同步时 EnsureEmpty 被 0.5s 守卫误保护）
+                var mySwapInst = mySlot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                if (mySwapInst != null) mySwapInst._placedAtTime = Time.time;
+                var targetSwapInst = targetSlot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                if (targetSwapInst != null) targetSwapInst._placedAtTime = Time.time;
             }
         // 检查对方是否有合法目标
             if (ci.templateID == "01312")
@@ -706,16 +710,7 @@ public class BattleManager : MonoBehaviour
             BoardSyncManager.MarkDirty();
             yield return null; // 让 LateUpdate 中的 SyncNow 执行
         }
-        // 刷新全部 12 槽卡牌放置时间——先手阶段的换位和交互会改变卡牌位置，
-        // 必须刷新 _placedAtTime 防止后续同步周期中 EnsureCard/EnsureEmpty 误杀
-        for (int ri = 0; ri < 12; ri++)
-        {
-            var rci = allSlots[ri]?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
-            if (rci != null) rci._placedAtTime = Time.time;
-        }
         BoardSlot.CheckAndHandleDeaths();
-        if (Mirror.NetworkServer.active)
-            BoardSyncManager.MarkDirty();
         yield return StartCoroutine(WaitForSimultaneousWindow());
     }
 
@@ -925,7 +920,7 @@ public class BattleManager : MonoBehaviour
             }
             // 01118/01125 攻击修正已在 DamagePipeline.Stage1_Give 统一处理，此处不重复
             damageList.Add((targetCard, atk, attackerCard));
-            // 影寄主：自伤
+            // 01327 阴影聚合体：宿主攻击时自伤宿主自己的 HP
             if (IsShadowHost(attackerInst) && targetInst != null)
             {
                 attackerInst.currentHealth -= atk;
@@ -961,6 +956,7 @@ public class BattleManager : MonoBehaviour
                 if (HasSuppressorOnField(attackerSlotID) && attackerInst.summonType == SummonType.Hero)
                     myTier += 1;
                 pendingDamageToOpponent += myTier;
+                // 01327：空位攻击也自伤宿主自己的 HP
                 attackerInst.currentHealth -= attackerInst.currentAttack;
                 if (attackerInst.currentHealth < 0) attackerInst.currentHealth = 0;
                 attackerSlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
@@ -1049,8 +1045,6 @@ public class BattleManager : MonoBehaviour
             if (died.Count > 0)
             {
                 BoardSlot.CheckAndHandleDeaths();
-                if (Mirror.NetworkServer.active)
-                    BoardSyncManager.MarkDirty();
                 yield return StartCoroutine(WaitForSimultaneousWindow());
             }
         }

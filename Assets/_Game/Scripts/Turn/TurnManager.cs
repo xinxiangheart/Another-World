@@ -616,14 +616,10 @@ public partial class TurnManager : MonoBehaviour
             BattleManager bm = BattleManager.Instance;
             if (bm != null)
                 yield return StartCoroutine(bm.BattleCoroutine());
-            // Sync host board to client after battle
+            // Sync host board to client after battle——必须在 BroadcastTurnPhase 之前执行
             BoardSyncManager.MarkDirty();
-            // BattleCoroutine normally calls StartNewPhase. If it didn't (e.g. allSlots null), fallback:
-            if (currentPhase == TurnPhase.BattlePhase)
-            {
-                Debug.LogWarning("[TurnManager] SafeBattle: BattleCoroutine left us in BattlePhase, forcing StartNewPhase");
-                StartNewPhase();
-            }
+            yield return null; // 让 LateUpdate 中的 SyncNow 执行，确保远端收到恢复后的 currentAttack
+            StartNewPhase();    // 然后才广播阶段变化（SetPhaseFromNetwork 会 ReportAllSlots）
         }
     }
     void TriggerMyTurnStartEffects()
