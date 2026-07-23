@@ -284,14 +284,16 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             }
         TurnManager.SyncMyBoardToOpponent();
         // 远端先手完毕后立即清零临时攻击力字段——BattleCoroutine/FinalDamage 不会在远端执行
+        // 01318 可选择任意目标(AllMinions)，需覆盖全部 12 槽（含敌方 0-5）
         if (bmRefresh != null)
-            for (int ri = 6; ri <= 11; ri++)
+            for (int ri = 0; ri <= 11; ri++)
             {
                 var rci = bmRefresh.GetSlot(ri)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
-                if (rci != null)
+                if (rci != null && (rci.tempAttackBoost != 0 || rci.originalAttackBeforeDebuff != 0))
                 {
                     rci.tempAttackBoost = 0;
                     rci.originalAttackBeforeDebuff = 0;
+                    bmRefresh.GetSlot(ri)?.currentCard3D?.GetComponent<Card3DInstance>()?.UpdateValues();
                 }
             }
         NetworkPlayer.Local?.CmdRemoteFirstStrikeDone();
@@ -3684,7 +3686,6 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             var td = cc.template;
             if (td == null) continue;
             var go = new GameObject("TempFearlessCard");
-            DontDestroyOnLoad(go);
             go.hideFlags = HideFlags.HideAndDontSave;
             var ci = go.AddComponent<CardInstance>();
             ci.InitFromTemplate(td, 0);

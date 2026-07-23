@@ -1684,16 +1684,13 @@ public class NetworkPlayer : NetworkBehaviour
         CardData template = CardDatabase.Instance?.GetTemplate(templateID);
         if (template == null) return;
 
-        // Temporary CardInstance only needed for PlayCounter to get templateID.
-        // PlayCounter's isMine=false path does NOT copy card data — it just
-        // adds the entry to enemyCounters. Keep temp alive to avoid dangling ref.
-        // 已知设计折衷：DontDestroyOnLoad 防止 PlayCounter 持有引用失效。
-        // 后续可优化为 PlayCounter 完成回调后销毁 temp。
+        // PlayCounter(isMine=false) 只读 templateID 后 Instantiate 新 prefab 存为 model，
+        // temp 在 PlayCounter 返回后不再被引用——直接销毁。
         GameObject temp = new GameObject("TempCounterCmd");
         CardInstance ci = temp.AddComponent<CardInstance>();
         ci.InitFromTemplate(template, 0);
         CounterManager.Instance?.PlayCounter(temp, false);
-        DontDestroyOnLoad(temp);
+        Destroy(temp);
     }
 
     /// <summary>

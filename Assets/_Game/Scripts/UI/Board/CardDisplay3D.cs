@@ -11,29 +11,27 @@ public class CardDisplay3D : MonoBehaviour
     public TextMeshPro prefixText;
     public TextMeshPro effectText;
 
-    [Header("卡面合成材质")]
-    public Material compositeMaterial;   // 使用 CardComposite shader 的材质实例
-
-    Material _materialInstance;          // 运行时克隆的材质实例（避免修改共享材质）
+    MaterialPropertyBlock _mpb;
+    bool _artInitialized;
 
     void Awake()
     {
-        // 克隆材质，每张卡独立实例避免互相覆盖
-        if (compositeMaterial != null)
-        {
-            _materialInstance = new Material(compositeMaterial);
-            var mr = GetComponent<MeshRenderer>();
-            if (mr != null) mr.material = _materialInstance;
-        }
+        // 使用 MaterialPropertyBlock 替代每卡独立 Material 实例
+        // —— 避免 new Material() 的 GPU 端资源分配，所有卡共享同一材质
+        _mpb = new MaterialPropertyBlock();
     }
 
-    /// <summary>设置三层合成贴图（底图→边框→卡面），调用后自动刷新。</summary>
+    /// <summary>设置三层合成贴图（通过 MaterialPropertyBlock，避免每卡独立材质）。</summary>
     public void SetCompositeTextures(Texture2D bg, Texture2D border, Texture2D art)
     {
-        if (_materialInstance == null) return;
-        if (bg     != null) _materialInstance.SetTexture("_BgTex", bg);
-        if (border != null) _materialInstance.SetTexture("_BorderTex", border);
-        if (art    != null) _materialInstance.SetTexture("_ArtTex", art);
+        var mr = GetComponent<MeshRenderer>();
+        if (mr == null || _mpb == null) return;
+
+        mr.GetPropertyBlock(_mpb);
+        if (bg     != null) _mpb.SetTexture("_BgTex", bg);
+        if (border != null) _mpb.SetTexture("_BorderTex", border);
+        if (art    != null) _mpb.SetTexture("_ArtTex", art);
+        mr.SetPropertyBlock(_mpb);
     }
 
     /// <summary>根据卡牌数据和实例自动选择三张贴图并应用。</summary>
@@ -54,8 +52,12 @@ public class CardDisplay3D : MonoBehaviour
         CardInstance instance = c3d.cardInstance;
         CardData template = CardDatabase.Instance?.GetTemplate(instance.templateID);
 
-        // 应用卡面合成贴图
-        ApplyArtFromCard(instance);
+        // 贴图仅在首次 Refresh 时设置一次——纹理在整个生命周期内不变
+        if (!_artInitialized)
+        {
+            ApplyArtFromCard(instance);
+            _artInitialized = true;
+        }
 
         if (nameText != null) nameText.text = template?.cardName ?? "";
         if (prefixText != null) prefixText.text = instance.prefixes;
