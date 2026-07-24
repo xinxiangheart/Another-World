@@ -1095,6 +1095,7 @@ public class NetworkPlayer : NetworkBehaviour
                     slot.prisonBlocked = flags[1] == '1';
                     slot.hasPlague = flags[2] == '1';
                     slot.hasSpotlight = flags[3] == '1';
+                    slot.deepSeaMarked = flags.Length >= 5 && flags[4] == '1';
                     slot.SyncVisual();
                 }
                 if (int.TryParse(parts[parts.Length - 3], out int prc)) slot.plagueRoundCount = prc;
@@ -1125,11 +1126,17 @@ public class NetworkPlayer : NetworkBehaviour
                         {
                             // 保留服务端已修改的值，不信任远程上报的旧 currentAttack
                         }
+                        else if (ci.currentAttack > v && HasAttachBonusOn(ci, serverSlot, bm))
+                        {
+                            // 远程上报值低于服务端，且服务端该卡有附着加成——说明
+                            // 远端尚未同步到附着加成（01327 等），跳过覆盖。
+                        }
                         else
                         {
                             // 无服务端临时修改：远程上报值可能是 RunRemoteFirstStrikes
-                            // 的 debuff 结果，正常保存原始攻击力后应用。
-                            if (ci.originalAttackBeforeDebuff <= 0 && v != ci.currentAttack)
+                            // 的 debuff 结果。仅在上报值更低（实际 debuff）时保存
+                            // originalAttackBeforeDebuff。
+                            if (ci.originalAttackBeforeDebuff <= 0 && v < ci.currentAttack)
                                 ci.originalAttackBeforeDebuff = ci.currentAttack;
                             ci.currentAttack = v;
                         }
@@ -1171,6 +1178,25 @@ public class NetworkPlayer : NetworkBehaviour
 
         BoardSlot.CheckAndHandleDeaths();
         BoardSyncManager.MarkDirty();
+    }
+
+    /// <summary>检查 slotID 上的卡牌是否有附着物提供攻击力加成（01327等）。</summary>
+    static bool HasAttachBonusOn(CardInstance ci, int slotID, BoardManager bm)
+    {
+        if (ci == null || bm == null) return false;
+        foreach (var obj in bm.attachedModels)
+        {
+            var aci = obj?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (aci != null && aci.isAttached && aci.hostSlotID == slotID)
+            {
+                // 01327 +3攻击、01112 +1攻击、01126 +1攻击 等
+                if (aci.templateID == "01327" || aci.templateID == "01112"
+                    || aci.templateID == "01126" || aci.templateID == "01127"
+                    || aci.templateID == "01333" || aci.templateID == "01334")
+                    return true;
+            }
+        }
+        return false;
     }
 
     /// <summary>附着物 diff 更新：已有→移坐标，不存在→创建。服务端从不基于客户端上报删除附着模型。</summary>
@@ -1722,6 +1748,69 @@ public class NetworkPlayer : NetworkBehaviour
         }
         Debug.LogWarning($"[CmdFearlessTriggerCounter] 未找到反制牌: {templateID}");
     }
+
+    /// <summary>
+    /// 远端客户端→服务器：告知服务器 01331 囚牢封锁了哪两个格子。
+    /// 服务器端 CardInstance 未运行 PrisonEnterEffect，退场时需要此信息精确解锁。
+    /// </summary>
+    [Command]
+    public void CmdSetPrisonSlots(string instanceID, int myPrisonSlot, int enemyPrisonSlot)
+    {
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return;
+        for (int i = 0; i < 12; i++)
+        {
+            var slot = bm.GetSlot(i);
+            var ci = slot?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci != null && ci.instanceID == instanceID && ci.templateID == "01331")
+            {
+                ci.prisonMySlot = myPrisonSlot;
+                ci.prisonEnemySlot = enemyPrisonSlot;
+                return;
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 深海恶物(01338) 反击选择委托
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// <summary>服务端→远端客户端：你的01338死了，选一个敌方格子施加debuff。</summary>
+    [TargetRpc]
+    public void TargetDeepSeaRevengeSelect(NetworkConnectionToClient target, int serverDeadSlotID)
+    {
+        var bm = FindObjectOfType<BoardManager>();
+        if (bm == null) { CmdDeepSeaRevengeResult(-1); return; }
+
+        int localDeadSlot = serverDeadSlotID >= 6 ? serverDeadSlotID - 6 : serverDeadSlotID + 6;
+        // 选择敌方格子（从本地视角 0-5 = 敌方）
+        bool done = false; int result = -1;
+        SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (s) =>
+        {
+            if (s != null && !s.isBlocked) result = s.slotID;
+            done = true;
+        });
+        BoardSlot.isStrengtheningSlot = true;
+        StartCoroutine(WaitAndSendDeepSeaResult(done, result));
+    }
+
+    IEnumerator WaitAndSendDeepSeaResult(bool done, int result)
+    {
+        yield return new WaitUntil(() => done);
+        BoardSlot.isStrengtheningSlot = false;
+        CmdDeepSeaRevengeResult(result);
+    }
+
+    /// <summary>远端→服务器：01338 反击选择了 localSlot（远端本地坐标）。</summary>
+    [Command]
+    public void CmdDeepSeaRevengeResult(int localSlot)
+    {
+        // 映射到服务端坐标
+        int serverSlot = localSlot < 0 ? -1 : (isLocalPlayer ? localSlot : (localSlot >= 6 ? localSlot - 6 : localSlot + 6));
+        BoardSlot.NotifyDeepSeaRevengeDone(serverSlot);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
 
     /// <summary>Remove a counter model after it's been triggered/expired on the server.</summary>
     [TargetRpc]

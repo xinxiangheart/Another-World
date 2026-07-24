@@ -106,7 +106,6 @@ public static class DamagePipeline
 
         // ── 预检 ─────────────────────────────────────────────────────
         if (ctx.Defender.isAttached) return new DamageResult();
-        if (IsShadowHostImmune(ctx.Defender)) return new DamageResult();
         // 阴影聚合体(01327)：宿主不再受伤——伤害直接避免，不参与任何伤害计算
         if (HasShadowAggregate(ctx.Defender)) return new DamageResult();
 
@@ -433,9 +432,6 @@ public static class DamagePipeline
     static bool IsSilenced(CardInstance ci)
         => ci != null && GlobalEventManager.Instance != null
             && GlobalEventManager.Instance.IsFullySilenced(ci);
-
-    static bool IsShadowHostImmune(CardInstance ci)
-        => ci != null && ci.templateID == "01502";
 
     /// <summary>检查 ci 身上是否附着了 01327 阴影聚合体（未沉默）。</summary>
     static bool HasShadowAggregate(CardInstance ci)

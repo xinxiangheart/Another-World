@@ -1203,31 +1203,43 @@ public class BattleManager : MonoBehaviour
                     {
                         BoardManager.GetOwnerPlayer(deadSlotID)?.AddEnergy(1);
                     }
-                    // 选定一个格子 → debuff
+                    // 选定一个格子 → debuff（01338 深海恶物反击）
                     else if (effect.Contains("选定一个格子"))
                     {
-                        yield return bmInstance.StartCoroutine(bmInstance.WaitForSelection((onDone) =>
+                        NetworkPlayer revOwner = BoardManager.GetOwnerPlayer(deadSlotID);
+                        if (revOwner == NetworkPlayer.Remote && Mirror.NetworkServer.active)
                         {
-                            SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (targetSlot) =>
+                            // 远端玩家的卡 → 委托远端选择目标
+                            BoardSlot._deepSeaRevengeTargetSlot = -1;
+                            BoardSlot._deepSeaRevengeWaiting = true;
+                            NetworkPlayer.Remote.TargetDeepSeaRevengeSelect(
+                                NetworkPlayer.Remote.connectionToClient, deadSlotID);
+                            float t0 = Time.time;
+                            while (BoardSlot._deepSeaRevengeWaiting && Time.time - t0 < 30f)
+                                yield return null;
+                            BoardSlot._deepSeaRevengeWaiting = false;
+                            int chosen = BoardSlot._deepSeaRevengeTargetSlot;
+                            if (chosen >= 0 && chosen < 12)
                             {
-                                if (targetSlot != null && !targetSlot.isBlocked)
+                                BoardSlot ts = bm.GetSlot(chosen);
+                                if (ts != null) { ApplyDeepSeaDebuff(ts); ts.deepSeaMarked = true; ts.SyncVisual(); }
+                            }
+                        }
+                        else
+                        {
+                            // 主机玩家 → 直接本地选择
+                            yield return bmInstance.StartCoroutine(bmInstance.WaitForSelection((onDone) =>
+                            {
+                                SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (ts) =>
                                 {
-                                    targetSlot.deepSeaAttackDebuff++;
-                                    targetSlot.deepSeaHealthDebuff = true;
-                                    if (targetSlot.currentCard3D != null)
-                                    {
-                                        CardInstance ci = targetSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                                        if (ci != null)
-                                        {
-                                            ci.currentAttack = Mathf.Max(0, ci.currentAttack - 1);
-                                            targetSlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
-                                        }
-                                    }
-                                }
-                                onDone();
-                            });
-                            BoardSlot.isStrengtheningSlot = true;
-                        }));
+                                    if (ts != null && !ts.isBlocked)
+                                    { ApplyDeepSeaDebuff(ts); ts.deepSeaMarked = true; ts.SyncVisual(); }
+                                    onDone();
+                                });
+                                BoardSlot.isStrengtheningSlot = true;
+                            }));
+                        }
+                        BoardSyncManager.MarkDirty();
                     }
                     // 为己方一召唤物+2+1
                     else if (effect.Contains("为己方一召唤物+2+1"))
@@ -1826,6 +1838,23 @@ public class BattleManager : MonoBehaviour
         for (int i = 0; i < 12; i++)
             if (bm?.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance == ci) return i;
         return -1;
+    }
+
+    /// <summary>深海恶物 debuff：格子攻击力-1 + 每阶段扣血 + 当前卡攻击力-1。</summary>
+    static void ApplyDeepSeaDebuff(BoardSlot slot)
+    {
+        if (slot == null) return;
+        slot.deepSeaAttackDebuff++;
+        slot.deepSeaHealthDebuff = true;
+        if (slot.currentCard3D != null)
+        {
+            var ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci != null)
+            {
+                ci.currentAttack = Mathf.Max(0, ci.currentAttack - 1);
+                slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+            }
+        }
     }
 
     bool IsShadowHost(CardInstance ci)

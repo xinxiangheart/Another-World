@@ -295,9 +295,13 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public bool prisonAllowYuan;    // 允许放置渊前缀召唤物（仅己方封锁格子）
     public int deepSeaAttackDebuff; // 格子攻击力减益
     public bool deepSeaHealthDebuff; // 格子每阶段扣血标记
+    public bool deepSeaMarked;        // 深海恶物蓝色高亮标记（纯视觉）
     /// <summary>本槽位上最后一次 HandleDeath 触发时间（秒）。EnsureCard 检查此时间戳防止从过期同步数据重建已死亡模型。</summary>
     public float lastHandleDeathTime = -1f;
     public static int ignoreNextClickSlot = -1;
+    public static bool _deepSeaRevengeWaiting;
+    public static int _deepSeaRevengeTargetSlot = -1;
+    public static void NotifyDeepSeaRevengeDone(int serverSlot) { _deepSeaRevengeTargetSlot = serverSlot; _deepSeaRevengeWaiting = false; }
     void Start()
     {
         currentCard3D = null;
@@ -525,6 +529,12 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             return;
         }
 
+        if (deepSeaMarked)
+        {
+            slotImage.color = Color.blue;
+            return;
+        }
+
         if (isTargetingMode && IsValidTarget(currentTargetType))
             HighlightRow(false);
 
@@ -532,6 +542,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         if (isBlocked) slotImage.color = Color.gray;
         else if (prisonBlocked) slotImage.color = new Color(0.6f, 0.2f, 0.8f);
         else if (hasPlague) slotImage.color = Color.green;
+        else if (deepSeaMarked) slotImage.color = Color.blue;
         else slotImage.color = normalColor;
     }
     public void OnPointerClick(PointerEventData eventData)
@@ -916,6 +927,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         if (isBlocked) slotImage.color = Color.gray;
         else if (prisonBlocked) slotImage.color = new Color(0.6f, 0.2f, 0.8f);
         else if (hasPlague) slotImage.color = Color.green;
+        else if (deepSeaMarked) slotImage.color = Color.blue;
         else slotImage.color = normalColor;
     }
 
@@ -2113,6 +2125,11 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         // Sync slot prison flags to opponent — must reach server & remote
         TurnManager.SyncMyBoardToOpponent();
 
+        // 远端放置时，服务器端的 CardInstance 副本不会运行 PrisonEnterEffect，
+        // 需要显式告知服务器 prisonMySlot/prisonEnemySlot，退场时才能精确解锁
+        if (!NetworkServer.active)
+            NetworkPlayer.Local.CmdSetPrisonSlots(giver.instanceID, myPrison.slotID, enemyPrison.slotID);
+
         CleanupAfterPlacement();
     }
     public bool CanPlaceCard(CardInstance ci)
@@ -2783,7 +2800,6 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     {
         BoardSlot.isStrengtheningSlot = true;
 
-                // 清理重定向标记
         BoardSlot first = null;
         bool firstDone = false;
         SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (s) =>
@@ -2792,7 +2808,6 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         });
         yield return new WaitUntil(() => firstDone);
 
-                // 清理重定向标记
         BoardSlot second = null;
         bool secondDone = false;
         SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (s) =>
@@ -2803,7 +2818,28 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         BoardSlot.isStrengtheningSlot = false;
 
+        // 两格施加 debuff + 蓝色高亮
+        if (first != null) { ApplyDeepSeaDebuffLocal(first); first.deepSeaMarked = true; first.SyncVisual(); }
+        if (second != null) { ApplyDeepSeaDebuffLocal(second); second.deepSeaMarked = true; second.SyncVisual(); }
+
         NetworkPlayer.Local.AddEnergy(1);
+        TurnManager.SyncMyBoardToOpponent();
+    }
+
+    void ApplyDeepSeaDebuffLocal(BoardSlot slot)
+    {
+        if (slot == null) return;
+        slot.deepSeaAttackDebuff++;
+        slot.deepSeaHealthDebuff = true;
+        if (slot.currentCard3D != null)
+        {
+            var ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci != null)
+            {
+                ci.currentAttack = Mathf.Max(0, ci.currentAttack - 1);
+                slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+            }
+        }
     }
     public IEnumerator FanaticShamanEnterEffect(CardInstance giver)
     {

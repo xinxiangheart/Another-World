@@ -65,7 +65,7 @@ public class BoardSyncManager : MonoBehaviour
             string card = Tid(slot?.currentCard3D);
             string flags = slot == null ? "" :
                 $"{(slot.isBlocked?1:0)}{(slot.prisonBlocked?1:0)}{(slot.hasPlague?1:0)}" +
-                $"{(slot.hasSpotlight?1:0)}|{slot.plagueRoundCount}|{slot.spotlightTierBoost}|{slot.slotTempAttackBoost}";
+                $"{(slot.hasSpotlight?1:0)}{(slot.deepSeaMarked?1:0)}|{slot.plagueRoundCount}|{slot.spotlightTierBoost}|{slot.slotTempAttackBoost}";
             s[i] = $"{card}|{flags}";
         }
 
@@ -257,20 +257,13 @@ public class BoardSyncManager : MonoBehaviour
         BoardSlot slot = bm.GetSlot(idx);
         if (slot == null) return;
 
-        // Parse: "cardPart|flagsPart" where cardPart = everything before last "|slotTempAttackBoost|...?"
-        // Actually: "templateID|hp|atk|maxHp|cost|tier|shield|silenced|attached|poisoned|prefixes|isBlocked.isPrison.isPlague.isSpotlight|slotTempAttackBoost"
-        // Split carefully: the card part has 11 fields, then flags have 3 fields
         string[] parts = raw.Split('|');
-        if (parts.Length == 0) { EnsureEmpty(idx, slot, bm); return; }
-
-        // Card part: templateID|hp|atk|maxHp|baseAtk|baseHp|baseMaxHp|cost|tier|baseTier|shield|silenced|attached|poisoned|prefixes (15 fields)
-        string tid = parts[0];
-        if (string.IsNullOrEmpty(tid)) { EnsureEmpty(idx, slot, bm); return; }
-
-        EnsureCard(idx, parts, slot, bm, hm);
+        if (parts.Length == 0) { EnsureEmpty(idx, slot, bm); slot.SyncVisual(); return; }
 
         // Slot flags: last 4 fields = "BBBB" | plagueRoundCount | spotlightTierBoost | slotTempAttackBoost
-        if (parts.Length >= 6)
+        // ❗ 必须在 tid 检查之前应用 flag——空槽位的 prisonBlocked 等标记也需要同步
+        // ❗ 条件为 >= 5（非 >= 6）——空槽位只产生 5 段（空字符串 + 4 个 flag 段）
+        if (parts.Length >= 5)
         {
             string f = parts[parts.Length - 4];
             if (f.Length >= 4)
@@ -279,12 +272,19 @@ public class BoardSyncManager : MonoBehaviour
                 slot.prisonBlocked = f[1] == '1';
                 slot.hasPlague = f[2] == '1';
                 slot.hasSpotlight = f[3] == '1';
+                slot.deepSeaMarked = f.Length >= 5 && f[4] == '1';
             }
             if (int.TryParse(parts[parts.Length - 3], out int prc)) slot.plagueRoundCount = prc;
             if (int.TryParse(parts[parts.Length - 2], out int stb)) slot.spotlightTierBoost = stb;
             if (int.TryParse(parts[parts.Length - 1], out int boost)) slot.slotTempAttackBoost = boost;
         }
         slot.SyncVisual();
+
+        // Card part: templateID|hp|atk|maxHp|baseAtk|baseHp|baseMaxHp|cost|tier|baseTier|shield|silenced|attached|poisoned|prefixes (15 fields)
+        string tid = parts[0];
+        if (string.IsNullOrEmpty(tid)) { EnsureEmpty(idx, slot, bm); return; }
+
+        EnsureCard(idx, parts, slot, bm, hm);
     }
 
     void EnsureEmpty(int idx, BoardSlot slot, BoardManager bm)
@@ -313,8 +313,7 @@ public class BoardSyncManager : MonoBehaviour
             SafeDestroy(slot.currentCard3D); slot.SetCard(null);
         }
 
-        slot.isBlocked = false; slot.prisonBlocked = false; slot.hasPlague = false; slot.hasSpotlight = false;
-        slot.plagueRoundCount = 0; slot.spotlightTierBoost = 0; slot.slotTempAttackBoost = 0;
+        // 槽位标记由 sync data 提供，此处不重置——prisonBlocked 等空槽标记需持久化
     }
 
     void EnsureCard(int idx, string[] parts, BoardSlot slot, BoardManager bm, HandManager hm)
