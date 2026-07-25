@@ -1096,11 +1096,16 @@ public class NetworkPlayer : NetworkBehaviour
                     slot.hasPlague = flags[2] == '1';
                     slot.hasSpotlight = flags[3] == '1';
                     slot.deepSeaMarked = flags.Length >= 5 && flags[4] == '1';
+                    slot.deepSeaHealthDebuff = flags.Length >= 6 && flags[5] == '1';
                     slot.SyncVisual();
                 }
                 if (int.TryParse(parts[parts.Length - 3], out int prc)) slot.plagueRoundCount = prc;
                 if (int.TryParse(parts[parts.Length - 2], out int stb)) slot.spotlightTierBoost = stb;
-                if (int.TryParse(parts[parts.Length - 1], out int boost)) slot.slotTempAttackBoost = boost;
+                // 最后一段 "sTAB~dSAD"（~deepSeaAttackDebuff 为可选向后兼容）
+                string lastField = parts[parts.Length - 1];
+                string[] sub = lastField.Split('~');
+                if (sub.Length > 0 && int.TryParse(sub[0], out int boost)) slot.slotTempAttackBoost = boost;
+                if (sub.Length > 1 && int.TryParse(sub[1], out int dsa)) slot.deepSeaAttackDebuff = dsa;
             }
 
             // ── 属性/模板数据更新（全部 12 槽通用——客户端上报的对方卡牌属性是"我刚打过的"，信任它）──
@@ -1808,6 +1813,43 @@ public class NetworkPlayer : NetworkBehaviour
         // 映射到服务端坐标
         int serverSlot = localSlot < 0 ? -1 : (isLocalPlayer ? localSlot : (localSlot >= 6 ? localSlot - 6 : localSlot + 6));
         BoardSlot.NotifyDeepSeaRevengeDone(serverSlot);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 01527 为己方一召唤物+2+1 反击选择委托
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// <summary>服务端→远端客户端：你的01527死了，选一个己方召唤物+2+1。</summary>
+    [TargetRpc]
+    public void TargetAllyBuffRevengeSelect(NetworkConnectionToClient target, int serverDeadSlotID)
+    {
+        var bm = FindObjectOfType<BoardManager>();
+        if (bm == null) { CmdAllyBuffRevengeResult(-1); return; }
+
+        // 选择己方格子（从本地视角 6-11 = 己方）
+        bool done = false; int result = -1;
+        SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (s) =>
+        {
+            if (s != null && s.currentCard3D != null) result = s.slotID;
+            done = true;
+        });
+        BoardSlot.isStrengtheningSlot = true;
+        StartCoroutine(WaitAndSendAllyBuffResult(done, result));
+    }
+
+    IEnumerator WaitAndSendAllyBuffResult(bool done, int result)
+    {
+        yield return new WaitUntil(() => done);
+        BoardSlot.isStrengtheningSlot = false;
+        CmdAllyBuffRevengeResult(result);
+    }
+
+    /// <summary>远端→服务器：01527 反击选择了 localSlot（远端本地坐标）。</summary>
+    [Command]
+    public void CmdAllyBuffRevengeResult(int localSlot)
+    {
+        int serverSlot = localSlot < 0 ? -1 : (isLocalPlayer ? localSlot : (localSlot >= 6 ? localSlot - 6 : localSlot + 6));
+        BoardSlot.NotifyAllyBuffRevengeDone(serverSlot);
     }
 
     // ═══════════════════════════════════════════════════════════════════

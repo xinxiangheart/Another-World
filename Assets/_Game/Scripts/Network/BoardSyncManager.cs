@@ -65,7 +65,7 @@ public class BoardSyncManager : MonoBehaviour
             string card = Tid(slot?.currentCard3D);
             string flags = slot == null ? "" :
                 $"{(slot.isBlocked?1:0)}{(slot.prisonBlocked?1:0)}{(slot.hasPlague?1:0)}" +
-                $"{(slot.hasSpotlight?1:0)}{(slot.deepSeaMarked?1:0)}|{slot.plagueRoundCount}|{slot.spotlightTierBoost}|{slot.slotTempAttackBoost}";
+                $"{(slot.hasSpotlight?1:0)}{(slot.deepSeaMarked?1:0)}{(slot.deepSeaHealthDebuff?1:0)}|{slot.plagueRoundCount}|{slot.spotlightTierBoost}|{slot.slotTempAttackBoost}~{slot.deepSeaAttackDebuff}";
             s[i] = $"{card}|{flags}";
         }
 
@@ -273,10 +273,15 @@ public class BoardSyncManager : MonoBehaviour
                 slot.hasPlague = f[2] == '1';
                 slot.hasSpotlight = f[3] == '1';
                 slot.deepSeaMarked = f.Length >= 5 && f[4] == '1';
+                slot.deepSeaHealthDebuff = f.Length >= 6 && f[5] == '1';
             }
             if (int.TryParse(parts[parts.Length - 3], out int prc)) slot.plagueRoundCount = prc;
             if (int.TryParse(parts[parts.Length - 2], out int stb)) slot.spotlightTierBoost = stb;
-            if (int.TryParse(parts[parts.Length - 1], out int boost)) slot.slotTempAttackBoost = boost;
+            // 最后一段 "sTAB~dSAD"（~deepSeaAttackDebuff 为可选兼容）
+            string lastField = parts[parts.Length - 1];
+            string[] sub = lastField.Split('~');
+            if (sub.Length > 0 && int.TryParse(sub[0], out int boost)) slot.slotTempAttackBoost = boost;
+            if (sub.Length > 1 && int.TryParse(sub[1], out int dsa)) slot.deepSeaAttackDebuff = dsa;
         }
         slot.SyncVisual();
 

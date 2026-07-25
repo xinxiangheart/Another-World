@@ -124,7 +124,6 @@ public class Card3DHover : MonoBehaviour
         hm?.SetHandAreaRaycast(true);
         hm?.ShowAllCards();
         FindObjectOfType<CardDrag>()?.SetButtonsInteractable(true);
-        BoardSlot.isTargetingMode = false;
     }
 
     // ========== Unified Hidden State ==========

@@ -1631,7 +1631,6 @@ public class HandManager : MonoBehaviour
 
         yield return new WaitUntil(() => swapDone);
         BoardSlot.isStrengtheningSlot = false;
-        BoardSlot.isTargetingMode = false;
         SetHandAreaRaycast(true);
         ShowAllCards();
         FindObjectOfType<CardDrag>()?.SetButtonsInteractable(true);

@@ -324,25 +324,6 @@ public partial class TurnManager : MonoBehaviour
             }
         }
 
-        // 深海恶物：每阶段开始扣1生命值
-        if (slots != null)
-        {
-            for (int i = 0; i < 12; i++)
-            {
-                BoardSlot slot = slots[i];
-                if (slot?.currentCard3D == null) continue;
-                if (slot.deepSeaHealthDebuff)
-                {
-                    CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                    if (ci != null)
-                    {
-                        ci.currentHealth -= 1;
-                        slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
-                    }
-                }
-            }
-            BoardSlot.CheckAndHandleDeaths();
-        }
         // 打工人(03009)/小团恶念(03010)/大团恶念(03011) — 双方都要检查
         if (slots != null)
         {
@@ -1063,6 +1044,23 @@ public partial class TurnManager : MonoBehaviour
                 onNo: (done) => { done(); });
             break;
         }
+
+        // ── 深海恶物(01338)：每阶段开始扣1生命值（双方格子都需要检查）──
+        for (int i = 0; i < 12; i++)
+        {
+            BoardSlot slot = slots[i];
+            if (slot?.currentCard3D == null) continue;
+            if (slot.deepSeaHealthDebuff)
+            {
+                CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                if (ci != null)
+                {
+                    ci.currentHealth -= 1;
+                    slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+                }
+            }
+        }
+        BoardSlot.CheckAndHandleDeaths();
     }
 
     public bool IsMyTurn()

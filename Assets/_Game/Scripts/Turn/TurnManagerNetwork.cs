@@ -182,8 +182,8 @@ public partial class TurnManager
                     ci.prefixes ?? "",
                     ci.grantedTraitTexts != null && ci.grantedTraitTexts.Count > 0
                         ? string.Join(";;", ci.grantedTraitTexts) : "");
-            string flagPart = slot == null ? "00000|0|0|0" :
-                $"{(slot.isBlocked?1:0)}{(slot.prisonBlocked?1:0)}{(slot.hasPlague?1:0)}{(slot.hasSpotlight?1:0)}{(slot.deepSeaMarked?1:0)}|{slot.plagueRoundCount}|{slot.spotlightTierBoost}|{slot.slotTempAttackBoost}";
+            string flagPart = slot == null ? "000000|0|0|0|0" :
+                $"{(slot.isBlocked?1:0)}{(slot.prisonBlocked?1:0)}{(slot.hasPlague?1:0)}{(slot.hasSpotlight?1:0)}{(slot.deepSeaMarked?1:0)}{(slot.deepSeaHealthDebuff?1:0)}|{slot.plagueRoundCount}|{slot.spotlightTierBoost}|{slot.slotTempAttackBoost}~{slot.deepSeaAttackDebuff}";
             all[i] = $"{cardPart}|{flagPart}";
         }
 

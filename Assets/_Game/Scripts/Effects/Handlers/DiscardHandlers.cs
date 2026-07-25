@@ -41,7 +41,6 @@ public static class DiscardHandlers
         HM()?.SetHandAreaRaycast(true);
         HM()?.ShowAllCards();
         UnityEngine.Object.FindObjectOfType<CardDrag>()?.SetButtonsInteractable(true);
-        BoardSlot.isTargetingMode = false;
     }
 
     // ═══════════════════════════════════════════════════════════════════

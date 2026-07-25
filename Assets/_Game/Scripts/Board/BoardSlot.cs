@@ -302,6 +302,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public static bool _deepSeaRevengeWaiting;
     public static int _deepSeaRevengeTargetSlot = -1;
     public static void NotifyDeepSeaRevengeDone(int serverSlot) { _deepSeaRevengeTargetSlot = serverSlot; _deepSeaRevengeWaiting = false; }
+    // 01527 为己方一召唤物+2+1 反击 RPC 委托
+    public static bool _allyBuffRevengeWaiting;
+    public static int _allyBuffRevengeTargetSlot = -1;
+    public static void NotifyAllyBuffRevengeDone(int serverSlot) { _allyBuffRevengeTargetSlot = serverSlot; _allyBuffRevengeWaiting = false; }
     void Start()
     {
         currentCard3D = null;
@@ -1325,7 +1329,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             if (slot != null)
             {
                 slot.transform.localScale = slot.originalScale;
-                slot.slotImage.color = slot.isBlocked ? Color.gray : slot.normalColor;
+                // 使用 SyncVisual 的优先级链复原颜色，而非粗暴写死 normalColor——
+                // 否则 deepSeaMarked/prisonBlocked/hasPlague 的视觉状态被 EndSelection 抹除
+                slot.SyncVisual();
             }
         }
     }
@@ -2808,6 +2814,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         });
         yield return new WaitUntil(() => firstDone);
 
+        // EndSelection 会把 isStrengtheningSlot 清零——二次选择前必须恢复，
+        // 否则 IsValidTarget(SingleEnemy) 走 hasCard 路径而非 !isBlocked 路径
+        BoardSlot.isStrengtheningSlot = true;
+
         BoardSlot second = null;
         bool secondDone = false;
         SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (s) =>
@@ -2829,9 +2839,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     void ApplyDeepSeaDebuffLocal(BoardSlot slot)
     {
         if (slot == null) return;
-        slot.deepSeaAttackDebuff++;
+        bool alreadyDebuffed = slot.deepSeaAttackDebuff >= 1;
+        slot.deepSeaAttackDebuff = 1;   // 不可叠加，始终 -1
         slot.deepSeaHealthDebuff = true;
-        if (slot.currentCard3D != null)
+        if (slot.currentCard3D != null && !alreadyDebuffed)
         {
             var ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
             if (ci != null)

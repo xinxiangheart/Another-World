@@ -1133,22 +1133,15 @@ public class BattleManager : MonoBehaviour
                 {
                     if (targetSlot != null && !targetSlot.isBlocked)
                     {
-                        targetSlot.deepSeaAttackDebuff++;
-                        targetSlot.deepSeaHealthDebuff = true;
-                        if (targetSlot.currentCard3D != null)
-                        {
-                            CardInstance ci = targetSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                            if (ci != null)
-                            {
-                                ci.currentAttack = Mathf.Max(0, ci.currentAttack - 1);
-                                targetSlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
-                            }
-                        }
+                        ApplyDeepSeaDebuff(targetSlot);
+                        targetSlot.deepSeaMarked = true;
+                        targetSlot.SyncVisual();
                     }
                     onDone();
                 });
                 BoardSlot.isStrengtheningSlot = true;
             }));
+            if (Mirror.NetworkServer.active) BoardSyncManager.MarkDirty();
         }
         else if (effect.Contains("+1能量"))
         {
@@ -1195,55 +1188,87 @@ public class BattleManager : MonoBehaviour
                     continue;
                 }
 
-                // ── 非伤害型反击（无目标迭代）──
-                if (sourceIDs == null || sourceIDs.Count == 0)
+                // ── 非伤害型反击（与 sourceIDs 无关——即使被随从打死的卡也可能有选择型反击）──
+                // +1能量
+                if (effect.Contains("+1能量"))
                 {
-                    // +1能量
-                    if (effect.Contains("+1能量"))
+                    BoardManager.GetOwnerPlayer(deadSlotID)?.AddEnergy(1);
+                    continue;
+                }
+                // 选定一个格子 → debuff（01338 深海恶物反击）
+                if (effect.Contains("选定一个格子"))
+                {
+                    NetworkPlayer revOwner = BoardManager.GetOwnerPlayer(deadSlotID);
+                    if (revOwner == NetworkPlayer.Remote && Mirror.NetworkServer.active)
                     {
-                        BoardManager.GetOwnerPlayer(deadSlotID)?.AddEnergy(1);
-                    }
-                    // 选定一个格子 → debuff（01338 深海恶物反击）
-                    else if (effect.Contains("选定一个格子"))
-                    {
-                        NetworkPlayer revOwner = BoardManager.GetOwnerPlayer(deadSlotID);
-                        if (revOwner == NetworkPlayer.Remote && Mirror.NetworkServer.active)
+                        // 远端玩家的卡 → 委托远端选择目标
+                        BoardSlot._deepSeaRevengeTargetSlot = -1;
+                        BoardSlot._deepSeaRevengeWaiting = true;
+                        NetworkPlayer.Remote.TargetDeepSeaRevengeSelect(
+                            NetworkPlayer.Remote.connectionToClient, deadSlotID);
+                        float t0 = Time.time;
+                        while (BoardSlot._deepSeaRevengeWaiting && Time.time - t0 < 30f)
+                            yield return null;
+                        BoardSlot._deepSeaRevengeWaiting = false;
+                        int chosen = BoardSlot._deepSeaRevengeTargetSlot;
+                        if (chosen >= 0 && chosen < 12)
                         {
-                            // 远端玩家的卡 → 委托远端选择目标
-                            BoardSlot._deepSeaRevengeTargetSlot = -1;
-                            BoardSlot._deepSeaRevengeWaiting = true;
-                            NetworkPlayer.Remote.TargetDeepSeaRevengeSelect(
-                                NetworkPlayer.Remote.connectionToClient, deadSlotID);
-                            float t0 = Time.time;
-                            while (BoardSlot._deepSeaRevengeWaiting && Time.time - t0 < 30f)
-                                yield return null;
-                            BoardSlot._deepSeaRevengeWaiting = false;
-                            int chosen = BoardSlot._deepSeaRevengeTargetSlot;
-                            if (chosen >= 0 && chosen < 12)
+                            BoardSlot ts = bm.GetSlot(chosen);
+                            if (ts != null) { ApplyDeepSeaDebuff(ts); ts.deepSeaMarked = true; ts.SyncVisual(); }
+                        }
+                    }
+                    else
+                    {
+                        // 主机玩家 → 直接本地选择
+                        yield return bmInstance.StartCoroutine(bmInstance.WaitForSelection((onDone) =>
+                        {
+                            SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (ts) =>
                             {
-                                BoardSlot ts = bm.GetSlot(chosen);
-                                if (ts != null) { ApplyDeepSeaDebuff(ts); ts.deepSeaMarked = true; ts.SyncVisual(); }
+                                if (ts != null && !ts.isBlocked)
+                                { ApplyDeepSeaDebuff(ts); ts.deepSeaMarked = true; ts.SyncVisual(); }
+                                onDone();
+                            });
+                            BoardSlot.isStrengtheningSlot = true;
+                        }));
+                    }
+                    BoardSyncManager.MarkDirty();
+                    continue;
+                }
+                // 为己方一召唤物+2+1（01527）
+                if (effect.Contains("为己方一召唤物+2+1"))
+                {
+                    NetworkPlayer revOwner = BoardManager.GetOwnerPlayer(deadSlotID);
+                    if (revOwner == NetworkPlayer.Remote && Mirror.NetworkServer.active)
+                    {
+                        // 远端玩家的卡 → 委托远端选择目标
+                        BoardSlot._allyBuffRevengeTargetSlot = -1;
+                        BoardSlot._allyBuffRevengeWaiting = true;
+                        NetworkPlayer.Remote.TargetAllyBuffRevengeSelect(
+                            NetworkPlayer.Remote.connectionToClient, deadSlotID);
+                        float t0 = Time.time;
+                        while (BoardSlot._allyBuffRevengeWaiting && Time.time - t0 < 30f)
+                            yield return null;
+                        BoardSlot._allyBuffRevengeWaiting = false;
+                        int chosen = BoardSlot._allyBuffRevengeTargetSlot;
+                        if (chosen >= 0 && chosen < 12)
+                        {
+                            BoardSlot ts = bm.GetSlot(chosen);
+                            if (ts?.currentCard3D != null)
+                            {
+                                CardInstance ci = ts.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                                if (ci != null)
+                                {
+                                    if (!ci.cannotHealOrGainMaxHP)
+                                    { ci.currentHealth += 2; ci.currentMaxHealth += 2; }
+                                    ci.currentAttack += 1;
+                                    ts.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+                                }
                             }
                         }
-                        else
-                        {
-                            // 主机玩家 → 直接本地选择
-                            yield return bmInstance.StartCoroutine(bmInstance.WaitForSelection((onDone) =>
-                            {
-                                SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (ts) =>
-                                {
-                                    if (ts != null && !ts.isBlocked)
-                                    { ApplyDeepSeaDebuff(ts); ts.deepSeaMarked = true; ts.SyncVisual(); }
-                                    onDone();
-                                });
-                                BoardSlot.isStrengtheningSlot = true;
-                            }));
-                        }
-                        BoardSyncManager.MarkDirty();
                     }
-                    // 为己方一召唤物+2+1
-                    else if (effect.Contains("为己方一召唤物+2+1"))
+                    else
                     {
+                        // 主机玩家 → 直接本地选择
                         BoardManager.GetSideRange(deadSlotID, out int aStart, out int aEnd);
                         yield return bmInstance.StartCoroutine(bmInstance.WaitForSelection((onDone) =>
                         {
@@ -1272,10 +1297,13 @@ public class BattleManager : MonoBehaviour
                             else onDone();
                         }));
                     }
+                    if (Mirror.NetworkServer.active) BoardSyncManager.MarkDirty();
                     continue;
                 }
 
-                // ── 伤害型反击（遍历来源目标）──
+                // ── 伤害型反击（必须有来源目标）──
+                if (sourceIDs == null || sourceIDs.Count == 0) continue;
+
                 var targets = new List<GameObject>();
                 for (int i = 0; i < 12; i++)
                 {
@@ -1844,9 +1872,10 @@ public class BattleManager : MonoBehaviour
     static void ApplyDeepSeaDebuff(BoardSlot slot)
     {
         if (slot == null) return;
-        slot.deepSeaAttackDebuff++;
+        bool alreadyDebuffed = slot.deepSeaAttackDebuff >= 1;
+        slot.deepSeaAttackDebuff = 1;   // 不可叠加，始终 -1
         slot.deepSeaHealthDebuff = true;
-        if (slot.currentCard3D != null)
+        if (slot.currentCard3D != null && !alreadyDebuffed)
         {
             var ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
             if (ci != null)
