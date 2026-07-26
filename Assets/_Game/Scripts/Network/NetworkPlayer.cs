@@ -742,12 +742,14 @@ public class NetworkPlayer : NetworkBehaviour
 
     public void AddCardToHandFromInstance(CardData template, CardInstance oldInstance, bool isEnemy = false)
     {
-        if (isEnemy && Remote == null) return;
-        if (!isEnemy && Local == null) return;
+        // 使用实例字段而非 static Local/Remote——当服务器对 Remote 牌退场回手时，this 是 Remote，
+        // 必须用 Remote.handArea/maxHandSize 而非 Local 的，否则牌会加到错误的手牌区域
+        NetworkPlayer target = isEnemy ? Remote : this;
+        if (target == null) return;
 
-        int maxSize = isEnemy ? Remote.maxHandSize : Local.maxHandSize;
-        Transform targetHandArea = isEnemy ? Remote.handArea : Local.handArea;
-        GameObject prefab = isEnemy ? Remote.GetCardPrefab(template.cardType) : GetCardPrefab(template.cardType);
+        int maxSize = target.maxHandSize;
+        Transform targetHandArea = target.handArea;
+        GameObject prefab = target.GetCardPrefab(template.cardType);
 
         if (prefab == null)
         {
@@ -1849,6 +1851,169 @@ public class NetworkPlayer : NetworkBehaviour
     }
 
     // ═══════════════════════════════════════════════════════════════════
+    // 01344 诅咒女巫：抛置→敌方攻击力永久-2（纯客户端→服务器权威）
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// <summary>纯客户端→服务器：01344 抛置对敌方槽位施加攻击力永久-2。</summary>
+    [Command]
+    public void CmdDiscardDebuff01344(int localTargetSlot)
+    {
+        // 远程客户端 localSlot 0-5 → 服务端坐标 6-11（敌方从远程视角=主机己方）
+        int serverSlot = isLocalPlayer ? localTargetSlot : (localTargetSlot + 6);
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        BoardSlot target = bm?.GetSlot(serverSlot);
+        if (target != null)
+        {
+            DiscardHandlers.Apply01344Debuff(target);
+            BoardSyncManager.MarkDirty();
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 01347 荣誉侍者：退场→对敌方造成2伤害 目标选择委托
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// <summary>服务端→远端客户端：你的01347死了，选一个敌方随从造成2伤害。</summary>
+    [TargetRpc]
+    public void TargetHonorAttendantExitSelect(NetworkConnectionToClient target, int serverDeadSlotID)
+    {
+        BoardSlot.isStrengtheningSlot = true;
+        SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (s) =>
+        {
+            BoardSlot.isStrengtheningSlot = false;
+            int result = (s != null && s.currentCard3D != null) ? s.slotID : -1;
+            CmdHonorAttendantExitResult(result);
+        });
+    }
+
+    /// <summary>远端→服务器：01347 退场伤害选择了 localSlot（远端本地坐标）。</summary>
+    [Command]
+    public void CmdHonorAttendantExitResult(int localSlot)
+    {
+        int serverSlot = localSlot < 0 ? -1 : (isLocalPlayer ? localSlot : (localSlot >= 6 ? localSlot - 6 : localSlot + 6));
+        BoardSlot.NotifyHonorAttendantExitDone(serverSlot);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 01347 荣誉侍者：主动退场→+2能量+看对手手牌+弃邪恶法术（遵循01316窃贼模式）
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// <summary>纯客户端→服务器：请求执行荣誉侍者主动退场流程。</summary>
+    [Command]
+    public void CmdRequestHonorAttendantActiveExit(int slotID)
+    {
+        NetworkPlayer owner = BoardManager.GetOwnerPlayer(slotID);
+        NetworkPlayer oppNp = BoardManager.GetOpponentPlayer(slotID);
+        if (owner == null) return;
+        owner.AddEnergy(2);
+        StartCoroutine(WaitAndSendHonorAttendantHand(slotID, owner, oppNp));
+    }
+
+    IEnumerator WaitAndSendHonorAttendantHand(int slotID, NetworkPlayer owner, NetworkPlayer oppNp)
+    {
+        List<string> handData = new List<string>();
+
+        if (oppNp == Local || oppNp == null)
+        {
+            foreach (var card in Local.handCards)
+            {
+                if (card == null) continue;
+                var ci = card.GetComponent<CardInstance>();
+                if (ci != null && !string.IsNullOrEmpty(ci.templateID))
+                    handData.Add($"{ci.templateID}|{ci.instanceID}|{ci.currentCost}|{ci.currentAttack}|{ci.currentHealth}|{ci.currentMaxHealth}|{ci.currentTier}|{ci.prefixes ?? ""}|{(ci.hasShield ? "1" : "0")}|{(ci.poisoned ? "1" : "0")}");
+            }
+        }
+        else
+        {
+            _handReportDone = false;
+            oppNp.TargetRequestHandReport(oppNp.connectionToClient);
+            yield return new WaitWhile(() => !_handReportDone);
+            foreach (var card in oppNp.handCards)
+            {
+                if (card == null) continue;
+                var ci = card.GetComponent<CardInstance>();
+                if (ci != null && !string.IsNullOrEmpty(ci.templateID))
+                    handData.Add($"{ci.templateID}|{ci.instanceID}|{ci.currentCost}|{ci.currentAttack}|{ci.currentHealth}|{ci.currentMaxHealth}|{ci.currentTier}|{ci.prefixes ?? ""}|{(ci.hasShield ? "1" : "0")}|{(ci.poisoned ? "1" : "0")}");
+            }
+        }
+
+        Local.TargetShowHonorAttendantHand(owner.connectionToClient, handData.ToArray(), slotID);
+
+        BoardSlot._honorAttendantDone = false;
+        yield return new WaitWhile(() => !BoardSlot._honorAttendantDone);
+
+        foreach (string entry in handData)
+        {
+            string[] parts = entry.Split('|');
+            if (parts.Length < 2) continue;
+            string tid = parts[0];
+            string iid = parts[1];
+            CardData td = CardDatabase.Instance?.GetTemplate(tid);
+            if (td != null && (td.spellType & SpellType.Evil) != 0)
+            {
+                if (oppNp == Local || oppNp == null)
+                    RemoveCardFromLocalHand(iid);
+                else
+                    oppNp.TargetRemoveHandCard(oppNp.connectionToClient, iid);
+            }
+        }
+
+        owner.TargetHonorAttendantComplete(owner.connectionToClient);
+        BoardSyncManager.MarkDirty();
+    }
+
+    /// <summary>服务器→客户端：展示对手手牌用于荣誉侍者弹窗。</summary>
+    [TargetRpc]
+    public void TargetShowHonorAttendantHand(NetworkConnectionToClient target, string[] handData, int slotID)
+    {
+        List<CardInstance> cards = new List<CardInstance>();
+        foreach (string entry in handData)
+        {
+            string[] parts = entry.Split('|');
+            if (parts.Length < 2) continue;
+            var go = new GameObject("HonorCard");
+            var ci = go.AddComponent<CardInstance>();
+            ci.templateID = parts[0];
+            ci.instanceID = parts[1];
+            if (parts.Length > 2 && int.TryParse(parts[2], out int v)) ci.currentCost = v;
+            if (parts.Length > 3 && int.TryParse(parts[3], out v)) ci.currentAttack = v;
+            if (parts.Length > 4 && int.TryParse(parts[4], out v)) ci.currentHealth = v;
+            if (parts.Length > 5 && int.TryParse(parts[5], out v)) ci.currentMaxHealth = v;
+            if (parts.Length > 6 && int.TryParse(parts[6], out v)) ci.currentTier = v;
+            if (parts.Length > 7) ci.prefixes = parts[7];
+            if (parts.Length > 8) ci.hasShield = parts[8] == "1";
+            if (parts.Length > 9) ci.poisoned = parts[9] == "1";
+            cards.Add(ci);
+        }
+
+        CardDisplayPanel.Instance.multiSelect = false;
+        int capturedSlot = slotID;
+        CardDisplayPanel.Instance.Show(cards, _ => true, "确认");
+
+        ConfirmSelectionButton.Instance?.gameObject.SetActive(true);
+        ConfirmSelectionButton.Instance?.Show(() =>
+        {
+            Local.CmdConfirmHonorAttendant();
+            foreach (var c in cards) if (c != null) Destroy(c.gameObject);
+            CardDisplayPanel.Instance.Hide();
+        });
+    }
+
+    /// <summary>客户端→服务器：荣誉侍者弹窗确认。</summary>
+    [Command]
+    public void CmdConfirmHonorAttendant()
+    {
+        BoardSlot._honorAttendantDone = true;
+    }
+
+    /// <summary>服务器→客户端：荣誉侍者流程完成。</summary>
+    [TargetRpc]
+    public void TargetHonorAttendantComplete(NetworkConnectionToClient target)
+    {
+        BoardSlot._honorAttendantDone = true;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
 
     /// <summary>Remove a counter model after it's been triggered/expired on the server.</summary>
     [TargetRpc]
@@ -2039,7 +2204,7 @@ public class NetworkPlayer : NetworkBehaviour
         }
     }
 
-    static void RemoveCardFromLocalHand(string instanceID)
+    public static void RemoveCardFromLocalHand(string instanceID)
     {
         var cards = Local?.handCards;
         if (cards == null) return;

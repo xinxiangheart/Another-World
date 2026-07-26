@@ -169,23 +169,24 @@ public static class DeathPipeline
             }
         }
 
-        // ── 7. 回手逻辑 ────────────────────────────────────────────────
-        if (p.shouldReturn03504 && p.template03504 != null)
+        // ── 7. 回手逻辑（仅服务端/离线执行——客户端由板面同步驱动，重复执行会导致重复加到双方手牌）──
+        if (NetworkServer.active || !NetworkClient.isConnected)
         {
-            if (NetworkServer.active && slotID >= 0 && slotID < 6)
-                NetworkPlayer.Local?.RouteReturnToHand(slotID, ci);
-            else
-                NetworkPlayer.Local.AddCardToHandFromInstance(p.template03504, ci);
-        }
-        if (p.shouldReturn01117 && p.template01117 != null)
-        {
-            NetworkPlayer owner = BoardManager.GetOwnerPlayer(p.slot.slotID);
-            if (owner != null) owner.AddCardToHandFromInstance(p.template01117, ci);
-        }
-        if (p.shouldReturn03009 && p.template03009 != null)
-        {
-            NetworkPlayer owner = BoardManager.GetOwnerPlayer(p.slot.slotID);
-            if (owner != null) owner.AddCardToHandFromInstance(p.template03009, ci);
+            if (p.shouldReturn03504 && p.template03504 != null)
+            {
+                NetworkPlayer owner = BoardManager.GetOwnerPlayer(p.slot.slotID);
+                if (owner != null) owner.AddCardToHandFromInstance(p.template03504, ci);
+            }
+            if (p.shouldReturn01117 && p.template01117 != null)
+            {
+                NetworkPlayer owner = BoardManager.GetOwnerPlayer(p.slot.slotID);
+                if (owner != null) owner.AddCardToHandFromInstance(p.template01117, ci);
+            }
+            if (p.shouldReturn03009 && p.template03009 != null)
+            {
+                NetworkPlayer owner = BoardManager.GetOwnerPlayer(p.slot.slotID);
+                if (owner != null) owner.AddCardToHandFromInstance(p.template03009, ci);
+            }
         }
 
         // ── 8. Destroy ─────────────────────────────────────────────────

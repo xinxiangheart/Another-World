@@ -45,6 +45,9 @@ public class CardDisplayPanel : MonoBehaviour
         var hm = FindObjectOfType<HandManager>();
         if (hm) hm.SetHandAreaRaycast(false);
 
+        // 弹窗期间禁止结束回合 — 任何需要玩家查看/选择的弹窗都应阻塞阶段推进
+        FindObjectOfType<EndTurnButton>()?.SetInteractable(false);
+
         foreach (Transform t in cardContainer) Destroy(t.gameObject);
         createdCards.Clear();
 
@@ -65,7 +68,9 @@ public class CardDisplayPanel : MonoBehaviour
 
             var di = go.GetComponent<CardInstance>() ?? go.AddComponent<CardInstance>();
             di.templateID = ci.templateID;
-            di.instanceID = ci.instanceID;
+            // instanceID 可能为 null/空（临时 CardInstance），同名不同实例的卡会因 null==null 被误判为同一张卡。
+            // 用 _temp_ + 索引 生成唯一临时 ID，确保 Click 中按 instanceID 的去重/反选逻辑正确。
+            di.instanceID = string.IsNullOrEmpty(ci.instanceID) ? $"_temp_{i}" : ci.instanceID;
             di.currentCost = ci.currentCost;
             di.currentAttack = ci.currentAttack;
             di.currentHealth = ci.currentHealth;
@@ -91,12 +96,13 @@ public class CardDisplayPanel : MonoBehaviour
             if (f == null || f(ci))
             {
                 var btn = go.AddComponent<Button>();
-                var cap = ci;
                 var capGo = go;
+                // 使用 go 上的 CardInstance（instanceID 已保证唯一）而非原始 ci，
+                // 否则 instanceID 为 null 的临时卡会被误判为同一张
+                var panelCard = di;
                 btn.onClick.AddListener(() =>
                 {
-                    Debug.Log($"卡片被点击: {cap.templateID}");
-                    Click(cap, capGo);
+                    Click(panelCard, capGo);
                 });
             }
             else
@@ -123,7 +129,7 @@ public class CardDisplayPanel : MonoBehaviour
     }
     void Click(CardInstance ci, GameObject go)
     {
-        Debug.Log($"Click进入: multiSelect={multiSelect}, ci={ci?.templateID}");
+        Debug.Log($"Click进入: multiSelect={multiSelect}, ci={ci?.templateID}, iid={ci?.instanceID}");
 
         if (multiSelect)
         {
@@ -148,12 +154,9 @@ public class CardDisplayPanel : MonoBehaviour
                     CardData td = CardDatabase.Instance?.GetTemplate(c.templateID);
                     if (td != null) totalCost += td.baseCost;
                 }
-                Debug.Log($"费用检测: selectedCards.Count={selectedCards.Count}, totalCost={totalCost}, maxTotalCost={maxTotalCost}");
                 if (selectedCards.Count == 0 || totalCost > maxTotalCost)
                     showConfirm = false;
             }
-
-            Debug.Log($"showConfirm={showConfirm}, selectedCards.Count={selectedCards.Count}");
 
             if (showConfirm && selectedCards.Count > 0)
             {
@@ -163,7 +166,6 @@ public class CardDisplayPanel : MonoBehaviour
                     csb.gameObject.SetActive(true);
                     csb.Show(() =>
                     {
-                        Debug.Log($"确认按钮点击: onOk={onOk != null}");
                         onOk?.Invoke();
                         Hide();
                     });
@@ -176,7 +178,9 @@ public class CardDisplayPanel : MonoBehaviour
         }
         else
         {
-            if (selected == ci)
+            // 按 instanceID 而非引用相等判断——临时 CardInstance 可能来自不同代码路径，
+            // 引用比较在对象被重建（如荣誉侍者/窃贼手牌展示）时会误判
+            if (selected != null && selected.instanceID == ci.instanceID)
             {
                 selected = null;
                 go.transform.localScale = Vector3.one;
@@ -239,6 +243,9 @@ public class CardDisplayPanel : MonoBehaviour
             hm.SetHandAreaRaycast(true);
             hm.RefreshLayout(true);
         }
+
+        // 弹窗关闭后恢复结束回合按钮
+        FindObjectOfType<EndTurnButton>()?.SetInteractable(true);
     }
 
     public CardInstance GetSelectedCard() => selected;

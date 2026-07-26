@@ -306,6 +306,12 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public static bool _allyBuffRevengeWaiting;
     public static int _allyBuffRevengeTargetSlot = -1;
     public static void NotifyAllyBuffRevengeDone(int serverSlot) { _allyBuffRevengeTargetSlot = serverSlot; _allyBuffRevengeWaiting = false; }
+    // 01347 荣誉侍者：退场→对敌方造成2伤害 目标选择委托
+    public static bool _honorAttendantExitWaiting;
+    public static int _honorAttendantExitTarget = -1;
+    public static void NotifyHonorAttendantExitDone(int serverSlot) { _honorAttendantExitTarget = serverSlot; _honorAttendantExitWaiting = false; }
+    // 01347 荣誉侍者：主动退场完成标记
+    public static bool _honorAttendantDone;
     void Start()
     {
         currentCard3D = null;
@@ -3641,75 +3647,110 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     }
     /// <summary>
     /// 荣誉侍者(01347)主动退场：+2能量，展示对手手牌并弃掉所有邪恶法术。
+    /// 遵循 01316 窃贼的联机模式：纯客户端委托服务器执行，服务器读取对手手牌并同步。
     /// </summary>
     public IEnumerator HonorAttendantActiveExit()
     {
+        // ═══ 联机：客户端需服务器中转 ═══
+        if (NetworkClient.isConnected && !NetworkServer.active)
+        {
+            int serverSlot = slotID >= 6 ? slotID - 6 : slotID + 6;
+            BoardSlot._honorAttendantDone = false;
+            NetworkPlayer.Local.CmdRequestHonorAttendantActiveExit(serverSlot);
+            yield return new WaitWhile(() => !BoardSlot._honorAttendantDone);
+            yield break;
+        }
+
+        // ═══ 服务器/单机：统一通过序列化 handData 处理（与 CmdRequestHonorAttendantActiveExit 同逻辑）═══
         NetworkPlayer owner = BoardManager.GetOwnerPlayer(slotID);
         owner.AddEnergy(2);
 
         NetworkPlayer oppNp = BoardManager.GetOpponentPlayer(slotID);
 
-        // ── 联机：向对手请求最新手牌数据 ──
+        // 构建 handData（对手手牌序列化快照）
+        List<string> handData = new List<string>();
         if (NetworkServer.active && oppNp != null && oppNp != owner)
         {
             NetworkPlayer._handReportDone = false;
             oppNp.TargetRequestHandReport(oppNp.connectionToClient);
             yield return new WaitWhile(() => !NetworkPlayer._handReportDone);
+            foreach (var card in oppNp.handCards)
+            {
+                if (card == null) continue;
+                var ci = card.GetComponent<CardInstance>();
+                if (ci != null && !string.IsNullOrEmpty(ci.templateID))
+                    handData.Add($"{ci.templateID}|{ci.instanceID}|{ci.currentCost}|{ci.currentAttack}|{ci.currentHealth}|{ci.currentMaxHealth}|{ci.currentTier}|{ci.prefixes ?? ""}|{(ci.hasShield ? "1" : "0")}|{(ci.poisoned ? "1" : "0")}");
+            }
         }
-
-        List<GameObject> opponentHand = (oppNp != null && oppNp != owner && oppNp.handCards.Count > 0)
-            ? oppNp.handCards : NetworkPlayer.Local.handCards;
-
-        List<CardInstance> enemyCards = new List<CardInstance>();
-        foreach (GameObject card in opponentHand)
+        else
         {
-            if (card == null) continue;
-            CardInstance ci = card.GetComponent<CardInstance>();
-            if (ci != null) enemyCards.Add(ci);
+            foreach (var card in NetworkPlayer.Local.handCards)
+            {
+                if (card == null) continue;
+                var ci = card.GetComponent<CardInstance>();
+                if (ci != null && !string.IsNullOrEmpty(ci.templateID))
+                    handData.Add($"{ci.templateID}|{ci.instanceID}|{ci.currentCost}|{ci.currentAttack}|{ci.currentHealth}|{ci.currentMaxHealth}|{ci.currentTier}|{ci.prefixes ?? ""}|{(ci.hasShield ? "1" : "0")}|{(ci.poisoned ? "1" : "0")}");
+            }
         }
 
-        if (enemyCards.Count == 0)
+        if (handData.Count == 0)
         {
             Debug.Log("荣誉侍者主动退场：对手无手牌");
             yield break;
         }
 
+        // 从 handData 构建展示用的 CardInstance 列表
+        List<CardInstance> enemyCards = new List<CardInstance>();
+        foreach (string entry in handData)
+        {
+            string[] p = entry.Split('|');
+            if (p.Length < 2) continue;
+            var go = new GameObject("HonorCard");
+            var ci = go.AddComponent<CardInstance>();
+            ci.templateID = p[0]; ci.instanceID = p[1];
+            if (p.Length > 2 && int.TryParse(p[2], out int v)) ci.currentCost = v;
+            if (p.Length > 3 && int.TryParse(p[3], out v)) ci.currentAttack = v;
+            if (p.Length > 4 && int.TryParse(p[4], out v)) ci.currentHealth = v;
+            if (p.Length > 5 && int.TryParse(p[5], out v)) ci.currentMaxHealth = v;
+            if (p.Length > 6 && int.TryParse(p[6], out v)) ci.currentTier = v;
+            if (p.Length > 7) ci.prefixes = p[7];
+            if (p.Length > 8) ci.hasShield = p[8] == "1";
+            if (p.Length > 9) ci.poisoned = p[9] == "1";
+            enemyCards.Add(ci);
+        }
+
         CardDisplayPanel.Instance.multiSelect = false;
         bool confirmed = false;
-        CardDisplayPanel.Instance.ShowWithCallback(enemyCards, ci => true, () =>
-        {
-            confirmed = true;
-        }, "确认");
+        CardDisplayPanel.Instance.Show(enemyCards, ci => true, "确认");
 
         ConfirmSelectionButton.Instance?.gameObject.SetActive(true);
-        ConfirmSelectionButton.Instance?.Show(() =>
-        {
-            confirmed = true;
-        });
+        ConfirmSelectionButton.Instance?.Show(() => { confirmed = true; });
 
         yield return new WaitUntil(() => confirmed);
 
-        List<GameObject> toRemove = new List<GameObject>();
-        foreach (GameObject card in opponentHand)
+        // 遍历 handData 弃掉所有邪恶法术——统一使用 RemoveCardFromLocalHand / TargetRemoveHandCard（与窃贼一致）
+        int discarded = 0;
+        foreach (string entry in handData)
         {
-            if (card == null) continue;
-            CardInstance ci = card.GetComponent<CardInstance>();
-            if (ci == null) continue;
-            CardData td = CardDatabase.Instance?.GetTemplate(ci.templateID);
+            string[] parts = entry.Split('|');
+            if (parts.Length < 2) continue;
+            string tid = parts[0];
+            string iid = parts[1];
+            CardData td = CardDatabase.Instance?.GetTemplate(tid);
             if (td != null && (td.spellType & SpellType.Evil) != 0)
             {
-                toRemove.Add(card);
+                if (oppNp == null || oppNp == owner || oppNp == NetworkPlayer.Local)
+                    NetworkPlayer.RemoveCardFromLocalHand(iid);
+                else
+                    oppNp.TargetRemoveHandCard(oppNp.connectionToClient, iid);
+                discarded++;
             }
         }
 
-        foreach (GameObject card in toRemove)
-        {
-            opponentHand.Remove(card);
-            Destroy(card);
-        }
+        Debug.Log($"荣誉侍者弃掉{discarded}张邪恶法术");
 
-        Debug.Log($"荣誉侍者弃掉{toRemove.Count}张邪恶法术");
-
+        // 清理展示用的临时 GameObject
+        foreach (var c in enemyCards) if (c != null) Destroy(c.gameObject);
         CardDisplayPanel.Instance.Hide();
     }
     public IEnumerator FearlessEnterEffect()

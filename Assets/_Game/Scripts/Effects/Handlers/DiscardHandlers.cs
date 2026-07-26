@@ -1,4 +1,5 @@
 using System;
+using Mirror;
 using UnityEngine;
 
 // ============================================================================
@@ -162,13 +163,14 @@ public static class DiscardHandlers
             {
                 if (target?.currentCard3D != null)
                 {
-                    var t3d = target.currentCard3D.GetComponent<Card3DInstance>();
-                    if (t3d?.cardInstance != null)
+                    // 纯客户端通过 [Command] 委托服务器权威执行，避免本地修改被服务器 SyncNow 覆盖
+                    if (Mirror.NetworkClient.isConnected && !Mirror.NetworkServer.active)
                     {
-                        t3d.cardInstance.baseAttack -= 2;
-                        t3d.cardInstance.currentAttack = Mathf.Max(0, t3d.cardInstance.currentAttack - 2);
-                        DamagePipeline.ShowFloaterAt(t3d.cardInstance, 2, FloaterType.Debuff);
-                        t3d.UpdateValues();
+                        NetworkPlayer.Local.CmdDiscardDebuff01344(target.slotID);
+                    }
+                    else
+                    {
+                        Apply01344Debuff(target);
                     }
                 }
                 TurnManager.SyncMyBoardToOpponent();
@@ -176,6 +178,20 @@ public static class DiscardHandlers
             return;
         }
         RestoreInteraction();
+    }
+
+    /// <summary>01344 诅咒女巫：目标攻击力永久-2（服务端/离线 或 Command 回调）。</summary>
+    public static void Apply01344Debuff(BoardSlot target)
+    {
+        if (target?.currentCard3D == null) return;
+        var t3d = target.currentCard3D.GetComponent<Card3DInstance>();
+        if (t3d?.cardInstance != null)
+        {
+            t3d.cardInstance.baseAttack -= 2;
+            t3d.cardInstance.currentAttack = Mathf.Max(0, t3d.cardInstance.currentAttack - 2);
+            DamagePipeline.ShowFloaterAt(t3d.cardInstance, 2, FloaterType.Debuff);
+            t3d.UpdateValues();
+        }
     }
 
     static void Handle01534(EffectContext ctx)

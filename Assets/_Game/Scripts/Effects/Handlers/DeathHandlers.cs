@@ -195,6 +195,8 @@ public static class DeathHandlers
 
     static void Handle01511(EffectContext ctx)
     {
+        // 仅服务端/离线执行——客户端 HandleDeath 也会触发此 handler，重复执行会导致双方手牌各获得一张
+        if (!NetworkServer.active && NetworkClient.isConnected) return;
         if (!ctx.source.handledReturnToHand)
         {
             ctx.source.handledReturnToHand = true;
@@ -216,6 +218,8 @@ public static class DeathHandlers
 
     static void Handle03020(EffectContext ctx)
     {
+        // 仅服务端/离线执行（同 Handle01511 原因）
+        if (!NetworkServer.active && NetworkClient.isConnected) return;
         if (!ctx.source.handledReturnToHand)
         {
             if (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(ctx.source))
@@ -228,6 +232,8 @@ public static class DeathHandlers
 
     static void Handle03021(EffectContext ctx)
     {
+        // 仅服务端/离线执行（同 Handle01511 原因）
+        if (!NetworkServer.active && NetworkClient.isConnected) return;
         if (!ctx.source.handledReturnToHand)
         {
             if (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(ctx.source))
@@ -438,8 +444,56 @@ public static class DeathHandlers
 
     static void Handle01347Exit(EffectContext ctx)
     {
-        if (ctx.sourceSlot.HasEnemyTarget())
+        // 按死亡卡所属玩家动态确定"敌方半场"
+        BoardManager.GetEnemySideRange(ctx.sourceSlot.slotID, out int enemyStart, out int enemyEnd);
+        bool hasEnemy = false;
+        var bmCheck = BM();
+        for (int i = enemyStart; i <= enemyEnd; i++)
+            if (bmCheck?.GetSlot(i)?.currentCard3D != null) { hasEnemy = true; break; }
+        if (!hasEnemy) return;
+
+        ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(Handle01347ExitCoroutine(ctx));
+    }
+
+    static System.Collections.IEnumerator Handle01347ExitCoroutine(EffectContext ctx)
+    {
+        NestingContext.Enter("01347_Exit");
+
+        NetworkPlayer owner = BoardManager.GetOwnerPlayer(ctx.sourceSlot.slotID);
+
+        if (owner == NetworkPlayer.Remote && Mirror.NetworkServer.active)
         {
+            // 远端玩家的卡：委托远端选择目标
+            BoardSlot._honorAttendantExitTarget = -1;
+            BoardSlot._honorAttendantExitWaiting = true;
+            NetworkPlayer.Remote.TargetHonorAttendantExitSelect(
+                NetworkPlayer.Remote.connectionToClient, ctx.sourceSlot.slotID);
+            float t0 = Time.time;
+            while (BoardSlot._honorAttendantExitWaiting && Time.time - t0 < 30f)
+                yield return null;
+            BoardSlot._honorAttendantExitWaiting = false;
+
+            int chosen = BoardSlot._honorAttendantExitTarget;
+            if (chosen >= 0 && chosen < 12)
+            {
+                BoardManager bm = BM();
+                BoardSlot target = bm?.GetSlot(chosen);
+                if (target?.currentCard3D != null)
+                {
+                    var t3d = target.currentCard3D.GetComponent<Card3DInstance>();
+                    if (t3d?.cardInstance != null)
+                    {
+                        BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, 2, null);
+                        t3d.UpdateValues();
+                    }
+                }
+                BoardSlot.CheckAndHandleDeaths();
+            }
+        }
+        else
+        {
+            // 主机/离线：直接选择（BeginSelection 使 IsSelecting=true → WaitForSimultaneousWindow 阻塞）
+            bool done = false;
             SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (target) =>
             {
                 if (target?.currentCard3D != null)
@@ -452,8 +506,12 @@ public static class DeathHandlers
                     }
                 }
                 BoardSlot.CheckAndHandleDeaths();
+                done = true;
             });
+            yield return new WaitUntil(() => done);
         }
+
+        NestingContext.Exit();
     }
 
     static void Handle01347ActiveExit(EffectContext ctx)
