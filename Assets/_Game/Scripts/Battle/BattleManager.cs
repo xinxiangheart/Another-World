@@ -762,6 +762,7 @@ public class BattleManager : MonoBehaviour
             BoardManager.SwapCards(enemySlotIndex, targetEnemySlotIndex);
         }
         BoardSlot.CheckAndHandleDeaths();
+        yield return StartCoroutine(WaitForSimultaneousWindow());
         // 检查对方是否有合法目标
         for (int i = 0; i < 12; i++)
         {

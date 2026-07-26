@@ -150,6 +150,29 @@ public partial class TurnManager : MonoBehaviour
         }
     }
 
+    /// <summary>深海恶物(01338)：每阶段开始扣1生命值。只在 StartNewPhase 中调用，确保每阶段仅服务端执行一次。</summary>
+    static void DeepSeaPhaseStartDamage()
+    {
+        BoardSlot[] slots = FindObjectOfType<BoardManager>()?.GetAllSlots();
+        if (slots == null) return;
+
+        for (int i = 0; i < 12; i++)
+        {
+            BoardSlot slot = slots[i];
+            if (slot?.currentCard3D == null) continue;
+            if (slot.deepSeaHealthDebuff)
+            {
+                CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                if (ci != null)
+                {
+                    ci.currentHealth -= 1;
+                    slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+                }
+            }
+        }
+        BoardSlot.CheckAndHandleDeaths();
+    }
+
     public void StartNewPhase()
     {
         ProcessPhaseStartDeaths();
@@ -600,7 +623,17 @@ public partial class TurnManager : MonoBehaviour
             // Sync host board to client after battle——必须在 BroadcastTurnPhase 之前执行
             BoardSyncManager.MarkDirty();
             yield return null; // 让 LateUpdate 中的 SyncNow 执行，确保远端收到恢复后的 currentAttack
-            StartNewPhase();    // 然后才广播阶段变化（SetPhaseFromNetwork 会 ReportAllSlots）
+            StartNewPhase();    // 广播阶段变化（SetPhaseFromNetwork → 客户端开始处理新阶段）
+            // 让一帧给客户端处理 SetPhaseFromNetwork（含 ProcessPhaseStartTriggers + ReportAllSlots），
+            // 避免客户端上报的旧 HP 竞态覆盖服务器即将执行的深海扣血
+            yield return null;
+            // 深海恶物(01338)：每阶段开始扣1生命值
+            DeepSeaPhaseStartDamage();
+            BoardSyncManager.MarkDirty();
+            yield return null; // 让 LateUpdate 中的 SyncNow 把扣血后的 HP 同步给客户端
+            // 处理扣血引发的死亡 + 反击
+            if (bm != null)
+                yield return StartCoroutine(BattleManager.WaitForSimultaneousWindow());
         }
     }
     void TriggerMyTurnStartEffects()
@@ -1045,22 +1078,6 @@ public partial class TurnManager : MonoBehaviour
             break;
         }
 
-        // ── 深海恶物(01338)：每阶段开始扣1生命值（双方格子都需要检查）──
-        for (int i = 0; i < 12; i++)
-        {
-            BoardSlot slot = slots[i];
-            if (slot?.currentCard3D == null) continue;
-            if (slot.deepSeaHealthDebuff)
-            {
-                CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                if (ci != null)
-                {
-                    ci.currentHealth -= 1;
-                    slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
-                }
-            }
-        }
-        BoardSlot.CheckAndHandleDeaths();
     }
 
     public bool IsMyTurn()

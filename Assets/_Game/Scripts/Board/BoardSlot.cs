@@ -1508,6 +1508,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         get => _currentCard;
         set
         {
+            // 同一个 GameObject 重复设入同一槽位 → 跳过，避免 slotTempAttackBoost / deepSeaAttackDebuff 重复加减
+            if (_currentCard == value) return;
+
             if (_currentCard != null)
             {
                 Card3DInstance oc = _currentCard.GetComponent<Card3DInstance>();
@@ -1533,7 +1536,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 {
                     if (!nc.cardInstance.isXValue)
                         nc.cardInstance.currentAttack += slotTempAttackBoost;
-                    nc.cardInstance.currentAttack -= deepSeaAttackDebuff;
+                    nc.cardInstance.currentAttack = Mathf.Max(0, nc.cardInstance.currentAttack - deepSeaAttackDebuff);
                     nc.cardInstance.currentTier += spotlightTierBoost;
                     nc.UpdateValues();
                 }

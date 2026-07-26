@@ -1085,8 +1085,11 @@ public class NetworkPlayer : NetworkBehaviour
             string[] parts = raw.Split('|');
             string tid = parts.Length > 0 ? parts[0] : "";
 
-            // ── 槽位标记（始终应用，包含 isBlocked/prisonBlocked 等）──
-            if (parts.Length >= 4)
+            // ── 槽位标记 ──
+            // 仅更新上报方自己的槽位——远程的 flag 数据可能尚未同步服务端的最新变更
+            //（如 deepSeaMarked/deepSeaHealthDebuff/deepSeaAttackDebuff），覆盖会导致 flag 回退。
+            // 敌方格子的标记由服务端权威维护，通过 SyncNow 下发。
+            if (isReportingOwnSlot && parts.Length >= 4)
             {
                 string flags = parts[parts.Length - 4];
                 if (flags.Length >= 4)
@@ -1108,7 +1111,12 @@ public class NetworkPlayer : NetworkBehaviour
                 if (sub.Length > 1 && int.TryParse(sub[1], out int dsa)) slot.deepSeaAttackDebuff = dsa;
             }
 
-            // ── 属性/模板数据更新（全部 12 槽通用——客户端上报的对方卡牌属性是"我刚打过的"，信任它）──
+            // ── 属性/模板数据更新 ──
+            // 仅更新上报方自己的槽位。敌方槽位由服务端保持权威——服务端可能在
+            // DeepSeaPhaseStartDamage 等阶段处理中修改了 HP/攻击力，客户端上报的
+            // 是尚未同步的过时值，覆盖会导致数据回退。
+            if (!isReportingOwnSlot) continue;
+
             if (!string.IsNullOrEmpty(tid))
             {
                 var ci = slot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
@@ -1119,7 +1127,13 @@ public class NetworkPlayer : NetworkBehaviour
                 if (ci != null && ci.templateID == tid)
                 {
                     string[] p = raw.Split('|'); int v;
-                    if (p.Length > 1 && int.TryParse(p[1], out v)) ci.currentHealth = v;
+                    if (p.Length > 1 && int.TryParse(p[1], out v))
+                    {
+                        // 深海恶物 debuff：服务器已扣血 → 拒绝客户端上报的旧（更高）HP
+                        if (slot.deepSeaHealthDebuff && v > ci.currentHealth)
+                        { /* 保留服务器权威的更低的 HP */ }
+                        else ci.currentHealth = v;
+                    }
                     if (p.Length > 2 && int.TryParse(p[2], out v))
                     {
                         // 服务端在当前回合已修改了临时攻击力 → 保护不覆盖。
@@ -1787,23 +1801,14 @@ public class NetworkPlayer : NetworkBehaviour
         var bm = FindObjectOfType<BoardManager>();
         if (bm == null) { CmdDeepSeaRevengeResult(-1); return; }
 
-        int localDeadSlot = serverDeadSlotID >= 6 ? serverDeadSlotID - 6 : serverDeadSlotID + 6;
+        BoardSlot.isStrengtheningSlot = true;
         // 选择敌方格子（从本地视角 0-5 = 敌方）
-        bool done = false; int result = -1;
         SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (s) =>
         {
-            if (s != null && !s.isBlocked) result = s.slotID;
-            done = true;
+            BoardSlot.isStrengtheningSlot = false;
+            int result = (s != null && !s.isBlocked) ? s.slotID : -1;
+            CmdDeepSeaRevengeResult(result);
         });
-        BoardSlot.isStrengtheningSlot = true;
-        StartCoroutine(WaitAndSendDeepSeaResult(done, result));
-    }
-
-    IEnumerator WaitAndSendDeepSeaResult(bool done, int result)
-    {
-        yield return new WaitUntil(() => done);
-        BoardSlot.isStrengtheningSlot = false;
-        CmdDeepSeaRevengeResult(result);
     }
 
     /// <summary>远端→服务器：01338 反击选择了 localSlot（远端本地坐标）。</summary>
@@ -1826,22 +1831,13 @@ public class NetworkPlayer : NetworkBehaviour
         var bm = FindObjectOfType<BoardManager>();
         if (bm == null) { CmdAllyBuffRevengeResult(-1); return; }
 
-        // 选择己方格子（从本地视角 6-11 = 己方）
-        bool done = false; int result = -1;
+        BoardSlot.isStrengtheningSlot = true;
         SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (s) =>
         {
-            if (s != null && s.currentCard3D != null) result = s.slotID;
-            done = true;
+            BoardSlot.isStrengtheningSlot = false;
+            int result = (s != null && s.currentCard3D != null) ? s.slotID : -1;
+            CmdAllyBuffRevengeResult(result);
         });
-        BoardSlot.isStrengtheningSlot = true;
-        StartCoroutine(WaitAndSendAllyBuffResult(done, result));
-    }
-
-    IEnumerator WaitAndSendAllyBuffResult(bool done, int result)
-    {
-        yield return new WaitUntil(() => done);
-        BoardSlot.isStrengtheningSlot = false;
-        CmdAllyBuffRevengeResult(result);
     }
 
     /// <summary>远端→服务器：01527 反击选择了 localSlot（远端本地坐标）。</summary>

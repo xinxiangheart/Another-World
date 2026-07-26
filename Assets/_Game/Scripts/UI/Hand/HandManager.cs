@@ -628,7 +628,6 @@ public class HandManager : MonoBehaviour
         }
 
         slot.SetCard(model);
-        BoardSyncManager.MarkDirty();
         if (instance3D != null) instance3D.UpdateValues();
 
         // 附着专用卡（baseHealth==0）永远不放独立槽位模型到服务器
@@ -643,6 +642,9 @@ public class HandManager : MonoBehaviour
             string iid = sourceInstance.instanceID ?? CardZoneManager.GenerateInstanceID(sourceInstance.templateID);
             NetworkPlayer.Local?.CmdPlayCard(sourceInstance.templateID, slot.slotID, -1, -1, -1, iid);
         }
+        // MarkDirty 必须在 CmdPlayCard 之后——确保服务器已登记卡牌后再触发 SyncNow，
+        // 否则客户端可能在 SyncNow 中收到空数据→TargetSpawnCard3D 再创建→SyncNow 又更新的竞态
+        BoardSyncManager.MarkDirty();
 
         ProcessAuras(slot, sourceInstance);
 
