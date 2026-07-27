@@ -253,8 +253,9 @@ public static class DamagePipeline
         }
 
         // ── 领主(01503)重定向 ───────────────────────────────────────
+        // FindLordOnField 已在防守方同侧搜索——找到领主即确认防守方为己方
         CardInstance lord = FindLordOnField(def);
-        if (lord != null && def != lord && IsAlly(def)
+        if (lord != null && def != lord
             && !IsSilenced(lord))
         {
             lord.currentHealth -= d;

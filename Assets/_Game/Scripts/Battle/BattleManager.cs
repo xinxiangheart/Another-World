@@ -1507,7 +1507,9 @@ public class BattleManager : MonoBehaviour
                     if (ci != null && ci.isShadow)
                     {
                         ci.currentTier += 1;
+                        ci.baseTier += 1;
                         ci.currentAttack += 2;
+                        ci.baseAttack += 2;
                         s.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
                     }
                 }

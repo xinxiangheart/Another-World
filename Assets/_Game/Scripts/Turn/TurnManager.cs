@@ -23,6 +23,11 @@ public partial class TurnManager : MonoBehaviour
     [Header("调试信息")]
     public int phaseCount = 0;
 
+    // 影舞者(01502) PhaseStart 同步
+    bool _waitingForPhaseStartReady = false;
+    bool _shadowsReenteredThisPhase = false;
+    public void OnRemotePhaseStartReady() { _waitingForPhaseStartReady = false; }
+
     void Start()
     {
         // If coming from Lobby, wait for NetworkTurnSync to signal game start
@@ -44,7 +49,7 @@ public partial class TurnManager : MonoBehaviour
         {
             yield return StartCoroutine(ServerInitialDraw());
             Debug.Log("[TurnManager] Server initial draw complete");
-            StartNewPhase();
+            yield return StartNewPhase();
         }
         else if (!NetworkClient.isConnected && NetworkPlayer.Local != null)
         {
@@ -53,7 +58,7 @@ public partial class TurnManager : MonoBehaviour
             CardData chosenOne = ChosenOneManager.Instance?.DrawChosenOne();
             if (chosenOne != null)
                 NetworkPlayer.Local.AddCardToHand(chosenOne);
-            StartNewPhase();
+            yield return StartNewPhase();
         }
     }
 
@@ -173,7 +178,7 @@ public partial class TurnManager : MonoBehaviour
         BoardSlot.CheckAndHandleDeaths();
     }
 
-    public void StartNewPhase()
+    public IEnumerator StartNewPhase()
     {
         ProcessPhaseStartDeaths();
 
@@ -194,8 +199,22 @@ public partial class TurnManager : MonoBehaviour
         {
             BoardSlot bs = FindObjectOfType<BoardSlot>();
             if (bs != null)
-                bs.StartCoroutine(bs.SummonAllShadows());
+                yield return bs.SummonAllShadows();
         }
+
+        // 联机模式：若有 01502 在场，广播 PhaseStart 让远程客户端处理其影舞者影子进场
+        // 双方都完成后（或超时 20s），才继续分配先行权
+        if (NetworkServer.active && CardInstance.shadowMasterAlive)
+        {
+            _waitingForPhaseStartReady = true;
+            BroadcastTurnPhase(TurnPhase.PhaseStart);
+            yield return null; // 等一帧让 RPC 送达远程客户端
+            float deadline = Time.time + 20f;
+            yield return new WaitUntil(() => !_waitingForPhaseStartReady || Time.time > deadline);
+            if (Time.time > deadline)
+                Debug.LogWarning("[TurnManager] PhaseStart ready timeout — proceeding without remote ack");
+        }
+
         if (slots != null)
         {
             // 增幅结构(01506)：每方独立统计机械数量，分别加进
@@ -623,7 +642,7 @@ public partial class TurnManager : MonoBehaviour
             // Sync host board to client after battle——必须在 BroadcastTurnPhase 之前执行
             BoardSyncManager.MarkDirty();
             yield return null; // 让 LateUpdate 中的 SyncNow 执行，确保远端收到恢复后的 currentAttack
-            StartNewPhase();    // 广播阶段变化（SetPhaseFromNetwork → 客户端开始处理新阶段）
+            yield return StartNewPhase();    // 广播阶段变化（SetPhaseFromNetwork → 客户端开始处理新阶段）
             // 让一帧给客户端处理 SetPhaseFromNetwork（含 ProcessPhaseStartTriggers + ReportAllSlots），
             // 避免客户端上报的旧 HP 竞态覆盖服务器即将执行的深海扣血
             yield return null;
@@ -634,6 +653,14 @@ public partial class TurnManager : MonoBehaviour
             // 处理扣血引发的死亡 + 反击
             if (bm != null)
                 yield return StartCoroutine(BattleManager.WaitForSimultaneousWindow());
+        }
+        else
+        {
+            // 单机模式：执行战斗并推进阶段
+            BattleManager bm = BattleManager.Instance;
+            if (bm != null)
+                yield return StartCoroutine(bm.BattleCoroutine());
+            yield return StartNewPhase();
         }
     }
     void TriggerMyTurnStartEffects()

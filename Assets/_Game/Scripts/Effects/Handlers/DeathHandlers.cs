@@ -341,6 +341,20 @@ public static class DeathHandlers
 
     static void Handle01502(EffectContext ctx)
     {
+        // 仅有当场上不再存在其他 01502 时才清除标记
+        BoardManager bm = UnityEngine.Object.FindObjectOfType<BoardManager>();
+        if (bm != null)
+        {
+            for (int i = 0; i < 12; i++)
+            {
+                var ci = bm.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                if (ci != null && ci.templateID == "01502" && ci != ctx.source)
+                {
+                    Debug.Log("[Handle01502] 另一 01502 仍存活——保持 shadowMasterAlive");
+                    return;
+                }
+            }
+        }
         CardInstance.shadowMasterAlive = false;
     }
 

@@ -96,8 +96,9 @@ public class BoardSyncManager : MonoBehaviour
         string ab = al.Count > 0 ? string.Join("||", al) : "";
 
         // Signal whether the server-side has an active MistHider so the client hides the correct side
+        // Also sync global shadow state (01502) for remote clients
         bool mistHiderActive = IsMistHiderActive();
-        string header = mistHiderActive ? "1|" : "0|";
+        string header = $"{(mistHiderActive ? "1" : "0")}|{CardInstance.shadowLimit}|{CardInstance.shadowAtkBonus}|{CardInstance.shadowTierBonus}|";
 
         foreach (var kv in NetworkServer.connections)
             if (kv.Value != NetworkPlayer.Local?.connectionToClient)
@@ -131,16 +132,34 @@ public class BoardSyncManager : MonoBehaviour
         HandManager hm = FindObjectOfType<HandManager>();
         if (bm == null || s == null || s.Length < 12) return;
 
-        // Parse header: "1|rest" → mistHiderActive, "0|rest" → not active
+        // Parse header: "mistHider|shadowLimit|shadowAtkBonus|shadowTierBonus|attachBlock"
         bool mistHiderActive = false;
         string attachBlock = attachBlockExt;
         if (!string.IsNullOrEmpty(attachBlockExt))
         {
-            int sepIdx = attachBlockExt.IndexOf('|');
-            if (sepIdx >= 0)
+            string[] hp = attachBlockExt.Split('|');
+            if (hp.Length >= 1) mistHiderActive = hp[0] == "1";
+            // Parse shadow global state (01502) from server authority
+            if (hp.Length >= 4)
             {
-                mistHiderActive = attachBlockExt[0] == '1';
-                attachBlock = attachBlockExt.Substring(sepIdx + 1);
+                if (int.TryParse(hp[1], out int sl))  CardInstance.shadowLimit = Mathf.Max(CardInstance.shadowLimit, sl);
+                if (int.TryParse(hp[2], out int sab)) CardInstance.shadowAtkBonus = Mathf.Max(CardInstance.shadowAtkBonus, sab);
+                if (int.TryParse(hp[3], out int stb)) CardInstance.shadowTierBonus = Mathf.Max(CardInstance.shadowTierBonus, stb);
+                // Reconstruct attachBlock from remaining segments
+                if (hp.Length > 4)
+                    attachBlock = string.Join("|", hp, 4, hp.Length - 4);
+                else
+                    attachBlock = "";
+            }
+            else
+            {
+                // Legacy format: "0|attachBlock" or "1|attachBlock"
+                int sepIdx = attachBlockExt.IndexOf('|');
+                if (sepIdx >= 0)
+                {
+                    mistHiderActive = attachBlockExt[0] == '1';
+                    attachBlock = attachBlockExt.Substring(sepIdx + 1);
+                }
             }
         }
 
@@ -359,7 +378,7 @@ public class BoardSyncManager : MonoBehaviour
             {
                 var m = Instantiate(t.prefab3D, hm.GetSlotWorldPosition(idx), Quaternion.Euler(0, 180, 0));
                 var c = m.GetComponent<Card3DInstance>();
-                if (c != null) { var n = m.AddComponent<CardInstance>(); n.InitFromTemplate(t, 0); n._placedAtTime = Time.time; c.cardInstance = n; c.UpdateValues(); }
+                if (c != null) { var n = m.AddComponent<CardInstance>(); n.InitFromTemplate(t, 0); if (t.templateID == "03007") n.isShadow = true; if (t.templateID == "01502") CardInstance.shadowMasterAlive = true; n._placedAtTime = Time.time; c.cardInstance = n; c.UpdateValues(); }
                 slot.SetCard(m);
                 cur = c?.cardInstance;
             }
@@ -397,6 +416,8 @@ public class BoardSyncManager : MonoBehaviour
             // 服务端 FinalDamage 已将临时字段清零；远端本地始终信任服务端同步的 currentAttack
             cur.tempAttackBoost = 0;
             cur.originalAttackBeforeDebuff = 0;
+            if (cur.templateID == "03007") cur.isShadow = true;
+            if (cur.templateID == "01502") CardInstance.shadowMasterAlive = true;
             slot.currentCard3D?.GetComponent<Card3DInstance>()?.UpdateValues();
         }
         Test1Panel.Instance?.RefreshIfOpen();

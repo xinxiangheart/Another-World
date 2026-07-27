@@ -2928,7 +2928,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 ti.InitFromTemplate(shadowTemplate, 0, shid);
                 ti.isShadow = true;
                 ti.currentAttack += CardInstance.shadowAtkBonus;
+                ti.baseAttack += CardInstance.shadowAtkBonus;
                 ti.currentTier += CardInstance.shadowTierBonus;
+                ti.baseTier += CardInstance.shadowTierBonus;
                 HandManager hm = FindObjectOfType<HandManager>();
                 hm.PlaceCardToSlot(selectedSlot, temp);
                 Destroy(temp);

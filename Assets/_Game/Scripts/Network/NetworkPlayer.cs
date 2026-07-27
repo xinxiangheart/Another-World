@@ -374,11 +374,20 @@ public class NetworkPlayer : NetworkBehaviour
                         {
                             CardInstance ci = model.AddComponent<CardInstance>();
                             ci.InitFromTemplate(template, 0, instanceID);
-
-                            // Apply enter-effect stat overrides before first sync
+                            if (templateID == "01502") CardInstance.shadowMasterAlive = true;
                             if (overrideAtk >= 0) ci.currentAttack = overrideAtk;
                             if (overrideHP >= 0) ci.currentHealth = overrideHP;
                             if (overrideMaxHP >= 0) ci.currentMaxHealth = overrideMaxHP;
+                            // 影子(03007)：永久增幅需同时作用于 current 和 base。
+                            // 服务器侧的 shadowAtkBonus/shadowTierBonus 是权威值（远程上报的不含 bonus）。
+                            if (templateID == "03007")
+                            {
+                                ci.isShadow = true;
+                                ci.currentAttack += CardInstance.shadowAtkBonus;
+                                ci.baseAttack += CardInstance.shadowAtkBonus;
+                                ci.currentTier += CardInstance.shadowTierBonus;
+                                ci.baseTier += CardInstance.shadowTierBonus;
+                            }
 
                             // 01309: 进场护盾（攻击回合开始消失）
                             if (ci.templateID == "01309") ci.GrantShield(false, true, false);
@@ -469,6 +478,13 @@ public class NetworkPlayer : NetworkBehaviour
         Debug.Log($"[NetworkPlayer] CmdEndTurn from netId={netId}");
         TurnManager tm = FindObjectOfType<TurnManager>();
         tm?.ServerEndTurn(this);
+    }
+
+    /// <summary>远程客户端影舞者(01502)影子进场完成，通知服务器继续分配先行权。</summary>
+    [Command]
+    public void CmdPhaseStartReady()
+    {
+        TurnManager.Instance?.OnRemotePhaseStartReady();
     }
 
     // ========== Health ==========
@@ -843,6 +859,9 @@ public class NetworkPlayer : NetworkBehaviour
     /// <summary>Validate this player should be acting in the current server-side phase.</summary>
     bool IsMyTurnOnServer(TurnManager tm)
     {
+        // PhaseStart: 双方都可能通过 CmdPlayCard 放置影舞者影子——允许
+        if (tm.currentPhase == TurnManager.TurnPhase.PhaseStart)
+            return true;
         if (tm.currentPhase == TurnManager.TurnPhase.MyTurn)
             return (this == NetworkPlayer.Local);
         if (tm.currentPhase == TurnManager.TurnPhase.EnemyTurn)
@@ -944,11 +963,21 @@ public class NetworkPlayer : NetworkBehaviour
         {
             CardInstance ci = model.AddComponent<CardInstance>();
             ci.InitFromTemplate(template, 0, instanceID);
+            if (templateID == "01502") CardInstance.shadowMasterAlive = true;
 
             // Apply enter-effect stat overrides
             if (overrideAtk >= 0) ci.currentAttack = overrideAtk;
             if (overrideHP >= 0) ci.currentHealth = overrideHP;
             if (overrideMaxHP >= 0) ci.currentMaxHealth = overrideMaxHP;
+            // 影子(03007)：永久增幅需同时作用于 current 和 base
+            if (templateID == "03007")
+            {
+                ci.isShadow = true;
+                ci.currentAttack += CardInstance.shadowAtkBonus;
+                ci.baseAttack += CardInstance.shadowAtkBonus;
+                ci.currentTier += CardInstance.shadowTierBonus;
+                ci.baseTier += CardInstance.shadowTierBonus;
+            }
 
             // 01309: 进场护盾（攻击回合开始消失）
             if (ci.templateID == "01309") ci.GrantShield(false, true, false);
@@ -1186,6 +1215,7 @@ public class NetworkPlayer : NetworkBehaviour
                         foreach (var t in newList)
                             if (!oldCopy.Contains(t)) ci.GrantTrait(t);
                     }
+                    if (parts[0] == "03007") ci.isShadow = true;
                     slot.currentCard3D?.GetComponent<Card3DInstance>()?.UpdateValues();
                 }
             }
