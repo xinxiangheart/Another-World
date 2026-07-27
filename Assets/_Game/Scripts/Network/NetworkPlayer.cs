@@ -378,12 +378,11 @@ public class NetworkPlayer : NetworkBehaviour
                             if (overrideAtk >= 0) ci.currentAttack = overrideAtk;
                             if (overrideHP >= 0) ci.currentHealth = overrideHP;
                             if (overrideMaxHP >= 0) ci.currentMaxHealth = overrideMaxHP;
-                            // 影子(03007)：永久增幅需同时作用于 current 和 base。
-                            // 服务器侧的 shadowAtkBonus/shadowTierBonus 是权威值（远程上报的不含 bonus）。
+                            // 影子(03007)：overrideAtk 已含 bonus（客户端传入），不再重复加 currentAttack
+                            // baseAttack 需单独补上（overrideAtk 不影响 base）
                             if (templateID == "03007")
                             {
                                 ci.isShadow = true;
-                                ci.currentAttack += CardInstance.shadowAtkBonus;
                                 ci.baseAttack += CardInstance.shadowAtkBonus;
                                 ci.currentTier += CardInstance.shadowTierBonus;
                                 ci.baseTier += CardInstance.shadowTierBonus;
@@ -969,11 +968,11 @@ public class NetworkPlayer : NetworkBehaviour
             if (overrideAtk >= 0) ci.currentAttack = overrideAtk;
             if (overrideHP >= 0) ci.currentHealth = overrideHP;
             if (overrideMaxHP >= 0) ci.currentMaxHealth = overrideMaxHP;
-            // 影子(03007)：永久增幅需同时作用于 current 和 base
+            // 影子(03007)：overrideAtk 已含 bonus（客户端传入），不再重复加 currentAttack
+            // baseAttack 需单独补上（overrideAtk 不影响 base）
             if (templateID == "03007")
             {
                 ci.isShadow = true;
-                ci.currentAttack += CardInstance.shadowAtkBonus;
                 ci.baseAttack += CardInstance.shadowAtkBonus;
                 ci.currentTier += CardInstance.shadowTierBonus;
                 ci.baseTier += CardInstance.shadowTierBonus;
