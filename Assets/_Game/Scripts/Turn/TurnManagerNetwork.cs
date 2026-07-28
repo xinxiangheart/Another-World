@@ -67,21 +67,19 @@ public partial class TurnManager
             currentPhase = TurnPhase.PhaseStart;
             SetPlayerActionsEnabled(false);
 
-            // 影舞者(01502)：已退场影子每阶段重新进场
-            // 仅远程客户端（非服务器）需自主处理——主机在 StartNewPhase 里处理
             if (!NetworkServer.active)
             {
+                // 远程客户端：处理全部阶段开始效果（影子/铁匠/执行之剑/忤逆者等）
                 if (CardInstance.shadowMasterAlive)
                 {
                     BoardSlot bs = FindObjectOfType<BoardSlot>();
                     if (bs != null)
                     {
-                        StartCoroutine(ShadowReentryAtPhaseStart(bs));
+                        StartCoroutine(ShadowReentryThenPhaseStartTriggers(bs));
                         return;
                     }
                 }
-                // 没有影子也需通知服务器（否则服务器会一直等待）
-                NetworkPlayer.Local?.CmdPhaseStartReady();
+                RemotePhaseStartReady();
             }
         }
     }
@@ -216,8 +214,27 @@ public partial class TurnManager
     }
 
     /// <summary>
-    /// 影舞者(01502)辅助：先完成影子重新进场（玩家依次选格子），再启用回合行动。
-    /// 用于 SetPhaseFromNetwork(MyTurn) 的兜底路径。
+    /// 影舞者(01502)辅助：先完成影子重新进场（玩家依次选格子），再处理阶段开始触发器，最后通知服务器。
+    /// </summary>
+    IEnumerator ShadowReentryThenPhaseStartTriggers(BoardSlot bs)
+    {
+        _shadowsReenteredThisPhase = true;
+        yield return bs.SummonAllShadows();
+        RemotePhaseStartReady();
+    }
+
+    /// <summary>远程客户端阶段开始处理完成，通知服务器。</summary>
+    void RemotePhaseStartReady()
+    {
+        ProcessPhaseStartTriggers();
+        ProcessPhaseStartDeaths();
+        ReportAllSlots();
+        NetworkPlayer.Local?.CmdPhaseStartReady();
+    }
+
+    /// <summary>
+    /// 影舞者(01502)辅助：先完成影子重新进场，再启用回合行动。
+    /// 用于 SetPhaseFromNetwork(MyTurn) 的兜底路径（PhaseStart 未触发时）。
     /// </summary>
     IEnumerator ShadowReentryThenEnableActions()
     {
@@ -229,20 +246,8 @@ public partial class TurnManager
     }
 
     /// <summary>
-    /// 影舞者(01502)辅助：阶段开始时的影子重新进场。
-    /// 完成后通知服务器（CmdPhaseStartReady），以便服务器继续分配先行权。
-    /// </summary>
-    IEnumerator ShadowReentryAtPhaseStart(BoardSlot bs)
-    {
-        _shadowsReenteredThisPhase = true;
-        yield return bs.SummonAllShadows();
-        // 通知服务器：本客户端影子进场完成
-        NetworkPlayer.Local?.CmdPhaseStartReady();
-    }
-
-    /// <summary>
-    /// 启用 MyTurn 行动：能量、抽牌、阶段开始触发器。
-    /// 仅在影子进场完成后调用（或无需影子进场时直接调用）。
+    /// 启用 MyTurn 行动：能量、抽牌、回合开始效果。
+    /// 阶段开始触发器（01525/01535/01526）已在 PhaseStart 处理，此处不再重复。
     /// </summary>
     void EnableMyTurnActions()
     {
@@ -254,15 +259,7 @@ public partial class TurnManager
         if (dc != null) dc.ResetForNewPhase();
         else Debug.LogWarning("[TurnManager] SetPhaseFromNetwork: DrawCardUI not found!");
         TriggerMyTurnStartEffects();
-        // Each client processes OWN phase-start triggers (01525/01535/01526).
-        // Host handles this in EndCurrentTurn/StartNewPhase directly.
-        if (!NetworkServer.active)
-            ProcessPhaseStartTriggers();
-        // Client processes "下阶段退场" deaths (host does it in StartNewPhase)
-        if (!NetworkServer.active)
-            ProcessPhaseStartDeaths();
         // Send updated stats to server so other client sees phase-start effects.
-        // Only pure client reports — host IS the server.
         if (NetworkClient.isConnected && !NetworkServer.active)
             ReportAllSlots();
     }

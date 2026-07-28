@@ -202,10 +202,12 @@ public partial class TurnManager : MonoBehaviour
                 yield return bs.SummonAllShadows();
         }
 
-        // 联机模式：若有 01502 在场，广播 PhaseStart 让远程客户端处理其影舞者影子进场
+        // 联机模式：广播 PhaseStart，让远程客户端处理自己的阶段开始效果（影子/增幅/铁匠等）
         // 双方都完成后（或超时 20s），才继续分配先行权
-        if (NetworkServer.active && CardInstance.shadowMasterAlive)
+        if (NetworkServer.active)
         {
+            // 主机也在此处理阶段开始触发器（从 MyTurn 移至此，统一各客户端时序）
+            ProcessPhaseStartTriggers();
             _waitingForPhaseStartReady = true;
             BroadcastTurnPhase(TurnPhase.PhaseStart);
             yield return null; // 等一帧让 RPC 送达远程客户端
@@ -262,7 +264,6 @@ public partial class TurnManager : MonoBehaviour
                                         ci.currentMaxHealth += 1;
                                     }
                                     ci.currentAttack += 1;
-                                    ci.buffedByEmperor = true;
                                     s.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
                                 }
                             }
@@ -455,7 +456,6 @@ public partial class TurnManager : MonoBehaviour
                 NetworkPlayer.Local?.AddEnergy(6);
                 FindObjectOfType<DrawCardUI>()?.ResetForNewPhase();
                 TriggerMyTurnStartEffects();
-                ProcessPhaseStartTriggers();
                 Debug.Log("[TurnManager] Phase start: Host turn (MyTurn)");
             }
             else

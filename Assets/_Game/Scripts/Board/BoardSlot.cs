@@ -3111,26 +3111,18 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         if (target == null) return;
         CardInstance ci = target.GetComponent<CardInstance>();
         if (ci == null) { Card3DInstance c3d = target.GetComponent<Card3DInstance>(); if (c3d != null) ci = c3d.cardInstance; }
-        if (ci != null && !ci.prefixes.Contains("渊"))
+        if (ci != null && !ci.prefixes.Contains("机械"))
         {
             if (string.IsNullOrEmpty(ci.prefixes) || ci.prefixes == "无")
-                ci.prefixes = "渊";
-            else ci.prefixes += " 渊";
+                ci.prefixes = "机械";
+            else ci.prefixes += " 机械";
             Card3DInstance c3d = target.GetComponent<Card3DInstance>();
             c3d?.UpdateValues();
             CardDisplay2D d2d = target.GetComponent<CardDisplay2D>();
             d2d?.Refresh();
 
-            // 旧伤未愈：还未登录前缀+1+0
-            CardInstance reborn = FindRebornOnField();
-            if (reborn != null && (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(reborn)))
-            {
-                Debug.Log($"复生造物增幅前: health={reborn.currentHealth}, maxHealth={reborn.currentMaxHealth}");
-                reborn.currentHealth += 1;
-                reborn.currentMaxHealth += 1;
-                Debug.Log($"复生造物增幅前: health={reborn.currentHealth}, maxHealth={reborn.currentMaxHealth}");
-                UpdateRebornDisplay(reborn);
-            }
+            // 前缀修改同步到对方
+            TurnManager.SyncMyBoardToOpponent();
         }
     }
     public IEnumerator WolfKingEnterEffect(CardInstance giver)
