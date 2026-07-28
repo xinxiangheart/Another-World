@@ -366,7 +366,30 @@ public class NetworkPlayer : NetworkBehaviour
                     BoardSlot slot = bm?.GetSlot(enemySlot);
                     if (slot != null)
                     {
-                        if (slot.currentCard3D != null) Destroy(slot.currentCard3D);
+                        if (slot.currentCard3D != null)
+                        {
+                            // 清理重定向标记—确保狼替换时王者(01504)得到特性2加成
+                            CardInstance oldCI = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                            if (oldCI != null && oldCI.templateID == "03006")
+                            {
+                                // 远程方在服务器 0-5，王者也在 0-5
+                                for (int ki = 0; ki <= 5; ki++)
+                                {
+                                    var ks = bm.GetSlot(ki);
+                                    var kci = ks?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                                    if (kci != null && kci.templateID == "01504"
+                                        && !(GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(kci)))
+                                    {
+                                        kci.currentHealth += 1;
+                                        kci.currentMaxHealth += 1;
+                                        kci.currentAttack += 1;
+                                        break;
+                                    }
+                                }
+                            }
+                            Destroy(slot.currentCard3D);
+                            slot.SetCard(null);
+                        }
                         Vector3 pos = FindObjectOfType<HandManager>().GetSlotWorldPosition(enemySlot);
                         GameObject model = Instantiate(template.prefab3D, pos, Quaternion.Euler(0, 180, 0));
                         Card3DInstance c3d = model.GetComponent<Card3DInstance>();
@@ -949,9 +972,16 @@ public class NetworkPlayer : NetworkBehaviour
         BoardSlot slot = bm.GetSlot(enemySlot);
         if (slot == null) return;
 
-        // Skip if slot already has this card (BoardSyncManager already handled it)
-        if (slot.currentCard3D != null)
+        // 若槽位已有同模板ID的卡 → BoardSyncManager 已处理，跳过避免重复
+        var existing = slot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+        if (existing != null && existing.templateID == templateID)
             return;
+        // 不同模板ID → 替换场景（如狼王把旧卡变成狼、玩家顶替狼），先清旧卡
+        if (slot.currentCard3D != null)
+        {
+            Destroy(slot.currentCard3D);
+            slot.SetCard(null);
+        }
 
         Vector3 pos = FindObjectOfType<HandManager>().GetSlotWorldPosition(enemySlot);
         GameObject model = Instantiate(template.prefab3D, pos, Quaternion.Euler(0, 180, 0));
@@ -1130,6 +1160,7 @@ public class NetworkPlayer : NetworkBehaviour
                     slot.hasSpotlight = flags[3] == '1';
                     slot.deepSeaMarked = flags.Length >= 5 && flags[4] == '1';
                     slot.deepSeaHealthDebuff = flags.Length >= 6 && flags[5] == '1';
+                    slot.permaBlocked = flags.Length >= 7 && flags[6] == '1';
                     slot.SyncVisual();
                 }
                 if (int.TryParse(parts[parts.Length - 3], out int prc)) slot.plagueRoundCount = prc;
@@ -1818,6 +1849,27 @@ public class NetworkPlayer : NetworkBehaviour
                 ci.prisonEnemySlot = enemyPrisonSlot;
                 return;
             }
+        }
+    }
+
+    /// <summary>
+    /// 远端客户端→服务器：告知服务器 01505 封锁者永久封锁了哪个敌方格子。
+    /// 远端上报的敌方格子视角与服务器相反，需要镜像映射后应用。
+    /// </summary>
+    [Command]
+    public void CmdBlockSlot(int reportedEnemySlot)
+    {
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return;
+        // 远程视角的0-5 = 服务器视角的6-11，反过来也适用
+        int serverSlot = isLocalPlayer ? reportedEnemySlot : (reportedEnemySlot >= 6 ? reportedEnemySlot - 6 : reportedEnemySlot + 6);
+        BoardSlot target = bm.GetSlot(serverSlot);
+        if (target != null)
+        {
+            target.isBlocked = true;
+            target.permaBlocked = true;
+            target.SyncVisual();
+            BoardSyncManager.MarkDirty();
         }
     }
 

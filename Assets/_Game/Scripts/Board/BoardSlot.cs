@@ -14,6 +14,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public int slotID;
     public int opponentSlotID;
     public bool isBlocked = false;
+    public bool permaBlocked = false; // 封锁者(01505)永久封锁——黑色高亮，不会被EndSelection清除
     public bool hasCard = false;
     public static System.Func<BoardSlot, bool> extraTargetFilter;
     public int spotlightTierBoost;   // 聚光灯阶位增幅
@@ -837,7 +838,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         // ── Step 3: 进场效果分发（新 → EffectRegistry，回退 → 旧 switch）──
         NestingContext.Enter($"Enter_{template.templateID}");
-        if (inst != null) inst._enterEffectRunning = true;
+        if (inst != null) { inst._enterEffectRunning = true; inst._hadEnterEffect = true; }
         var enterCtx = EffectContext.ForEnter(template, inst, this);
         if (EffectDispatcher.Dispatch(Trigger.Enter, enterCtx))
         {
@@ -934,7 +935,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     /// <summary>Force-refresh slot visual after syncing flags from server.</summary>
     public void SyncVisual()
     {
-        if (isBlocked) slotImage.color = Color.gray;
+        if (permaBlocked) slotImage.color = Color.black;
+        else if (isBlocked) slotImage.color = Color.gray;
         else if (prisonBlocked) slotImage.color = new Color(0.6f, 0.2f, 0.8f);
         else if (hasPlague) slotImage.color = Color.green;
         else if (deepSeaMarked) slotImage.color = Color.blue;
@@ -1471,7 +1473,6 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 oldInst.cardInstance.isActiveExit = false;
                 oldInst.cardInstance.hasRevenge = false;
 
-                // 清理重定向标记
                 GlobalDeathEventHandler.Trigger(oldInst.cardInstance, targetSlot.slotID,
                     oldInst.cardInstance.damageSourceInstanceIDs, false);
             }
@@ -1487,7 +1488,6 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     { bm.attachedModels.RemoveAt(i); Destroy(obj); }
                 }
 
-            // 旧模型可以销毁，HandleDeath会在SetCard后触发新卡
             GraveEntry entry = new GraveEntry
             {
                 templateID = oldInst.cardInstance.templateID,
@@ -1499,6 +1499,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             Destroy(oldCard);
         }
 
+        cardToPlace = null;
         CleanupAfterPlacement();
     }
 
@@ -2331,10 +2332,18 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         if (target != null)
         {
             target.isBlocked = true;
-            target.slotImage.color = Color.black;
+            target.permaBlocked = true;
+            target.SyncVisual();
             Debug.Log($"封锁者永久封锁槽位{target.slotID}");
-            // Sync slot block to opponent — slot flags must reach server & remote
-            TurnManager.SyncMyBoardToOpponent();
+            // Sync slot block to opponent
+            if (NetworkClient.isConnected)
+            {
+                // 01331 模式：远程客户端需显式告知服务器锁定敌方格子——CmdReportAllSlots 不覆盖 enemy slot flags
+                if (!NetworkServer.active)
+                    NetworkPlayer.Local?.CmdBlockSlot(target.slotID);
+                else
+                    BoardSyncManager.MarkDirty();
+            }
         }
 
         CleanupAfterPlacement();
@@ -3140,9 +3149,12 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         // 只在 Wolf King 所在半场替换
         int sideStart = (mySlot >= 6) ? 6 : 0;
         int sideEnd   = (mySlot >= 6) ? 11 : 5;
+        float effectStartTime = Time.time;
 
         for (int i = sideStart; i <= sideEnd; i++)
         {
+            // 玩家正在放置卡牌时暂停循环，防止读到中间态
+            yield return new WaitWhile(() => BoardSlot.isPlacingCard);
             if (i == mySlot) continue;
             BoardSlot slot = bm?.GetSlot(i);
             if (slot == null || slot.isBlocked) continue;
@@ -3153,6 +3165,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             {
                 CardInstance oldCI = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
                 if (oldCI == null || oldCI.currentTier >= 3 || oldCI == giver)
+                    continue;
+                // 狼(03006)始终可替换，非狼仅替换进场前就存在的
+                if (oldCI.templateID != "03006" && oldCI._placedAtTime > effectStartTime)
                     continue;
                 stackAtk = oldCI.currentAttack;
                 stackHp = oldCI.currentHealth;
@@ -3169,15 +3184,29 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             if (c3d != null)
             {
                 CardInstance wolfCI = model.AddComponent<CardInstance>();
-                wolfCI.InitFromTemplate(wolfTemplate, 0);
+                string wid = CardZoneManager.GenerateInstanceID(wolfTemplate.templateID);
+                wolfCI.InitFromTemplate(wolfTemplate, 0, wid);
                 wolfCI.currentAttack += stackAtk;
+                wolfCI.baseAttack += stackAtk;
                 wolfCI.currentHealth += stackHp;
                 wolfCI.currentMaxHealth += stackMaxHp;
+                wolfCI.baseHealth += stackHp;
+                wolfCI.baseMaxHealth += stackMaxHp;
                 wolfCI.wolfKingInstanceID = giver.instanceID;
+                wolfCI._placedAtTime = Time.time;
                 c3d.cardInstance = wolfCI;
                 c3d.UpdateValues();
             }
+            model.name = c3d?.cardInstance?.instanceID ?? model.name;
             slot.SetCard(model);
+
+            // Sync wolf to server/opponent — 必须传 override 保留叠加数值
+            if (NetworkClient.isConnected)
+                NetworkPlayer.Local?.CmdPlayCard(wolfTemplate.templateID, i,
+                    c3d?.cardInstance?.currentAttack ?? -1,
+                    c3d?.cardInstance?.currentHealth ?? -1,
+                    c3d?.cardInstance?.currentMaxHealth ?? -1,
+                    c3d?.cardInstance?.instanceID ?? "");
         }
 
         CleanupAfterPlacement();

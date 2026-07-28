@@ -89,6 +89,8 @@ public class CardInstance : MonoBehaviour
     [System.NonSerialized] public float _placedAtTime = -999f;
     /// <summary>[Legacy] 进场效果正在执行中——死亡扫描应跳过此卡。后续由 NestingContext.IsNested 替代。</summary>
     [System.NonSerialized] public bool _enterEffectRunning;
+    /// <summary>进场效果已运行过（一次性的持久标记，不清除）。用于保护玩家放置的卡不被网络同步覆盖。</summary>
+    [System.NonSerialized] public bool _hadEnterEffect;
     /// <summary>[Legacy] 协程型进场效果尚未完成。后续由 EffectContext.StartedCoroutine + NestingContext 替代。</summary>
     [System.NonSerialized] public bool _hasPendingCoroutine;
     // 动态赋予的特性文本

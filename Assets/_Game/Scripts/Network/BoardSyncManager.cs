@@ -65,7 +65,7 @@ public class BoardSyncManager : MonoBehaviour
             string card = Tid(slot?.currentCard3D);
             string flags = slot == null ? "" :
                 $"{(slot.isBlocked?1:0)}{(slot.prisonBlocked?1:0)}{(slot.hasPlague?1:0)}" +
-                $"{(slot.hasSpotlight?1:0)}{(slot.deepSeaMarked?1:0)}{(slot.deepSeaHealthDebuff?1:0)}|{slot.plagueRoundCount}|{slot.spotlightTierBoost}|{slot.slotTempAttackBoost}~{slot.deepSeaAttackDebuff}";
+                $"{(slot.hasSpotlight?1:0)}{(slot.deepSeaMarked?1:0)}{(slot.deepSeaHealthDebuff?1:0)}{(slot.permaBlocked?1:0)}|{slot.plagueRoundCount}|{slot.spotlightTierBoost}|{slot.slotTempAttackBoost}~{slot.deepSeaAttackDebuff}";
             s[i] = $"{card}|{flags}";
         }
 
@@ -293,6 +293,7 @@ public class BoardSyncManager : MonoBehaviour
                 slot.hasSpotlight = f[3] == '1';
                 slot.deepSeaMarked = f.Length >= 5 && f[4] == '1';
                 slot.deepSeaHealthDebuff = f.Length >= 6 && f[5] == '1';
+                slot.permaBlocked = f.Length >= 7 && f[6] == '1';
             }
             if (int.TryParse(parts[parts.Length - 3], out int prc)) slot.plagueRoundCount = prc;
             if (int.TryParse(parts[parts.Length - 2], out int stb)) slot.spotlightTierBoost = stb;
@@ -348,7 +349,13 @@ public class BoardSyncManager : MonoBehaviour
         // templateID 不匹配 → 当前模型已过时（换位后、死亡替换后等），销毁后按同步数据重建
         if (cur != null && cur.templateID != tid)
         {
-            // 保护：0.3s 内刚放置 → 可能是换位 RPC 尚未到达，暂不销毁
+            // 保护：同步数据是狼(03006)但槽位上已是非狼卡 → 过期数据，不覆盖
+            if (tid == "03006" && cur.templateID != "03006") return;
+            // 保护：已运行过进场效果 → 该卡由玩家放置，禁止过期网络同步覆盖
+            if (cur._hadEnterEffect) return;
+            // 保护：进场效果正在运行中
+            if (cur._enterEffectRunning) return;
+            // 0.3s 内刚放置 → 可能是换位 RPC 尚未到达，暂不销毁
             if (Time.time - cur._placedAtTime < 0.3f) return;
 
             // 销毁旧模型 + 其附着物，清空槽位以便重建

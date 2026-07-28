@@ -353,6 +353,12 @@ public class HandManager : MonoBehaviour
 
         slot.SetCard(model);
         BoardSyncManager.MarkDirty();
+        // 直接 RPC 同步——确保替换等场景对方立刻看到新卡，而不依赖异步 SyncNow
+        if (NetworkClient.isConnected && !string.IsNullOrEmpty(sourceInstance.templateID))
+        {
+            string iid = sourceInstance.instanceID ?? CardZoneManager.GenerateInstanceID(sourceInstance.templateID);
+            NetworkPlayer.Local?.CmdPlayCard(sourceInstance.templateID, slot.slotID, -1, -1, -1, iid);
+        }
         if (instance3D != null) instance3D.UpdateValues();
         // 阴阳独立打出检查
         if (sourceInstance.isXValue && sourceInstance.templateID == "03012")

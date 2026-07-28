@@ -27,9 +27,14 @@ public static class GlobalDeathEventHandler
         }
 
         // ===== 2. 群狼之王(01504)：己方狼退场，群狼之王+1+1 =====
-        if (isAlly && dyingCI.templateID == "03006" && !string.IsNullOrEmpty(dyingCI.wolfKingInstanceID))
+        if (isAlly && dyingCI.templateID == "03006")
         {
-            CardInstance king = FindByInstanceID(bm, dyingCI.wolfKingInstanceID);
+            // 优先用 instanceID 精确查找，服务器侧狼无此字段时回退到同半场 templateID 查找
+            CardInstance king = null;
+            if (!string.IsNullOrEmpty(dyingCI.wolfKingInstanceID))
+                king = FindByInstanceID(bm, dyingCI.wolfKingInstanceID);
+            if (king == null)
+                king = FindByTemplateID(bm, "01504", isAlly);
             if (king != null && !IsSilenced(king))
             {
                 king.currentHealth += 1;
