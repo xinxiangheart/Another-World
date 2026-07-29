@@ -103,6 +103,9 @@ public static class DeathPipeline
         }
 
         // ── 4. 处理附着物（古老精灵重附着 / 非妖精销毁） ──────────────
+        // 纯客户端不运行重附着选择——服务器权威委托远程处理
+        // 单机模式正常处理
+        bool canRunReattach = !(NetworkClient.isConnected && !NetworkServer.active);
         if (ci.isAttached == false)
         {
             BoardManager bm = Object.FindObjectOfType<BoardManager>();
@@ -137,7 +140,14 @@ public static class DeathPipeline
 
                 if (hasOtherAlly)
                 {
-                    slot.StartCoroutine(slot.AncientFairyReattach(fairy, p.slot.slotID));
+                    if (canRunReattach)
+                    {
+                        // 阻止战斗回合推进——WaitForSimultaneousWindow 等待 isPlacingCard 清除
+                        BoardSlot.isPlacingCard = true;
+                        slot.StartCoroutine(slot.AncientFairyReattach(fairy, p.slot.slotID));
+                    }
+                    else
+                        Object.Destroy(fairy);
                 }
                 else
                 {
@@ -166,6 +176,7 @@ public static class DeathPipeline
                 HandManager hm = Object.FindObjectOfType<HandManager>();
                 hm?.PlaceCardToSlot(slot, temp);
                 Object.Destroy(temp);
+                BoardSyncManager.MarkDirty();
             }
         }
 

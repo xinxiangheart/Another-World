@@ -297,19 +297,13 @@ public static class DamagePipeline
                 def.hasLifePriestBlessing = false;
                 def.lifePriestBlessingSource = null;
                 def.currentHealth = def.currentMaxHealth;
-                def.currentHealth += 2;
-                def.currentMaxHealth += 2;
-                def.currentAttack += 1;
+                def.currentMaxHealth += 3;
+                def.currentHealth += 3;
+                def.currentAttack += 3;
                 int healAmount = def.currentHealth - healthBeforeRevive;
                 if (healAmount > 0) ShowFloaterAt(def, healAmount, FloaterType.Heal);
                 UpdateLordDisplay(def);
-                CardData td = CardDatabase.Instance?.GetTemplate(def.templateID);
-                if (td != null && td.hasOnEnter)
-                {
-                    BoardSlot targetSlot = FindSlotOf(def);
-                    if (targetSlot != null)
-                        targetSlot.StartCoroutine(targetSlot.StartOnEnterEffect(td, def));
-                }
+                // 进场重触发移除此处——服务器战斗期间无法运行选择UI协程
                 ctx.revivedByPriest = true;
                 ctx.priestSource = priest;
                 ctx.stopped = true;

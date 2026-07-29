@@ -1707,6 +1707,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                             }
                             ci.currentAttack += 4;
                             targetSlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+                            // 同步 buff 后数值到服务器/对方
+                            TurnManager.SyncMyBoardToOpponent();
                         }
                     }
                     onDone();
@@ -3243,6 +3245,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 {
                     BattleManager.Instance?.ApplyDamageToMinionPublic(ei.cardInstance, 1, null);
                     ei.UpdateValues();
+                    if (NetworkClient.isConnected && !NetworkServer.active)
+                        NetworkPlayer.Local?.CmdApplyDamageToCard(i, 1);
                 }
             }
         }
@@ -3291,6 +3295,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     {
                         BattleManager.Instance?.ApplyDamageToMinionPublic(ei.cardInstance, 1, null);
                         ei.UpdateValues();
+                        if (NetworkClient.isConnected && !NetworkServer.active)
+                            NetworkPlayer.Local?.CmdApplyDamageToCard(i, 1);
                     }
                 }
             }
@@ -3320,9 +3326,27 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     {
         yield return null;
         yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
-        Debug.Log($"AncientFairyReattach 进入");
         CardInstance fairyCI = fairy.GetComponent<Card3DInstance>()?.cardInstance;
-        if (fairyCI == null) yield break;
+        if (fairyCI == null) { BoardSlot.isPlacingCard = false; yield break; }
+
+        // 服务器侧处理远程玩家妖精重附着 — 委托远程选择
+        if (NetworkServer.active && oldHostSlotID <= 5 && NetworkPlayer.Remote != null
+            && !string.IsNullOrEmpty(fairyCI.instanceID))
+        {
+            int remoteLocalOldHost = oldHostSlotID + 6;
+            _fairyReattachDone = false;
+            _fairyReattachNewHost = -1;
+            NetworkPlayer.Remote.TargetFairyReattachSelect(
+                NetworkPlayer.Remote.connectionToClient, fairyCI.instanceID, remoteLocalOldHost);
+            float deadline = Time.time + 20f;
+            yield return new WaitUntil(() => _fairyReattachDone || Time.time > deadline);
+            if (_fairyReattachNewHost >= 0)
+                ApplyFairyReattachToSlot(fairy, fairyCI, _fairyReattachNewHost);
+            else
+                Destroy(fairy);
+            BoardSlot.isPlacingCard = false;
+            yield break;
+        }
 
         bool done = false;
         BoardSlot newHost = null;
@@ -3338,45 +3362,92 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         yield return new WaitUntil(() => done);
 
         if (newHost != null)
+            ApplyFairyReattachToSlot(fairy, fairyCI, newHost.slotID);
+        else
+            Destroy(fairy);
+        BoardSlot.isPlacingCard = false;
+    }
+
+    bool _fairyReattachDone;
+    int _fairyReattachNewHost;
+    public void OnFairyReattachResult(int serverSlot)
+    { _fairyReattachNewHost = serverSlot; _fairyReattachDone = true; }
+
+    void ApplyFairyReattachToSlot(GameObject fairy, CardInstance fairyCI, int hostSlotID)
+    {
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        BoardSlot newHost = bm?.GetSlot(hostSlotID);
+        if (newHost == null) { Destroy(fairy); return; }
+
+        fairyCI.hostSlotID = hostSlotID;
+        int maxOrder = -1;
+        foreach (GameObject obj in bm.attachedModels)
         {
-            fairyCI.hostSlotID = newHost.slotID;
-            int maxOrder = -1;
-            BoardManager bm = FindObjectOfType<BoardManager>();
-            foreach (GameObject obj in bm.attachedModels)
+            CardInstance ci = obj?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci != null && ci.isAttached && ci.hostSlotID == hostSlotID)
             {
-                CardInstance ci = obj?.GetComponent<Card3DInstance>()?.cardInstance;
-                if (ci != null && ci.isAttached && ci.hostSlotID == newHost.slotID)
-                {
-                    if (ci.attachOrder > maxOrder) maxOrder = ci.attachOrder;
-                }
-            }
-            fairyCI.attachOrder = maxOrder + 1;
-            bm.attachedModels.Add(fairy);
-            BoardSyncManager.MarkDirty();
-
-            if (newHost.hasCard && newHost.currentCard3D != null && newHost.currentCard3D.GetComponent<Card3DInstance>() != null)
-            {
-                BoardManager.SyncAttachedModels(newHost);
-            }
-
-            CardInstance newHostCI = newHost.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-            if (newHostCI != null)
-            {
-                if (!newHostCI.cannotHealOrGainMaxHP)
-                {
-                    newHostCI.currentHealth += 5;
-                    newHostCI.currentMaxHealth += 5;
-                }
-                newHost.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+                if (ci.attachOrder > maxOrder) maxOrder = ci.attachOrder;
             }
         }
-        else
+        fairyCI.attachOrder = maxOrder + 1;
+        bm.attachedModels.Add(fairy);
+        BoardSyncManager.MarkDirty();
+
+        if (newHost.hasCard && newHost.currentCard3D != null)
+            BoardManager.SyncAttachedModels(newHost);
+
+        CardInstance newHostCI = newHost.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+        if (newHostCI != null)
         {
-            BoardManager bm = FindObjectOfType<BoardManager>();
-            bm.attachedModels.Remove(fairy);
-            Destroy(fairy);
+            if (!newHostCI.cannotHealOrGainMaxHP)
+            {
+                newHostCI.currentHealth += 5;
+                newHostCI.currentMaxHealth += 5;
+            }
+            newHost.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
         }
     }
+
+    /// <summary>01510 远程客户端：选择古老精灵的新宿主。</summary>
+    public IEnumerator RemoteFairyReattachSelect(string fairyInstanceID, int oldHostLocalSlot)
+    {
+        yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) { NetworkPlayer.Local?.CmdFairyReattachResult(fairyInstanceID, -1); yield break; }
+
+        // 从附着模型中移除妖精
+        GameObject fairy = null;
+        for (int i = bm.attachedModels.Count - 1; i >= 0; i--)
+        {
+            var ci = bm.attachedModels[i]?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci != null && ci.isAncientFairy && ci.instanceID == fairyInstanceID)
+            {
+                fairy = bm.attachedModels[i];
+                bm.attachedModels.RemoveAt(i);
+                break;
+            }
+        }
+        if (fairy == null) { NetworkPlayer.Local?.CmdFairyReattachResult(fairyInstanceID, -1); yield break; }
+
+        bool done = false;
+        BoardSlot newHost = null;
+        SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (s) =>
+        {
+            if (s != null && s.hasCard && s.slotID != oldHostLocalSlot)
+            {
+                newHost = s;
+                done = true;
+            }
+        });
+
+        yield return new WaitUntil(() => done);
+
+        if (newHost != null)
+            NetworkPlayer.Local?.CmdFairyReattachResult(fairyInstanceID, newHost.slotID);
+        else
+            NetworkPlayer.Local?.CmdFairyReattachResult(fairyInstanceID, -1);
+    }
+
     public IEnumerator MistHiderEnterEffect(CardInstance giver)
     {
         yield return null;

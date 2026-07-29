@@ -87,6 +87,8 @@ public static class DiscardHandlers
                     {
                         BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, 1, null);
                         t3d.UpdateValues();
+                        if (NetworkClient.isConnected && !NetworkServer.active)
+                            NetworkPlayer.Local?.CmdApplyDamageToCard(target.slotID, 1);
                     }
                 }
                 BoardSlot.CheckAndHandleDeaths();
@@ -140,6 +142,8 @@ public static class DiscardHandlers
                     {
                         BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, ctx.savedAttack, null);
                         t3d.UpdateValues();
+                        if (NetworkClient.isConnected && !NetworkServer.active)
+                            NetworkPlayer.Local?.CmdApplyDamageToCard(target.slotID, ctx.savedAttack);
                     }
                 }
                 BoardSlot.CheckAndHandleDeaths();

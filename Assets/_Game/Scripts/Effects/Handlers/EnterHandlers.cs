@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using Mirror;
 
 // ============================================================================
 // EnterHandlers — 进场效果注册中心（Step 3）
@@ -90,6 +91,8 @@ public static class EnterHandlers
                 {
                     BattleManager.Instance?.ApplyDamageToMinionPublic(ei.cardInstance, 1, null);
                     ei.UpdateValues();
+                    if (NetworkClient.isConnected && !NetworkServer.active)
+                        NetworkPlayer.Local?.CmdApplyDamageToCard(i, 1);
                 }
             }
         }
@@ -205,10 +208,12 @@ public static class EnterHandlers
                 {
                     BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, 1, slot.currentCard3D);
                     t3d.UpdateValues();
+                    // 纯客户端需显式通知服务器扣除敌人HP——CmdReportAllSlots 不写 enemy slot
+                    if (NetworkClient.isConnected && !NetworkServer.active)
+                        NetworkPlayer.Local?.CmdApplyDamageToCard(targetSlot.slotID, 1);
                 }
             }
             BoardSlot.CheckAndHandleDeaths();
-            // Sync enemy damage to opponent via full 12-slot report
             TurnManager.SyncMyBoardToOpponent();
             slot.CleanupAfterPlacement();
         });
@@ -325,6 +330,9 @@ public static class EnterHandlers
                 {
                     targetCI.hasLifePriestBlessing = true;
                     targetCI.lifePriestBlessingSource = ctx.source;
+                    // 同步到服务器：服务器侧 BattleCoroutine 的 DamagePipeline 需要祝福信息
+                    if (NetworkClient.isConnected && !NetworkServer.active)
+                        NetworkPlayer.Local?.CmdBlessTarget(ctx.source.instanceID, targetCI.instanceID);
                 }
             }
             slot.CleanupAfterPlacement();
@@ -338,6 +346,9 @@ public static class EnterHandlers
         {
             NetworkPlayer.Local.AddCardToHand(follower);
             NetworkPlayer.Local.AddCardToHand(follower);
+            // 纯客户端需通知服务器同步手牌
+            if (NetworkClient.isConnected && !NetworkServer.active)
+                NetworkPlayer.Local?.CmdAddCardToHand("03001", 2);
         }
         ctx.sourceSlot.CleanupAfterPlacement();
     }

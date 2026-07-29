@@ -398,6 +398,9 @@ public class NetworkPlayer : NetworkBehaviour
                             CardInstance ci = model.AddComponent<CardInstance>();
                             ci.InitFromTemplate(template, 0, instanceID);
                             if (templateID == "01502") CardInstance.shadowMasterAlive = true;
+                            // 01515 狂热萨满 / 01520 商户 — 光环需在服务器侧注册
+                            if (templateID == "01515") GlobalEventManager.Instance?.RegisterAura(new FanaticShamanAura { source = ci });
+                            if (templateID == "01520") GlobalEventManager.Instance?.RegisterAura(new MerchantAura { source = ci });
                             if (overrideAtk >= 0) ci.currentAttack = overrideAtk;
                             if (overrideHP >= 0) ci.currentHealth = overrideHP;
                             if (overrideMaxHP >= 0) ci.currentMaxHealth = overrideMaxHP;
@@ -993,6 +996,9 @@ public class NetworkPlayer : NetworkBehaviour
             CardInstance ci = model.AddComponent<CardInstance>();
             ci.InitFromTemplate(template, 0, instanceID);
             if (templateID == "01502") CardInstance.shadowMasterAlive = true;
+            // 01515 / 01520 — 远程客户端也注册光环
+            if (templateID == "01515") GlobalEventManager.Instance?.RegisterAura(new FanaticShamanAura { source = ci });
+            if (templateID == "01520") GlobalEventManager.Instance?.RegisterAura(new MerchantAura { source = ci });
 
             // Apply enter-effect stat overrides
             if (overrideAtk >= 0) ci.currentAttack = overrideAtk;
@@ -1871,6 +1877,94 @@ public class NetworkPlayer : NetworkBehaviour
             target.SyncVisual();
             BoardSyncManager.MarkDirty();
         }
+    }
+
+    /// <summary>客户端→服务器：01507 祝福目标同步。服务器侧 DamagePipeline 依赖此信息。</summary>
+    [Command]
+    public void CmdBlessTarget(string priestInstanceID, string targetInstanceID)
+    {
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return;
+        CardInstance priest = null, target = null;
+        for (int i = 0; i < 12; i++)
+        {
+            var ci = bm.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci != null && ci.instanceID == priestInstanceID) priest = ci;
+            if (ci != null && ci.instanceID == targetInstanceID) target = ci;
+        }
+        if (priest != null && target != null)
+        {
+            target.hasLifePriestBlessing = true;
+            target.lifePriestBlessingSource = priest;
+        }
+    }
+
+    /// <summary>客户端→服务器：通知服务器将指定模板的卡加入该客户端手牌追踪。</summary>
+    [Command]
+    public void CmdAddCardToHand(string templateID, int count)
+    {
+        CardData template = CardDatabase.Instance?.GetTemplate(templateID);
+        if (template == null) return;
+        for (int i = 0; i < count; i++)
+        {
+            string iid = CardZoneManager.GenerateInstanceID(templateID);
+            AddServerSideCard(template, iid);
+        }
+    }
+
+    /// <summary>客户端→服务器：同步 01535 执行之剑消耗的法术费用。</summary>
+    [Command]
+    public void CmdSetSwordCost(string swordInstanceID, int cost)
+    {
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return;
+        for (int i = 0; i < 12; i++)
+        {
+            var ci = bm.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci != null && ci.instanceID == swordInstanceID && ci.templateID == "01535")
+            {
+                ci.consumedSpellCost = cost;
+                return;
+            }
+        }
+    }
+
+    /// <summary>客户端→服务器：对敌方一张卡造成 N 伤害。CmdReportAllSlots 不写 enemy slot HP。</summary>
+    [Command]
+    public void CmdApplyDamageToCard(int clientSlotID, int damage)
+    {
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return;
+        // 远程上报的 slot 视角与服务器相反，镜像映射
+        int serverSlot = isLocalPlayer ? clientSlotID : (clientSlotID >= 6 ? clientSlotID - 6 : clientSlotID + 6);
+        var slot = bm.GetSlot(serverSlot);
+        var ci = slot?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+        if (ci != null)
+        {
+            ci.currentHealth -= damage;
+            if (ci.currentHealth < 0) ci.currentHealth = 0;
+            slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+            BoardSlot.CheckAndHandleDeaths();
+        }
+        BoardSyncManager.MarkDirty();
+    }
+
+    /// <summary>服务端→远端客户端：01510 古老精灵重附着选择。</summary>
+    [TargetRpc]
+    public void TargetFairyReattachSelect(NetworkConnectionToClient target, string fairyInstanceID, int oldHostLocalSlot)
+    {
+        BoardSlot bs = FindObjectOfType<BoardSlot>();
+        if (bs != null) bs.StartCoroutine(bs.RemoteFairyReattachSelect(fairyInstanceID, oldHostLocalSlot));
+    }
+
+    /// <summary>远端客户端→服务器：01510 古老精灵重附着结果。</summary>
+    [Command]
+    public void CmdFairyReattachResult(string fairyInstanceID, int newHostLocalSlot)
+    {
+        // 远程上报的 slot 视角与服务器相反
+        int serverSlot = isLocalPlayer ? newHostLocalSlot : newHostLocalSlot - 6;
+        BoardSlot bs = FindObjectOfType<BoardSlot>();
+        if (bs != null) bs.OnFairyReattachResult(newHostLocalSlot >= 0 ? serverSlot : -1);
     }
 
     // ═══════════════════════════════════════════════════════════════════

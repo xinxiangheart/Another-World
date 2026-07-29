@@ -352,13 +352,13 @@ public class HandManager : MonoBehaviour
         }
 
         slot.SetCard(model);
-        BoardSyncManager.MarkDirty();
-        // 直接 RPC 同步——确保替换等场景对方立刻看到新卡，而不依赖异步 SyncNow
+        // 同步到服务器——纯客户端 MarkDirty 是空操作，必须显式通知服务器
         if (NetworkClient.isConnected && !string.IsNullOrEmpty(sourceInstance.templateID))
         {
             string iid = sourceInstance.instanceID ?? CardZoneManager.GenerateInstanceID(sourceInstance.templateID);
             NetworkPlayer.Local?.CmdPlayCard(sourceInstance.templateID, slot.slotID, -1, -1, -1, iid);
         }
+        BoardSyncManager.MarkDirty();
         if (instance3D != null) instance3D.UpdateValues();
         // 阴阳独立打出检查
         if (sourceInstance.isXValue && sourceInstance.templateID == "03012")
@@ -1199,11 +1199,10 @@ public class HandManager : MonoBehaviour
             CardInstance reborn = FindRebornOnField();
             if (reborn != null && (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(reborn)))
             {
-                Debug.Log($"复生造物增幅前: health={reborn.currentHealth}, maxHealth={reborn.currentMaxHealth}");
                 reborn.currentHealth += 1;
                 reborn.currentMaxHealth += 1;
-                Debug.Log($"复生造物增幅前: health={reborn.currentHealth}, maxHealth={reborn.currentMaxHealth}");
                 UpdateRebornDisplay(reborn);
+                TurnManager.SyncMyBoardToOpponent();
             }
         }
         // 无赖：进场获得护盾（攻击回合开始消失）

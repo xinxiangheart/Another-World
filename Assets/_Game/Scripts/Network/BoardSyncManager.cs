@@ -318,11 +318,10 @@ public class BoardSyncManager : MonoBehaviour
         {
             var ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
 
-            // 保护：己方半场(6-11) 0.5s 内刚放置的卡 → 防网络竞态
-            // 敌方半场(0-5)不保护——服务端权威，过期数据必须清理
-            if (idx >= 6 && ci != null && Time.time - ci._placedAtTime < 0.5f) return;
+            // 保护：2s 内刚放置的卡不被网络同步清除（敌对半场也需要——过期 SyncNow 携带空数据会误删 RPC 创建的模型）
+            if (ci != null && Time.time - ci._placedAtTime < 2.0f) return;
 
-            // 清理附着在此槽位的附着模型
+            // 清除附着模型
             for (int i = bm.attachedModels.Count - 1; i >= 0; i--)
             {
                 var am = bm.attachedModels[i];
@@ -335,10 +334,10 @@ public class BoardSyncManager : MonoBehaviour
                 }
             }
 
+            // 记录死亡时间——防止过期同步数据重建幻影模型
+            slot.lastHandleDeathTime = Time.time;
             SafeDestroy(slot.currentCard3D); slot.SetCard(null);
         }
-
-        // 槽位标记由 sync data 提供，此处不重置——prisonBlocked 等空槽标记需持久化
     }
 
     void EnsureCard(int idx, string[] parts, BoardSlot slot, BoardManager bm, HandManager hm)
@@ -349,14 +348,16 @@ public class BoardSyncManager : MonoBehaviour
         // templateID 不匹配 → 当前模型已过时（换位后、死亡替换后等），销毁后按同步数据重建
         if (cur != null && cur.templateID != tid)
         {
-            // 保护：同步数据是狼(03006)但槽位上已是非狼卡 → 过期数据，不覆盖
-            if (tid == "03006" && cur.templateID != "03006") return;
-            // 保护：已运行过进场效果 → 该卡由玩家放置，禁止过期网络同步覆盖
+            // 防幻影保护链（按优先级）：
+            // 1. 已走过进场效果 → 玩家放置的权威卡，永不覆盖
             if (cur._hadEnterEffect) return;
-            // 保护：进场效果正在运行中
+            // 2. 进场中 → 不覆盖
             if (cur._enterEffectRunning) return;
-            // 0.3s 内刚放置 → 可能是换位 RPC 尚未到达，暂不销毁
-            if (Time.time - cur._placedAtTime < 0.3f) return;
+            // 3. 同步数据是狼(03006)但槽位上已是非狼 → 过期数据
+            if (tid == "03006" && cur.templateID != "03006") return;
+            // 4. 非狼/非影子卡 <2s 内放置 → 保护
+            if (cur.templateID != "03006" && cur.templateID != "03007"
+                && Time.time - cur._placedAtTime < 2.0f) return;
 
             // 销毁旧模型 + 其附着物，清空槽位以便重建
             for (int i = bm.attachedModels.Count - 1; i >= 0; i--)

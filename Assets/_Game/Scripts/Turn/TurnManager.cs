@@ -26,6 +26,8 @@ public partial class TurnManager : MonoBehaviour
     // 影舞者(01502) PhaseStart 同步
     bool _waitingForPhaseStartReady = false;
     bool _shadowsReenteredThisPhase = false;
+    // 增幅结构(01506) 每阶段每半场只触发一次
+    bool[] _amplifiedHalfThisPhase = new bool[2];
     public void OnRemotePhaseStartReady() { _waitingForPhaseStartReady = false; }
 
     void Start()
@@ -181,6 +183,8 @@ public partial class TurnManager : MonoBehaviour
     public IEnumerator StartNewPhase()
     {
         ProcessPhaseStartDeaths();
+        _amplifiedHalfThisPhase[0] = false;
+        _amplifiedHalfThisPhase[1] = false;
 
         currentPhase = TurnPhase.PhaseStart;
         phaseCount++;
@@ -202,24 +206,11 @@ public partial class TurnManager : MonoBehaviour
                 yield return bs.SummonAllShadows();
         }
 
-        // 联机模式：广播 PhaseStart，让远程客户端处理自己的阶段开始效果（影子/增幅/铁匠等）
-        // 双方都完成后（或超时 20s），才继续分配先行权
-        if (NetworkServer.active)
-        {
-            // 主机也在此处理阶段开始触发器（从 MyTurn 移至此，统一各客户端时序）
-            ProcessPhaseStartTriggers();
-            _waitingForPhaseStartReady = true;
-            BroadcastTurnPhase(TurnPhase.PhaseStart);
-            yield return null; // 等一帧让 RPC 送达远程客户端
-            float deadline = Time.time + 20f;
-            yield return new WaitUntil(() => !_waitingForPhaseStartReady || Time.time > deadline);
-            if (Time.time > deadline)
-                Debug.LogWarning("[TurnManager] PhaseStart ready timeout — proceeding without remote ack");
-        }
-
+        // ── 增幅结构(01506)：在 PhaseStart 广播之前执行 ——
+        // 先对服务器侧双半场应用 +1+1，MarkDirty 推给远程后，远程再处理 PhaseStart 回报
+        // 时才不会用旧值覆盖服务器已 buff 的数值
         if (slots != null)
         {
-            // 增幅结构(01506)：每方独立统计机械数量，分别加进
             for (int half = 0; half <= 6; half += 6)
             {
                 int mechCount = 0;
@@ -250,6 +241,8 @@ public partial class TurnManager : MonoBehaviour
                     }
                     if (amplifierActive)
                     {
+                        if (_amplifiedHalfThisPhase[half == 6 ? 1 : 0]) continue;
+                        _amplifiedHalfThisPhase[half == 6 ? 1 : 0] = true;
                         for (int i = half; i < half + 6; i++)
                         {
                             BoardSlot s = slots[i];
@@ -270,6 +263,30 @@ public partial class TurnManager : MonoBehaviour
                         }
                     }
                 }
+            }
+        }
+
+        // ── 联机：先 MarkDirty 推 buff 后数据给远程，再广播 PhaseStart ——
+        // 否则远程的 CmdReportAllSlots 会用旧数据覆盖服务器已完成的 01506 增幅
+        if (NetworkServer.active)
+        {
+            BoardSyncManager.MarkDirty();
+            yield return null; // LateUpdate → SyncNow → remote gets amplified stats
+            ProcessPhaseStartTriggers();
+            // 仅在需远程交互时才等待——否则发 PhaseStart 后直接继续
+            if (CardInstance.shadowMasterAlive)
+            {
+                _waitingForPhaseStartReady = true;
+                BroadcastTurnPhase(TurnPhase.PhaseStart);
+                yield return null;
+                float deadline = Time.time + 20f;
+                yield return new WaitUntil(() => !_waitingForPhaseStartReady || Time.time > deadline);
+                if (Time.time > deadline)
+                    Debug.LogWarning("[TurnManager] PhaseStart ready timeout — proceeding without remote ack");
+            }
+            else
+            {
+                BroadcastTurnPhase(TurnPhase.PhaseStart);
             }
         }
         // 追随者：每阶段开始为宿主+0+1
@@ -413,7 +430,8 @@ public partial class TurnManager : MonoBehaviour
                 }
             }
         }
-        if (slots != null)
+        // 03010→03011 进化后同步板面——远程需看到大团恶念模型
+        BoardSyncManager.MarkDirty();
         {
             for (int i = 0; i < 12; i++)
             {
@@ -1227,6 +1245,8 @@ public partial class TurnManager : MonoBehaviour
             if (td != null)
             {
                 sword.consumedSpellCost = td.baseCost;
+                if (NetworkClient.isConnected && !NetworkServer.active)
+                    NetworkPlayer.Local?.CmdSetSwordCost(sword.instanceID, td.baseCost);
                 NetworkPlayer.Local.handCards.Remove(selected);
                 Destroy(selected);
                 HandManager hm = FindObjectOfType<HandManager>();
