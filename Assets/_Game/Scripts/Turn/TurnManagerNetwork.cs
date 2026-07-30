@@ -251,10 +251,14 @@ public partial class TurnManager
     /// </summary>
     void EnableMyTurnActions()
     {
-        Debug.Log("[TurnManager] SetPhaseFromNetwork: enabling actions, +6 energy");
+        Debug.Log("[TurnManager] SetPhaseFromNetwork: enabling actions");
         SetPlayerActionsEnabled(true);
-        if (NetworkPlayer.Local != null) NetworkPlayer.Local.AddEnergy(6);
-        else Debug.LogError("[TurnManager] SetPhaseFromNetwork: NetworkPlayer.Local is NULL!");
+        // 主机已在 StartNewPhase 中直接加能，此处仅远程客户端需要
+        if (!NetworkServer.active)
+        {
+            if (NetworkPlayer.Local != null) NetworkPlayer.Local.AddEnergy(6);
+            else Debug.LogError("[TurnManager] SetPhaseFromNetwork: NetworkPlayer.Local is NULL!");
+        }
         DrawCardUI dc = FindObjectOfType<DrawCardUI>();
         if (dc != null) dc.ResetForNewPhase();
         else Debug.LogWarning("[TurnManager] SetPhaseFromNetwork: DrawCardUI not found!");

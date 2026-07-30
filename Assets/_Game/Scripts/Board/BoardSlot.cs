@@ -3329,15 +3329,14 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         CardInstance fairyCI = fairy.GetComponent<Card3DInstance>()?.cardInstance;
         if (fairyCI == null) { BoardSlot.isPlacingCard = false; yield break; }
 
-        // 服务器侧处理远程玩家妖精重附着 — 委托远程选择
-        if (NetworkServer.active && oldHostSlotID <= 5 && NetworkPlayer.Remote != null
-            && !string.IsNullOrEmpty(fairyCI.instanceID))
+        // 远程方(0-5)委托所属玩家选择，己方(6-11)主机自选
+        if (NetworkServer.active && oldHostSlotID <= 5 && NetworkPlayer.Remote != null)
         {
             int remoteLocalOldHost = oldHostSlotID + 6;
             _fairyReattachDone = false;
             _fairyReattachNewHost = -1;
             NetworkPlayer.Remote.TargetFairyReattachSelect(
-                NetworkPlayer.Remote.connectionToClient, fairyCI.instanceID, remoteLocalOldHost);
+                NetworkPlayer.Remote.connectionToClient, remoteLocalOldHost);
             float deadline = Time.time + 20f;
             yield return new WaitUntil(() => _fairyReattachDone || Time.time > deadline);
             if (_fairyReattachNewHost >= 0)
@@ -3350,6 +3349,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         bool done = false;
         BoardSlot newHost = null;
+        isStrengtheningSlot = false;
+        extraTargetFilter = (s) => s != null && s.hasCard;
         SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (s) =>
         {
             if (s != null && s.hasCard && s.slotID != oldHostSlotID)
@@ -3368,10 +3369,91 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         BoardSlot.isPlacingCard = false;
     }
 
-    bool _fairyReattachDone;
-    int _fairyReattachNewHost;
-    public void OnFairyReattachResult(int serverSlot)
+    static bool _fairyReattachDone;
+    static int _fairyReattachNewHost;
+    public static List<GameObject> _fairyPending = new List<GameObject>();
+    public static void OnFairyReattachResult(int serverSlot)
     { _fairyReattachNewHost = serverSlot; _fairyReattachDone = true; }
+
+    /// <summary>01510 远程客户端：选择古老精灵的新宿主。oldHostLocalSlot为远程本地视角(6-11)。</summary>
+    public IEnumerator RemoteFairyReattachSelect(int oldHostLocalSlot)
+    {
+        yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) { NetworkPlayer.Local?.CmdFairyReattachResult(-1); yield break; }
+
+        // 搜索 attachedModels 和 _fairyPending
+        GameObject fairy = null;
+        CardInstance fairyCI = null;
+        for (int i = bm.attachedModels.Count - 1; i >= 0; i--)
+        {
+            var ci = bm.attachedModels[i]?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci != null && ci.isAncientFairy && ci.hostSlotID == oldHostLocalSlot)
+            {
+                fairy = bm.attachedModels[i]; fairyCI = ci;
+                bm.attachedModels.RemoveAt(i);
+                break;
+            }
+        }
+        if (fairy == null)
+        {
+            for (int i = _fairyPending.Count - 1; i >= 0; i--)
+            {
+                var ci = _fairyPending[i]?.GetComponent<Card3DInstance>()?.cardInstance;
+                if (ci != null && ci.isAncientFairy && ci.hostSlotID == oldHostLocalSlot)
+                {
+                    fairy = _fairyPending[i]; fairyCI = ci;
+                    _fairyPending.RemoveAt(i);
+                    break;
+                }
+            }
+        }
+        if (fairy == null || fairyCI == null) { NetworkPlayer.Local?.CmdFairyReattachResult(-1); yield break; }
+
+        bool done = false;
+        BoardSlot newHost = null;
+        isStrengtheningSlot = false;
+        extraTargetFilter = (s) => s != null && s.hasCard;
+        SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (s) =>
+        {
+            if (s != null && s.hasCard && s.slotID != oldHostLocalSlot)
+            {
+                newHost = s;
+                done = true;
+            }
+        });
+
+        yield return new WaitUntil(() => done);
+
+        if (newHost != null)
+        {
+            // 本地立即应用重附着——和 ApplyFairyReattachToSlot 一致
+            fairyCI.hostSlotID = newHost.slotID;
+            int maxOrder = -1;
+            foreach (GameObject obj in bm.attachedModels)
+            {
+                var ci = obj?.GetComponent<Card3DInstance>()?.cardInstance;
+                if (ci != null && ci.isAttached && ci.hostSlotID == newHost.slotID)
+                    if (ci.attachOrder > maxOrder) maxOrder = ci.attachOrder;
+            }
+            fairyCI.attachOrder = maxOrder + 1;
+            bm.attachedModels.Add(fairy);
+            if (newHost.hasCard && newHost.currentCard3D != null)
+                BoardManager.SyncAttachedModels(newHost);
+            BoardSyncManager.MarkDirty();
+
+            CardInstance nhCI = newHost.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (nhCI != null && !nhCI.cannotHealOrGainMaxHP)
+            {
+                nhCI.currentHealth += 5;
+                nhCI.currentMaxHealth += 5;
+                newHost.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+            }
+            NetworkPlayer.Local?.CmdFairyReattachResult(newHost.slotID);
+        }
+        else
+            NetworkPlayer.Local?.CmdFairyReattachResult(-1);
+    }
 
     void ApplyFairyReattachToSlot(GameObject fairy, CardInstance fairyCI, int hostSlotID)
     {
@@ -3406,46 +3488,6 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             }
             newHost.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
         }
-    }
-
-    /// <summary>01510 远程客户端：选择古老精灵的新宿主。</summary>
-    public IEnumerator RemoteFairyReattachSelect(string fairyInstanceID, int oldHostLocalSlot)
-    {
-        yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
-        BoardManager bm = FindObjectOfType<BoardManager>();
-        if (bm == null) { NetworkPlayer.Local?.CmdFairyReattachResult(fairyInstanceID, -1); yield break; }
-
-        // 从附着模型中移除妖精
-        GameObject fairy = null;
-        for (int i = bm.attachedModels.Count - 1; i >= 0; i--)
-        {
-            var ci = bm.attachedModels[i]?.GetComponent<Card3DInstance>()?.cardInstance;
-            if (ci != null && ci.isAncientFairy && ci.instanceID == fairyInstanceID)
-            {
-                fairy = bm.attachedModels[i];
-                bm.attachedModels.RemoveAt(i);
-                break;
-            }
-        }
-        if (fairy == null) { NetworkPlayer.Local?.CmdFairyReattachResult(fairyInstanceID, -1); yield break; }
-
-        bool done = false;
-        BoardSlot newHost = null;
-        SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (s) =>
-        {
-            if (s != null && s.hasCard && s.slotID != oldHostLocalSlot)
-            {
-                newHost = s;
-                done = true;
-            }
-        });
-
-        yield return new WaitUntil(() => done);
-
-        if (newHost != null)
-            NetworkPlayer.Local?.CmdFairyReattachResult(fairyInstanceID, newHost.slotID);
-        else
-            NetworkPlayer.Local?.CmdFairyReattachResult(fairyInstanceID, -1);
     }
 
     public IEnumerator MistHiderEnterEffect(CardInstance giver)
@@ -3913,69 +3955,67 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
 
-        // 1. 从赋予的特性中查找
+        // ═══ Step 1: 依次触发所有本阶段未触发的已复制进场特性 ═══
         foreach (string trait in giver.mindScholarCopiedTraits)
         {
-            if (trait.Contains("进场") && !giver.mindScholarEnterTriggeredThisPhase)
-            {
-                // 清理重定向标记
-                string originalTemplateID = ExtractTemplateIDFromTrait(trait);
-                if (!string.IsNullOrEmpty(originalTemplateID))
-                {
-                    CardData originalTD = CardDatabase.Instance?.GetTemplate(originalTemplateID);
-                    if (originalTD != null && originalTD.hasOnEnter)
-                    {
-                        BoardSlot mySlot = FindSlotOf(giver);
-                        if (mySlot != null)
-                            yield return StartCoroutine(mySlot.StartOnEnterEffect(originalTD, giver));
-                        yield return null;
-                        yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
-                    }
-                }
-            }
+            if (!trait.Contains("进场")) continue;
+            string tKey = ExtractTraitKey(trait);
+            if (giver.mindScholarTriggeredKeys.Contains(tKey)) continue;
+            string originalTemplateID = ExtractTemplateIDFromTrait(trait);
+            if (string.IsNullOrEmpty(originalTemplateID)) continue;
+            CardData originalTD = CardDatabase.Instance?.GetTemplate(originalTemplateID);
+            if (originalTD == null || !originalTD.hasOnEnter) continue;
+            giver.mindScholarTriggeredKeys.Add(tKey);
+            NestingContext.Enter($"MS_Enter_{tKey}");
+            BoardSlot mySlot = FindSlotOf(giver);
+            if (mySlot != null)
+                yield return StartCoroutine(mySlot.StartOnEnterEffect(originalTD, giver));
+            yield return null;
+            yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
+            NestingContext.Exit();
         }
-        giver.mindScholarEnterTriggeredThisPhase = true;
 
-                // 清理重定向标记
-        if (giver.HasDiscard && !giver.mindScholarDiscardTriggeredThisPhase)
+        // ═══ Step 2: 依次触发所有本阶段未触发的已复制抛置特性 ═══
+        foreach (string trait in giver.mindScholarCopiedTraits)
         {
-            foreach (string trait in giver.mindScholarCopiedTraits)
-            {
-                if (trait.Contains("抛置"))
-                {
-                    giver.mindScholarDiscardTriggeredThisPhase = true;
-                    TriggerDiscardEffectFromTrait(giver, trait);
-                    yield return null;
-                    yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
-                    break;
-                }
-            }
+            if (!trait.Contains("抛置")) continue;
+            string dKey = ExtractTraitKey(trait);
+            if (giver.mindScholarTriggeredKeys.Contains(dKey)) continue;
+            giver.mindScholarTriggeredKeys.Add(dKey);
+            NestingContext.Enter($"MS_Discard_{dKey}");
+            TriggerDiscardEffectFromTrait(giver, trait);
+            yield return null;
+            yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
+            NestingContext.Exit();
         }
 
-        // 2. 限制最多4张，太少退回去
-        if (giver.mindScholarCopyCount >= 4)
-        {
-            CleanupAfterPlacement();
-            yield break;
-        }
+        // ═══ Step 3: 选择是否复制（最多4个）═══
+        if (giver.mindScholarCopyCount >= 4) { CleanupAfterPlacement(); yield break; }
 
-        // 3. 选择对方基础费用1或3的召唤物
         List<CardInstance> targets = new List<CardInstance>();
         for (int i = 0; i <= 5; i++)
         {
             BoardSlot s = bm?.GetSlot(i);
-            if (s?.currentCard3D != null)
-            {
-                CardInstance ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                CardData td = CardDatabase.Instance?.GetTemplate(ci?.templateID);
-                if (td != null && (td.baseCost == 1 || td.baseCost == 3) && (td.hasOnEnter || ci.HasDiscard))
-                    targets.Add(ci);
-            }
+            if (s?.currentCard3D == null) continue;
+            CardInstance ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+            CardData td = CardDatabase.Instance?.GetTemplate(ci?.templateID);
+            if (td != null && (td.baseCost == 1 || td.baseCost == 3) && (td.hasOnEnter || ci.HasDiscard))
+                targets.Add(ci);
         }
 
         if (targets.Count == 0) { CleanupAfterPlacement(); yield break; }
 
-        bool done = false;
+        // "是否复制" 选择
+        bool copyChoiceDone = false;
+        bool shouldCopy = false;
+        ConfirmPanel.Instance.Show("是否复制对方特性？",
+            () => { shouldCopy = true; copyChoiceDone = true; },
+            () => { copyChoiceDone = true; });
+        yield return new WaitUntil(() => copyChoiceDone);
+        if (!shouldCopy) { CleanupAfterPlacement(); yield break; }
+
+        // ═══ Step 4: 选择目标召唤物 ═══
+        bool targetDone = false;
         CardInstance selected = null;
         SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (s) =>
         {
@@ -3984,16 +4024,13 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 CardInstance ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
                 CardData td = CardDatabase.Instance?.GetTemplate(ci?.templateID);
                 if (td != null && (td.baseCost == 1 || td.baseCost == 3) && (td.hasOnEnter || ci.HasDiscard))
-                {
-                    selected = ci;
-                    done = true;
-                }
+                { selected = ci; targetDone = true; }
             }
         });
-        yield return new WaitUntil(() => done);
+        yield return new WaitUntil(() => targetDone);
         if (selected == null) { CleanupAfterPlacement(); yield break; }
 
-        // 4. 选择复制进场还是抛置
+        // ═══ Step 5: 选择复制进场还是抛置 ═══
         List<string> copyable = new List<string>();
         CardData selTD = CardDatabase.Instance?.GetTemplate(selected.templateID);
         if (selTD != null && selTD.hasOnEnter) copyable.Add("进场");
@@ -4002,44 +4039,56 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         string chosenTrait = copyable.Count == 1 ? copyable[0] : null;
         if (copyable.Count == 2)
         {
-            bool choiceDone = false;
+            bool traitDone = false;
             GenericChoicePanel.Instance.Show("选择复制特性", copyable, (index) =>
-            {
-                chosenTrait = copyable[index];
-                choiceDone = true;
-            });
-            yield return new WaitUntil(() => choiceDone);
+            { chosenTrait = copyable[index]; traitDone = true; });
+            yield return new WaitUntil(() => traitDone);
         }
-
         if (chosenTrait == null) { CleanupAfterPlacement(); yield break; }
 
-        // 5. 复制并触发
+        // ═══ Step 6: 复制并触发 ═══
         giver.mindScholarCopyCount++;
         string traitText = GetTraitFullText(selected, chosenTrait);
         string recordText = $"{selected.templateID}:{chosenTrait}:{traitText}";
+        string traitKey = $"{selected.templateID}:{chosenTrait}";
         giver.mindScholarCopiedTraits.Add(recordText);
         giver.GrantTrait(traitText);
+
+        // 同步复制状态到服务器
+        if (NetworkClient.isConnected && !NetworkServer.active)
+            TurnManager.SyncMyBoardToOpponent();
 
         if (chosenTrait == "进场")
         {
             CardData originalTD = CardDatabase.Instance?.GetTemplate(selected.templateID);
             if (originalTD != null && originalTD.hasOnEnter)
             {
+                giver.mindScholarTriggeredKeys.Add(traitKey);
+                NestingContext.Enter($"MS_Enter_{traitKey}");
                 BoardSlot mySlot = FindSlotOf(giver);
                 if (mySlot != null)
-                    mySlot.StartCoroutine(mySlot.StartOnEnterEffect(originalTD, giver));
+                    yield return StartCoroutine(mySlot.StartOnEnterEffect(originalTD, giver));
+                yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
+                NestingContext.Exit();
             }
         }
         else if (chosenTrait == "抛置")
         {
-            if (!giver.mindScholarDiscardTriggeredThisPhase)
-            {
-                giver.mindScholarDiscardTriggeredThisPhase = true;
-                TriggerDiscardEffectFromTrait(giver, recordText);
-            }
+            giver.mindScholarTriggeredKeys.Add(traitKey);
+            NestingContext.Enter($"MS_Discard_{traitKey}");
+            TriggerDiscardEffectFromTrait(giver, recordText);
+            yield return null;
+            yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
+            NestingContext.Exit();
         }
 
         CleanupAfterPlacement();
+    }
+
+    string ExtractTraitKey(string recordText)
+    {
+        string[] parts = recordText.Split(':');
+        return parts.Length >= 2 ? $"{parts[0]}:{parts[1]}" : recordText;
     }
 
     string ExtractTemplateIDFromTrait(string recordText)

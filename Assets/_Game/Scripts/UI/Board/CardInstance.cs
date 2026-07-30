@@ -78,9 +78,8 @@ public class CardInstance : MonoBehaviour
     public bool ignoreAllCounters; // 无畏者：不触发任何反制牌
     public bool _conquerorTriggered;
     public int mindScholarCopyCount;
-    public List<string> mindScholarCopiedTraits; // 完整的特性文本
-    public bool mindScholarEnterTriggeredThisPhase;
-    public bool mindScholarDiscardTriggeredThisPhase;
+    public List<string> mindScholarCopiedTraits; // 完整的特性文本: "{templateID}:{type}:{fullText}"
+    public List<string> mindScholarTriggeredKeys; // 本阶段已触发的特性key: "{templateID}:{type}"
     public int _conquerorTotalDamageThisBattle;
     public bool _conquerorPendingCheck;
     public GameObject _conquerorTargetEnemyCard;
@@ -254,7 +253,10 @@ public class CardInstance : MonoBehaviour
         if (templateID == "01510")
             isAncientFairy = true;
         if (templateID == "01511")
+        {
             mindScholarCopiedTraits = new List<string>();
+            mindScholarTriggeredKeys = new List<string>();
+        }
     }
     public void CopyFrom(CardInstance src)
     {
@@ -348,8 +350,7 @@ public class CardInstance : MonoBehaviour
         ignoreAllCounters = src.ignoreAllCounters;
         mindScholarCopyCount = src.mindScholarCopyCount;
         mindScholarCopiedTraits = src.mindScholarCopiedTraits != null ? new List<string>(src.mindScholarCopiedTraits) : new List<string>();
-        mindScholarEnterTriggeredThisPhase = src.mindScholarEnterTriggeredThisPhase;
-        mindScholarDiscardTriggeredThisPhase = src.mindScholarDiscardTriggeredThisPhase;
+        mindScholarTriggeredKeys = src.mindScholarTriggeredKeys != null ? new List<string>(src.mindScholarTriggeredKeys) : new List<string>();
     }
     public void CopyTraitsFromTemplate(CardData template)
     {

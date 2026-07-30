@@ -217,7 +217,17 @@ public class BoardSyncManager : MonoBehaviour
             int ciServerHS = ci.hostSlotID >= 6 ? ci.hostSlotID - 6 : ci.hostSlotID + 6;
             bool stillExists = incoming.Exists(x => x.tid == ci.templateID
                 && x.hs == ciServerHS && x.order == ci.attachOrder);
-            if (!stillExists) { SafeDestroy(obj); bm.attachedModels.RemoveAt(i); }
+            if (!stillExists)
+            {
+                // 古老精灵(01510)：宿主死在服务器侧，纯客户端保留妖精等 TargetRpc 委托选择
+                if (ci != null && ci.isAncientFairy)
+                {
+                    bm.attachedModels.RemoveAt(i);
+                    BoardSlot._fairyPending.Add(obj);
+                    continue;
+                }
+                SafeDestroy(obj); bm.attachedModels.RemoveAt(i);
+            }
         }
 
         // 添加/更新 incoming 中的附着物
@@ -318,7 +328,7 @@ public class BoardSyncManager : MonoBehaviour
         {
             var ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
 
-            // 保护：2s 内刚放置的卡不被网络同步清除（敌对半场也需要——过期 SyncNow 携带空数据会误删 RPC 创建的模型）
+            // 保护：2s 内刚放置的卡不被网络同步清除
             if (ci != null && Time.time - ci._placedAtTime < 2.0f) return;
 
             // 清除附着模型
@@ -329,12 +339,20 @@ public class BoardSyncManager : MonoBehaviour
                 var aci = am.GetComponent<Card3DInstance>()?.cardInstance;
                 if (aci != null && aci.isAttached && aci.hostSlotID == idx)
                 {
-                    SafeDestroy(am);
-                    bm.attachedModels.RemoveAt(i);
+                    if (aci.isAncientFairy)
+                    {
+                        // 古老精灵(01510)：保留等 TargetRpc 委托选择
+                        bm.attachedModels.RemoveAt(i);
+                        BoardSlot._fairyPending.Add(am);
+                    }
+                    else
+                    {
+                        SafeDestroy(am);
+                        bm.attachedModels.RemoveAt(i);
+                    }
                 }
             }
 
-            // 记录死亡时间——防止过期同步数据重建幻影模型
             slot.lastHandleDeathTime = Time.time;
             SafeDestroy(slot.currentCard3D); slot.SetCard(null);
         }
@@ -348,16 +366,11 @@ public class BoardSyncManager : MonoBehaviour
         // templateID 不匹配 → 当前模型已过时（换位后、死亡替换后等），销毁后按同步数据重建
         if (cur != null && cur.templateID != tid)
         {
-            // 防幻影保护链（按优先级）：
-            // 1. 已走过进场效果 → 玩家放置的权威卡，永不覆盖
+            // 防幻影保护链：
             if (cur._hadEnterEffect) return;
-            // 2. 进场中 → 不覆盖
             if (cur._enterEffectRunning) return;
-            // 3. 同步数据是狼(03006)但槽位上已是非狼 → 过期数据
             if (tid == "03006" && cur.templateID != "03006") return;
-            // 4. 非狼/非影子卡 <2s 内放置 → 保护
-            if (cur.templateID != "03006" && cur.templateID != "03007"
-                && Time.time - cur._placedAtTime < 2.0f) return;
+            if (Time.time - cur._placedAtTime < 2.0f) return;
 
             // 销毁旧模型 + 其附着物，清空槽位以便重建
             for (int i = bm.attachedModels.Count - 1; i >= 0; i--)
@@ -367,15 +380,24 @@ public class BoardSyncManager : MonoBehaviour
                 var aci = am.GetComponent<Card3DInstance>()?.cardInstance;
                 if (aci != null && aci.isAttached && aci.hostSlotID == idx)
                 {
-                    SafeDestroy(am);
-                    bm.attachedModels.RemoveAt(i);
+                    if (aci.isAncientFairy)
+                    {
+                        // 古老精灵(01510)：保留等 TargetRpc 委托选择
+                        bm.attachedModels.RemoveAt(i);
+                        BoardSlot._fairyPending.Add(am);
+                    }
+                    else
+                    {
+                        SafeDestroy(am);
+                        bm.attachedModels.RemoveAt(i);
+                    }
                 }
             }
             SafeDestroy(slot.currentCard3D); slot.SetCard(null); cur = null;
         }
         if (cur == null && hm != null)
         {
-            // 保护：本槽位刚刚被 HandleDeath 清空 → 不重建（等 DeathPipeline 的网络同步完成后自然一致）
+            // 保护：本槽位刚刚被 HandleDeath 清空 → 不重建
             if (slot.lastHandleDeathTime > 0 && Time.time - slot.lastHandleDeathTime < 2f)
                 return;
 

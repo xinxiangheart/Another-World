@@ -338,6 +338,8 @@ public class NetworkPlayer : NetworkBehaviour
     public void CmdPlayCard(string templateID, int slotID, int overrideAtk, int overrideHP, int overrideMaxHP, string instanceID)
     {
         Debug.Log($"[NetworkPlayer] CmdPlayCard: templateID={templateID}, slotID={slotID}, netId={netId}");
+        // slotID 仅允许 -1（手牌消耗通知）、0-11（板面放置）。其他值为非法输入，拒绝。
+        if (slotID < -1 || slotID >= 12) return;
         TurnManager tm = FindObjectOfType<TurnManager>();
         if (tm == null) return;
         if (!IsMyTurnOnServer(tm)) return;
@@ -355,6 +357,8 @@ public class NetworkPlayer : NetworkBehaviour
 
         if (template.cardType == CardType.Summon)
         {
+            // slotID=-1 是手牌消耗通知，不创建板面模型
+            if (slotID < 0) return;
             if (this != NetworkPlayer.Local)
             {
                 // Remote's card — spawn on server for BattleCoroutine. Host=server, no TargetRpc needed.
@@ -429,6 +433,9 @@ public class NetworkPlayer : NetworkBehaviour
                             }
                         }
                         slot.SetCard(model);
+                        // 非Token卡 → 玩家放置，禁止过期SyncNow覆盖
+                        var placedCI = model.GetComponent<Card3DInstance>()?.cardInstance;
+                        if (placedCI != null && !placedCI.templateID.StartsWith("03")) placedCI._hadEnterEffect = true;
                     }
                 }
             }
@@ -1029,6 +1036,9 @@ public class NetworkPlayer : NetworkBehaviour
             }
         }
         slot.SetCard(model);
+        // 非Token卡（templateID不以"03"开头）→ 玩家放置，禁止过期SyncNow覆盖
+        var tci = model.GetComponent<Card3DInstance>()?.cardInstance;
+        if (tci != null && !tci.templateID.StartsWith("03")) tci._hadEnterEffect = true;
 
         // If opponent has MistHider, immediately hide this new enemy card
         if (Card3DHover.EnemyCardsAreHidden)
@@ -1949,22 +1959,66 @@ public class NetworkPlayer : NetworkBehaviour
         BoardSyncManager.MarkDirty();
     }
 
-    /// <summary>服务端→远端客户端：01510 古老精灵重附着选择。</summary>
+    /// <summary>服务端→远端：01510 古老精灵重附着选择。oldHostLocalSlot为远程本地视角(6-11)。</summary>
     [TargetRpc]
-    public void TargetFairyReattachSelect(NetworkConnectionToClient target, string fairyInstanceID, int oldHostLocalSlot)
+    public void TargetFairyReattachSelect(NetworkConnectionToClient target, int oldHostLocalSlot)
     {
         BoardSlot bs = FindObjectOfType<BoardSlot>();
-        if (bs != null) bs.StartCoroutine(bs.RemoteFairyReattachSelect(fairyInstanceID, oldHostLocalSlot));
+        if (bs != null) bs.StartCoroutine(bs.RemoteFairyReattachSelect(oldHostLocalSlot));
     }
 
-    /// <summary>远端客户端→服务器：01510 古老精灵重附着结果。</summary>
+    /// <summary>远端→服务器：01510 古老精灵重附着结果。newHostLocalSlot为远程本地视角(6-11)。</summary>
     [Command]
-    public void CmdFairyReattachResult(string fairyInstanceID, int newHostLocalSlot)
+    public void CmdFairyReattachResult(int newHostLocalSlot)
     {
-        // 远程上报的 slot 视角与服务器相反
         int serverSlot = isLocalPlayer ? newHostLocalSlot : newHostLocalSlot - 6;
-        BoardSlot bs = FindObjectOfType<BoardSlot>();
-        if (bs != null) bs.OnFairyReattachResult(newHostLocalSlot >= 0 ? serverSlot : -1);
+        BoardSlot.OnFairyReattachResult(newHostLocalSlot >= 0 ? serverSlot : -1);
+    }
+
+    /// <summary>服务端→远端：恢复 01511 已复制的特性状态。</summary>
+    [TargetRpc]
+    public void TargetSyncScholarState(NetworkConnectionToClient target, string instanceID, int copyCount, string traits, string triggeredKeys)
+    {
+        foreach (var card in handCards)
+        {
+            if (card == null) continue;
+            var ci = card.GetComponent<CardInstance>();
+            if (ci != null && ci.templateID == "01511" && ci.instanceID == instanceID)
+            {
+                ApplyScholarState(ci, copyCount, traits, triggeredKeys);
+                return;
+            }
+        }
+        StartCoroutine(RetrySyncScholarState(instanceID, copyCount, traits, triggeredKeys));
+    }
+
+    System.Collections.IEnumerator RetrySyncScholarState(string instanceID, int copyCount, string traits, string triggeredKeys)
+    {
+        for (int attempt = 0; attempt < 30; attempt++)
+        {
+            yield return null;
+            handCards.RemoveAll(c => c == null);
+            foreach (var card in handCards)
+            {
+                var ci = card?.GetComponent<CardInstance>();
+                if (ci != null && ci.templateID == "01511" && ci.instanceID == instanceID)
+                {
+                    ApplyScholarState(ci, copyCount, traits, triggeredKeys);
+                    yield break;
+                }
+            }
+        }
+    }
+
+    void ApplyScholarState(CardInstance ci, int copyCount, string traits, string triggeredKeys)
+    {
+        ci.mindScholarCopyCount = copyCount;
+        ci.mindScholarCopiedTraits = string.IsNullOrEmpty(traits)
+            ? new System.Collections.Generic.List<string>()
+            : new System.Collections.Generic.List<string>(traits.Split(new[] { ";;" }, System.StringSplitOptions.None));
+        ci.mindScholarTriggeredKeys = string.IsNullOrEmpty(triggeredKeys)
+            ? new System.Collections.Generic.List<string>()
+            : new System.Collections.Generic.List<string>(triggeredKeys.Split(new[] { ";;" }, System.StringSplitOptions.None));
     }
 
     // ═══════════════════════════════════════════════════════════════════

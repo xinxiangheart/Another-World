@@ -201,8 +201,26 @@ public static class DeathHandlers
         {
             ctx.source.handledReturnToHand = true;
             var template = CardDatabase.Instance?.GetTemplate(ctx.TemplateID);
-            if (template != null)
-                NetworkPlayer.AddCardToHandForPlayer(NP(ctx), template, ctx.source.instanceID);
+            if (template == null) return;
+            var owner = NP(ctx);
+            // 主机/单机：加一张到本地手牌并传递旧 CardInstance 以保留 mindScholar 已复制特性
+            if (!NetworkServer.active || owner == NetworkPlayer.Local)
+            {
+                owner.AddCardToHandFromInstance(template, ctx.source, false);
+            }
+            else
+            {
+                string iid = template._instanceID ?? ctx.source.instanceID;
+                owner.TargetReceiveCard(owner.connectionToClient, template.templateID, iid);
+                owner.AddServerSideCard(template, iid);
+                // 远程客户端需恢复已复制特性——单独发送同步状态
+                owner.TargetSyncScholarState(owner.connectionToClient, iid,
+                    ctx.source.mindScholarCopyCount,
+                    ctx.source.mindScholarCopiedTraits != null
+                        ? string.Join(";;", ctx.source.mindScholarCopiedTraits) : "",
+                    ctx.source.mindScholarTriggeredKeys != null
+                        ? string.Join(";;", ctx.source.mindScholarTriggeredKeys) : "");
+            }
         }
     }
 

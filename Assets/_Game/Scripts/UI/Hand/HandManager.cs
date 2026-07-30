@@ -70,11 +70,18 @@ public class HandManager : MonoBehaviour
             }
         }
 
-        // Sync to remote client after spell/counter cast is fully processed
+        // Sync to remote client after spell/counter cast is fully processed.
+        // Skip attach-only cards (canAttach && baseHealth==0) — their models live in attachedModels,
+        // and CmdPlayCard rejects them, triggering unnecessary MarkDirty that races with attach sync.
         if (NetworkClient.isConnected && !string.IsNullOrEmpty(removedTemplateID))
         {
-            NetworkPlayer.Local?.CmdPlayCard(removedTemplateID, -1, -1, -1, -1, "");
-            BoardSyncManager.MarkDirty();
+            CardData removedTD = CardDatabase.Instance?.GetTemplate(removedTemplateID);
+            bool isAttachOnly = removedTD != null && removedTD.canAttach && removedTD.baseHealth == 0;
+            if (!isAttachOnly)
+            {
+                NetworkPlayer.Local?.CmdPlayCard(removedTemplateID, -1, -1, -1, -1, "");
+                BoardSyncManager.MarkDirty();
+            }
         }
 
         RefreshLayout(true);

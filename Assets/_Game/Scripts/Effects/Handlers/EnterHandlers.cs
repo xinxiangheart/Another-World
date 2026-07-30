@@ -480,7 +480,15 @@ public static class EnterHandlers
     static void Handle01511(EffectContext ctx)
     {
         var inst = ctx.source;
-        if (inst.mindScholarEnterTriggeredThisPhase) { ctx.sourceSlot.CleanupAfterPlacement(); return; }
+        bool allTriggered = true;
+        foreach (string t in inst.mindScholarCopiedTraits)
+        {
+            if (!t.Contains("进场")) continue;
+            string[] parts = t.Split(':');
+            string key = parts.Length >= 2 ? $"{parts[0]}:{parts[1]}" : t;
+            if (!inst.mindScholarTriggeredKeys.Contains(key)) { allTriggered = false; break; }
+        }
+        if (allTriggered) { ctx.sourceSlot.CleanupAfterPlacement(); return; }
         ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.MindScholarEnterEffect(inst));
     }
 

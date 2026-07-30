@@ -151,8 +151,7 @@ public partial class TurnManager : MonoBehaviour
                 ci.hasFirstStrike = true;
             if (ci.templateID == "01511")
             {
-                ci.mindScholarEnterTriggeredThisPhase = false;
-                ci.mindScholarDiscardTriggeredThisPhase = false;
+                ci.mindScholarTriggeredKeys?.Clear();
             }
         }
     }
