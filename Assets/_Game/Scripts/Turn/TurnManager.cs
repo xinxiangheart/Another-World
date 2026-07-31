@@ -152,6 +152,7 @@ public partial class TurnManager : MonoBehaviour
             if (ci.templateID == "01511")
             {
                 ci.mindScholarTriggeredKeys?.Clear();
+                ci._mindScholarCopyPrompted = false;
             }
         }
     }

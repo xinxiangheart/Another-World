@@ -199,6 +199,15 @@ public static class EnterHandlers
     {
         var slot = ctx.sourceSlot;
         if (!slot.HasEnemyTarget()) { slot.CleanupAfterPlacement(); BoardSlot.SyncMistHiderDisplay(); return; }
+        ctx.StartedCoroutine = slot.StartCoroutine(Handle01104Coroutine(ctx));
+        BoardSlot.SyncMistHiderDisplay();
+    }
+
+    static System.Collections.IEnumerator Handle01104Coroutine(EffectContext ctx)
+    {
+        yield return null; // 等一帧让父协程恢复
+        var slot = ctx.sourceSlot;
+        bool done = false;
         SM().BeginSelection(TargetType.SingleEnemy, (targetSlot) =>
         {
             if (targetSlot?.currentCard3D != null)
@@ -208,16 +217,15 @@ public static class EnterHandlers
                 {
                     BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, 1, slot.currentCard3D);
                     t3d.UpdateValues();
-                    // 纯客户端需显式通知服务器扣除敌人HP——CmdReportAllSlots 不写 enemy slot
                     if (NetworkClient.isConnected && !NetworkServer.active)
                         NetworkPlayer.Local?.CmdApplyDamageToCard(targetSlot.slotID, 1);
                 }
             }
             BoardSlot.CheckAndHandleDeaths();
             TurnManager.SyncMyBoardToOpponent();
-            slot.CleanupAfterPlacement();
+            done = true;
         });
-        BoardSlot.SyncMistHiderDisplay();
+        yield return new WaitUntil(() => done);
     }
 
     static void Handle01110(EffectContext ctx)
@@ -479,17 +487,9 @@ public static class EnterHandlers
 
     static void Handle01511(EffectContext ctx)
     {
-        var inst = ctx.source;
-        bool allTriggered = true;
-        foreach (string t in inst.mindScholarCopiedTraits)
-        {
-            if (!t.Contains("进场")) continue;
-            string[] parts = t.Split(':');
-            string key = parts.Length >= 2 ? $"{parts[0]}:{parts[1]}" : t;
-            if (!inst.mindScholarTriggeredKeys.Contains(key)) { allTriggered = false; break; }
-        }
-        if (allTriggered) { ctx.sourceSlot.CleanupAfterPlacement(); return; }
-        ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.MindScholarEnterEffect(inst));
+        if (ctx.source._mindScholarRunning) { ctx.sourceSlot.CleanupAfterPlacement(); return; }
+        ctx.source._mindScholarRunning = true;
+        ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.MindScholarEnterEffect(ctx.source));
     }
 
     static void Handle01515(EffectContext ctx)

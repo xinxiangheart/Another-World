@@ -3954,6 +3954,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public IEnumerator MindScholarEnterEffect(CardInstance giver)
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
+        // 每次进场仅允许弹一次复制窗
+        giver._mindScholarCopyPrompted = false;
 
         // ═══ Step 1: 依次触发所有本阶段未触发的已复制进场特性 ═══
         foreach (string trait in giver.mindScholarCopiedTraits)
@@ -3989,8 +3991,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             NestingContext.Exit();
         }
 
-        // ═══ Step 3: 选择是否复制（最多4个）═══
-        if (giver.mindScholarCopyCount >= 4) { CleanupAfterPlacement(); yield break; }
+        // ═══ Step 3: 选择是否复制（最多4个，每阶段仅弹一次）═══
+        if (giver.mindScholarCopyCount >= 4 || giver._mindScholarCopyPrompted)
+        { FinishScholar(giver); yield break; }
+        giver._mindScholarCopyPrompted = true;
 
         List<CardInstance> targets = new List<CardInstance>();
         for (int i = 0; i <= 5; i++)
@@ -4003,7 +4007,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 targets.Add(ci);
         }
 
-        if (targets.Count == 0) { CleanupAfterPlacement(); yield break; }
+        if (targets.Count == 0) { FinishScholar(giver); yield break; }
 
         // "是否复制" 选择
         bool copyChoiceDone = false;
@@ -4012,11 +4016,19 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             () => { shouldCopy = true; copyChoiceDone = true; },
             () => { copyChoiceDone = true; });
         yield return new WaitUntil(() => copyChoiceDone);
-        if (!shouldCopy) { CleanupAfterPlacement(); yield break; }
+        if (!shouldCopy) { FinishScholar(giver); yield break; }
 
-        // ═══ Step 4: 选择目标召唤物 ═══
+        // ═══ Step 4: 选择目标召唤物（仅合法目标高亮）═══
         bool targetDone = false;
         CardInstance selected = null;
+        isStrengtheningSlot = true;
+        extraTargetFilter = (s) =>
+        {
+            if (s?.currentCard3D == null) return false;
+            CardInstance ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+            CardData td = CardDatabase.Instance?.GetTemplate(ci?.templateID);
+            return td != null && (td.baseCost == 1 || td.baseCost == 3) && (td.hasOnEnter || ci.HasDiscard);
+        };
         SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (s) =>
         {
             if (s?.currentCard3D != null)
@@ -4028,7 +4040,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             }
         });
         yield return new WaitUntil(() => targetDone);
-        if (selected == null) { CleanupAfterPlacement(); yield break; }
+        isStrengtheningSlot = false;
+        extraTargetFilter = null;
+        if (selected == null) { FinishScholar(giver); yield break; }
 
         // ═══ Step 5: 选择复制进场还是抛置 ═══
         List<string> copyable = new List<string>();
@@ -4044,7 +4058,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             { chosenTrait = copyable[index]; traitDone = true; });
             yield return new WaitUntil(() => traitDone);
         }
-        if (chosenTrait == null) { CleanupAfterPlacement(); yield break; }
+        if (chosenTrait == null) { FinishScholar(giver); yield break; }
 
         // ═══ Step 6: 复制并触发 ═══
         giver.mindScholarCopyCount++;
@@ -4060,15 +4074,13 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         if (chosenTrait == "进场")
         {
+            // 先标记已触发再执行——防止递归回 Step 1 重入
+            giver.mindScholarTriggeredKeys.Add(traitKey);
             CardData originalTD = CardDatabase.Instance?.GetTemplate(selected.templateID);
             if (originalTD != null && originalTD.hasOnEnter)
             {
-                giver.mindScholarTriggeredKeys.Add(traitKey);
                 NestingContext.Enter($"MS_Enter_{traitKey}");
-                BoardSlot mySlot = FindSlotOf(giver);
-                if (mySlot != null)
-                    yield return StartCoroutine(mySlot.StartOnEnterEffect(originalTD, giver));
-                yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
+                yield return StartCoroutine(RunCopiedEnterEffect(giver, originalTD));
                 NestingContext.Exit();
             }
         }
@@ -4083,6 +4095,50 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
 
         CleanupAfterPlacement();
+        giver._mindScholarRunning = false;
+    }
+
+    void FinishScholar(CardInstance giver)
+    {
+        CleanupAfterPlacement();
+        giver._mindScholarRunning = false;
+    }
+
+    /// <summary>直接运行复制的进场效果——不经过 StartOnEnterEffect 嵌套生命周期。</summary>
+    IEnumerator RunCopiedEnterEffect(CardInstance giver, CardData originalTD)
+    {
+        var mySlot = FindSlotOf(giver);
+        if (mySlot == null) yield break;
+
+        // 01104 佣兵 / 01313 / 01314: SingleEnemy 选择 + 伤害
+        if (originalTD.templateID == "01104" || originalTD.templateID == "01313" || originalTD.templateID == "01314")
+        {
+            if (!mySlot.HasEnemyTarget()) yield break;
+            bool done = false;
+            SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (targetSlot) =>
+            {
+                if (targetSlot?.currentCard3D != null)
+                {
+                    var t3d = targetSlot.currentCard3D.GetComponent<Card3DInstance>();
+                    if (t3d?.cardInstance != null)
+                    {
+                        BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, 1, mySlot.currentCard3D);
+                        t3d.UpdateValues();
+                        if (NetworkClient.isConnected && !NetworkServer.active)
+                            NetworkPlayer.Local?.CmdApplyDamageToCard(targetSlot.slotID, 1);
+                    }
+                }
+                BoardSlot.CheckAndHandleDeaths();
+                TurnManager.SyncMyBoardToOpponent();
+                done = true;
+            });
+            yield return new WaitUntil(() => done);
+            yield break;
+        }
+
+        // fallback: generic StartOnEnterEffect
+        yield return StartCoroutine(mySlot.StartOnEnterEffect(originalTD, giver));
+        yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
     }
 
     string ExtractTraitKey(string recordText)
