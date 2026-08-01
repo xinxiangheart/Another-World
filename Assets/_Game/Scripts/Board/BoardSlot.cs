@@ -4062,15 +4062,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         if (giver.mindScholarTriggeredKeys != null) giver.mindScholarTriggeredKeys.Clear();
         else giver.mindScholarTriggeredKeys = new List<string>();
 
-        Debug.Log($"[MS-P2] snapshotTraits.Count={snapshotTraits.Count} snapshotNew={snapshotNew != null} server={NetworkServer.active}");
-        for (int di = 0; di < snapshotTraits.Count; di++)
-            Debug.Log($"[MS-P2]   trait[{di}]={snapshotTraits[di]}");
-
         void AddOne(List<(string,string,string,string)> list, string trait, string type) {
             string key = ExtractTraitKey(trait);
-            string tid = ExtractTemplateIDFromTrait(trait);
-            Debug.Log($"[MS-P2] AddOne trait={trait} key={key} tid={tid} type={type} triggered={giver.mindScholarTriggeredKeys.Contains(key)}");
             if (giver.mindScholarTriggeredKeys.Contains(key)) return;
+            string tid = ExtractTemplateIDFromTrait(trait);
             if (string.IsNullOrEmpty(tid)) return;
             list.Add((trait, key, tid, type));
         }
