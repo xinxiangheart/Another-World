@@ -814,9 +814,9 @@ public class NetworkPlayer : NetworkBehaviour
         if (inst == null) inst = card.AddComponent<CardInstance>();
 
         inst.CopyFrom(oldInstance);
-        inst.currentAttack = inst.baseAttack;
-        inst.currentHealth = inst.baseHealth;
-        inst.currentMaxHealth = inst.baseMaxHealth;
+        inst.currentAttack = Mathf.Max(0, inst.baseAttack);
+        inst.currentHealth = Mathf.Max(0, inst.baseHealth);
+        inst.currentMaxHealth = Mathf.Max(0, inst.baseMaxHealth);
         inst.currentTier = inst.baseTier;
         inst.tempAttackBoost = 0;
         inst.tempHealthBoost = 0;
@@ -2023,9 +2023,9 @@ public class NetworkPlayer : NetworkBehaviour
         if (inst == null) inst = card.AddComponent<CardInstance>();
         inst.InitFromTemplate(template, 0);
         ApplyReturnedCardState(inst, srcState);
-        inst.currentAttack = inst.baseAttack;
-        inst.currentHealth = inst.baseHealth;
-        inst.currentMaxHealth = inst.baseMaxHealth;
+        inst.currentAttack = Mathf.Max(0, inst.baseAttack);
+        inst.currentHealth = Mathf.Max(0, inst.baseHealth);
+        inst.currentMaxHealth = Mathf.Max(0, inst.baseMaxHealth);
         inst.currentTier = inst.baseTier;
         inst.tempAttackBoost = 0;
         inst.tempHealthBoost = 0;
@@ -2203,6 +2203,22 @@ public class NetworkPlayer : NetworkBehaviour
         if (target != null)
         {
             DiscardHandlers.Apply01344Debuff(target);
+            BoardSyncManager.MarkDirty();
+        }
+    }
+
+    /// <summary>客户端→服务器：01346 士兵抛置为己方一召唤物恢复3生命值。</summary>
+    [Command]
+    public void CmdDiscardHeal01346(int localTargetSlot)
+    {
+        int serverSlot = isLocalPlayer ? localTargetSlot : (localTargetSlot >= 6 ? localTargetSlot - 6 : localTargetSlot + 6);
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        BoardSlot target = bm?.GetSlot(serverSlot);
+        if (target?.currentCard3D != null)
+        {
+            Card3DInstance t3d = target.currentCard3D.GetComponent<Card3DInstance>();
+            t3d?.cardInstance?.ReceiveHeal(3, CardInstance.HealSourceType.Minion);
+            t3d?.UpdateValues();
             BoardSyncManager.MarkDirty();
         }
     }

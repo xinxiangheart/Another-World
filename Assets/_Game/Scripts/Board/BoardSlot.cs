@@ -1215,8 +1215,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         foreach (string trait in ci.grantedTraitTexts)
         {
-            // 跳过 01511 复制的非死亡特性（格式为 "{templateID}:{type}:{text}"，以数字开头）
-            if (trait.Length > 0 && char.IsDigit(trait[0]) && trait.Contains(":")) continue;
+            // 只处理退场（死亡）相关的动态赋予特性；01511 复制的进场/抛置等非死亡特性
+            // 在各自的触发时机处理（进场→MindScholarEnterEffect，抛置→TriggerScholarDiscardFromHover）
+            if (!trait.Contains("退场")) continue;
             switch (trait)
             {
                 case "退场：减一能量":
@@ -4012,10 +4013,12 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         CleanupAfterPlacement();
     }
-    /// <summary>01511 手牌抛置：遍历已复制抛置特性，触发第一个未触发的。</summary>
+    /// <summary>01511 手牌抛置：触发全部已复制抛置特性。</summary>
     public IEnumerator TriggerScholarDiscardFromHover(CardInstance scholar, int discardSlotID)
     {
-        BoardSlot mySlot = FindSlotOf(scholar);
+        // 此时 HandleDeath 已将卡牌移回手牌，不能通过 FindSlotOf 搜索——直接用 discardSlotID
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        BoardSlot mySlot = bm?.GetSlot(discardSlotID);
         if (mySlot == null) yield break;
         if (scholar.mindScholarCopiedTraits == null || scholar.mindScholarCopiedTraits.Count == 0) yield break;
 
@@ -4023,10 +4026,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         {
             if (!trait.Contains("抛置")) continue;
             string key = ExtractTraitKey(trait);
-            if (scholar.mindScholarTriggeredKeys.Contains(key)) continue;
-            scholar.mindScholarTriggeredKeys.Add(key);
             NestingContext.Enter($"MS_HoverDiscard_{key}");
-            TriggerDiscardEffectFromTrait(scholar, trait);
+            TriggerDiscardEffectFromTrait(scholar, trait, discardSlotID);
             yield return null;
             yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
             int myDepth2 = NestingContext.Snapshot();
@@ -4035,7 +4036,6 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             yield return new WaitWhile(() => NestingContext.Depth > myDepth2 || BoardSlot.isPlacingCard);
             TurnManager.SyncMyBoardToOpponent();
             NestingContext.Exit();
-            yield break;
         }
     }
 
@@ -4091,46 +4091,53 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             }
         }
 
-        var snapshotTraits = new List<string>(giver.mindScholarCopiedTraits);
         string snapshotNew = newCopyRecord;
         string snapshotNewType = newCopyType;
 
-        var pendingList = new List<(string trait, string key, string tid, string type)>();
-        if (giver.mindScholarTriggeredKeys != null) giver.mindScholarTriggeredKeys.Clear();
-        else giver.mindScholarTriggeredKeys = new List<string>();
-
-        void AddOne(List<(string,string,string,string)> list, string trait, string type) {
-            string key = ExtractTraitKey(trait);
-            if (giver.mindScholarTriggeredKeys.Contains(key)) return;
-            string tid = ExtractTemplateIDFromTrait(trait);
-            if (string.IsNullOrEmpty(tid)) return;
-            list.Add((trait, key, tid, type));
-        }
-        foreach (string t in snapshotTraits) { if (t == snapshotNew) continue; if (t.Contains("进场")) AddOne(pendingList, t, "进场"); }
-        foreach (string t in snapshotTraits) { if (t == snapshotNew) continue; if (t.Contains("抛置")) AddOne(pendingList, t, "抛置"); }
-        if (snapshotNew != null) AddOne(pendingList, snapshotNew, snapshotNewType ?? (snapshotNew.Contains("进场") ? "进场" : "抛置"));
-
-        foreach (var (trait, key, tid, type) in pendingList)
+        // 1. 遍历所有已复制的进场特性——每次重进场都触发
+        foreach (string t in giver.mindScholarCopiedTraits)
         {
-            giver.mindScholarTriggeredKeys.Add(key);
-            NestingContext.Enter($"MS_{type}_{key}");
-            if (type == "进场")
-            {
-                var td = CardDatabase.Instance?.GetTemplate(tid);
-                if (td != null && td.hasOnEnter) yield return StartCoroutine(RunCopiedEnterEffect(giver, td));
-            }
-            else
-            {
-                TriggerDiscardEffectFromTrait(giver, trait);
-                yield return null;
-                yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
-                int myDepth2 = NestingContext.Snapshot();
-                BoardSlot.CheckAndHandleDeaths();
-                yield return ActionQueueManager.WaitForDrain();
-                yield return new WaitWhile(() => NestingContext.Depth > myDepth2 || BoardSlot.isPlacingCard);
-                TurnManager.SyncMyBoardToOpponent();
-            }
+            if (t == snapshotNew) continue;   // 本次新复制的留到第2步单独处理
+            if (!t.Contains("进场")) continue;
+            string key = ExtractTraitKey(t);
+            string tid = ExtractTemplateIDFromTrait(t);
+            if (string.IsNullOrEmpty(tid)) continue;
+            NestingContext.Enter($"MS_Enter_{key}");
+            var td = CardDatabase.Instance?.GetTemplate(tid);
+            if (td != null && td.hasOnEnter)
+                yield return StartCoroutine(RunCopiedEnterEffect(giver, td));
             NestingContext.Exit();
+        }
+
+        // 2. 触发本次新复制的特性（进场或抛置，均在进场树中立即触发一次）
+        if (snapshotNew != null)
+        {
+            string type = snapshotNewType ?? (snapshotNew.Contains("进场") ? "进场" : "抛置");
+            string key = ExtractTraitKey(snapshotNew);
+            string tid = ExtractTemplateIDFromTrait(snapshotNew);
+            if (!string.IsNullOrEmpty(tid))
+            {
+                NestingContext.Enter($"MS_{type}_{key}");
+                if (type == "进场")
+                {
+                    var td = CardDatabase.Instance?.GetTemplate(tid);
+                    if (td != null && td.hasOnEnter)
+                        yield return StartCoroutine(RunCopiedEnterEffect(giver, td));
+                }
+                else // "抛置"——进场树中立即触发，不消耗手动弃牌机会
+                {
+                    BoardSlot mySlot = FindSlotOf(giver);
+                    TriggerDiscardEffectFromTrait(giver, snapshotNew, mySlot?.slotID ?? -1);
+                    yield return null;
+                    yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
+                    int myDepth2 = NestingContext.Snapshot();
+                    BoardSlot.CheckAndHandleDeaths();
+                    yield return ActionQueueManager.WaitForDrain();
+                    yield return new WaitWhile(() => NestingContext.Depth > myDepth2 || BoardSlot.isPlacingCard);
+                    TurnManager.SyncMyBoardToOpponent();
+                }
+                NestingContext.Exit();
+            }
         }
 
         CleanupAfterPlacement();
@@ -4169,10 +4176,19 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         string[] parts = recordText.Split(':');
         return parts.Length > 0 ? parts[0] : null;
     }
-    void TriggerDiscardEffectFromTrait(CardInstance ci, string recordText)
+    /// <param name="knownSlotID">可选：已知槽位ID（卡牌已退场时传入，避免 FindSlotOf 搜索失败）</param>
+    void TriggerDiscardEffectFromTrait(CardInstance ci, string recordText, int knownSlotID = -1)
     {
         string templateID = ExtractTemplateIDFromTrait(recordText);
         if (string.IsNullOrEmpty(templateID)) return;
+
+        // 获取槽位ID：优先用已知值，否则搜索板面
+        int GetMySlotID()
+        {
+            if (knownSlotID >= 0) return knownSlotID;
+            BoardSlot mySlot = FindSlotOf(ci);
+            return mySlot?.slotID ?? -1;
+        }
 
         // 根据原卡牌的templateID触发抛置效果
         switch (templateID)
@@ -4180,8 +4196,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             case "01343":
                 if (HasEnemyTarget())
                 {
-                    BoardSlot mySlot = FindSlotOf(ci);
-                    int mySlotID = mySlot?.slotID ?? -1;
+                    int mySlotID = GetMySlotID();
+                    // 使用弃牌前保存的攻击力——DeathPipeline 已将 currentAttack 重置为 baseAttack
+                    int discardAttack = ci.savedAttackForDiscard > 0 ? ci.savedAttackForDiscard : ci.currentAttack;
                     BoardSlot.StartDiscardSelection(TargetType.SingleEnemy, mySlotID, (target) =>
                     {
                         if (target?.currentCard3D != null)
@@ -4189,10 +4206,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                             Card3DInstance t3d = target.currentCard3D.GetComponent<Card3DInstance>();
                             if (t3d?.cardInstance != null)
                             {
-                                BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, ci.currentAttack, null);
+                                BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, discardAttack, null);
                                 t3d.UpdateValues();
                                 if (NetworkClient.isConnected && !NetworkServer.active)
-                                    NetworkPlayer.Local?.CmdApplyDamageToCard(target.slotID, ci.currentAttack);
+                                    NetworkPlayer.Local?.CmdApplyDamageToCard(target.slotID, discardAttack);
                             }
                         }
                         BoardSlot.CheckAndHandleDeaths();
@@ -4203,8 +4220,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             case "01136":
                 if (HasEnemyTarget())
                 {
-                    BoardSlot mySlot = FindSlotOf(ci);
-                    int mySlotID = mySlot?.slotID ?? -1;
+                    int mySlotID = GetMySlotID();
                     BoardSlot.StartDiscardSelection(TargetType.SingleEnemy, mySlotID, (target) =>
                     {
                         if (target?.currentCard3D != null)
@@ -4224,17 +4240,24 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 }
                 break;
             case "01346": // 士兵：为己方一召唤物恢复3生命值
-                if (HasAllyTarget(ci))
+                if ((knownSlotID >= 0 ? HasAllyTargetBySlot(knownSlotID) : HasAllyTarget(ci)))
                 {
-                    BoardSlot mySlot = FindSlotOf(ci);
-                    int mySlotID = mySlot?.slotID ?? -1;
+                    int mySlotID = GetMySlotID();
                     BoardSlot.StartDiscardSelection(TargetType.SingleAlly, mySlotID, (target) =>
                     {
                         if (target?.currentCard3D != null)
                         {
-                            Card3DInstance t3d = target.currentCard3D.GetComponent<Card3DInstance>();
-                            t3d?.cardInstance?.ReceiveHeal(3, CardInstance.HealSourceType.Minion);
-                            t3d?.UpdateValues();
+                            // 纯客户端委托服务器权威执行，避免本地修改被 SyncNow 覆盖
+                            if (NetworkClient.isConnected && !NetworkServer.active)
+                            {
+                                NetworkPlayer.Local.CmdDiscardHeal01346(target.slotID);
+                            }
+                            else
+                            {
+                                Card3DInstance t3d = target.currentCard3D.GetComponent<Card3DInstance>();
+                                t3d?.cardInstance?.ReceiveHeal(3, CardInstance.HealSourceType.Minion);
+                                t3d?.UpdateValues();
+                            }
                         }
                         TurnManager.SyncMyBoardToOpponent();
                     });
@@ -4243,18 +4266,19 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             case "01344": // 诅咒女巫：使对方攻击力永久-2
                 if (HasEnemyTarget())
                 {
-                    BoardSlot mySlot = FindSlotOf(ci);
-                    int mySlotID = mySlot?.slotID ?? -1;
+                    int mySlotID = GetMySlotID();
                     BoardSlot.StartDiscardSelection(TargetType.SingleEnemy, mySlotID, (target) =>
                     {
                         if (target?.currentCard3D != null)
                         {
-                            Card3DInstance t3d = target.currentCard3D.GetComponent<Card3DInstance>();
-                            if (t3d?.cardInstance != null)
+                            // 纯客户端委托服务器权威执行，避免本地修改被 SyncNow 覆盖
+                            if (NetworkClient.isConnected && !NetworkServer.active)
                             {
-                                t3d.cardInstance.baseAttack -= 2;
-                                t3d.cardInstance.currentAttack = Mathf.Max(0, t3d.cardInstance.currentAttack - 2);
-                                t3d.UpdateValues();
+                                NetworkPlayer.Local.CmdDiscardDebuff01344(target.slotID);
+                            }
+                            else
+                            {
+                                DiscardHandlers.Apply01344Debuff(target);
                             }
                         }
                         TurnManager.SyncMyBoardToOpponent();
@@ -4277,6 +4301,15 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
         if (!BoardManager.GetSideRangeOf(source, out int s, out int e)) return false;
+        for (int i = s; i <= e; i++)
+            if (bm?.GetSlot(i)?.currentCard3D != null) return true;
+        return false;
+    }
+    /// <summary>通过槽位ID判断己方是否有目标（卡牌已退场时使用，避免 GetSideRangeOf 搜索失败）。</summary>
+    bool HasAllyTargetBySlot(int slotID)
+    {
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        BoardManager.GetSideRange(slotID, out int s, out int e);
         for (int i = s; i <= e; i++)
             if (bm?.GetSlot(i)?.currentCard3D != null) return true;
         return false;

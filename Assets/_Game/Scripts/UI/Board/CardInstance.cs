@@ -213,10 +213,10 @@ public class CardInstance : MonoBehaviour
         revengeSnapshotIDs = new List<string>();
 
         currentCost = template.baseCost;
-        currentAttack = template.baseAttack;
-        baseAttack = template.baseAttack;
-        currentHealth = template.baseHealth;
-        currentMaxHealth = template.baseHealth;
+        currentAttack = Mathf.Max(0, template.baseAttack);
+        baseAttack = Mathf.Max(0, template.baseAttack);
+        currentHealth = Mathf.Max(0, template.baseHealth);
+        currentMaxHealth = Mathf.Max(0, template.baseHealth);
         baseHealth = template.baseHealth;
         baseMaxHealth = template.baseHealth;
         currentTier = template.baseTier;

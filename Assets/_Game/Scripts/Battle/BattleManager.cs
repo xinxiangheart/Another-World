@@ -1080,8 +1080,8 @@ public class BattleManager : MonoBehaviour
                 Card3DInstance tInst = target.GetComponent<Card3DInstance>();
                 if (tInst != null)
                 {
-                    tInst.cardInstance.baseAttack -= permAtkDebuff;
-                    tInst.cardInstance.currentAttack -= permAtkDebuff;
+                    tInst.cardInstance.baseAttack = Mathf.Max(0, tInst.cardInstance.baseAttack - permAtkDebuff);
+                    tInst.cardInstance.currentAttack = Mathf.Max(0, tInst.cardInstance.currentAttack - permAtkDebuff);
                     tInst.UpdateValues();
                     Refresh2DDisplayOf(tInst.cardInstance);
                     DamagePipeline.ShowFloaterAt(tInst.cardInstance, permAtkDebuff, FloaterType.Debuff);

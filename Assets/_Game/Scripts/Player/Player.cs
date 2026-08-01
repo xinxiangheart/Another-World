@@ -131,9 +131,9 @@ public class Player : MonoBehaviour
         if (inst == null) inst = card.AddComponent<CardInstance>();
 
         inst.CopyFrom(oldInstance);
-        inst.currentAttack = inst.baseAttack;
-        inst.currentHealth = inst.baseHealth;
-        inst.currentMaxHealth = inst.baseMaxHealth;
+        inst.currentAttack = Mathf.Max(0, inst.baseAttack);
+        inst.currentHealth = Mathf.Max(0, inst.baseHealth);
+        inst.currentMaxHealth = Mathf.Max(0, inst.baseMaxHealth);
         inst.currentTier = inst.baseTier;
         inst.tempAttackBoost = 0;
         inst.tempHealthBoost = 0;
