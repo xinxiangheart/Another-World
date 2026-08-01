@@ -2408,9 +2408,6 @@ public class NetworkPlayer : NetworkBehaviour
         BoardManager.SwapCards(slotA, slotB);
     }
 
-    /// <summary>远端客户端→服务端：交换己方（远端6-11）两个槽位的卡牌。
-    /// 服务端将其映射为对手侧（0-5）后执行交换。</summary>
-    [Command]
     /// <summary>客户端上报交换请求——同时支持 ally(6-11) 和 enemy(0-5) 槽位映射。</summary>
     [Command]
     public void CmdSwapCards(int slotA, int slotB)
