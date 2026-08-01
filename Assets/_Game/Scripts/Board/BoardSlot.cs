@@ -1212,6 +1212,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         foreach (string trait in ci.grantedTraitTexts)
         {
+            // 跳过 01511 复制的非死亡特性（格式为 "{templateID}:{type}:{text}"，以数字开头）
+            if (trait.Length > 0 && char.IsDigit(trait[0]) && trait.Contains(":")) continue;
             switch (trait)
             {
                 case "退场：减一能量":
@@ -4049,7 +4051,6 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             }
         }
 
-        // Phase 2 — 快照 copiedTraits + newCopyRecord，即使递归调用也不被污染
         var snapshotTraits = new List<string>(giver.mindScholarCopiedTraits);
         string snapshotNew = newCopyRecord;
         string snapshotNewType = newCopyType;
@@ -4058,10 +4059,15 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         if (giver.mindScholarTriggeredKeys != null) giver.mindScholarTriggeredKeys.Clear();
         else giver.mindScholarTriggeredKeys = new List<string>();
 
+        Debug.Log($"[MS-P2] snapshotTraits.Count={snapshotTraits.Count} snapshotNew={snapshotNew != null} server={NetworkServer.active}");
+        for (int di = 0; di < snapshotTraits.Count; di++)
+            Debug.Log($"[MS-P2]   trait[{di}]={snapshotTraits[di]}");
+
         void AddOne(List<(string,string,string,string)> list, string trait, string type) {
             string key = ExtractTraitKey(trait);
-            if (giver.mindScholarTriggeredKeys.Contains(key)) return;
             string tid = ExtractTemplateIDFromTrait(trait);
+            Debug.Log($"[MS-P2] AddOne trait={trait} key={key} tid={tid} type={type} triggered={giver.mindScholarTriggeredKeys.Contains(key)}");
+            if (giver.mindScholarTriggeredKeys.Contains(key)) return;
             if (string.IsNullOrEmpty(tid)) return;
             list.Add((trait, key, tid, type));
         }
