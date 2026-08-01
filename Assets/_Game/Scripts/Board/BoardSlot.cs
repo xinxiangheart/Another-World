@@ -4002,6 +4002,33 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         CleanupAfterPlacement();
     }
+    /// <summary>01511 手牌抛置：遍历已复制抛置特性，触发第一个未触发的。</summary>
+    public IEnumerator TriggerScholarDiscardFromHover(CardInstance scholar, int discardSlotID)
+    {
+        BoardSlot mySlot = FindSlotOf(scholar);
+        if (mySlot == null) yield break;
+        if (scholar.mindScholarCopiedTraits == null || scholar.mindScholarCopiedTraits.Count == 0) yield break;
+
+        foreach (string trait in scholar.mindScholarCopiedTraits)
+        {
+            if (!trait.Contains("抛置")) continue;
+            string key = ExtractTraitKey(trait);
+            if (scholar.mindScholarTriggeredKeys.Contains(key)) continue;
+            scholar.mindScholarTriggeredKeys.Add(key);
+            NestingContext.Enter($"MS_HoverDiscard_{key}");
+            TriggerDiscardEffectFromTrait(scholar, trait);
+            yield return null;
+            yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
+            int myDepth2 = NestingContext.Snapshot();
+            BoardSlot.CheckAndHandleDeaths();
+            yield return ActionQueueManager.WaitForDrain();
+            yield return new WaitWhile(() => NestingContext.Depth > myDepth2 || BoardSlot.isPlacingCard);
+            TurnManager.SyncMyBoardToOpponent();
+            NestingContext.Exit();
+            yield break;
+        }
+    }
+
     public IEnumerator MindScholarEnterEffect(CardInstance giver)
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
@@ -4099,49 +4126,26 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         CleanupAfterPlacement();
     }
 
-    /// <summary>运行复制的进场效果。CleanupAfterPlacement 的 NestingContext 守卫阻止 _enterEffectRunning 泄漏。</summary>
+    /// <summary>运行复制的进场效果—使用 EffectDispatcher 分发到原卡 handler。</summary>
     IEnumerator RunCopiedEnterEffect(CardInstance giver, CardData originalTD)
     {
         var mySlot = FindSlotOf(giver);
         if (mySlot == null) yield break;
 
-        if (originalTD.templateID == "01104" || originalTD.templateID == "01313" || originalTD.templateID == "01314")
-        {
-            if (!mySlot.HasEnemyTarget()) yield break;
-            bool done = false;
-            SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (targetSlot) =>
-            {
-                if (targetSlot?.currentCard3D != null)
-                {
-                    var t3d = targetSlot.currentCard3D.GetComponent<Card3DInstance>();
-                    if (t3d?.cardInstance != null)
-                    {
-                        BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, 1, mySlot.currentCard3D);
-                        t3d.UpdateValues();
-                        if (NetworkClient.isConnected && !NetworkServer.active)
-                            NetworkPlayer.Local?.CmdApplyDamageToCard(targetSlot.slotID, 1);
-                    }
-                }
-                done = true;
-            });
-            yield return new WaitUntil(() => done);
-            int myDepth = NestingContext.Snapshot();
-            BoardSlot.CheckAndHandleDeaths();
-            yield return ActionQueueManager.WaitForDrain();
-            yield return new WaitWhile(() => NestingContext.Depth > myDepth || BoardSlot.isPlacingCard);
-            if (BoardSlot.pendingRevenges.Count > 0 && BattleManager.Instance != null)
-                yield return BattleManager.Instance.StartCoroutine(BattleManager.ResolveRevengesFromSnapshot());
-            TurnManager.SyncMyBoardToOpponent();
-        }
-        else
-        {
-            // 不传 source=giver ——否则 EffectDispatcher 读到 source.templateID="01511"
-            // 永远递归触发 Handle01511，清空外部 Phase2 的 triggeredKeys
-            var effectCtx = new EffectContext { template = originalTD, sourceSlot = mySlot, trigger = Trigger.Enter };
-            if (EffectDispatcher.Dispatch(Trigger.Enter, effectCtx) && effectCtx.StartedCoroutine != null)
-                yield return effectCtx.StartedCoroutine;
-            yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
-        }
+        // 统一走 EffectDispatcher——不传 source=giver，TemplateID 落到 originalTD.templateID
+        var effectCtx = new EffectContext { template = originalTD, sourceSlot = mySlot, trigger = Trigger.Enter };
+        if (EffectDispatcher.Dispatch(Trigger.Enter, effectCtx) && effectCtx.StartedCoroutine != null)
+            yield return effectCtx.StartedCoroutine;
+        yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
+
+        // 嵌套树结算——handler 内部可能触发的死亡/退场在当前层内完成
+        int myDepth = NestingContext.Snapshot();
+        BoardSlot.CheckAndHandleDeaths();
+        yield return ActionQueueManager.WaitForDrain();
+        yield return new WaitWhile(() => NestingContext.Depth > myDepth || BoardSlot.isPlacingCard);
+        if (BoardSlot.pendingRevenges.Count > 0 && BattleManager.Instance != null)
+            yield return BattleManager.Instance.StartCoroutine(BattleManager.ResolveRevengesFromSnapshot());
+        TurnManager.SyncMyBoardToOpponent();
     }
 
     string ExtractTraitKey(string recordText)

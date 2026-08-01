@@ -112,14 +112,20 @@ public class Card3DHover : MonoBehaviour
 
     private void HandleDiscardEffect(CardInstance deadInstance, int discardSlotID)
     {
-        // ── Step 5: 抛置效果分发（新 → EffectRegistry，回退 → 旧 switch）──
         var discardCtx = EffectContext.ForDiscard(deadInstance, discardSlotID);
         if (EffectDispatcher.Dispatch(Trigger.Discard, discardCtx))
-            return; // handler 已处理全部逻辑
+            return;
 
-        // ── 未注册卡回退 ───────────────────────────────────
+        // ── 01511 已复制抛置特性 → 手动触发 ──
+        if (deadInstance.templateID == "01511" && deadInstance.mindScholarCopiedTraits?.Count > 0)
+        {
+            BoardSlot bs = GetComponentInParent<BoardSlot>() ?? Object.FindObjectOfType<BoardSlot>();
+            if (bs != null)
+                bs.StartCoroutine(bs.TriggerScholarDiscardFromHover(deadInstance, discardSlotID));
+            return;
+        }
+
         Debug.LogWarning($"[HandleDiscardEffect] 未注册: {deadInstance.templateID}");
-        // 抛置后强制恢复交互
         HandManager hm = FindObjectOfType<HandManager>();
         hm?.SetHandAreaRaycast(true);
         hm?.ShowAllCards();
