@@ -895,6 +895,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             }
             // 同步型 handler 已在内部调用 CleanupAfterPlacement
             NestingContext.Exit();
+            // 最外层 Effect 完成——直接清 _enterEffectRunning，不走 CleanupAfterPlacement 的嵌套守卫
+            if (inst != null) inst._enterEffectRunning = false;
+            isPlacingCard = false;
+            cardToPlace = null;
             yield break;
         }
 

@@ -2110,11 +2110,8 @@ public class NetworkPlayer : NetworkBehaviour
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
         if (bm == null) { CmdSelectionResult(-1); return; }
-        bool done = false;
         SelectionManager.Instance.BeginSelection((TargetType)targetType, (s) =>
         {
-            done = true;
-            // 远程回传本地视角槽位(6-11)，服务端由 OnRemoteSelectionDone 反镜像
             CmdSelectionResult(s != null ? s.slotID : -1);
         });
     }
