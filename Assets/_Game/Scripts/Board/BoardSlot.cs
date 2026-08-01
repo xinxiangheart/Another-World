@@ -4177,7 +4177,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         // 根据原卡牌的templateID触发抛置效果
         switch (templateID)
         {
-            case "01343": // 不稳定实验品：对对方一召唤物造成攻击力数值的伤害
+            case "01343":
                 if (HasEnemyTarget())
                 {
                     BoardSlot mySlot = FindSlotOf(ci);
@@ -4191,13 +4191,16 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                             {
                                 BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, ci.currentAttack, null);
                                 t3d.UpdateValues();
+                                if (NetworkClient.isConnected && !NetworkServer.active)
+                                    NetworkPlayer.Local?.CmdApplyDamageToCard(target.slotID, ci.currentAttack);
                             }
                         }
                         BoardSlot.CheckAndHandleDeaths();
+                        TurnManager.SyncMyBoardToOpponent();
                     });
                 }
                 break;
-            case "01136": // 难民：对对方一召唤物造成1伤害
+            case "01136":
                 if (HasEnemyTarget())
                 {
                     BoardSlot mySlot = FindSlotOf(ci);
@@ -4211,9 +4214,12 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                             {
                                 BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, 1, null);
                                 t3d.UpdateValues();
+                                if (NetworkClient.isConnected && !NetworkServer.active)
+                                    NetworkPlayer.Local?.CmdApplyDamageToCard(target.slotID, 1);
                             }
                         }
                         BoardSlot.CheckAndHandleDeaths();
+                        TurnManager.SyncMyBoardToOpponent();
                     });
                 }
                 break;
@@ -4250,6 +4256,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                                 t3d.UpdateValues();
                             }
                         }
+                        TurnManager.SyncMyBoardToOpponent();
                     });
                 }
                 break;

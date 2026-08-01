@@ -116,12 +116,17 @@ public class Card3DHover : MonoBehaviour
         if (EffectDispatcher.Dispatch(Trigger.Discard, discardCtx))
             return;
 
-        // ── 01511 已复制抛置特性 → 手动触发 ──
+        // ── 01511 已复制抛置特性 → 直接在找到的槽位上启动协程 ──
         if (deadInstance.templateID == "01511" && deadInstance.mindScholarCopiedTraits?.Count > 0)
         {
-            BoardSlot bs = GetComponentInParent<BoardSlot>() ?? Object.FindObjectOfType<BoardSlot>();
-            if (bs != null)
-                bs.StartCoroutine(bs.TriggerScholarDiscardFromHover(deadInstance, discardSlotID));
+            BoardManager bm = FindObjectOfType<BoardManager>();
+            BoardSlot found = null;
+            for (int i = 0; i < 12; i++) {
+                var ci = bm?.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                if (ci == deadInstance) { found = bm.GetSlot(i); break; }
+            }
+            if (found != null)
+                found.StartCoroutine(found.TriggerScholarDiscardFromHover(deadInstance, discardSlotID));
             return;
         }
 
