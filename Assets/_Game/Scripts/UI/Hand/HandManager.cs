@@ -1442,6 +1442,7 @@ public class HandManager : MonoBehaviour
             else
             {
                 BoardManager.SwapCards(firstSlot.slotID, selected.slotID);
+                swapTracker.Add((firstSlot.slotID, selected.slotID));
                 firstSlot = null;
             }
         };
@@ -1456,6 +1457,9 @@ public class HandManager : MonoBehaviour
         }
         RefreshLayout(true);
         CardDrag.CleanupSpellResources();
+        // 发送每次交换到服务器——CmdReportAllSlots 不处理 templateID 变更
+        foreach (var (a, b) in swapTracker)
+            NetworkPlayer.Local?.CmdSwapCards(a, b);
         TurnManager.SyncMyBoardToOpponent();
     }
     public IEnumerator HandCleanseEffect()
@@ -1637,6 +1641,8 @@ public class HandManager : MonoBehaviour
                 BoardSlot secondSlot = selected;
 
                 BoardManager.SwapCards(firstSlot.slotID, secondSlot.slotID);
+                if (NetworkClient.isConnected)
+                    NetworkPlayer.Local?.CmdSwapCards(firstSlot.slotID, secondSlot.slotID);
 
                 SelectionManager.Instance.ForceEndAll();
                 TurnManager.SyncMyBoardToOpponent();
