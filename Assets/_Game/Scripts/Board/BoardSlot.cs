@@ -2130,7 +2130,17 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         BoardSlot.extraTargetFilter = null;
         ConfirmSelectionButton.Instance.Hide();
 
-        // Sync all pirate swaps to other client at once
+        // Sync all pirate swaps to server/opponent
+        if (swapLog != null && swapLog.Length > 0)
+        {
+            foreach (string pair in swapLog.ToString().Split(';'))
+            {
+                if (string.IsNullOrEmpty(pair)) continue;
+                string[] ids = pair.Split(',');
+                if (ids.Length == 2 && int.TryParse(ids[0], out int a) && int.TryParse(ids[1], out int b))
+                    NetworkPlayer.Local?.CmdSwapCards(a, b);
+            }
+        }
         TurnManager.SyncMyBoardToOpponent();
 
         CleanupAfterPlacement();

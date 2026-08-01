@@ -1456,6 +1456,7 @@ public class HandManager : MonoBehaviour
         }
         RefreshLayout(true);
         CardDrag.CleanupSpellResources();
+        TurnManager.SyncMyBoardToOpponent();
     }
     public IEnumerator HandCleanseEffect()
     {
