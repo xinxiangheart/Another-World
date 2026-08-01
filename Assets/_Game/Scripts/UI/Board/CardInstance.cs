@@ -81,7 +81,7 @@ public class CardInstance : MonoBehaviour
     public List<string> mindScholarCopiedTraits; // 完整的特性文本: "{templateID}:{type}:{fullText}"
     public List<string> mindScholarTriggeredKeys; // 本阶段已触发的特性key: "{templateID}:{type}"
     public bool _mindScholarCopyPrompted; // 本次进场是否已弹出复制确认窗
-    [System.NonSerialized] public bool _mindScholarRunning; // 防递归重入
+    [System.NonSerialized] public bool _mindScholarBusy; // 递归守卫
     public int _conquerorTotalDamageThisBattle;
     public bool _conquerorPendingCheck;
     public GameObject _conquerorTargetEnemyCard;
@@ -211,7 +211,6 @@ public class CardInstance : MonoBehaviour
         giveableDeathTraits = new List<string>();
         enemyDamageSourceIDs = new List<string>();
         damageSourceInstanceIDs = new List<string>();
-        mindScholarCopiedTraits = new List<string>();
         revengeSnapshotIDs = new List<string>();
 
         currentCost = template.baseCost;
@@ -254,7 +253,7 @@ public class CardInstance : MonoBehaviour
             braveTemplateID = "01514";
         if (templateID == "01510")
             isAncientFairy = true;
-        if (templateID == "01511")
+        if (templateID == "01511" && mindScholarCopiedTraits == null)
         {
             mindScholarCopiedTraits = new List<string>();
             mindScholarTriggeredKeys = new List<string>();
@@ -352,8 +351,8 @@ public class CardInstance : MonoBehaviour
         ignoreAllCounters = src.ignoreAllCounters;
         mindScholarCopyCount = src.mindScholarCopyCount;
         mindScholarCopiedTraits = src.mindScholarCopiedTraits != null ? new List<string>(src.mindScholarCopiedTraits) : new List<string>();
-        mindScholarTriggeredKeys = src.mindScholarTriggeredKeys != null ? new List<string>(src.mindScholarTriggeredKeys) : new List<string>();
-        _mindScholarCopyPrompted = src._mindScholarCopyPrompted;
+        mindScholarTriggeredKeys = src.mindScholarTriggeredKeys != null ? new List<string>(src.mindScholarTriggeredKeys) : null;
+        // _mindScholarCopyPrompted intentionally NOT copied — fresh placement gets fresh dialog
     }
     public void CopyTraitsFromTemplate(CardData template)
     {

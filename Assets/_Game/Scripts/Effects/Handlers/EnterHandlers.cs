@@ -487,8 +487,8 @@ public static class EnterHandlers
 
     static void Handle01511(EffectContext ctx)
     {
-        if (ctx.source._mindScholarRunning) { ctx.sourceSlot.CleanupAfterPlacement(); return; }
-        ctx.source._mindScholarRunning = true;
+        if (ctx.source._mindScholarBusy) { ctx.sourceSlot.CleanupAfterPlacement(); return; }
+        ctx.source._mindScholarBusy = true;
         ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.MindScholarEnterEffect(ctx.source));
     }
 

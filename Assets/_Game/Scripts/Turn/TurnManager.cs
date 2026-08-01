@@ -699,16 +699,16 @@ public partial class TurnManager : MonoBehaviour
                 slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
             }
         }
-        // 心灵学者(01511)回合开始退场+2能量 — 双方都要检查
-        for (int i = 0; i < 12; i++)
+        // 心灵学者(01511)回合开始退场+2能量 — 双方各自检查自己半场
+        for (int i = 6; i <= 11; i++)
         {
-            BoardSlot slot = slots[i];
-            if (slot?.currentCard3D == null) continue;
-            CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-            if (ci != null && ci.templateID == "01511")
+            BoardSlot msSlot = slots[i];
+            if (msSlot?.currentCard3D == null) continue;
+            CardInstance msCI = msSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+            if (msCI != null && msCI.templateID == "01511")
             {
-                ci.isActiveExit = false;
-                slot.HandleDeath(slot.currentCard3D);
+                msCI.isActiveExit = false;
+                msSlot.HandleDeath(msSlot.currentCard3D);
                 BoardManager.GetOwnerPlayer(i)?.AddEnergy(2);
                 break;
             }

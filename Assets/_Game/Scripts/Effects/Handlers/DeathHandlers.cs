@@ -195,31 +195,19 @@ public static class DeathHandlers
 
     static void Handle01511(EffectContext ctx)
     {
-        // 仅服务端/离线执行——客户端 HandleDeath 也会触发此 handler，重复执行会导致双方手牌各获得一张
-        if (!NetworkServer.active && NetworkClient.isConnected) return;
         if (!ctx.source.handledReturnToHand)
         {
             ctx.source.handledReturnToHand = true;
-            var template = CardDatabase.Instance?.GetTemplate(ctx.TemplateID);
-            if (template == null) return;
+            ctx.source.isActiveExit = false;
             var owner = NP(ctx);
-            // 主机/单机：加一张到本地手牌并传递旧 CardInstance 以保留 mindScholar 已复制特性
-            if (!NetworkServer.active || owner == NetworkPlayer.Local)
+            // 服务端/单机：直接加回手。纯客户端：通知服务器代为处理
+            if (!NetworkServer.active && NetworkClient.isConnected)
             {
-                owner.AddCardToHandFromInstance(template, ctx.source, false);
+                owner.CmdReturnScholarToHand(ctx.source.instanceID, ctx.sourceSlot?.slotID ?? -1);
             }
             else
             {
-                string iid = template._instanceID ?? ctx.source.instanceID;
-                owner.TargetReceiveCard(owner.connectionToClient, template.templateID, iid);
-                owner.AddServerSideCard(template, iid);
-                // 远程客户端需恢复已复制特性——单独发送同步状态
-                owner.TargetSyncScholarState(owner.connectionToClient, iid,
-                    ctx.source.mindScholarCopyCount,
-                    ctx.source.mindScholarCopiedTraits != null
-                        ? string.Join(";;", ctx.source.mindScholarCopiedTraits) : "",
-                    ctx.source.mindScholarTriggeredKeys != null
-                        ? string.Join(";;", ctx.source.mindScholarTriggeredKeys) : "");
+                owner.AddCardToHandFromInstance(CardDatabase.Instance?.GetTemplate(ctx.TemplateID), ctx.source, false);
             }
         }
     }

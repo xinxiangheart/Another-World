@@ -324,14 +324,14 @@ public class BoardSyncManager : MonoBehaviour
 
     void EnsureEmpty(int idx, BoardSlot slot, BoardManager bm)
     {
+        // 纯客户端：模型销毁由 TargetDestroyCard RPC 权威处理——SyncNow 不再销毁模型
+        if (NetworkClient.isConnected && !NetworkServer.active) return;
+
         if (slot.currentCard3D != null)
         {
             var ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-
-            // 保护：2s 内刚放置的卡不被网络同步清除
             if (ci != null && Time.time - ci._placedAtTime < 2.0f) return;
 
-            // 清除附着模型
             for (int i = bm.attachedModels.Count - 1; i >= 0; i--)
             {
                 var am = bm.attachedModels[i];
@@ -341,7 +341,6 @@ public class BoardSyncManager : MonoBehaviour
                 {
                     if (aci.isAncientFairy)
                     {
-                        // 古老精灵(01510)：保留等 TargetRpc 委托选择
                         bm.attachedModels.RemoveAt(i);
                         BoardSlot._fairyPending.Add(am);
                     }
@@ -363,16 +362,15 @@ public class BoardSyncManager : MonoBehaviour
         string tid = parts[0];
         var cur = slot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
 
-        // templateID 不匹配 → 当前模型已过时（换位后、死亡替换后等），销毁后按同步数据重建
+        // templateID 不匹配 → 当前模型已过时。纯客户端：TargetSpawnCard3D 权威处理，SyncNow 不做替换
         if (cur != null && cur.templateID != tid)
         {
-            // 防幻影保护链：
+            if (NetworkClient.isConnected && !NetworkServer.active) return;
             if (cur._hadEnterEffect) return;
             if (cur._enterEffectRunning) return;
             if (tid == "03006" && cur.templateID != "03006") return;
             if (Time.time - cur._placedAtTime < 2.0f) return;
 
-            // 销毁旧模型 + 其附着物，清空槽位以便重建
             for (int i = bm.attachedModels.Count - 1; i >= 0; i--)
             {
                 var am = bm.attachedModels[i];
@@ -382,7 +380,6 @@ public class BoardSyncManager : MonoBehaviour
                 {
                     if (aci.isAncientFairy)
                     {
-                        // 古老精灵(01510)：保留等 TargetRpc 委托选择
                         bm.attachedModels.RemoveAt(i);
                         BoardSlot._fairyPending.Add(am);
                     }
@@ -395,14 +392,13 @@ public class BoardSyncManager : MonoBehaviour
             }
             SafeDestroy(slot.currentCard3D); slot.SetCard(null); cur = null;
         }
+        // 纯客户端：仅允许已存在模型的数值更新——不根据 SyncNow 创建新模型
         if (cur == null && hm != null)
         {
-            // 保护：本槽位刚刚被 HandleDeath 清空 → 不重建
-            if (slot.lastHandleDeathTime > 0 && Time.time - slot.lastHandleDeathTime < 2f)
-                return;
+            if (NetworkClient.isConnected && !NetworkServer.active) return;
+            if (slot.lastHandleDeathTime > 0 && Time.time - slot.lastHandleDeathTime < 2f) return;
 
             var t = CardDatabase.Instance?.GetTemplate(tid);
-            // 附着专用卡不放槽位模型
             if (t != null && t.canAttach && t.baseHealth == 0) return;
             if (t?.prefab3D != null)
             {

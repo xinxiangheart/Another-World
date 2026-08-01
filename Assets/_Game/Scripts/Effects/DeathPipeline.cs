@@ -163,6 +163,9 @@ public static class DeathPipeline
 
         // ── 5. SetCard(null) ───────────────────────────────────────────
         slot.SetCard(null);
+        // 通知远端客户端销毁此槽位模型——纯客户端不根据 SyncNow 销毁模型
+        if (Mirror.NetworkServer.active && !slot.prisonBlocked && NetworkPlayer.Remote != null)
+            NetworkPlayer.Remote.TargetDestroyCard(NetworkPlayer.Remote.connectionToClient, slot.slotID);
 
         // ── 6. _rebornSummon → 召唤杂兵(03004) ─────────────────────────
         if (ci._rebornSummon)
@@ -176,7 +179,9 @@ public static class DeathPipeline
                 HandManager hm = Object.FindObjectOfType<HandManager>();
                 hm?.PlaceCardToSlot(slot, temp);
                 Object.Destroy(temp);
-                BoardSyncManager.MarkDirty();
+                // Token 同步到服务器/对方——纯客户端不依赖 SyncNow 创建模型
+                if (NetworkClient.isConnected)
+                    NetworkPlayer.Local?.CmdPlayCard("03004", slot.slotID, -1, -1, -1, ti.instanceID);
             }
         }
 

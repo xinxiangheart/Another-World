@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -1758,7 +1759,7 @@ public class NetworkPlayer : NetworkBehaviour
 
         HandManager hm = FindObjectOfType<HandManager>();
         Vector3 pos = hm.GetSlotWorldPosition(slotID);
-        GameObject model = Object.Instantiate(t.prefab3D, pos, Quaternion.Euler(0, 180, 0));
+        GameObject model = UnityEngine.Object.Instantiate(t.prefab3D, pos, Quaternion.Euler(0, 180, 0));
         Card3DInstance c3d = model.GetComponent<Card3DInstance>();
         if (c3d != null)
         {
@@ -1939,6 +1940,47 @@ public class NetworkPlayer : NetworkBehaviour
         }
     }
 
+    /// <summary>远程客户端→服务器：01511死亡回手——服务器找到对应CardInstance并加回远程手牌。</summary>
+    [Command]
+    public void CmdReturnScholarToHand(string scholarInstanceID, int clientSideSlotID)
+    {
+        // 远程上报的索引0(己方6)→服务器0-5：client 6-11→server 0-5
+        int serverSlot = isLocalPlayer ? clientSideSlotID : clientSideSlotID - 6;
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        var ci = bm?.GetSlot(serverSlot)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+        if (ci == null || ci.templateID != "01511" || ci.instanceID != scholarInstanceID) return;
+        var template = CardDatabase.Instance?.GetTemplate("01511");
+        if (template == null) return;
+        string state = $"{ci.mindScholarCopyCount}|" +
+            (ci.mindScholarCopiedTraits != null ? string.Join(";;", ci.mindScholarCopiedTraits) : "") + "|" +
+            (ci.mindScholarTriggeredKeys != null ? string.Join(";;", ci.mindScholarTriggeredKeys) : "") + "|" +
+            (ci.grantedTraitTexts != null ? string.Join(";;", ci.grantedTraitTexts) : "");
+        // 通过 TargetRpc 发送回手——远程属于该客户端
+        TargetReceiveReturnedCard(connectionToClient, "01511", state);
+        // 服务器侧清理模型
+        var slot = bm.GetSlot(serverSlot);
+        if (slot?.currentCard3D != null) { Destroy(slot.currentCard3D); slot.SetCard(null); }
+        BoardSyncManager.MarkDirty();
+    }
+
+    /// <summary>客户端→服务器：同步赋予特性(grantedTraitTexts)到服务器侧CardInstance。</summary>
+    [Command]
+    public void CmdSyncGrantedTraits(int localSlotID, string traitsSerialized)
+    {
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return;
+        int serverSlot = isLocalPlayer ? localSlotID : (localSlotID >= 6 ? localSlotID - 6 : localSlotID + 6);
+        var ci = bm.GetSlot(serverSlot)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+        if (ci == null || string.IsNullOrEmpty(traitsSerialized)) return;
+        var traits = new string[0];
+        if (!string.IsNullOrEmpty(traitsSerialized))
+            traits = traitsSerialized.Split(new[] { ";;" }, StringSplitOptions.None);
+        foreach (string t in traits)
+            if (!string.IsNullOrEmpty(t) && (ci.grantedTraitTexts == null || !ci.grantedTraitTexts.Contains(t)))
+                ci.GrantTrait(t);
+        BoardSyncManager.MarkDirty();
+    }
+
     /// <summary>客户端→服务器：对敌方一张卡造成 N 伤害。CmdReportAllSlots 不写 enemy slot HP。</summary>
     [Command]
     public void CmdApplyDamageToCard(int clientSlotID, int damage)
@@ -1975,50 +2017,91 @@ public class NetworkPlayer : NetworkBehaviour
         BoardSlot.OnFairyReattachResult(newHostLocalSlot >= 0 ? serverSlot : -1);
     }
 
-    /// <summary>服务端→远端：恢复 01511 已复制的特性状态。</summary>
+    /// <summary>服务端→远端：01117/01511等卡牌回手（通过 CopyFrom 完整继承板面状态）。</summary>
     [TargetRpc]
-    public void TargetSyncScholarState(NetworkConnectionToClient target, string instanceID, int copyCount, string traits, string triggeredKeys)
+    public void TargetReceiveReturnedCard(NetworkConnectionToClient target, string templateID, string srcState)
     {
-        foreach (var card in handCards)
-        {
-            if (card == null) continue;
-            var ci = card.GetComponent<CardInstance>();
-            if (ci != null && ci.templateID == "01511" && ci.instanceID == instanceID)
-            {
-                ApplyScholarState(ci, copyCount, traits, triggeredKeys);
-                return;
-            }
-        }
-        StartCoroutine(RetrySyncScholarState(instanceID, copyCount, traits, triggeredKeys));
+        CardData template = CardDatabase.Instance?.GetTemplate(templateID);
+        if (template == null) return;
+        handCards.RemoveAll(c => c == null);
+        if (handCards.Count >= maxHandSize) return;
+        GameObject prefab = GetCardPrefab(template.cardType);
+        if (prefab == null) return;
+        GameObject card = Instantiate(prefab, handArea);
+        CardInstance inst = card.GetComponent<CardInstance>();
+        if (inst == null) inst = card.AddComponent<CardInstance>();
+        inst.InitFromTemplate(template, 0);
+        ApplyReturnedCardState(inst, srcState);
+        inst.currentAttack = inst.baseAttack;
+        inst.currentHealth = inst.baseHealth;
+        inst.currentMaxHealth = inst.baseMaxHealth;
+        inst.currentTier = inst.baseTier;
+        inst.tempAttackBoost = 0;
+        inst.tempHealthBoost = 0;
+        inst.handledReturnToHand = false;
+        CardDisplay2D display = card.GetComponent<CardDisplay2D>();
+        if (display != null) display.RefreshWithInstance(inst);
+        handCards.Add(card);
+        CardView cv = card.GetComponent<CardView>();
+        if (cv != null) { cv.handManager = handManager; handManager?.RegisterCard(cv); }
     }
 
-    System.Collections.IEnumerator RetrySyncScholarState(string instanceID, int copyCount, string traits, string triggeredKeys)
+    static void ApplyReturnedCardState(CardInstance inst, string state)
     {
-        for (int attempt = 0; attempt < 30; attempt++)
+        if (string.IsNullOrEmpty(state)) return;
+        string[] parts = state.Split('|');
+        if (parts.Length < 1) return;
+        // copyCount
+        if (int.TryParse(parts[0], out int cc)) inst.mindScholarCopyCount = cc;
+        // copiedTraits (;; separated)
+        inst.mindScholarCopiedTraits = parts.Length > 1 && !string.IsNullOrEmpty(parts[1])
+            ? new List<string>(parts[1].Split(new[] { ";;" }, StringSplitOptions.None))
+            : new List<string>();
+        // triggeredKeys (;; separated)
+        inst.mindScholarTriggeredKeys = parts.Length > 2 && !string.IsNullOrEmpty(parts[2])
+            ? new List<string>(parts[2].Split(new[] { ";;" }, StringSplitOptions.None))
+            : new List<string>();
+        // grantedTraitTexts (;; separated) + call GrantTrait for each
+        if (parts.Length > 3 && !string.IsNullOrEmpty(parts[3]))
         {
-            yield return null;
-            handCards.RemoveAll(c => c == null);
-            foreach (var card in handCards)
+            foreach (string t in parts[3].Split(new[] { ";;" }, StringSplitOptions.None))
             {
-                var ci = card?.GetComponent<CardInstance>();
-                if (ci != null && ci.templateID == "01511" && ci.instanceID == instanceID)
+                if (!string.IsNullOrEmpty(t))
                 {
-                    ApplyScholarState(ci, copyCount, traits, triggeredKeys);
-                    yield break;
+                    inst.grantedTraitTexts.Add(t);
+                    inst.GrantTrait(t);
                 }
             }
         }
     }
 
-    void ApplyScholarState(CardInstance ci, int copyCount, string traits, string triggeredKeys)
+    /// <summary>服务端→远端客户端：销毁指定槽位的板面模型。serverSlot 为服务端坐标(0-11)。</summary>
+    [TargetRpc]
+    public void TargetDestroyCard(NetworkConnectionToClient target, int serverSlot)
     {
-        ci.mindScholarCopyCount = copyCount;
-        ci.mindScholarCopiedTraits = string.IsNullOrEmpty(traits)
-            ? new System.Collections.Generic.List<string>()
-            : new System.Collections.Generic.List<string>(traits.Split(new[] { ";;" }, System.StringSplitOptions.None));
-        ci.mindScholarTriggeredKeys = string.IsNullOrEmpty(triggeredKeys)
-            ? new System.Collections.Generic.List<string>()
-            : new System.Collections.Generic.List<string>(triggeredKeys.Split(new[] { ";;" }, System.StringSplitOptions.None));
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return;
+        // 服务端坐标 → 客户端本地坐标：服务端 0-5 = 客户端敌方(0-5)，服务端 6-11 = 客户端己方(6-11)
+        // TargetRpc 接收端是远端，需要镜像映射：server 0-5 → client 6-11，server 6-11 → client 0-5
+        int clientSlot = serverSlot >= 6 ? serverSlot - 6 : serverSlot + 6;
+        BoardSlot slot = bm.GetSlot(clientSlot);
+        if (slot?.currentCard3D != null)
+        {
+            // 清除附着在此槽位的附着模型
+            for (int i = bm.attachedModels.Count - 1; i >= 0; i--)
+            {
+                var am = bm.attachedModels[i];
+                if (am == null) { bm.attachedModels.RemoveAt(i); continue; }
+                var aci = am.GetComponent<Card3DInstance>()?.cardInstance;
+                if (aci != null && aci.isAttached && aci.hostSlotID == clientSlot)
+                {
+                    if (aci.isAncientFairy) { bm.attachedModels.RemoveAt(i); BoardSlot._fairyPending.Add(am); }
+                    else { Destroy(am); bm.attachedModels.RemoveAt(i); }
+                }
+            }
+            Destroy(slot.currentCard3D);
+            slot.SetCard(null);
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════

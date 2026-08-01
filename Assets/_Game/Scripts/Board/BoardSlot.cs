@@ -684,6 +684,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 int maxHp = placedC3D?.cardInstance?.currentMaxHealth ?? -1;
                 string iid = placedC3D?.cardInstance?.instanceID ?? "";
                 NetworkPlayer.Local?.CmdPlayCard(playTemplateID, slotID, atk, hp, maxHp, iid);
+                // 同步赋予特性到服务器——服务器侧 CardInstance 由 InitFromTemplate 创建不含 grantedTraitTexts
+                if (placedC3D?.cardInstance?.grantedTraitTexts?.Count > 0)
+                    NetworkPlayer.Local?.CmdSyncGrantedTraits(slotID, string.Join(";;", placedC3D.cardInstance.grantedTraitTexts));
                 BoardSyncManager.MarkDirty();
             }
 
@@ -1498,6 +1501,11 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             GraveyardManager.Instance.AddToGraveyard(entry);
             Destroy(oldCard);
         }
+
+        // 同步赋予特性到服务器（OnPointerClick 替换路径跳过正常同步块，需在此补上）
+        var placedCI2 = targetSlot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+        if (placedCI2?.grantedTraitTexts?.Count > 0 && NetworkClient.isConnected)
+            NetworkPlayer.Local?.CmdSyncGrantedTraits(targetSlot.slotID, string.Join(";;", placedCI2.grantedTraitTexts));
 
         cardToPlace = null;
         CleanupAfterPlacement();
@@ -3954,166 +3962,115 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public IEnumerator MindScholarEnterEffect(CardInstance giver)
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
-        // 每次进场仅允许弹一次复制窗
-        giver._mindScholarCopyPrompted = false;
 
-        // ═══ Step 1: 依次触发所有本阶段未触发的已复制进场特性 ═══
-        foreach (string trait in giver.mindScholarCopiedTraits)
+        string newCopyRecord = null;
+        string newCopyType = null;
+
+        if (giver.mindScholarCopyCount < 4 && !giver._mindScholarCopyPrompted)
         {
-            if (!trait.Contains("进场")) continue;
-            string tKey = ExtractTraitKey(trait);
-            if (giver.mindScholarTriggeredKeys.Contains(tKey)) continue;
-            string originalTemplateID = ExtractTemplateIDFromTrait(trait);
-            if (string.IsNullOrEmpty(originalTemplateID)) continue;
-            CardData originalTD = CardDatabase.Instance?.GetTemplate(originalTemplateID);
-            if (originalTD == null || !originalTD.hasOnEnter) continue;
-            giver.mindScholarTriggeredKeys.Add(tKey);
-            NestingContext.Enter($"MS_Enter_{tKey}");
-            BoardSlot mySlot = FindSlotOf(giver);
-            if (mySlot != null)
-                yield return StartCoroutine(mySlot.StartOnEnterEffect(originalTD, giver));
-            yield return null;
-            yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
-            NestingContext.Exit();
-        }
+            giver._mindScholarCopyPrompted = true;
+            List<CardInstance> targets = new List<CardInstance>();
+            for (int i = 0; i <= 5; i++) { BoardSlot s = bm?.GetSlot(i); if (s?.currentCard3D == null) continue; CardInstance ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance; CardData td = CardDatabase.Instance?.GetTemplate(ci?.templateID); if (td != null && (td.baseCost == 1 || td.baseCost == 3) && (td.hasOnEnter || ci.HasDiscard)) targets.Add(ci); }
 
-        // ═══ Step 2: 依次触发所有本阶段未触发的已复制抛置特性 ═══
-        foreach (string trait in giver.mindScholarCopiedTraits)
-        {
-            if (!trait.Contains("抛置")) continue;
-            string dKey = ExtractTraitKey(trait);
-            if (giver.mindScholarTriggeredKeys.Contains(dKey)) continue;
-            giver.mindScholarTriggeredKeys.Add(dKey);
-            NestingContext.Enter($"MS_Discard_{dKey}");
-            TriggerDiscardEffectFromTrait(giver, trait);
-            yield return null;
-            yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
-            NestingContext.Exit();
-        }
-
-        // ═══ Step 3: 选择是否复制（最多4个，每阶段仅弹一次）═══
-        if (giver.mindScholarCopyCount >= 4 || giver._mindScholarCopyPrompted)
-        { FinishScholar(giver); yield break; }
-        giver._mindScholarCopyPrompted = true;
-
-        List<CardInstance> targets = new List<CardInstance>();
-        for (int i = 0; i <= 5; i++)
-        {
-            BoardSlot s = bm?.GetSlot(i);
-            if (s?.currentCard3D == null) continue;
-            CardInstance ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-            CardData td = CardDatabase.Instance?.GetTemplate(ci?.templateID);
-            if (td != null && (td.baseCost == 1 || td.baseCost == 3) && (td.hasOnEnter || ci.HasDiscard))
-                targets.Add(ci);
-        }
-
-        if (targets.Count == 0) { FinishScholar(giver); yield break; }
-
-        // "是否复制" 选择
-        bool copyChoiceDone = false;
-        bool shouldCopy = false;
-        ConfirmPanel.Instance.Show("是否复制对方特性？",
-            () => { shouldCopy = true; copyChoiceDone = true; },
-            () => { copyChoiceDone = true; });
-        yield return new WaitUntil(() => copyChoiceDone);
-        if (!shouldCopy) { FinishScholar(giver); yield break; }
-
-        // ═══ Step 4: 选择目标召唤物（仅合法目标高亮）═══
-        bool targetDone = false;
-        CardInstance selected = null;
-        isStrengtheningSlot = true;
-        extraTargetFilter = (s) =>
-        {
-            if (s?.currentCard3D == null) return false;
-            CardInstance ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-            CardData td = CardDatabase.Instance?.GetTemplate(ci?.templateID);
-            return td != null && (td.baseCost == 1 || td.baseCost == 3) && (td.hasOnEnter || ci.HasDiscard);
-        };
-        SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (s) =>
-        {
-            if (s?.currentCard3D != null)
+            if (targets.Count > 0)
             {
-                CardInstance ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                CardData td = CardDatabase.Instance?.GetTemplate(ci?.templateID);
-                if (td != null && (td.baseCost == 1 || td.baseCost == 3) && (td.hasOnEnter || ci.HasDiscard))
-                { selected = ci; targetDone = true; }
-            }
-        });
-        yield return new WaitUntil(() => targetDone);
-        isStrengtheningSlot = false;
-        extraTargetFilter = null;
-        if (selected == null) { FinishScholar(giver); yield break; }
+                bool shouldCopy = false, copyChoiceDone = false;
+                ConfirmPanel.Instance.Show("是否复制对方特性？", () => { shouldCopy = true; copyChoiceDone = true; }, () => { copyChoiceDone = true; });
+                yield return new WaitUntil(() => copyChoiceDone);
 
-        // ═══ Step 5: 选择复制进场还是抛置 ═══
-        List<string> copyable = new List<string>();
-        CardData selTD = CardDatabase.Instance?.GetTemplate(selected.templateID);
-        if (selTD != null && selTD.hasOnEnter) copyable.Add("进场");
-        if (selected.HasDiscard) copyable.Add("抛置");
+                if (shouldCopy)
+                {
+                    CardInstance selected = null; bool targetDone = false;
+                    isStrengtheningSlot = true;
+                    extraTargetFilter = (s) => { if (s?.currentCard3D == null) return false; var c = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance; var d = CardDatabase.Instance?.GetTemplate(c?.templateID); return d != null && (d.baseCost == 1 || d.baseCost == 3) && (d.hasOnEnter || (c != null && c.HasDiscard)); };
+                    SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (s) => { if (s?.currentCard3D != null) { var c = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance; var d = CardDatabase.Instance?.GetTemplate(c?.templateID); if (d != null && (d.baseCost == 1 || d.baseCost == 3) && (d.hasOnEnter || (c != null && c.HasDiscard))) { selected = c; targetDone = true; } } });
+                    yield return new WaitUntil(() => targetDone);
+                    isStrengtheningSlot = false; extraTargetFilter = null;
 
-        string chosenTrait = copyable.Count == 1 ? copyable[0] : null;
-        if (copyable.Count == 2)
-        {
-            bool traitDone = false;
-            GenericChoicePanel.Instance.Show("选择复制特性", copyable, (index) =>
-            { chosenTrait = copyable[index]; traitDone = true; });
-            yield return new WaitUntil(() => traitDone);
-        }
-        if (chosenTrait == null) { FinishScholar(giver); yield break; }
+                    if (selected != null)
+                    {
+                        List<string> copyable = new List<string>();
+                        CardData selTD = CardDatabase.Instance?.GetTemplate(selected.templateID);
+                        if (selTD != null && selTD.hasOnEnter) copyable.Add("进场");
+                        if (selected.HasDiscard) copyable.Add("抛置");
+                        string chosen = copyable.Count == 1 ? copyable[0] : null;
+                        if (copyable.Count == 2) { bool traitDone = false; GenericChoicePanel.Instance.Show("选择复制特性", copyable, (i) => { chosen = copyable[i]; traitDone = true; }); yield return new WaitUntil(() => traitDone); }
 
-        // ═══ Step 6: 复制并触发 ═══
-        giver.mindScholarCopyCount++;
-        string traitText = GetTraitFullText(selected, chosenTrait);
-        string recordText = $"{selected.templateID}:{chosenTrait}:{traitText}";
-        string traitKey = $"{selected.templateID}:{chosenTrait}";
-        giver.mindScholarCopiedTraits.Add(recordText);
-        giver.GrantTrait(traitText);
-
-        // 同步复制状态到服务器
-        if (NetworkClient.isConnected && !NetworkServer.active)
-            TurnManager.SyncMyBoardToOpponent();
-
-        if (chosenTrait == "进场")
-        {
-            // 先标记已触发再执行——防止递归回 Step 1 重入
-            giver.mindScholarTriggeredKeys.Add(traitKey);
-            CardData originalTD = CardDatabase.Instance?.GetTemplate(selected.templateID);
-            if (originalTD != null && originalTD.hasOnEnter)
-            {
-                NestingContext.Enter($"MS_Enter_{traitKey}");
-                yield return StartCoroutine(RunCopiedEnterEffect(giver, originalTD));
-                NestingContext.Exit();
+                        if (chosen != null)
+                        {
+                            giver.mindScholarCopyCount++;
+                            string text = GetTraitFullText(selected, chosen);
+                            newCopyRecord = $"{selected.templateID}:{chosen}:{text}";
+                            newCopyType = chosen;
+                            giver.mindScholarCopiedTraits.Add(newCopyRecord);
+                            giver.GrantTrait(text);
+                            if (NetworkClient.isConnected && !NetworkServer.active) TurnManager.SyncMyBoardToOpponent();
+                        }
+                    }
+                }
             }
         }
-        else if (chosenTrait == "抛置")
+
+        // Phase 2 — 快照 copiedTraits + newCopyRecord，即使递归调用也不被污染
+        var snapshotTraits = new List<string>(giver.mindScholarCopiedTraits);
+        string snapshotNew = newCopyRecord;
+        string snapshotNewType = newCopyType;
+
+        var pendingList = new List<(string trait, string key, string tid, string type)>();
+        if (giver.mindScholarTriggeredKeys != null) giver.mindScholarTriggeredKeys.Clear();
+        else giver.mindScholarTriggeredKeys = new List<string>();
+
+        void AddOne(List<(string,string,string,string)> list, string trait, string type) {
+            string key = ExtractTraitKey(trait);
+            if (giver.mindScholarTriggeredKeys.Contains(key)) return;
+            string tid = ExtractTemplateIDFromTrait(trait);
+            if (string.IsNullOrEmpty(tid)) return;
+            list.Add((trait, key, tid, type));
+        }
+        foreach (string t in snapshotTraits) { if (t == snapshotNew) continue; if (t.Contains("进场")) AddOne(pendingList, t, "进场"); }
+        foreach (string t in snapshotTraits) { if (t == snapshotNew) continue; if (t.Contains("抛置")) AddOne(pendingList, t, "抛置"); }
+        if (snapshotNew != null) AddOne(pendingList, snapshotNew, snapshotNewType ?? (snapshotNew.Contains("进场") ? "进场" : "抛置"));
+
+        foreach (var (trait, key, tid, type) in pendingList)
         {
-            giver.mindScholarTriggeredKeys.Add(traitKey);
-            NestingContext.Enter($"MS_Discard_{traitKey}");
-            TriggerDiscardEffectFromTrait(giver, recordText);
-            yield return null;
-            yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
+            giver.mindScholarTriggeredKeys.Add(key);
+            NestingContext.Enter($"MS_{type}_{key}");
+            if (type == "进场")
+            {
+                var td = CardDatabase.Instance?.GetTemplate(tid);
+                if (td != null && td.hasOnEnter) yield return StartCoroutine(RunCopiedEnterEffect(giver, td));
+            }
+            else
+            {
+                TriggerDiscardEffectFromTrait(giver, trait);
+                yield return null;
+                yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
+                int myDepth2 = NestingContext.Snapshot();
+                BoardSlot.CheckAndHandleDeaths();
+                yield return ActionQueueManager.WaitForDrain();
+                yield return new WaitWhile(() => NestingContext.Depth > myDepth2 || BoardSlot.isPlacingCard);
+                TurnManager.SyncMyBoardToOpponent();
+            }
             NestingContext.Exit();
         }
 
         CleanupAfterPlacement();
-        giver._mindScholarRunning = false;
+        giver._mindScholarBusy = false;
     }
 
-    void FinishScholar(CardInstance giver)
-    {
-        CleanupAfterPlacement();
-        giver._mindScholarRunning = false;
-    }
-
-    /// <summary>直接运行复制的进场效果——不经过 StartOnEnterEffect 嵌套生命周期。</summary>
+    /// <summary>运行复制的进场效果。独立协程，保护 giver 的 _enterEffectRunning 不被嵌套 handler 清除。</summary>
     IEnumerator RunCopiedEnterEffect(CardInstance giver, CardData originalTD)
     {
         var mySlot = FindSlotOf(giver);
         if (mySlot == null) yield break;
 
-        // 01104 佣兵 / 01313 / 01314: SingleEnemy 选择 + 伤害
+        // 保存 giver 的 _enterEffectRunning——嵌套 handler 会调 CleanupAfterPlacement 清掉它
+        bool savedEnterRunning = giver._enterEffectRunning;
+        bool savedPlacing = BoardSlot.isPlacingCard;
+
         if (originalTD.templateID == "01104" || originalTD.templateID == "01313" || originalTD.templateID == "01314")
         {
-            if (!mySlot.HasEnemyTarget()) yield break;
+            if (!mySlot.HasEnemyTarget()) { giver._enterEffectRunning = savedEnterRunning; yield break; }
             bool done = false;
             SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (targetSlot) =>
             {
@@ -4128,17 +4085,28 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                             NetworkPlayer.Local?.CmdApplyDamageToCard(targetSlot.slotID, 1);
                     }
                 }
-                BoardSlot.CheckAndHandleDeaths();
-                TurnManager.SyncMyBoardToOpponent();
                 done = true;
             });
             yield return new WaitUntil(() => done);
-            yield break;
+            int myDepth = NestingContext.Snapshot();
+            BoardSlot.CheckAndHandleDeaths();
+            yield return ActionQueueManager.WaitForDrain();
+            yield return new WaitWhile(() => NestingContext.Depth > myDepth || BoardSlot.isPlacingCard);
+            if (BoardSlot.pendingRevenges.Count > 0 && BattleManager.Instance != null)
+                yield return BattleManager.Instance.StartCoroutine(
+                    BattleManager.ResolveRevengesFromSnapshot());
+            TurnManager.SyncMyBoardToOpponent();
+        }
+        else
+        {
+            // fallback: generic StartOnEnterEffect
+            yield return StartCoroutine(mySlot.StartOnEnterEffect(originalTD, giver));
+            yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
         }
 
-        // fallback: generic StartOnEnterEffect
-        yield return StartCoroutine(mySlot.StartOnEnterEffect(originalTD, giver));
-        yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
+        // 恢复 giver 状态——防止嵌套 handler 的 CleanupAfterPlacement 触发递归 Handle01511
+        giver._enterEffectRunning = savedEnterRunning;
+        BoardSlot.isPlacingCard = savedPlacing;
     }
 
     string ExtractTraitKey(string recordText)
