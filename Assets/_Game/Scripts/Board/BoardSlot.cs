@@ -4135,7 +4135,11 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
         else
         {
-            yield return StartCoroutine(mySlot.StartOnEnterEffect(originalTD, giver));
+            // 不传 source=giver ——否则 EffectDispatcher 读到 source.templateID="01511"
+            // 永远递归触发 Handle01511，清空外部 Phase2 的 triggeredKeys
+            var effectCtx = new EffectContext { template = originalTD, sourceSlot = mySlot, trigger = Trigger.Enter };
+            if (EffectDispatcher.Dispatch(Trigger.Enter, effectCtx) && effectCtx.StartedCoroutine != null)
+                yield return effectCtx.StartedCoroutine;
             yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
         }
     }
