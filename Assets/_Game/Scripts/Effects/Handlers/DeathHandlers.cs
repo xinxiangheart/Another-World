@@ -203,7 +203,13 @@ public static class DeathHandlers
             // 服务端/单机：直接加回手。纯客户端：通知服务器代为处理
             if (!NetworkServer.active && NetworkClient.isConnected)
             {
-                owner.CmdReturnScholarToHand(ctx.source.instanceID, ctx.sourceSlot?.slotID ?? -1);
+                // 纯客户端序列化当前状态——服务端的 CardInstance 从未运行 MindScholarEnterEffect，state 为空
+                var src = ctx.source;
+                string state = $"{src.mindScholarCopyCount}|" +
+                    (src.mindScholarCopiedTraits != null ? string.Join(";;", src.mindScholarCopiedTraits) : "") + "|" +
+                    (src.mindScholarTriggeredKeys != null ? string.Join(";;", src.mindScholarTriggeredKeys) : "") + "|" +
+                    (src.grantedTraitTexts != null ? string.Join(";;", src.grantedTraitTexts) : "");
+                owner.CmdReturnScholarToHand(src.instanceID, ctx.sourceSlot?.slotID ?? -1, state);
             }
             else
             {

@@ -1940,24 +1940,15 @@ public class NetworkPlayer : NetworkBehaviour
         }
     }
 
-    /// <summary>远程客户端→服务器：01511死亡回手——服务器找到对应CardInstance并加回远程手牌。</summary>
+    /// <summary>远程客户端→服务器：01511死亡回手。state 由客户端序列化——服务端的 ci 从未跑过 MindScholarEnterEffect，状态为空。</summary>
     [Command]
-    public void CmdReturnScholarToHand(string scholarInstanceID, int clientSideSlotID)
+    public void CmdReturnScholarToHand(string scholarInstanceID, int clientSideSlotID, string scholarState)
     {
-        // 远程上报的索引0(己方6)→服务器0-5：client 6-11→server 0-5
         int serverSlot = isLocalPlayer ? clientSideSlotID : clientSideSlotID - 6;
         BoardManager bm = FindObjectOfType<BoardManager>();
         var ci = bm?.GetSlot(serverSlot)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
         if (ci == null || ci.templateID != "01511" || ci.instanceID != scholarInstanceID) return;
-        var template = CardDatabase.Instance?.GetTemplate("01511");
-        if (template == null) return;
-        string state = $"{ci.mindScholarCopyCount}|" +
-            (ci.mindScholarCopiedTraits != null ? string.Join(";;", ci.mindScholarCopiedTraits) : "") + "|" +
-            (ci.mindScholarTriggeredKeys != null ? string.Join(";;", ci.mindScholarTriggeredKeys) : "") + "|" +
-            (ci.grantedTraitTexts != null ? string.Join(";;", ci.grantedTraitTexts) : "");
-        // 通过 TargetRpc 发送回手——远程属于该客户端
-        TargetReceiveReturnedCard(connectionToClient, "01511", state);
-        // 服务器侧清理模型
+        TargetReceiveReturnedCard(connectionToClient, "01511", scholarState);
         var slot = bm.GetSlot(serverSlot);
         if (slot?.currentCard3D != null) { Destroy(slot.currentCard3D); slot.SetCard(null); }
         BoardSyncManager.MarkDirty();
