@@ -1423,6 +1423,7 @@ public class HandManager : MonoBehaviour
     public IEnumerator ReformFormationEffect(CardDrag cardDrag)
     {
         BoardSlot.isStrengtheningSlot = true;
+        var swapTracker = new System.Collections.Generic.List<(int, int)>();
         SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, null);
         foreach (GameObject card in NetworkPlayer.Local.handCards)
         {
