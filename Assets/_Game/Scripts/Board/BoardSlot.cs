@@ -76,6 +76,39 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public static bool _remoteFirstStrikeDone;
     public static void NotifyRemoteFirstStrikeDone() { _remoteFirstStrikeDone = true; }
 
+    /// <summary>远端选择委托：等待标记 + 结果槽位。</summary>
+    public static bool _remoteSelectionDone;
+    public static int _remoteSelectionResultSlot = -1;
+    public static void NotifyRemoteSelectionDone(int selectedSlot) { _remoteSelectionDone = true; _remoteSelectionResultSlot = selectedSlot; }
+
+    /// <summary>统一的目标选择辅助方法——自动根据目标拥有者决定本地/远程选择UI。</summary>
+    public static IEnumerator WaitForPlayerSelection(int targetOwnerSlotID, TargetType targetType, System.Action<BoardSlot> onSelected, string reason = "")
+    {
+        NetworkPlayer targetOwner = BoardManager.GetOwnerPlayer(targetOwnerSlotID);
+        if (targetOwner == null) yield break;
+
+        if (!NetworkServer.active || targetOwner == NetworkPlayer.Local)
+        {
+            bool done = false;
+            SelectionManager.Instance.BeginSelection(targetType, (s) => { onSelected?.Invoke(s); done = true; });
+            yield return new WaitUntil(() => done);
+        }
+        else
+        {
+            _remoteSelectionDone = false;
+            _remoteSelectionResultSlot = -1;
+            NetworkPlayer.Remote.TargetRequestSelection(
+                NetworkPlayer.Remote.connectionToClient, (int)targetType, targetOwnerSlotID);
+            float deadline = Time.time + 30f;
+            yield return new WaitUntil(() => _remoteSelectionDone || Time.time > deadline);
+            if (_remoteSelectionResultSlot >= 0)
+            {
+                var slot = FindObjectOfType<BoardManager>()?.GetSlot(_remoteSelectionResultSlot);
+                onSelected?.Invoke(slot);
+            }
+        }
+    }
+
     /// <summary>远端客户端执行己方的交互式先手（槽位6-11）。完成后通知服务端解除阻塞。</summary>
     public IEnumerator RunRemoteFirstStrikes()
     {
@@ -878,7 +911,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         if (currentCard3D != null)
         {
             var crd = currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-            if (crd != null) crd._enterEffectRunning = false;
+            // 嵌套内不清 _enterEffectRunning——仅最外层 StartOnEnterEffect 负责清理
+            if (crd != null && !NestingContext.IsNested) crd._enterEffectRunning = false;
         }
         isPlacingCard = false;
         cardToPlace = null;
@@ -4055,22 +4089,17 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
 
         CleanupAfterPlacement();
-        giver._mindScholarBusy = false;
     }
 
-    /// <summary>运行复制的进场效果。独立协程，保护 giver 的 _enterEffectRunning 不被嵌套 handler 清除。</summary>
+    /// <summary>运行复制的进场效果。CleanupAfterPlacement 的 NestingContext 守卫阻止 _enterEffectRunning 泄漏。</summary>
     IEnumerator RunCopiedEnterEffect(CardInstance giver, CardData originalTD)
     {
         var mySlot = FindSlotOf(giver);
         if (mySlot == null) yield break;
 
-        // 保存 giver 的 _enterEffectRunning——嵌套 handler 会调 CleanupAfterPlacement 清掉它
-        bool savedEnterRunning = giver._enterEffectRunning;
-        bool savedPlacing = BoardSlot.isPlacingCard;
-
         if (originalTD.templateID == "01104" || originalTD.templateID == "01313" || originalTD.templateID == "01314")
         {
-            if (!mySlot.HasEnemyTarget()) { giver._enterEffectRunning = savedEnterRunning; yield break; }
+            if (!mySlot.HasEnemyTarget()) yield break;
             bool done = false;
             SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (targetSlot) =>
             {
@@ -4093,20 +4122,14 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             yield return ActionQueueManager.WaitForDrain();
             yield return new WaitWhile(() => NestingContext.Depth > myDepth || BoardSlot.isPlacingCard);
             if (BoardSlot.pendingRevenges.Count > 0 && BattleManager.Instance != null)
-                yield return BattleManager.Instance.StartCoroutine(
-                    BattleManager.ResolveRevengesFromSnapshot());
+                yield return BattleManager.Instance.StartCoroutine(BattleManager.ResolveRevengesFromSnapshot());
             TurnManager.SyncMyBoardToOpponent();
         }
         else
         {
-            // fallback: generic StartOnEnterEffect
             yield return StartCoroutine(mySlot.StartOnEnterEffect(originalTD, giver));
             yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
         }
-
-        // 恢复 giver 状态——防止嵌套 handler 的 CleanupAfterPlacement 触发递归 Handle01511
-        giver._enterEffectRunning = savedEnterRunning;
-        BoardSlot.isPlacingCard = savedPlacing;
     }
 
     string ExtractTraitKey(string recordText)

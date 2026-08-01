@@ -81,7 +81,6 @@ public class CardInstance : MonoBehaviour
     public List<string> mindScholarCopiedTraits; // 完整的特性文本: "{templateID}:{type}:{fullText}"
     public List<string> mindScholarTriggeredKeys; // 本阶段已触发的特性key: "{templateID}:{type}"
     public bool _mindScholarCopyPrompted; // 本次进场是否已弹出复制确认窗
-    [System.NonSerialized] public bool _mindScholarBusy; // 递归守卫
     public int _conquerorTotalDamageThisBattle;
     public bool _conquerorPendingCheck;
     public GameObject _conquerorTargetEnemyCard;

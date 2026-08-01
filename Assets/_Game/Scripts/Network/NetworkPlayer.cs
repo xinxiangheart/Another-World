@@ -2104,6 +2104,44 @@ public class NetworkPlayer : NetworkBehaviour
         }
     }
 
+    /// <summary>服务端→远端：委托远程玩家进行目标选择。</summary>
+    [TargetRpc]
+    public void TargetRequestSelection(NetworkConnectionToClient target, int targetType, int ownerSlotLocal)
+    {
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) { CmdSelectionResult(-1); return; }
+        bool done = false;
+        SelectionManager.Instance.BeginSelection((TargetType)targetType, (s) =>
+        {
+            done = true;
+            // 远程回传本地视角槽位(6-11)，服务端由 OnRemoteSelectionDone 反镜像
+            CmdSelectionResult(s != null ? s.slotID : -1);
+        });
+    }
+
+    /// <summary>远端→服务器：远程玩家选完目标，服务器由NotifyRemoteSelectionDone解除阻塞。</summary>
+    [Command]
+    public void CmdSelectionResult(int selectedLocalSlot)
+    {
+        int serverSlot = isLocalPlayer ? selectedLocalSlot : (selectedLocalSlot >= 6 ? selectedLocalSlot - 6 : selectedLocalSlot + 6);
+        BoardSlot.NotifyRemoteSelectionDone(serverSlot);
+    }
+
+    /// <summary>客户端→服务器：纯客户端放置卡牌后委托服务器执行进场效果。</summary>
+    [Command]
+    public void CmdStartEnterEffect(int clientSlotID, string templateID, string instanceID)
+    {
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return;
+        int serverSlot = isLocalPlayer ? clientSlotID : (clientSlotID >= 6 ? clientSlotID - 6 : clientSlotID + 6);
+        BoardSlot slot = bm.GetSlot(serverSlot);
+        if (slot?.currentCard3D == null) return;
+        CardInstance inst = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+        CardData template = CardDatabase.Instance?.GetTemplate(templateID);
+        if (inst != null && template != null && template.hasOnEnter)
+            slot.StartCoroutine(slot.StartOnEnterEffect(template, inst));
+    }
+
     // ═══════════════════════════════════════════════════════════════════
     // 深海恶物(01338) 反击选择委托
     // ═══════════════════════════════════════════════════════════════════
