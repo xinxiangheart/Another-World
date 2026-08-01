@@ -4236,6 +4236,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                             t3d?.cardInstance?.ReceiveHeal(3, CardInstance.HealSourceType.Minion);
                             t3d?.UpdateValues();
                         }
+                        TurnManager.SyncMyBoardToOpponent();
                     });
                 }
                 break;
