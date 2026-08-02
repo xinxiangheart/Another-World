@@ -136,7 +136,7 @@ public class BattleManager : MonoBehaviour
             BoardSlot slot = allSlots[i];
             if (slot?.currentCard3D == null) continue;
             CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-            if (ci == null || !ci.hasFirstStrike) continue;
+            if (ci == null || !ci.HasFirstStrike) continue;
          
         // 检查对方是否有合法目标
             if (ci.templateID == "01124")
@@ -286,7 +286,7 @@ public class BattleManager : MonoBehaviour
             BoardSlot slot = allSlots[i];
             if (slot?.currentCard3D == null) continue;
             CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-            if (ci == null || !ci.hasFirstStrike) continue;
+            if (ci == null || !ci.HasFirstStrike) continue;
 
         // 检查对方是否有合法目标
             if (ci.templateID == "03012")
@@ -468,7 +468,7 @@ public class BattleManager : MonoBehaviour
             BoardSlot slot = allSlots[i];
             if (slot?.currentCard3D == null) continue;
             CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-            if (ci == null || !ci.hasFirstStrike) continue;
+            if (ci == null || !ci.HasFirstStrike) continue;
 
             // 毒巫：清除护盾+中毒
             if (ci.templateID == "03502")
@@ -547,7 +547,7 @@ public class BattleManager : MonoBehaviour
             BoardSlot slot = allSlots[i];
             if (slot?.currentCard3D == null) continue;
             CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-            if (ci == null || !ci.hasFirstStrike) continue;
+            if (ci == null || !ci.HasFirstStrike) continue;
 
         // 检查对方是否有合法目标
             if (ci.templateID == "03506")
@@ -1743,6 +1743,14 @@ public class BattleManager : MonoBehaviour
     }
     IEnumerator MechRearrangementEffect()
     {
+        var selMgr = SelectionManager.Instance;
+        var confirmBtn = ConfirmSelectionButton.Instance;
+        if (selMgr == null || confirmBtn == null)
+        {
+            Debug.LogWarning("[MechRearrangementEffect] SelectionManager or ConfirmSelectionButton not available");
+            yield break;
+        }
+
         BoardSlot.isStrengtheningSlot = true;
         BoardSlot.extraTargetFilter = (slot) =>
         {
@@ -1750,11 +1758,11 @@ public class BattleManager : MonoBehaviour
             CardInstance c = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
             return c != null && c.prefixes.Contains("机械");
         };
-        SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, null);
+        selMgr.BeginSelection(TargetType.SingleAlly, null);
 
         BoardSlot firstSlot = null;
         bool confirmed = false;
-        ConfirmSelectionButton.Instance.Show(() => confirmed = true);
+        confirmBtn.Show(() => confirmed = true);
 
         BoardSlot.onTargetSelected = (selected) =>
         {
@@ -1787,10 +1795,10 @@ public class BattleManager : MonoBehaviour
         };
 
         yield return new WaitUntil(() => confirmed);
-        SelectionManager.Instance.ForceEndAll();
+        selMgr.ForceEndAll();
         BoardSlot.isStrengtheningSlot = false;
         BoardSlot.extraTargetFilter = null;
-        ConfirmSelectionButton.Instance.Hide();
+        confirmBtn.Hide();
     }
     BoardSlot FindSlotOf(CardInstance ci)
     {

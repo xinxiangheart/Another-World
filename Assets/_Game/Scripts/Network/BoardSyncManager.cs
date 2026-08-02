@@ -121,7 +121,7 @@ public class BoardSyncManager : MonoBehaviour
         if (ci == null) return "";
         string gtt = ci.grantedTraitTexts != null && ci.grantedTraitTexts.Count > 0
             ? string.Join(";;", ci.grantedTraitTexts) : "";
-        return $"{ci.templateID}|{ci.currentHealth}|{ci.currentAttack}|{ci.currentMaxHealth}|{ci.baseAttack}|{ci.baseHealth}|{ci.baseMaxHealth}|{ci.currentCost}|{ci.currentTier}|{ci.baseTier}|{(ci.hasShield?1:0)}|{(ci.silencedThisPhase?1:0)}|{(ci.isAttached?1:0)}|{(ci.poisoned?1:0)}|{ci.prefixes??""}|{gtt}";
+        return $"{ci.templateID}|{ci.currentHealth}|{ci.currentAttack}|{ci.currentMaxHealth}|{ci.baseAttack}|{ci.baseHealth}|{ci.baseMaxHealth}|{ci.currentCost}|{ci.currentTier}|{ci.baseTier}|{(ci.hasShield?1:0)}|{(ci.silencedThisPhase?1:0)}|{(ci.isAttached?1:0)}|{(ci.poisoned?1:0)}|{ci.prefixes??""}|{gtt}|{ci.totalDamageTaken}";
     }
 
     // ============= Client =============
@@ -421,7 +421,12 @@ public class BoardSyncManager : MonoBehaviour
             if (int.TryParse(p[7], out v)) cur.currentCost = v;
             if (int.TryParse(p[8], out v)) cur.currentTier = v;
             if (int.TryParse(p[9], out v)) cur.baseTier = v;
-            cur.hasShield = (p[10] == "1");
+            // 01512 先手护盾应存活至攻击回合结束——防止服务端已消耗护盾的同步提前覆盖客户端
+            bool syncShield = (p[10] == "1");
+            if (!syncShield && cur.hasShield && cur.shieldEndAtBattleEnd
+                && cur.templateID == "01512" && NetworkClient.isConnected && !NetworkServer.active)
+            { /* 保留客户端先手护盾——攻击回合结束后由 FinalDamage 清除 */ }
+            else cur.hasShield = syncShield;
             cur.silencedThisPhase = (p[11] == "1");
             cur.isAttached = (p[12] == "1");
             cur.poisoned = (p[13] == "1");
@@ -439,6 +444,9 @@ public class BoardSyncManager : MonoBehaviour
                 foreach (var t in newList)
                     if (!oldCopy.Contains(t)) cur.GrantTrait(t);
             }
+            // totalDamageTaken (17th field, 01534 活化母巢需要)
+            if (p.Length > 16 && int.TryParse(p[16], out int tdt))
+                cur.totalDamageTaken = Mathf.Max(cur.totalDamageTaken, tdt);
             // 服务端 FinalDamage 已将临时字段清零；远端本地始终信任服务端同步的 currentAttack
             cur.tempAttackBoost = 0;
             cur.originalAttackBeforeDebuff = 0;

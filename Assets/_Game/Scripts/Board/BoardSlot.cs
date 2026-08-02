@@ -115,7 +115,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         var bm = FindObjectOfType<BoardManager>();
         if (bm == null) { NetworkPlayer.Local?.CmdRemoteFirstStrikeDone(); yield break; }
 
-        // 只处理己方半场(6-11)，与 BattleManager.FirstStrikeCoroutine 的交互式先手逻辑完全一致
+        // ===== 第1轮：先手换位（阻塞阶段推进，全部交换完成再进行伤害）=====
         for (int i = 6; i <= 11; i++)
         {
             BoardSlot slot = bm.GetSlot(i);
@@ -177,11 +177,14 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 }
                 case "01513":
                 {
+                    var sel = SelectionManager.Instance;
+                    var cb = ConfirmSelectionButton.Instance;
+                    if (sel == null || cb == null) break;
                     BoardSlot.isStrengtheningSlot = true;
                     BoardSlot.extraTargetFilter = (s2) => { var c = s2?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance; return c != null && c.prefixes.Contains("机械"); };
-                    SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, null);
+                    sel.BeginSelection(TargetType.SingleAlly, null);
                     BoardSlot first = null; bool dd = false;
-                    ConfirmSelectionButton.Instance.Show(() => dd = true);
+                    cb.Show(() => dd = true);
                     BoardSlot.onTargetSelected = (s2) =>
                     {
                         if (first == null) first = s2;
@@ -193,19 +196,22 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                         }
                     };
                     yield return new WaitUntil(() => dd);
-                    SelectionManager.Instance.ForceEndAll();
+                    sel.ForceEndAll();
                     BoardSlot.isStrengtheningSlot = false;
                     BoardSlot.extraTargetFilter = null;
-                    ConfirmSelectionButton.Instance.Hide();
+                    cb.Hide();
                     ci.hasFirstStrike = false;
                     break;
                 }
                 case "01516":
                 {
+                    var sel16 = SelectionManager.Instance;
+                    var cb16 = ConfirmSelectionButton.Instance;
+                    if (sel16 == null || cb16 == null) break;
                     BoardSlot.isStrengtheningSlot = true;
-                    SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, null);
+                    sel16.BeginSelection(TargetType.SingleAlly, null);
                     BoardSlot first = null; bool dd = false;
-                    ConfirmSelectionButton.Instance.Show(() => dd = true);
+                    cb16.Show(() => dd = true);
                     BoardSlot.onTargetSelected = (s2) =>
                     {
                         if (first == null) first = s2;
@@ -217,18 +223,49 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                         }
                     };
                     yield return new WaitUntil(() => dd);
-                    SelectionManager.Instance.ForceEndAll();
+                    sel16.ForceEndAll();
                     BoardSlot.isStrengtheningSlot = false;
-                    ConfirmSelectionButton.Instance.Hide();
+                    cb16.Hide();
                     ci.hasFirstStrike = false;
                     break;
                 }
+                // 非交换先手 → buff/debuff/伤害由第2/3轮分别处理
                 case "03012":
+                case "01519":
+                case "01318":
+                case "03502":
+                case "01310":
+                case "03506":
+                case "03513":
+                case "03005":
+                case "03003":
+                case "03020":
+                    break;
+                default:
+                    Debug.LogWarning($"[BoardSlot] RunRemoteFirstStrikes 未处理的 templateID: {ci.templateID}");
+                    break;
+            }
+        }
+
+        // ===== 第2轮：先手buff（换位完成后执行）=====
+        for (int i2 = 6; i2 <= 11; i2++)
+        {
+            BoardSlot slot2 = bm.GetSlot(i2);
+            if (slot2?.currentCard3D == null) continue;
+            CardInstance ci2 = slot2.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci2 == null || !ci2.hasFirstStrike) continue;
+
+            yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
+            yield return null;
+
+            switch (ci2.templateID)
+            {
+                case "03012": // 阴阳：友方攻血平衡
                 {
                     bool dd = false;
                     SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (t) =>
                     {
-                        if (t != null && t != slot && t.currentCard3D != null)
+                        if (t != null && t != slot2 && t.currentCard3D != null)
                         {
                             var t3d = t.currentCard3D.GetComponent<Card3DInstance>();
                             var tci = t3d?.cardInstance;
@@ -244,19 +281,21 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                         dd = true;
                     });
                     while (!dd) yield return null;
-                    ci.hasFirstStrike = false;
+                    ci2.hasFirstStrike = false;
                     break;
                 }
-                case "01519":
+                case "01519": // 守护骑士：给友方上护盾
                 {
+                    var sel19 = SelectionManager.Instance;
+                    if (sel19 == null) break;
                     var cdd = new List<BoardSlot>();
                     for (int j = 6; j <= 11; j++)
-                    { var s3 = bm.GetSlot(j); if (s3?.currentCard3D != null && j != i) { var bc = s3.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance; if (bc != null && !bc.hasShield && !bc.isAttached) cdd.Add(s3); } }
+                    { var s3 = bm.GetSlot(j); if (s3?.currentCard3D != null && j != i2) { var bc = s3.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance; if (bc != null && !bc.hasShield && !bc.isAttached) cdd.Add(s3); } }
                     if (cdd.Count == 0) continue;
                     if (cdd.Count <= 3) { foreach (var cs in cdd) { var bc = cs.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance; if (bc != null) { bc.GrantShield(false, false, true); cs.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues(); } } }
                     else
                     {
-                        string lid2 = SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, null);
+                        string lid2 = sel19.BeginSelection(TargetType.SingleAlly, null);
                         BoardSlot.isStrengtheningSlot = true;
                         var sel = new List<BoardSlot>();
                         BoardSlot.onTargetSelected = (t) =>
@@ -264,30 +303,31 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                             if (t == null || !cdd.Contains(t)) return;
                             if (sel.Contains(t)) { sel.Remove(t); t.SetHighlightColor(t.GetNormalColor()); }
                             else if (sel.Count < 3) { sel.Add(t); t.SetHighlightColor(Color.yellow); }
-                            if (sel.Count == 3) { foreach (var s3 in sel) { var bc = s3.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance; if (bc != null) { bc.GrantShield(false, false, true); s3.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues(); s3.SetHighlightColor(s3.GetNormalColor()); } } SelectionManager.Instance.EndSelection(lid2); }
+                            if (sel.Count == 3) { foreach (var s3 in sel) { var bc = s3.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance; if (bc != null) { bc.GrantShield(false, false, true); s3.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues(); s3.SetHighlightColor(s3.GetNormalColor()); } } sel19.EndSelection(lid2); }
                         };
-                        yield return new WaitUntil(() => !SelectionManager.Instance.IsSelecting);
+                        yield return new WaitUntil(() => !sel19.IsSelecting);
                         BoardSlot.isStrengtheningSlot = false;
                     }
-                    ci.hasFirstStrike = false;
+                    ci2.hasFirstStrike = false;
                     break;
                 }
-                case "03502":
-                {
-                    bool hasEnemy = false;
-                    for (int j = 0; j <= 5; j++) if (bm.GetSlot(j)?.currentCard3D != null) { hasEnemy = true; break; }
-                    if (!hasEnemy) continue;
-                    bool dd = false;
-                    SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (t) =>
-                    {
-                        if (t?.currentCard3D != null) { var ti2 = t.currentCard3D.GetComponent<Card3DInstance>(); if (ti2?.cardInstance != null) { ti2.cardInstance.RemoveShield(); ti2.cardInstance.poisoned = true; } }
-                        dd = true;
-                    });
-                    while (!dd) yield return null;
-                    ci.hasFirstStrike = false;
-                    break;
-                }
-                case "01318":
+            }
+        }
+
+        // ===== 第3轮：先手debuff（buff完成后执行）=====
+        for (int i3 = 6; i3 <= 11; i3++)
+        {
+            BoardSlot slot3 = bm.GetSlot(i3);
+            if (slot3?.currentCard3D == null) continue;
+            CardInstance ci3 = slot3.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci3 == null || !ci3.hasFirstStrike) continue;
+
+            yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
+            yield return null;
+
+            switch (ci3.templateID)
+            {
+                case "01318": // 弱化棱晶：目标攻击力→1
                 {
                     bool anyTarget = false;
                     for (int j = 0; j < 12; j++) if (bm.GetSlot(j)?.currentCard3D != null) { anyTarget = true; break; }
@@ -295,18 +335,33 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     bool dd = false;
                     SelectionManager.Instance.BeginSelection(TargetType.AllMinions, (t) =>
                     {
-                        if (t?.currentCard3D != null) { var tci2 = t.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance; if (tci2 != null) { tci2.originalAttackBeforeDebuff = tci2.currentAttack; tci2.currentAttack = 1; t.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues(); } }
+                        if (t?.currentCard3D != null) { var tci3 = t.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance; if (tci3 != null) { tci3.originalAttackBeforeDebuff = tci3.currentAttack; tci3.currentAttack = 1; t.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues(); } }
                         dd = true;
                     });
                     yield return new WaitUntil(() => dd);
-                    ci.hasFirstStrike = false;
+                    ci3.hasFirstStrike = false;
                     break;
                 }
-                default:
-                    Debug.LogWarning($"[BoardSlot] RunRemoteFirstStrikes 未处理的 templateID: {ci.templateID}");
+                case "03502": // 毒巫：清护盾+中毒
+                {
+                    bool hasEnemy = false;
+                    for (int j = 0; j <= 5; j++) if (bm.GetSlot(j)?.currentCard3D != null) { hasEnemy = true; break; }
+                    if (!hasEnemy) continue;
+                    bool dd = false;
+                    SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (t) =>
+                    {
+                        if (t?.currentCard3D != null) { var ti3 = t.currentCard3D.GetComponent<Card3DInstance>(); if (ti3?.cardInstance != null) { ti3.cardInstance.RemoveShield(); ti3.cardInstance.poisoned = true; } }
+                        dd = true;
+                    });
+                    while (!dd) yield return null;
+                    ci3.hasFirstStrike = false;
                     break;
+                }
             }
         }
+
+        // 第4轮(伤害：01310/03005/03003/03506/03513/03020+赋予先手)——
+        // 由服务端 FirstStrikeCoroutine 权威处理，结果通过 MarkDirty 同步。
 
         TurnManager.SyncMyBoardToOpponent();
         // 远端先手完毕后立即清零临时攻击力字段——BattleCoroutine/FinalDamage 不会在远端执行
@@ -3591,6 +3646,12 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     }
                 BoardManager.SyncAttachedModels(firstSlot);
                 BoardManager.SyncAttachedModels(secondSlot);
+                // 01517 swap sync — 通知服务器交换结果，防止 SyncNow 覆盖本地交换
+                if (NetworkClient.isConnected)
+                {
+                    NetworkPlayer.Local?.CmdSwapCards(firstSlot.slotID, secondSlot.slotID);
+                    TurnManager.SyncMyBoardToOpponent();
+                }
                 firstSlot = null;
             }
         };

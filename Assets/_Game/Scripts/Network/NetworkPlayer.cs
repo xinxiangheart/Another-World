@@ -406,6 +406,7 @@ public class NetworkPlayer : NetworkBehaviour
                             // 01515 狂热萨满 / 01520 商户 — 光环需在服务器侧注册
                             if (templateID == "01515") GlobalEventManager.Instance?.RegisterAura(new FanaticShamanAura { source = ci });
                             if (templateID == "01520") GlobalEventManager.Instance?.RegisterAura(new MerchantAura { source = ci });
+                            if (templateID == "01533") GlobalEventManager.Instance?.RegisterAura(new ScarletSaintAura { source = ci });
                             if (overrideAtk >= 0) ci.currentAttack = overrideAtk;
                             if (overrideHP >= 0) ci.currentHealth = overrideHP;
                             if (overrideMaxHP >= 0) ci.currentMaxHealth = overrideMaxHP;
@@ -1007,6 +1008,7 @@ public class NetworkPlayer : NetworkBehaviour
             // 01515 / 01520 — 远程客户端也注册光环
             if (templateID == "01515") GlobalEventManager.Instance?.RegisterAura(new FanaticShamanAura { source = ci });
             if (templateID == "01520") GlobalEventManager.Instance?.RegisterAura(new MerchantAura { source = ci });
+            if (templateID == "01533") GlobalEventManager.Instance?.RegisterAura(new ScarletSaintAura { source = ci });
 
             // Apply enter-effect stat overrides
             if (overrideAtk >= 0) ci.currentAttack = overrideAtk;
@@ -1245,7 +1247,16 @@ public class NetworkPlayer : NetworkBehaviour
                     if (p.Length > 7 && int.TryParse(p[7], out v)) ci.currentCost = v;
                     if (p.Length > 8 && int.TryParse(p[8], out v)) ci.currentTier = v;
                     if (p.Length > 9 && int.TryParse(p[9], out v)) ci.baseTier = v;
-                    if (p.Length > 10) ci.hasShield = (p[10] == "1");
+                    if (p.Length > 10 && !string.IsNullOrEmpty(p[10]))
+                    {
+                        bool syncShield = (p[10] == "1");
+                        // 01512 先手护盾：服务端 FirstStrikeCoroutine 已赋予，客户端上报的陈旧数据
+                        // hasShield=false 不应覆盖服务端刚赋予的护盾
+                        if (!syncShield && ci.hasShield && ci.shieldEndAtBattleEnd
+                            && ci.templateID == "01512" && !isLocalPlayer)
+                        { /* 保留服务端已赋予的先手护盾 */ }
+                        else ci.hasShield = syncShield;
+                    }
                     if (p.Length > 11) ci.silencedThisPhase = (p[11] == "1");
                     if (p.Length > 12) ci.isAttached = (p[12] == "1");
                     if (p.Length > 13) ci.poisoned = (p[13] == "1");
@@ -1262,6 +1273,9 @@ public class NetworkPlayer : NetworkBehaviour
                         foreach (var t in newList)
                             if (!oldCopy.Contains(t)) ci.GrantTrait(t);
                     }
+                    // totalDamageTaken (17th field) — 01534 活化母巢需要服务端权威值
+                    if (p.Length > 16 && int.TryParse(p[16], out int tdt))
+                        ci.totalDamageTaken = Mathf.Max(ci.totalDamageTaken, tdt);
                     if (parts[0] == "03007") ci.isShadow = true;
                     slot.currentCard3D?.GetComponent<Card3DInstance>()?.UpdateValues();
                 }
@@ -1984,10 +1998,33 @@ public class NetworkPlayer : NetworkBehaviour
         var ci = slot?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
         if (ci != null)
         {
+            // 记录敌方伤害来源——01513 复生造物需要此信息检测敌方导致的死亡
+            if (!isLocalPlayer)
+            {
+                if (ci.enemyDamageSourceIDs == null) ci.enemyDamageSourceIDs = new List<string>();
+                ci.enemyDamageSourceIDs.Add("ENEMY_CMD");
+            }
             ci.currentHealth -= damage;
             if (ci.currentHealth < 0) ci.currentHealth = 0;
             slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
             BoardSlot.CheckAndHandleDeaths();
+        }
+        BoardSyncManager.MarkDirty();
+    }
+
+    /// <summary>客户端→服务器：01524 神灵画卷消灭全部敌方召唤物。</summary>
+    [Command]
+    public void CmdDestroyCard01524(int clientSlotID, int lethalDamage)
+    {
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return;
+        int serverSlot = isLocalPlayer ? clientSlotID : (clientSlotID >= 6 ? clientSlotID - 6 : clientSlotID + 6);
+        var slot = bm.GetSlot(serverSlot);
+        var ci = slot?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+        if (ci != null)
+        {
+            ci.isActiveExit = true;
+            slot.HandleDeath(slot.currentCard3D);
         }
         BoardSyncManager.MarkDirty();
     }

@@ -73,26 +73,31 @@ public class GlobalEventManager : MonoBehaviour
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
         if (bm == null) return false;
-        int slot = GetSlotOf(ci, bm);
-        if (slot < 0 || slot >= 6) return false; // 只压制对方（slot 0-5）
+        int targetSlot = GetSlotOf(ci, bm);
+        if (targetSlot < 0) return false;
+
+        // 判断目标卡牌属于哪一方（6-11=己方, 0-5=对方）
+        bool targetIsAlly = targetSlot >= 6;
+        int enemySearchStart = targetIsAlly ? 0 : 6;
+        int enemySearchEnd = targetIsAlly ? 5 : 11;
 
         // 检查对方场上是否有狂热萨满(01515)：禁止进场+抛置
         if (trait == "进场" || trait == "抛置")
         {
-            for (int i = 6; i <= 11; i++)
+            for (int i = enemySearchStart; i <= enemySearchEnd; i++)
             {
-                CardInstance ally = bm.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
-                if (ally != null && ally.templateID == "01515" && !ally.silencedThisPhase && !IsFullySilenced(ally))
+                CardInstance enemy = bm.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                if (enemy != null && enemy.templateID == "01515" && !enemy.silencedThisPhase && !IsFullySilenced(enemy))
                     return true;
             }
         }
         // 检查对方场上是否有法官(01323)：禁止退场
         if (trait == "退场")
         {
-            for (int i = 6; i <= 11; i++)
+            for (int i = enemySearchStart; i <= enemySearchEnd; i++)
             {
-                CardInstance ally = bm.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
-                if (ally != null && ally.templateID == "01323" && !ally.silencedThisPhase && !IsFullySilenced(ally))
+                CardInstance enemy = bm.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                if (enemy != null && enemy.templateID == "01323" && !enemy.silencedThisPhase && !IsFullySilenced(enemy))
                     return true;
             }
         }

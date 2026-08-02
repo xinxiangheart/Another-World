@@ -400,13 +400,30 @@ public static class EnterHandlers
         }
         if (scrollCount >= 2)
         {
-            for (int i = 0; i <= 5; i++)
+            // 纯客户端：委托服务端权威执行敌方死亡——本地 HandleDeath 不报告 0-5 槽位变更
+            if (NetworkClient.isConnected && !NetworkServer.active)
             {
-                var s = bm?.GetSlot(i);
-                if (s?.currentCard3D != null)
+                for (int i = 0; i <= 5; i++)
                 {
-                    var ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                    if (ci != null) { ci.isActiveExit = true; s.HandleDeath(s.currentCard3D); }
+                    var s = bm?.GetSlot(i);
+                    if (s?.currentCard3D != null)
+                    {
+                        var ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                        if (ci != null)
+                            NetworkPlayer.Local?.CmdDestroyCard01524(i, ci.currentHealth + 1);
+                    }
+                }
+            }
+            else
+            {
+                for (int i = 0; i <= 5; i++)
+                {
+                    var s = bm?.GetSlot(i);
+                    if (s?.currentCard3D != null)
+                    {
+                        var ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                        if (ci != null) { ci.isActiveExit = true; s.HandleDeath(s.currentCard3D); }
+                    }
                 }
             }
         }

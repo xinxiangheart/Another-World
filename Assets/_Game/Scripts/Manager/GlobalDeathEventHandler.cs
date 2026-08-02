@@ -156,9 +156,24 @@ public static class GlobalDeathEventHandler
 
         // ===== 8. 复生造物(01513)：标记需要召唤杂兵 =====
         dyingCI._rebornSummon = false;
-        if (isAlly && dyingCI != null && dyingCI.templateID != "03004")
+        // 不限定 isAlly——01513 可在任一方，IsOnSameSide 确保同侧触发
+        if (dyingCI != null && dyingCI.templateID != "03004")
         {
-            if (dyingCI.enemyDamageSourceIDs.Count > 0)
+            bool hasEnemySource = dyingCI.enemyDamageSourceIDs.Count > 0;
+            // 纯客户端：服务端同步过来的死亡可能未填充 enemyDamageSourceIDs，回退到 damageSourceInstanceIDs
+            if (!hasEnemySource)
+            {
+                foreach (string srcID in damageSourceInstanceIDs)
+                {
+                    int srcSlot = GetSlotOfByInstanceID(bm, srcID);
+                    if (srcSlot >= 0 && BoardManager.IsAllySide(srcSlot) != BoardManager.IsAllySide(slotID))
+                    {
+                        hasEnemySource = true;
+                        break;
+                    }
+                }
+            }
+            if (hasEnemySource)
             {
                 CardInstance reborn = FindByTemplateID_AnySide(bm, "01513");
                 if (reborn != null && !IsSilenced(reborn) && IsOnSameSide(bm, reborn, slotID))
