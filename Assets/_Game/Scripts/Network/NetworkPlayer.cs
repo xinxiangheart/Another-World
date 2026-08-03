@@ -1409,9 +1409,12 @@ public class NetworkPlayer : NetworkBehaviour
                 continue;
             }
 
-            // 03001 追随者本帧刚被消耗——跳过过期客户端上报的重建
-            if (tid == "03001" && bm.GetSlot(mapped)?.braveBlockedFrame == Time.frameCount)
+            // 03001 本帧刚被消耗——跳过过期客户端上报的重建
+            if (tid == "03001" && bm.GetSlot(mapped)?.braveBlockedCount > 0)
+            {
+                bm.GetSlot(mapped).braveBlockedCount--;
                 continue;
+            }
 
             var t = CardDatabase.Instance?.GetTemplate(tid);
             if (t?.prefab3D == null || hm == null) continue;
@@ -2041,7 +2044,7 @@ public class NetworkPlayer : NetworkBehaviour
                     ci.currentHealth = 2;
                     DamagePipeline.ReorderAttachments(serverSlot);
                     BoardManager.SyncAttachedModels(slot);
-                    slot.braveBlockedFrame = Time.frameCount;
+                    slot.braveBlockedCount++;
                     BoardSyncManager.MarkDirty();
                     return;
                 }

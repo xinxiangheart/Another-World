@@ -184,17 +184,18 @@ public class BoardSyncManager : MonoBehaviour
 
     static void SyncAttachmentsFromBlock(BoardManager bm, HandManager hm, string attachBlock, bool mistHiderActive)
     {
-        if (string.IsNullOrEmpty(attachBlock)) return;
-
         // 解析附着块为列表
         var incoming = new System.Collections.Generic.List<(string tid, int hs, int order)>();
-        foreach (var item in attachBlock.Split(new[] { "||" }, System.StringSplitOptions.None))
+        if (!string.IsNullOrEmpty(attachBlock))
         {
-            if (string.IsNullOrEmpty(item)) continue;
-            var p = item.Split('|');
-            if (p.Length < 3) continue;
-            if (!int.TryParse(p[1], out int hs) || !int.TryParse(p[2], out int o)) continue;
-            incoming.Add((p[0], hs, o));
+            foreach (var item in attachBlock.Split(new[] { "||" }, System.StringSplitOptions.None))
+            {
+                if (string.IsNullOrEmpty(item)) continue;
+                var p = item.Split('|');
+                if (p.Length < 3) continue;
+                if (!int.TryParse(p[1], out int hs) || !int.TryParse(p[2], out int o)) continue;
+                incoming.Add((p[0], hs, o));
+            }
         }
 
         // 去重 slot 侧已有的模板（独立放置过的牌 → 不是附着物，不重复造）
@@ -256,6 +257,12 @@ public class BoardSyncManager : MonoBehaviour
             }
 
             // 没有 — 新建
+            // 03001追随者刚被消耗——每消费一次跳过一次创建
+            if (tid == "03001" && bm.GetSlot(cs)?.braveBlockedCount > 0)
+            {
+                bm.GetSlot(cs).braveBlockedCount--;
+                continue;
+            }
             var t = CardDatabase.Instance?.GetTemplate(tid);
             if (t?.prefab3D == null || hm == null) continue;
             var m = Instantiate(t.prefab3D, HandManager.GetAttachWorldPos(cs, o), Quaternion.Euler(0, 180, 0));

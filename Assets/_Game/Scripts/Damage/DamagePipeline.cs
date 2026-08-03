@@ -281,8 +281,8 @@ public static class DamagePipeline
                 ShowFloaterAt(def, 0, FloaterType.Blocked);
                 ReorderAttachments(hostSlot);
                 SyncAttachments(hostSlot);
-                var bmBlock = UnityEngine.Object.FindObjectOfType<BoardManager>();
-                if (bmBlock != null) bmBlock.GetSlot(hostSlot).braveBlockedFrame = Time.frameCount;
+                var bm = UnityEngine.Object.FindObjectOfType<BoardManager>();
+                if (bm != null) bm.GetSlot(hostSlot).braveBlockedCount++;
                 ctx.negatedByFollower = true;
                 ctx.stopped = true;
                 return d;
