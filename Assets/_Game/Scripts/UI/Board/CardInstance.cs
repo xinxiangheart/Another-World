@@ -314,7 +314,7 @@ public class CardInstance : MonoBehaviour
         hasOriginalAttach = src.hasOriginalAttach;
         hasOriginalAttacksFrontRow = src.hasOriginalAttacksFrontRow;
         hasOriginalAttacksBackRow = src.hasOriginalAttacksBackRow;
-        damageSourceInstanceIDs = new List<string>(src.damageSourceInstanceIDs);
+        damageSourceInstanceIDs = src.damageSourceInstanceIDs != null ? new List<string>(src.damageSourceInstanceIDs) : new List<string>();
         cannotHeal = src.cannotHeal;
         overclocked = src.overclocked;
         originalAttackBeforeDebuff = src.originalAttackBeforeDebuff;

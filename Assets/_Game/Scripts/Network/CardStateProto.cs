@@ -23,6 +23,7 @@ public struct CardStateProto
     public bool hasShield, silenced, isAttached, poisoned;
     public string prefixes;        // 空格分隔
     public string grantedTraits;   // ";;" 分隔
+    public int totalDamageTaken;
 
     // ═══════════════════ 槽位标记 ═══════════════════
     public bool slotBlocked, slotPrison, slotPlague, slotSpotlight;
@@ -30,7 +31,7 @@ public struct CardStateProto
 
     // ═══════════════════ 序列化 ═══════════════════
 
-    /// <summary>输出为现 16 字段 pipe 格式（向后兼容 BoardSyncManager.Tid()）。</summary>
+    /// <summary>输出为现 17 字段 pipe 格式（向后兼容 BoardSyncManager.Tid()）。</summary>
     public string SerializeCard()
     {
         return string.Join("|",
@@ -43,7 +44,8 @@ public struct CardStateProto
             isAttached ? "1" : "0",
             poisoned ? "1" : "0",
             prefixes ?? "",
-            grantedTraits ?? "");
+            grantedTraits ?? "",
+            totalDamageTaken);
     }
 
     /// <summary>从 pipe 格式反序列化（不设 instanceID/zone/slotID——由调用方补充）。</summary>
@@ -68,6 +70,7 @@ public struct CardStateProto
         if (p.Length > 13) s.poisoned = p[13] == "1";
         if (p.Length > 14) s.prefixes = p[14];
         if (p.Length > 15) s.grantedTraits = p[15];
+        if (p.Length > 16) int.TryParse(p[16], out s.totalDamageTaken);
         return s;
     }
 
@@ -100,6 +103,7 @@ public struct CardStateProto
             prefixes = ci.prefixes ?? "",
             grantedTraits = ci.grantedTraitTexts != null && ci.grantedTraitTexts.Count > 0
                 ? string.Join(";;", ci.grantedTraitTexts) : "",
+            totalDamageTaken = ci.totalDamageTaken,
         };
     }
 

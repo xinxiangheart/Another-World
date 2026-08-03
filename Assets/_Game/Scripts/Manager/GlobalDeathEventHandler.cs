@@ -160,7 +160,7 @@ public static class GlobalDeathEventHandler
         if (dyingCI != null && dyingCI.templateID != "03004")
         {
             bool hasEnemySource = dyingCI.enemyDamageSourceIDs.Count > 0;
-            // 纯客户端：服务端同步过来的死亡可能未填充 enemyDamageSourceIDs，回退到 damageSourceInstanceIDs
+            // 纯客户端：回退到 damageSourceInstanceIDs 判断敌方来源
             if (!hasEnemySource)
             {
                 foreach (string srcID in damageSourceInstanceIDs)
@@ -173,6 +173,7 @@ public static class GlobalDeathEventHandler
                     }
                 }
             }
+            Debug.Log($"[01513-DEBUG] hasEnemySource={hasEnemySource}");
             if (hasEnemySource)
             {
                 CardInstance reborn = FindByTemplateID_AnySide(bm, "01513");

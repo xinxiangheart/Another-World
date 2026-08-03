@@ -70,11 +70,7 @@ public class Card3DHover : MonoBehaviour
         cardInstance.isActiveExit = false;
         cardInstance.hasRevenge = false;
 
-        // 01511 自身无抛置，但只要有已复制的抛置特性即可触发弃牌效果
-        bool hasScholarDiscardTrait = cardInstance.templateID == "01511"
-            && cardInstance.mindScholarCopiedTraits != null
-            && cardInstance.mindScholarCopiedTraits.Exists(t => t.Contains("抛置"));
-        bool shouldTriggerDiscard = cardInstance.hasDiscard || hasScholarDiscardTrait;
+        bool shouldTriggerDiscard = cardInstance.hasDiscard;
 
         cardInstance.savedAttackForDiscard = cardInstance.currentAttack;
 
@@ -91,11 +87,7 @@ public class Card3DHover : MonoBehaviour
         TurnManager tm = FindObjectOfType<TurnManager>();
         if (tm == null || !tm.IsMyTurn()) return false;
         if (BoardSlot.isPlacingCard || BoardSlot.isTargetingMode || BoardSlot.isAttachSelectMode) return false;
-        // 01511 自身无抛置，但只要有已复制的抛置特性即可手动弃牌
-        bool canScholarDiscard = cardInstance.templateID == "01511"
-            && cardInstance.mindScholarCopiedTraits != null
-            && cardInstance.mindScholarCopiedTraits.Exists(t => t.Contains("抛置"));
-        if (cardInstance == null || (!cardInstance.HasDiscard && !canScholarDiscard)) return false;
+        if (cardInstance == null || !cardInstance.HasDiscard) return false;
         // Only discard cards on your side (slots 6-11), never enemy cards
         BoardSlot slot = GetMySlot();
         if (slot == null || slot.slotID < 6) return false;
@@ -124,12 +116,15 @@ public class Card3DHover : MonoBehaviour
         if (EffectDispatcher.Dispatch(Trigger.Discard, discardCtx))
             return;
 
-        // ── 01511 已复制抛置特性 → 通过 discardSlotID 获取槽位启动协程 ──
-        // 注意：此时 HandleDeath 已将卡牌移回手牌（Exit 处理器），不能遍历搜索模型
+        // ── 01511 已复制抛置特性 → 直接在找到的槽位上启动协程 ──
         if (deadInstance.templateID == "01511" && deadInstance.mindScholarCopiedTraits?.Count > 0)
         {
             BoardManager bm = FindObjectOfType<BoardManager>();
-            BoardSlot found = bm?.GetSlot(discardSlotID);
+            BoardSlot found = null;
+            for (int i = 0; i < 12; i++) {
+                var ci = bm?.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                if (ci == deadInstance) { found = bm.GetSlot(i); break; }
+            }
             if (found != null)
                 found.StartCoroutine(found.TriggerScholarDiscardFromHover(deadInstance, discardSlotID));
             return;

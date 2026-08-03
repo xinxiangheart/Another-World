@@ -1203,7 +1203,7 @@ public class HandManager : MonoBehaviour
         // 无赖：进场获得护盾（攻击回合开始消失）
         if (sourceInstance != null && sourceInstance.prefixes.Contains("机械") && sourceInstance.templateID != "01513")
         {
-            CardInstance reborn = FindRebornOnField();
+            CardInstance reborn = FindRebornOnField(slot.slotID);
             if (reborn != null && (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(reborn)))
             {
                 reborn.currentHealth += 1;
@@ -2111,9 +2111,25 @@ public class HandManager : MonoBehaviour
         PlaceCardToSlot(slot, temp);
         Destroy(temp);
     }
-    CardInstance FindRebornOnField()
+    CardInstance FindRebornOnField(int soldierSlotID = -1)
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
+        if (soldierSlotID >= 0)
+        {
+            // 只在杂兵同侧搜索 01513——避免服务端远端半场视角不一致
+            BoardManager.GetSideRange(soldierSlotID, out int s, out int e);
+            for (int i = s; i <= e; i++)
+            {
+                BoardSlot slot = bm?.GetSlot(i);
+                if (slot?.currentCard3D != null)
+                {
+                    CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                    if (ci != null && ci.templateID == "01513") return ci;
+                }
+            }
+            return null;
+        }
+        // 兼容旧调用：默认搜 6-11
         for (int i = 6; i <= 11; i++)
         {
             BoardSlot s = bm?.GetSlot(i);

@@ -147,7 +147,7 @@ public partial class TurnManager : MonoBehaviour
             ci.enemyDamageSourceIDs.Clear();
             ci.damageSourceInstanceIDs.Clear();
             ci.ironSmithOneCostConsumedCount = 0;
-            if (ci.templateID == "01124" || ci.templateID == "01312" || ci.templateID == "01516")
+            if (ci.templateID == "01124" || ci.templateID == "01312" || ci.templateID == "01516" || ci.templateID == "01513")
                 ci.hasFirstStrike = true;
             if (ci.templateID == "01511")
             {

@@ -4077,9 +4077,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     /// <summary>01511 手牌抛置：触发全部已复制抛置特性。</summary>
     public IEnumerator TriggerScholarDiscardFromHover(CardInstance scholar, int discardSlotID)
     {
-        // 此时 HandleDeath 已将卡牌移回手牌，不能通过 FindSlotOf 搜索——直接用 discardSlotID
-        BoardManager bm = FindObjectOfType<BoardManager>();
-        BoardSlot mySlot = bm?.GetSlot(discardSlotID);
+        BoardSlot mySlot = FindSlotOf(scholar);
         if (mySlot == null) yield break;
         if (scholar.mindScholarCopiedTraits == null || scholar.mindScholarCopiedTraits.Count == 0) yield break;
 
@@ -4087,8 +4085,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         {
             if (!trait.Contains("抛置")) continue;
             string key = ExtractTraitKey(trait);
+            if (scholar.mindScholarTriggeredKeys.Contains(key)) continue;
+            scholar.mindScholarTriggeredKeys.Add(key);
             NestingContext.Enter($"MS_HoverDiscard_{key}");
-            TriggerDiscardEffectFromTrait(scholar, trait, discardSlotID);
+            TriggerDiscardEffectFromTrait(scholar, trait);
             yield return null;
             yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
             int myDepth2 = NestingContext.Snapshot();
@@ -4097,6 +4097,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             yield return new WaitWhile(() => NestingContext.Depth > myDepth2 || BoardSlot.isPlacingCard);
             TurnManager.SyncMyBoardToOpponent();
             NestingContext.Exit();
+            yield break;
         }
     }
 
@@ -4187,8 +4188,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 }
                 else // "抛置"——进场树中立即触发，不消耗手动弃牌机会
                 {
-                    BoardSlot mySlot = FindSlotOf(giver);
-                    TriggerDiscardEffectFromTrait(giver, snapshotNew, mySlot?.slotID ?? -1);
+                    TriggerDiscardEffectFromTrait(giver, snapshotNew);
                     yield return null;
                     yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
                     int myDepth2 = NestingContext.Snapshot();
@@ -4237,19 +4237,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         string[] parts = recordText.Split(':');
         return parts.Length > 0 ? parts[0] : null;
     }
-    /// <param name="knownSlotID">可选：已知槽位ID（卡牌已退场时传入，避免 FindSlotOf 搜索失败）</param>
-    void TriggerDiscardEffectFromTrait(CardInstance ci, string recordText, int knownSlotID = -1)
+    void TriggerDiscardEffectFromTrait(CardInstance ci, string recordText)
     {
         string templateID = ExtractTemplateIDFromTrait(recordText);
         if (string.IsNullOrEmpty(templateID)) return;
-
-        // 获取槽位ID：优先用已知值，否则搜索板面
-        int GetMySlotID()
-        {
-            if (knownSlotID >= 0) return knownSlotID;
-            BoardSlot mySlot = FindSlotOf(ci);
-            return mySlot?.slotID ?? -1;
-        }
 
         // 根据原卡牌的templateID触发抛置效果
         switch (templateID)
@@ -4257,9 +4248,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             case "01343":
                 if (HasEnemyTarget())
                 {
-                    int mySlotID = GetMySlotID();
-                    // 使用弃牌前保存的攻击力——DeathPipeline 已将 currentAttack 重置为 baseAttack
-                    int discardAttack = ci.savedAttackForDiscard > 0 ? ci.savedAttackForDiscard : ci.currentAttack;
+                    BoardSlot mySlot = FindSlotOf(ci);
+                    int mySlotID = mySlot?.slotID ?? -1;
                     BoardSlot.StartDiscardSelection(TargetType.SingleEnemy, mySlotID, (target) =>
                     {
                         if (target?.currentCard3D != null)
@@ -4267,10 +4257,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                             Card3DInstance t3d = target.currentCard3D.GetComponent<Card3DInstance>();
                             if (t3d?.cardInstance != null)
                             {
-                                BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, discardAttack, null);
+                                BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, ci.currentAttack, null);
                                 t3d.UpdateValues();
                                 if (NetworkClient.isConnected && !NetworkServer.active)
-                                    NetworkPlayer.Local?.CmdApplyDamageToCard(target.slotID, discardAttack);
+                                    NetworkPlayer.Local?.CmdApplyDamageToCard(target.slotID, ci.currentAttack);
                             }
                         }
                         BoardSlot.CheckAndHandleDeaths();
@@ -4281,7 +4271,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             case "01136":
                 if (HasEnemyTarget())
                 {
-                    int mySlotID = GetMySlotID();
+                    BoardSlot mySlot = FindSlotOf(ci);
+                    int mySlotID = mySlot?.slotID ?? -1;
                     BoardSlot.StartDiscardSelection(TargetType.SingleEnemy, mySlotID, (target) =>
                     {
                         if (target?.currentCard3D != null)
@@ -4301,9 +4292,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 }
                 break;
             case "01346": // 士兵：为己方一召唤物恢复3生命值
-                if ((knownSlotID >= 0 ? HasAllyTargetBySlot(knownSlotID) : HasAllyTarget(ci)))
+                if (HasAllyTarget(ci))
                 {
-                    int mySlotID = GetMySlotID();
+                    BoardSlot mySlot = FindSlotOf(ci);
+                    int mySlotID = mySlot?.slotID ?? -1;
                     BoardSlot.StartDiscardSelection(TargetType.SingleAlly, mySlotID, (target) =>
                     {
                         if (target?.currentCard3D != null)
@@ -4327,7 +4319,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             case "01344": // 诅咒女巫：使对方攻击力永久-2
                 if (HasEnemyTarget())
                 {
-                    int mySlotID = GetMySlotID();
+                    BoardSlot mySlot = FindSlotOf(ci);
+                    int mySlotID = mySlot?.slotID ?? -1;
                     BoardSlot.StartDiscardSelection(TargetType.SingleEnemy, mySlotID, (target) =>
                     {
                         if (target?.currentCard3D != null)
@@ -4362,15 +4355,6 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
         if (!BoardManager.GetSideRangeOf(source, out int s, out int e)) return false;
-        for (int i = s; i <= e; i++)
-            if (bm?.GetSlot(i)?.currentCard3D != null) return true;
-        return false;
-    }
-    /// <summary>通过槽位ID判断己方是否有目标（卡牌已退场时使用，避免 GetSideRangeOf 搜索失败）。</summary>
-    bool HasAllyTargetBySlot(int slotID)
-    {
-        BoardManager bm = FindObjectOfType<BoardManager>();
-        BoardManager.GetSideRange(slotID, out int s, out int e);
         for (int i = s; i <= e; i++)
             if (bm?.GetSlot(i)?.currentCard3D != null) return true;
         return false;

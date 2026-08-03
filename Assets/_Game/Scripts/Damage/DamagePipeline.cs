@@ -401,6 +401,13 @@ public static class DamagePipeline
                 defenderGO.GetComponent<DamageSourceMarker>()
                     ?.RegisterDamage(ctx.input.sourceObject, actual);
         }
+        // ── 来源记录回退：无 sourceObject 时直接用 CardInstance ──
+        // 大量伤害路径（法术、抛置、进场/退场 handler 等）不传 sourceObject，
+        // 导致 enemyDamageSourceIDs 为空 → 01513/01528/01530 等特性失效
+        else if (ctx.Attacker != null)
+        {
+            RecordDamageSource(ctx.Attacker, def);
+        }
         // 同时记录防守方的 instanceID 到攻击方（用于阴影聚合体等"被谁打过"追踪）
         if (ctx.Attacker != null && defenderGO != null)
         {
@@ -632,6 +639,39 @@ public static class DamagePipeline
     {
         var go = GetGameObjectOf(ci);
         return go?.GetComponent<Card3DInstance>();
+    }
+
+    /// <summary>无 sourceObject 时的来源回退——直接写入 CardInstance 的 source 列表。</summary>
+    static void RecordDamageSource(CardInstance attacker, CardInstance defender)
+    {
+        // CardInstance 是 MonoBehaviour，被 Destroy 后 Unity 重载的 == null 返回 true
+        // 但 C# 托管引用仍存活，instanceID 仍可读。用 ReferenceEquals 绕过假 null。
+        if (ReferenceEquals(attacker, null) || ReferenceEquals(defender, null)) return;
+        if (string.IsNullOrEmpty(attacker.instanceID)) return;
+
+        // damageSourceInstanceIDs：攻击方 ID
+        if (defender.damageSourceInstanceIDs == null)
+            defender.damageSourceInstanceIDs = new System.Collections.Generic.List<string>();
+        if (!defender.damageSourceInstanceIDs.Contains(attacker.instanceID))
+            defender.damageSourceInstanceIDs.Add(attacker.instanceID);
+
+        // enemyDamageSourceIDs：仅敌方来源
+        if (IsEnemyOf(attacker, defender))
+        {
+            if (defender.enemyDamageSourceIDs == null)
+                defender.enemyDamageSourceIDs = new System.Collections.Generic.List<string>();
+            if (!defender.enemyDamageSourceIDs.Contains(attacker.instanceID))
+                defender.enemyDamageSourceIDs.Add(attacker.instanceID);
+        }
+    }
+
+    /// <summary>判断 attacker 和 defender 是否在对方半场。</summary>
+    static bool IsEnemyOf(CardInstance a, CardInstance b)
+    {
+        int slotA = GetSlotOf(a);
+        int slotB = GetSlotOf(b);
+        if (slotA < 0 || slotB < 0) return true; // 无法定位时保守标记为敌方
+        return (slotA >= 6) != (slotB >= 6);
     }
 
     // ═══════════════════════════════════════════════════════════════════

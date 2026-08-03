@@ -888,6 +888,30 @@ public class NetworkPlayer : NetworkBehaviour
     public bool IsMerchantOnFieldPublic() => IsMerchantOnField();
     public bool IsEnergyReaperOnFieldPublic() => IsEnergyReaperOnField();
 
+    /// <summary>03004 杂兵放置后触发 01513 复生造物的机械 buff。</summary>
+    static void ApplyRebornBuff(int soldierSlotID)
+    {
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return;
+        bool soldierIsAlly = soldierSlotID >= 6;
+        // 遍历全局 12 槽搜索 01513——远端 soldier 在 0-5 但 01513 在 6-11
+        for (int i = 0; i < 12; i++)
+        {
+            var ci = bm.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci != null && ci.templateID == "01513")
+            {
+                // 只 buff 与 soldier 同侧的 01513
+                if ((i >= 6) != soldierIsAlly) continue;
+                if (GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(ci))
+                    return;
+                ci.currentHealth += 1;
+                ci.currentMaxHealth += 1;
+                bm.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.UpdateValues();
+                return;
+            }
+        }
+    }
+
     // ========== Server-side card tracking helpers ==========
 
     /// <summary>Validate this player should be acting in the current server-side phase.</summary>
@@ -895,6 +919,9 @@ public class NetworkPlayer : NetworkBehaviour
     {
         // PhaseStart: 双方都可能通过 CmdPlayCard 放置影舞者影子——允许
         if (tm.currentPhase == TurnManager.TurnPhase.PhaseStart)
+            return true;
+        // BattlePhase: 死亡触发的token召唤（01513复生造物→03004等）由服务端权威处理
+        if (tm.currentPhase == TurnManager.TurnPhase.BattlePhase)
             return true;
         if (tm.currentPhase == TurnManager.TurnPhase.MyTurn)
             return (this == NetworkPlayer.Local);
@@ -1042,6 +1069,8 @@ public class NetworkPlayer : NetworkBehaviour
         // 非Token卡（templateID不以"03"开头）→ 玩家放置，禁止过期SyncNow覆盖
         var tci = model.GetComponent<Card3DInstance>()?.cardInstance;
         if (tci != null && !tci.templateID.StartsWith("03")) tci._hadEnterEffect = true;
+        // 03004 杂兵 → 01513 复生造物 buff
+        if (templateID == "03004") ApplyRebornBuff(enemySlot);
 
         // If opponent has MistHider, immediately hide this new enemy card
         if (Card3DHover.EnemyCardsAreHidden)
