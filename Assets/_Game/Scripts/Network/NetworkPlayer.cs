@@ -1387,6 +1387,13 @@ public class NetworkPlayer : NetworkBehaviour
             }
         }
 
+        // 收集 incoming 中 03001 的客户端槽位——用于清零已无追随者的计数
+        var incoming03001Slots2 = new System.Collections.Generic.HashSet<int>();
+        foreach (var (tid, hs, o) in incoming)
+        {
+            if (tid == "03001") incoming03001Slots2.Add(hs >= 6 ? hs - 6 : hs + 6);
+        }
+
         var hm = FindObjectOfType<HandManager>();
         foreach (var (tid, hs, o) in incoming)
         {
@@ -1427,6 +1434,14 @@ public class NetworkPlayer : NetworkBehaviour
                 c.cardInstance = n; c.UpdateValues();
             }
             bm.attachedModels.Add(m);
+        }
+
+        // 权威端已确认该槽位无 03001 → 清零计数
+        for (int i = 0; i < 12; i++)
+        {
+            var s = bm.GetSlot(i);
+            if (s != null && s.braveBlockedCount > 0 && !incoming03001Slots2.Contains(i))
+                s.braveBlockedCount = 0;
         }
     }
 

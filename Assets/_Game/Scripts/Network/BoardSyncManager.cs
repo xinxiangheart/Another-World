@@ -231,6 +231,13 @@ public class BoardSyncManager : MonoBehaviour
             }
         }
 
+        // 收集 incoming 中 03001 的客户端槽位——用于清零已无追随者的计数
+        var incoming03001Slots = new System.Collections.Generic.HashSet<int>();
+        foreach (var (tid, hs, o) in incoming)
+        {
+            if (tid == "03001") incoming03001Slots.Add(hs >= 6 ? hs - 6 : hs + 6);
+        }
+
         // 添加/更新 incoming 中的附着物
         foreach (var (tid, hs, o) in incoming)
         {
@@ -285,6 +292,14 @@ public class BoardSyncManager : MonoBehaviour
                 if (d2.effectText != null) d2.effectText.gameObject.SetActive(false);
             }
             bm.attachedModels.Add(m);
+        }
+
+        // 权威端已确认该槽位无 03001 → 清零计数
+        for (int i = 0; i < 12; i++)
+        {
+            var s = bm.GetSlot(i);
+            if (s != null && s.braveBlockedCount > 0 && !incoming03001Slots.Contains(i))
+                s.braveBlockedCount = 0;
         }
     }
 
