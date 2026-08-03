@@ -275,11 +275,14 @@ public static class DamagePipeline
             GameObject lastFollower = FindTopFollower(def);
             if (lastFollower != null)
             {
+                int hostSlot = GetHostSlotID(def);
                 RemoveFollower(lastFollower);
                 def.currentHealth = 2;
                 ShowFloaterAt(def, 0, FloaterType.Blocked);
-                ReorderAttachments(GetHostSlotID(def));
-                SyncAttachments(GetHostSlotID(def));
+                ReorderAttachments(hostSlot);
+                SyncAttachments(hostSlot);
+                var bmBlock = UnityEngine.Object.FindObjectOfType<BoardManager>();
+                if (bmBlock != null) bmBlock.GetSlot(hostSlot).braveBlockedFrame = Time.frameCount;
                 ctx.negatedByFollower = true;
                 ctx.stopped = true;
                 return d;
@@ -463,7 +466,7 @@ public static class DamagePipeline
         return slot >= 6 && slot <= 11;
     }
 
-    static int GetSlotOf(CardInstance ci)
+    public static int GetSlotOf(CardInstance ci)
     {
         var bm = UnityEngine.Object.FindObjectOfType<BoardManager>();
         if (bm == null) return -1;
@@ -540,7 +543,7 @@ public static class DamagePipeline
         return null;
     }
 
-    static GameObject FindTopFollower(CardInstance host)
+    public static GameObject FindTopFollower(CardInstance host)
     {
         var bm = UnityEngine.Object.FindObjectOfType<BoardManager>();
         int hostSlot = GetHostSlotID(host);
@@ -555,14 +558,14 @@ public static class DamagePipeline
         return last;
     }
 
-    static void RemoveFollower(GameObject follower)
+    public static void RemoveFollower(GameObject follower)
     {
         var bm = UnityEngine.Object.FindObjectOfType<BoardManager>();
         bm.attachedModels.Remove(follower);
         UnityEngine.Object.Destroy(follower);
     }
 
-    static void ReorderAttachments(int hostSlotID)
+    public static void ReorderAttachments(int hostSlotID)
     {
         var bm = UnityEngine.Object.FindObjectOfType<BoardManager>();
         int order = 0;

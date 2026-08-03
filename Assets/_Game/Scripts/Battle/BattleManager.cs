@@ -1063,11 +1063,8 @@ public class BattleManager : MonoBehaviour
                 Card3DInstance tInst = target.GetComponent<Card3DInstance>();
                 if (tInst != null)
                 {
-                    tInst.cardInstance.currentHealth -= revengeDmg;
+                    DamagePipeline.Process(new DamageInput(null, tInst.cardInstance, revengeDmg, deadCard, DamagePhase.Battle));
                     tInst.UpdateValues();
-                    target.GetComponent<DamageSourceMarker>()?.RegisterDamage(deadCard, revengeDmg);
-                    // 浮动数字
-                    DamagePipeline.ShowFloaterAt(tInst.cardInstance, revengeDmg, FloaterType.Damage);
                 }
             }
         }

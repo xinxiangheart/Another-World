@@ -387,6 +387,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public bool deepSeaMarked;        // 深海恶物蓝色高亮标记（纯视觉）
     /// <summary>本槽位上最后一次 HandleDeath 触发时间（秒）。EnsureCard 检查此时间戳防止从过期同步数据重建已死亡模型。</summary>
     public float lastHandleDeathTime = -1f;
+    public int braveBlockedFrame = -1;
     public static int ignoreNextClickSlot = -1;
     public static bool _deepSeaRevengeWaiting;
     public static int _deepSeaRevengeTargetSlot = -1;

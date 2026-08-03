@@ -266,12 +266,42 @@ public partial class TurnManager : MonoBehaviour
             }
         }
 
+        // ── 追随者(03001)：在 MarkDirty 之前执行 ——
+        // 每阶段开始为宿主+1攻击力，须在 SyncNow 之前 buff 否则远程收不到
+        if (slots != null)
+        {
+            BoardManager bmFollow = FindObjectOfType<BoardManager>();
+            if (bmFollow != null)
+            {
+                foreach (GameObject obj in bmFollow.attachedModels)
+                {
+                    if (obj == null) continue;
+                    Card3DInstance c3dFollow = obj.GetComponent<Card3DInstance>();
+                    if (c3dFollow?.cardInstance?.templateID == "03001" && c3dFollow.cardInstance.isAttached)
+                    {
+                        if (!c3dFollow.cardInstance.CanTriggerTrait("阶段开始")) continue;
+                        int hostSlotID = c3dFollow.cardInstance.hostSlotID;
+                        BoardSlot hostSlot = bmFollow.GetSlot(hostSlotID);
+                        if (hostSlot?.currentCard3D != null)
+                        {
+                            CardInstance hostCard = hostSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                            if (hostCard != null)
+                            {
+                                hostCard.currentAttack += 1;
+                                hostSlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // ── 联机：先 MarkDirty 推 buff 后数据给远程，再广播 PhaseStart ——
-        // 否则远程的 CmdReportAllSlots 会用旧数据覆盖服务器已完成的 01506 增幅
+        // 否则远程的 CmdReportAllSlots 会用旧数据覆盖服务器已完成的 buff
         if (NetworkServer.active)
         {
             BoardSyncManager.MarkDirty();
-            yield return null; // LateUpdate → SyncNow → remote gets amplified stats
+            yield return null; // LateUpdate → SyncNow → remote gets buffed stats
             ProcessPhaseStartTriggers();
             // 仅在需远程交互时才等待——否则发 PhaseStart 后直接继续
             if (CardInstance.shadowMasterAlive)
@@ -287,35 +317,6 @@ public partial class TurnManager : MonoBehaviour
             else
             {
                 BroadcastTurnPhase(TurnPhase.PhaseStart);
-            }
-        }
-        // 追随者：每阶段开始为宿主+0+1
-        if (slots != null)
-        {
-            BoardManager bmFollow = FindObjectOfType<BoardManager>();
-            if (bmFollow != null)
-            {
-                foreach (GameObject obj in bmFollow.attachedModels)
-                {
-                    if (obj == null) continue;
-                    Card3DInstance c3dFollow = obj.GetComponent<Card3DInstance>();
-                    if (c3dFollow?.cardInstance?.templateID == "03001" && c3dFollow.cardInstance.isAttached)
-                    {
-                       
-                        if (!c3dFollow.cardInstance.CanTriggerTrait("阶段开始")) continue;
-                        int hostSlotID = c3dFollow.cardInstance.hostSlotID;
-                        BoardSlot hostSlot = bmFollow.GetSlot(hostSlotID);
-                        if (hostSlot?.currentCard3D != null)
-                        {
-                            CardInstance hostCard = hostSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                            if (hostCard != null)
-                            {
-                                hostCard.currentAttack += 1;
-                                hostSlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
-                            }
-                        }
-                    }
-                }
             }
         }
         // 聚光灯：每阶段开始恢复2生命值 — 双方都要检查

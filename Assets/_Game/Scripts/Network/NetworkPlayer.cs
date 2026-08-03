@@ -1409,6 +1409,10 @@ public class NetworkPlayer : NetworkBehaviour
                 continue;
             }
 
+            // 03001 追随者本帧刚被消耗——跳过过期客户端上报的重建
+            if (tid == "03001" && bm.GetSlot(mapped)?.braveBlockedFrame == Time.frameCount)
+                continue;
+
             var t = CardDatabase.Instance?.GetTemplate(tid);
             if (t?.prefab3D == null || hm == null) continue;
             var m = Instantiate(t.prefab3D, HandManager.GetAttachWorldPos(mapped, o), Quaternion.Euler(0, 180, 0));
@@ -2027,6 +2031,21 @@ public class NetworkPlayer : NetworkBehaviour
         var ci = slot?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
         if (ci != null)
         {
+            // ── 01514 追随者挡致命伤害（服务端权威）──
+            if (ci.braveTemplateID == "01514" && ci.currentHealth - damage <= 0)
+            {
+                GameObject follower = DamagePipeline.FindTopFollower(ci);
+                if (follower != null)
+                {
+                    DamagePipeline.RemoveFollower(follower);
+                    ci.currentHealth = 2;
+                    DamagePipeline.ReorderAttachments(serverSlot);
+                    BoardManager.SyncAttachedModels(slot);
+                    slot.braveBlockedFrame = Time.frameCount;
+                    BoardSyncManager.MarkDirty();
+                    return;
+                }
+            }
             // 记录敌方伤害来源——01513 复生造物需要此信息检测敌方导致的死亡
             if (!isLocalPlayer)
             {
