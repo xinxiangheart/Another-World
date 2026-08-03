@@ -238,7 +238,7 @@ public static class DeathPipeline
                 {
                     if (ca.cardInstance.isAncientFairy) continue;
                     bmAtt.attachedModels.RemoveAt(iB);
-                    Object.Destroy(obj);
+                    BoardManager.RecordAndRemoveAttach(obj);
                 }
             }
         BoardSlot.SyncMistHiderDisplay();

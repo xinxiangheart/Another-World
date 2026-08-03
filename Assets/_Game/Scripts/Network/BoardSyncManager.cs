@@ -91,14 +91,23 @@ public class BoardSyncManager : MonoBehaviour
                 bm.attachedModels.RemoveAt(i);
                 continue;
             }
-            al.Add($"{ci.templateID}|{ci.hostSlotID}|{ci.attachOrder}");
+            al.Add($"{ci.templateID}|{ci.hostSlotID}|{ci.attachOrder}|{ci.instanceID ?? ""}");
         }
         string ab = al.Count > 0 ? string.Join("||", al) : "";
+
+        // 清理已过期移除记录——当前仍在板面上的附件无需保护
+        foreach (var o in bm.attachedModels)
+        {
+            var ci = o?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci != null && !string.IsNullOrEmpty(ci.instanceID))
+                BoardManager.removedAttachIDs.Remove(ci.instanceID);
+        }
 
         // Signal whether the server-side has an active MistHider so the client hides the correct side
         // Also sync global shadow state (01502) for remote clients
         bool mistHiderActive = IsMistHiderActive();
-        string header = $"{(mistHiderActive ? "1" : "0")}|{CardInstance.shadowLimit}|{CardInstance.shadowAtkBonus}|{CardInstance.shadowTierBonus}|";
+        BoardManager.attachGen++;
+        string header = $"{(mistHiderActive ? "1" : "0")}|{CardInstance.shadowLimit}|{CardInstance.shadowAtkBonus}|{CardInstance.shadowTierBonus}|{BoardManager.attachGen}|";
 
         foreach (var kv in NetworkServer.connections)
             if (kv.Value != NetworkPlayer.Local?.connectionToClient)
@@ -121,7 +130,7 @@ public class BoardSyncManager : MonoBehaviour
         if (ci == null) return "";
         string gtt = ci.grantedTraitTexts != null && ci.grantedTraitTexts.Count > 0
             ? string.Join(";;", ci.grantedTraitTexts) : "";
-        return $"{ci.templateID}|{ci.currentHealth}|{ci.currentAttack}|{ci.currentMaxHealth}|{ci.baseAttack}|{ci.baseHealth}|{ci.baseMaxHealth}|{ci.currentCost}|{ci.currentTier}|{ci.baseTier}|{(ci.hasShield?1:0)}|{(ci.silencedThisPhase?1:0)}|{(ci.isAttached?1:0)}|{(ci.poisoned?1:0)}|{ci.prefixes??""}|{gtt}|{ci.totalDamageTaken}";
+        return $"{ci.templateID}|{ci.currentHealth}|{ci.currentAttack}|{ci.currentMaxHealth}|{ci.baseAttack}|{ci.baseHealth}|{ci.baseMaxHealth}|{ci.currentCost}|{ci.currentTier}|{ci.baseTier}|{(ci.hasShield?(1+(ci.shieldIsPermanent?1:0)+(ci.shieldEndAtBattleStart?2:0)+(ci.shieldEndAtBattleEnd?4:0)):0)}|{(ci.silencedThisPhase?1:0)}|{(ci.isAttached?1:0)}|{(ci.poisoned?1:0)}|{ci.prefixes??""}|{gtt}|{ci.totalDamageTaken}";
     }
 
     // ============= Client =============
@@ -132,34 +141,26 @@ public class BoardSyncManager : MonoBehaviour
         HandManager hm = FindObjectOfType<HandManager>();
         if (bm == null || s == null || s.Length < 12) return;
 
-        // Parse header: "mistHider|shadowLimit|shadowAtkBonus|shadowTierBonus|attachBlock"
+        // Parse header: "mistHider|shadowLimit|shadowAtkBonus|shadowTierBonus|gen|attachBlock"
         bool mistHiderActive = false;
+        int syncGen = 0;
         string attachBlock = attachBlockExt;
         if (!string.IsNullOrEmpty(attachBlockExt))
         {
             string[] hp = attachBlockExt.Split('|');
             if (hp.Length >= 1) mistHiderActive = hp[0] == "1";
-            // Parse shadow global state (01502) from server authority
             if (hp.Length >= 4)
             {
                 if (int.TryParse(hp[1], out int sl))  CardInstance.shadowLimit = Mathf.Max(CardInstance.shadowLimit, sl);
                 if (int.TryParse(hp[2], out int sab)) CardInstance.shadowAtkBonus = Mathf.Max(CardInstance.shadowAtkBonus, sab);
                 if (int.TryParse(hp[3], out int stb)) CardInstance.shadowTierBonus = Mathf.Max(CardInstance.shadowTierBonus, stb);
-                // Reconstruct attachBlock from remaining segments
-                if (hp.Length > 4)
-                    attachBlock = string.Join("|", hp, 4, hp.Length - 4);
-                else
-                    attachBlock = "";
+                if (hp.Length >= 5 && int.TryParse(hp[4], out int g) && g < 10000) { syncGen = g; if (hp.Length > 5) attachBlock = string.Join("|", hp, 5, hp.Length - 5); else attachBlock = ""; }
+                else { if (hp.Length > 4) attachBlock = string.Join("|", hp, 4, hp.Length - 4); else attachBlock = ""; }
             }
             else
             {
-                // Legacy format: "0|attachBlock" or "1|attachBlock"
                 int sepIdx = attachBlockExt.IndexOf('|');
-                if (sepIdx >= 0)
-                {
-                    mistHiderActive = attachBlockExt[0] == '1';
-                    attachBlock = attachBlockExt.Substring(sepIdx + 1);
-                }
+                if (sepIdx >= 0) { mistHiderActive = attachBlockExt[0] == '1'; attachBlock = attachBlockExt.Substring(sepIdx + 1); }
             }
         }
 
@@ -184,8 +185,7 @@ public class BoardSyncManager : MonoBehaviour
 
     static void SyncAttachmentsFromBlock(BoardManager bm, HandManager hm, string attachBlock, bool mistHiderActive)
     {
-        // 解析附着块为列表
-        var incoming = new System.Collections.Generic.List<(string tid, int hs, int order)>();
+        var incoming = new System.Collections.Generic.List<(string tid, int hs, int order, string iid)>();
         if (!string.IsNullOrEmpty(attachBlock))
         {
             foreach (var item in attachBlock.Split(new[] { "||" }, System.StringSplitOptions.None))
@@ -194,11 +194,11 @@ public class BoardSyncManager : MonoBehaviour
                 var p = item.Split('|');
                 if (p.Length < 3) continue;
                 if (!int.TryParse(p[1], out int hs) || !int.TryParse(p[2], out int o)) continue;
-                incoming.Add((p[0], hs, o));
+                string iid = p.Length > 3 ? p[3] : "";
+                incoming.Add((p[0], hs, o, iid));
             }
         }
 
-        // 去重 slot 侧已有的模板（独立放置过的牌 → 不是附着物，不重复造）
         var slotTids = new System.Collections.Generic.HashSet<string>();
         for (int si = 0; si < 12; si++)
         {
@@ -213,14 +213,12 @@ public class BoardSyncManager : MonoBehaviour
             if (obj == null) { bm.attachedModels.RemoveAt(i); continue; }
             var ci = obj.GetComponent<Card3DInstance>()?.cardInstance;
             if (ci == null || !ci.isAttached) { bm.attachedModels.RemoveAt(i); continue; }
-            // incoming hs is SERVER coordinate. ci.hostSlotID is CLIENT coordinate.
-            // Map client hostSlotID back to server space for exact comparison.
             int ciServerHS = ci.hostSlotID >= 6 ? ci.hostSlotID - 6 : ci.hostSlotID + 6;
-            bool stillExists = incoming.Exists(x => x.tid == ci.templateID
-                && x.hs == ciServerHS && x.order == ci.attachOrder);
+            bool stillExists = incoming.Exists(x =>
+                (!string.IsNullOrEmpty(x.iid) && x.iid == ci.instanceID)
+                || (x.tid == ci.templateID && x.hs == ciServerHS && x.order == ci.attachOrder));
             if (!stillExists)
             {
-                // 古老精灵(01510)：宿主死在服务器侧，纯客户端保留妖精等 TargetRpc 委托选择
                 if (ci != null && ci.isAncientFairy)
                 {
                     bm.attachedModels.RemoveAt(i);
@@ -231,32 +229,26 @@ public class BoardSyncManager : MonoBehaviour
             }
         }
 
-        // 收集 incoming 中 03001 的客户端槽位——用于清零已无追随者的计数
-        var incoming03001Slots = new System.Collections.Generic.HashSet<int>();
-        foreach (var (tid, hs, o) in incoming)
-        {
-            if (tid == "03001") incoming03001Slots.Add(hs >= 6 ? hs - 6 : hs + 6);
-        }
-
         // 添加/更新 incoming 中的附着物
-        foreach (var (tid, hs, o) in incoming)
+        foreach (var (tid, hs, o, iid) in incoming)
         {
             if (slotTids.Contains(tid)) continue;
-
             int cs = hs >= 6 ? hs - 6 : hs + 6;
 
-            // 检查是否已有同模板同附着序号的模型
+            // 用 instanceID 查找已有模型
             GameObject existing = null;
             foreach (var obj in bm.attachedModels)
             {
                 var ci = obj?.GetComponent<Card3DInstance>()?.cardInstance;
-                if (ci != null && ci.templateID == tid && ci.attachOrder == o && ci.hostSlotID == cs)
-                { existing = obj; break; }
+                if (ci != null && ci.templateID == tid)
+                {
+                    if (!string.IsNullOrEmpty(iid) && ci.instanceID == iid) { existing = obj; break; }
+                    if (ci.attachOrder == o && ci.hostSlotID == cs) { existing = obj; break; }
+                }
             }
 
             if (existing != null)
             {
-                // 已有 — 仅更新坐标和宿主
                 var eci = existing.GetComponent<Card3DInstance>()?.cardInstance;
                 if (eci != null) eci.hostSlotID = cs;
                 existing.transform.position = HandManager.GetAttachWorldPos(cs, o);
@@ -264,12 +256,10 @@ public class BoardSyncManager : MonoBehaviour
             }
 
             // 没有 — 新建
-            // 03001追随者刚被消耗——每消费一次跳过一次创建
-            if (tid == "03001" && bm.GetSlot(cs)?.braveBlockedCount > 0)
-            {
-                bm.GetSlot(cs).braveBlockedCount--;
+            // 被明确移除过的 attachment 不重建（用 instanceID 精确匹配）
+            if (!string.IsNullOrEmpty(iid) && BoardManager.removedAttachIDs.Contains(iid))
                 continue;
-            }
+
             var t = CardDatabase.Instance?.GetTemplate(tid);
             if (t?.prefab3D == null || hm == null) continue;
             var m = Instantiate(t.prefab3D, HandManager.GetAttachWorldPos(cs, o), Quaternion.Euler(0, 180, 0));
@@ -292,14 +282,6 @@ public class BoardSyncManager : MonoBehaviour
                 if (d2.effectText != null) d2.effectText.gameObject.SetActive(false);
             }
             bm.attachedModels.Add(m);
-        }
-
-        // 权威端已确认该槽位无 03001 → 清零计数
-        for (int i = 0; i < 12; i++)
-        {
-            var s = bm.GetSlot(i);
-            if (s != null && s.braveBlockedCount > 0 && !incoming03001Slots.Contains(i))
-                s.braveBlockedCount = 0;
         }
     }
 
@@ -443,12 +425,27 @@ public class BoardSyncManager : MonoBehaviour
             if (int.TryParse(p[7], out v)) cur.currentCost = v;
             if (int.TryParse(p[8], out v)) cur.currentTier = v;
             if (int.TryParse(p[9], out v)) cur.baseTier = v;
-            // 01512 先手护盾应存活至攻击回合结束——防止服务端已消耗护盾的同步提前覆盖客户端
-            bool syncShield = (p[10] == "1");
-            if (!syncShield && cur.hasShield && cur.shieldEndAtBattleEnd
-                && cur.templateID == "01512" && NetworkClient.isConnected && !NetworkServer.active)
-            { /* 保留客户端先手护盾——攻击回合结束后由 FinalDamage 清除 */ }
-            else cur.hasShield = syncShield;
+              // 护盾类型编码: 0=无 1=永久 2+1=攻击开始消失 4+1=攻击结束消失
+            if (int.TryParse(p[10], out int shieldEnc) && shieldEnc > 0)
+            {
+                cur.hasShield = true;
+                cur.shieldIsPermanent = (shieldEnc & 1) != 0;
+                cur.shieldEndAtBattleStart = (shieldEnc & 2) != 0;
+                cur.shieldEndAtBattleEnd = (shieldEnc & 4) != 0;
+            }
+            else if (cur.hasShield && cur._placedAtTime > 0 && Time.time - cur._placedAtTime < 2f
+                && NetworkClient.isConnected && !NetworkServer.active)
+            {
+                // 纯客户端：进场2秒内保护护盾（进场效果异步设盾，
+                // CmdPlayCard后首个SyncNow尚未包含盾信息）
+            }
+            else
+            {
+                cur.hasShield = false;
+                cur.shieldIsPermanent = false;
+                cur.shieldEndAtBattleStart = false;
+                cur.shieldEndAtBattleEnd = false;
+            }
             cur.silencedThisPhase = (p[11] == "1");
             cur.isAttached = (p[12] == "1");
             cur.poisoned = (p[13] == "1");

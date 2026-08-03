@@ -1276,15 +1276,29 @@ public class NetworkPlayer : NetworkBehaviour
                     if (p.Length > 7 && int.TryParse(p[7], out v)) ci.currentCost = v;
                     if (p.Length > 8 && int.TryParse(p[8], out v)) ci.currentTier = v;
                     if (p.Length > 9 && int.TryParse(p[9], out v)) ci.baseTier = v;
-                    if (p.Length > 10 && !string.IsNullOrEmpty(p[10]))
+                    if (p.Length > 10 && int.TryParse(p[10], out int shieldEnc) && shieldEnc > 0)
                     {
-                        bool syncShield = (p[10] == "1");
-                        // 01512 先手护盾：服务端 FirstStrikeCoroutine 已赋予，客户端上报的陈旧数据
-                        // hasShield=false 不应覆盖服务端刚赋予的护盾
-                        if (!syncShield && ci.hasShield && ci.shieldEndAtBattleEnd
-                            && ci.templateID == "01512" && !isLocalPlayer)
-                        { /* 保留服务端已赋予的先手护盾 */ }
-                        else ci.hasShield = syncShield;
+                        // 服务端已从战斗/处理中赋予护盾（非永久），不信任客户端过时上报
+                        if (!isLocalPlayer && ci.hasShield && !ci.shieldIsPermanent)
+                        { /* 保留服务端刚赋予的护盾 */ }
+                        else
+                        {
+                            ci.hasShield = true;
+                            ci.shieldIsPermanent = (shieldEnc & 1) != 0;
+                            ci.shieldEndAtBattleStart = (shieldEnc & 2) != 0;
+                            ci.shieldEndAtBattleEnd = (shieldEnc & 4) != 0;
+                        }
+                    }
+                    else if (!isLocalPlayer && ci.hasShield && !ci.shieldIsPermanent)
+                    {
+                        // 服务端有非永久护盾，不信任客户端过时上报 shield=0
+                    }
+                    else
+                    {
+                        ci.hasShield = false;
+                        ci.shieldIsPermanent = false;
+                        ci.shieldEndAtBattleStart = false;
+                        ci.shieldEndAtBattleEnd = false;
                     }
                     if (p.Length > 11) ci.silencedThisPhase = (p[11] == "1");
                     if (p.Length > 12) ci.isAttached = (p[12] == "1");
@@ -1340,26 +1354,39 @@ public class NetworkPlayer : NetworkBehaviour
         return false;
     }
 
-    /// <summary>附着物 diff 更新：已有→移坐标，不存在→创建。服务端从不基于客户端上报删除附着模型。</summary>
+    /// <summary>附着物 diff 更新：已有→移坐标，不存在→创建。</summary>
     static void ApplyAttachDiff(BoardManager bm, string attachBlock, bool isLocalPlayer)
     {
         bm.attachedModels.RemoveAll(a => a == null);
 
-        var incoming = new System.Collections.Generic.List<(string tid, int hs, int order)>();
-        if (!string.IsNullOrEmpty(attachBlock))
+        // 解析客户端 gen 前缀 "G{gen}|rest"
+        int incomingGen = 0;
+        string actualAttachBlock = attachBlock;
+        if (!string.IsNullOrEmpty(attachBlock) && attachBlock.StartsWith("G"))
         {
-            foreach (var item in attachBlock.Split(new[] { "||" }, System.StringSplitOptions.None))
+            int pipeIdx = attachBlock.IndexOf('|');
+            if (pipeIdx > 0 && int.TryParse(attachBlock.Substring(1, pipeIdx - 1), out int g))
+            {
+                incomingGen = g;
+                actualAttachBlock = attachBlock.Substring(pipeIdx + 1);
+            }
+        }
+
+        bool isServerProcessingClientReport = Mirror.NetworkServer.active && !isLocalPlayer;
+
+        var incoming = new System.Collections.Generic.List<(string tid, int hs, int order, string iid)>();
+        if (!string.IsNullOrEmpty(actualAttachBlock))
+        {
+            foreach (var item in actualAttachBlock.Split(new[] { "||" }, System.StringSplitOptions.None))
             {
                 if (string.IsNullOrEmpty(item)) continue;
                 var p = item.Split('|');
                 if (p.Length < 3) continue;
                 if (!int.TryParse(p[1], out int h) || !int.TryParse(p[2], out int o)) continue;
-                incoming.Add((p[0], h, o));
+                string iid = p.Length > 3 ? p[3] : "";
+                incoming.Add((p[0], h, o, iid));
             }
         }
-
-        // 服务端收到客户端上报时，不删除现有附着模型（客户端可能尚未同步到最新状态）
-        bool isServerProcessingClientReport = Mirror.NetworkServer.active && !isLocalPlayer;
 
         var slotTids = new System.Collections.Generic.HashSet<string>();
         for (int si = 0; si < 12; si++)
@@ -1368,7 +1395,6 @@ public class NetworkPlayer : NetworkBehaviour
             if (sci != null && !string.IsNullOrEmpty(sci.templateID)) slotTids.Add(sci.templateID);
         }
 
-        // 仅在非"服务端处理客户端上报"时删除 incoming 中不存在的附着物
         if (!isServerProcessingClientReport)
         {
             for (int i = bm.attachedModels.Count - 1; i >= 0; i--)
@@ -1377,9 +1403,8 @@ public class NetworkPlayer : NetworkBehaviour
                 if (obj == null) { bm.attachedModels.RemoveAt(i); continue; }
                 var ci = obj.GetComponent<Card3DInstance>()?.cardInstance;
                 if (ci == null || !ci.isAttached) { bm.attachedModels.RemoveAt(i); continue; }
-                // incoming hs is CLIENT coordinate; ci.hostSlotID is SERVER coordinate.
-                // Map incoming to server space for exact comparison.
                 bool stillExists = incoming.Exists(x => {
+                    if (!string.IsNullOrEmpty(x.iid) && x.iid == ci.instanceID) return true;
                     int xServerHS = isLocalPlayer ? x.hs : (x.hs >= 6 ? x.hs - 6 : x.hs + 6);
                     return x.tid == ci.templateID && xServerHS == ci.hostSlotID && x.order == ci.attachOrder;
                 });
@@ -1387,15 +1412,8 @@ public class NetworkPlayer : NetworkBehaviour
             }
         }
 
-        // 收集 incoming 中 03001 的客户端槽位——用于清零已无追随者的计数
-        var incoming03001Slots2 = new System.Collections.Generic.HashSet<int>();
-        foreach (var (tid, hs, o) in incoming)
-        {
-            if (tid == "03001") incoming03001Slots2.Add(hs >= 6 ? hs - 6 : hs + 6);
-        }
-
         var hm = FindObjectOfType<HandManager>();
-        foreach (var (tid, hs, o) in incoming)
+        foreach (var (tid, hs, o, iid) in incoming)
         {
             if (slotTids.Contains(tid)) continue;
             int mapped = isLocalPlayer ? hs : (hs >= 6 ? hs - 6 : hs + 6);
@@ -1404,8 +1422,11 @@ public class NetworkPlayer : NetworkBehaviour
             foreach (var obj in bm.attachedModels)
             {
                 var ci = obj?.GetComponent<Card3DInstance>()?.cardInstance;
-                if (ci != null && ci.templateID == tid && ci.attachOrder == o && ci.hostSlotID == mapped)
-                { existing = obj; break; }
+                if (ci != null && ci.templateID == tid)
+                {
+                    if (!string.IsNullOrEmpty(iid) && ci.instanceID == iid) { existing = obj; break; }
+                    if (ci.attachOrder == o && ci.hostSlotID == mapped) { existing = obj; break; }
+                }
             }
 
             if (existing != null)
@@ -1416,12 +1437,9 @@ public class NetworkPlayer : NetworkBehaviour
                 continue;
             }
 
-            // 03001 本帧刚被消耗——跳过过期客户端上报的重建
-            if (tid == "03001" && bm.GetSlot(mapped)?.braveBlockedCount > 0)
-            {
-                bm.GetSlot(mapped).braveBlockedCount--;
+            // 过期数据中被明确移除过的附件 → 不重建
+            if (!string.IsNullOrEmpty(iid) && BoardManager.removedAttachIDs.Contains(iid))
                 continue;
-            }
 
             var t = CardDatabase.Instance?.GetTemplate(tid);
             if (t?.prefab3D == null || hm == null) continue;
@@ -1434,14 +1452,6 @@ public class NetworkPlayer : NetworkBehaviour
                 c.cardInstance = n; c.UpdateValues();
             }
             bm.attachedModels.Add(m);
-        }
-
-        // 权威端已确认该槽位无 03001 → 清零计数
-        for (int i = 0; i < 12; i++)
-        {
-            var s = bm.GetSlot(i);
-            if (s != null && s.braveBlockedCount > 0 && !incoming03001Slots2.Contains(i))
-                s.braveBlockedCount = 0;
         }
     }
 
@@ -2059,7 +2069,6 @@ public class NetworkPlayer : NetworkBehaviour
                     ci.currentHealth = 2;
                     DamagePipeline.ReorderAttachments(serverSlot);
                     BoardManager.SyncAttachedModels(slot);
-                    slot.braveBlockedCount++;
                     BoardSyncManager.MarkDirty();
                     return;
                 }

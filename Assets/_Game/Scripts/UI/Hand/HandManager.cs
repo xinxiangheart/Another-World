@@ -287,7 +287,7 @@ public class HandManager : MonoBehaviour
                                             if (obj == null) continue;
                                             Card3DInstance c3d = obj.GetComponent<Card3DInstance>();
                                             if (c3d?.cardInstance != null && c3d.cardInstance.hostSlotID == selectedSlot.slotID)
-                                            { bm2.attachedModels.RemoveAt(i); Destroy(obj); }
+                                            { bm2.attachedModels.RemoveAt(i); BoardManager.RecordAndRemoveAttach(obj); }
                                         }
                                     Destroy(oldCard);
                                 }

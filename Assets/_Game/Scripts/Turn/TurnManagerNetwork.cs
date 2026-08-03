@@ -188,7 +188,7 @@ public partial class TurnManager
                     ci.currentHealth, ci.currentAttack, ci.currentMaxHealth,
                     ci.baseAttack, ci.baseHealth, ci.baseMaxHealth,
                     ci.currentCost, ci.currentTier, ci.baseTier,
-                    ci.hasShield ? "1" : "0",
+                    ci.hasShield ? (1+(ci.shieldIsPermanent?1:0)+(ci.shieldEndAtBattleStart?2:0)+(ci.shieldEndAtBattleEnd?4:0)).ToString() : "0",
                     ci.silencedThisPhase ? "1" : "0",
                     ci.isAttached ? "1" : "0",
                     ci.poisoned ? "1" : "0",
@@ -207,9 +207,11 @@ public partial class TurnManager
         {
             var ci = o.GetComponent<Card3DInstance>()?.cardInstance;
             if (ci != null && ci.isAttached)
-                attachParts.Add($"{ci.templateID}|{ci.hostSlotID}|{ci.attachOrder}");
+                attachParts.Add($"{ci.templateID}|{ci.hostSlotID}|{ci.attachOrder}|{ci.instanceID ?? ""}");
         }
         string attachBlock = attachParts.Count > 0 ? string.Join("||", attachParts) : "";
+        // 前缀：携带客户端已确认的 gen，服务端据此判断附件数据是否过期
+        attachBlock = "G" + BoardManager.attachGen + "|" + attachBlock;
 
         NetworkPlayer.Local?.CmdReportAllSlots(all, attachBlock);
     }

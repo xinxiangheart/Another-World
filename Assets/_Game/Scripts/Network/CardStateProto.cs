@@ -20,7 +20,8 @@ public struct CardStateProto
     public int currentHealth, currentAttack, currentMaxHealth;
     public int baseAttack, baseHealth, baseMaxHealth;
     public int currentCost, currentTier, baseTier;
-    public bool hasShield, silenced, isAttached, poisoned;
+    public bool hasShield, shieldIsPermanent, shieldEndAtBattleStart, shieldEndAtBattleEnd;
+    public bool silenced, isAttached, poisoned;
     public string prefixes;        // 空格分隔
     public string grantedTraits;   // ";;" 分隔
     public int totalDamageTaken;
@@ -39,7 +40,7 @@ public struct CardStateProto
             currentHealth, currentAttack, currentMaxHealth,
             baseAttack, baseHealth, baseMaxHealth,
             currentCost, currentTier, baseTier,
-            hasShield ? "1" : "0",
+            hasShield ? (1+(shieldIsPermanent?1:0)+(shieldEndAtBattleStart?2:0)+(shieldEndAtBattleEnd?4:0)).ToString() : "0",
             silenced ? "1" : "0",
             isAttached ? "1" : "0",
             poisoned ? "1" : "0",
@@ -64,7 +65,8 @@ public struct CardStateProto
         if (p.Length > 7)  int.TryParse(p[7], out s.currentCost);
         if (p.Length > 8)  int.TryParse(p[8], out s.currentTier);
         if (p.Length > 9)  int.TryParse(p[9], out s.baseTier);
-        if (p.Length > 10) s.hasShield = p[10] == "1";
+        if (p.Length > 10 && int.TryParse(p[10], out int shieldEnc) && shieldEnc > 0)
+        { s.hasShield = true; s.shieldIsPermanent = (shieldEnc & 1) != 0; s.shieldEndAtBattleStart = (shieldEnc & 2) != 0; s.shieldEndAtBattleEnd = (shieldEnc & 4) != 0; }
         if (p.Length > 11) s.silenced = p[11] == "1";
         if (p.Length > 12) s.isAttached = p[12] == "1";
         if (p.Length > 13) s.poisoned = p[13] == "1";
@@ -97,6 +99,9 @@ public struct CardStateProto
             currentTier = ci.currentTier,
             baseTier = ci.baseTier,
             hasShield = ci.hasShield,
+            shieldIsPermanent = ci.shieldIsPermanent,
+            shieldEndAtBattleStart = ci.shieldEndAtBattleStart,
+            shieldEndAtBattleEnd = ci.shieldEndAtBattleEnd,
             silenced = ci.silencedThisPhase,
             isAttached = ci.isAttached,
             poisoned = ci.poisoned,

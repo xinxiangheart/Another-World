@@ -4,6 +4,18 @@ using UnityEngine.UI;
 
 public class BoardManager : MonoBehaviour
 {
+    public static int attachGen = 0;
+    public static System.Collections.Generic.HashSet<string> removedAttachIDs = new System.Collections.Generic.HashSet<string>();
+
+    /// <summary>记录并移除附着模型（权威删除）。过期同步不会重建此实例。</summary>
+    public static void RecordAndRemoveAttach(GameObject attach)
+    {
+        if (attach == null) return;
+        string iid = attach.GetComponent<Card3DInstance>()?.cardInstance?.instanceID;
+        if (!string.IsNullOrEmpty(iid)) removedAttachIDs.Add(iid);
+        Object.Destroy(attach);
+    }
+
     [Header("槽位预制体")]
     public GameObject slotPrefab;
 

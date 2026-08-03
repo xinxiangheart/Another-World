@@ -281,8 +281,6 @@ public static class DamagePipeline
                 ShowFloaterAt(def, 0, FloaterType.Blocked);
                 ReorderAttachments(hostSlot);
                 SyncAttachments(hostSlot);
-                var bm = UnityEngine.Object.FindObjectOfType<BoardManager>();
-                if (bm != null) bm.GetSlot(hostSlot).braveBlockedCount++;
                 ctx.negatedByFollower = true;
                 ctx.stopped = true;
                 return d;
@@ -562,7 +560,7 @@ public static class DamagePipeline
     {
         var bm = UnityEngine.Object.FindObjectOfType<BoardManager>();
         bm.attachedModels.Remove(follower);
-        UnityEngine.Object.Destroy(follower);
+        BoardManager.RecordAndRemoveAttach(follower);
     }
 
     public static void ReorderAttachments(int hostSlotID)
