@@ -2244,7 +2244,6 @@ public class NetworkPlayer : NetworkBehaviour
     {
         int serverSlot = isLocalPlayer ? selectedLocalSlot : (selectedLocalSlot >= 6 ? selectedLocalSlot - 6 : selectedLocalSlot + 6);
         BoardSlot.NotifyRemoteSelectionDone(serverSlot);
-        BoardSlot.NotifyMartyrDone(serverSlot);
     }
 
     /// <summary>客户端→服务器：纯客户端放置卡牌后委托服务器执行进场效果。</summary>
@@ -2537,6 +2536,22 @@ public class NetworkPlayer : NetworkBehaviour
     public void CmdRogueDone()
     {
         BoardSlot.NotifyRogueRpcDone();
+    }
+
+    /// <summary>服务端→远端客户端：01522 殉难者退场，远端选择己方目标。</summary>
+    [TargetRpc]
+    public void TargetMartyrDeathEffect(NetworkConnectionToClient target, int deadServerSlot)
+    {
+        BoardSlot slot = FindObjectOfType<BoardSlot>();
+        if (slot != null)
+            slot.StartCoroutine(slot.MartyrRemoteSelect());
+    }
+
+    /// <summary>远端客户端完成01522选择后通知服务端。</summary>
+    [Command]
+    public void CmdMartyrDone(int selectedServerSlot)
+    {
+        BoardSlot.NotifyMartyrRpcDone(selectedServerSlot);
     }
 
     /// <summary>服务端→远端客户端：运行你己方的交互式先手。</summary>

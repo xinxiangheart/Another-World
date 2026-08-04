@@ -247,7 +247,12 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
         if (inst.merchantDiscounted && NetworkPlayer.Local.IsMerchantOnFieldPublic())
         {
             actualCost = Mathf.Max(0, actualCost - 1);
-            inst.merchantDiscounted = false; // 减费已生效，清零防板面重复减费
+            inst.merchantDiscounted = false;
+        }
+        if (inst.energyReaperDiscounted && NetworkPlayer.Local.IsEnergyReaperOnFieldPublic())
+        {
+            actualCost = Mathf.Max(0, actualCost - 1);
+            inst.energyReaperDiscounted = false;
         }
         if (player == null || !player.UseEnergy(actualCost))
         {

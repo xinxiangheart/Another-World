@@ -76,10 +76,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public static bool _remoteFirstStrikeDone;
     public static void NotifyRemoteFirstStrikeDone() { _remoteFirstStrikeDone = true; }
 
-    /// <summary>远端选择委托：等待标记 + 结果槽位。</summary>
-    public static bool _remoteSelectionDone;
+    /// <summary>远端选择委托：等待标记 + 结果槽位。_remoteSelectionId 递增保证每次等待独立。</summary>
     public static int _remoteSelectionResultSlot = -1;
-    public static void NotifyRemoteSelectionDone(int selectedSlot) { _remoteSelectionDone = true; _remoteSelectionResultSlot = selectedSlot; }
+    public static int _remoteSelectionId = 0;
+    public static void NotifyRemoteSelectionDone(int selectedSlot) { _remoteSelectionId++; _remoteSelectionResultSlot = selectedSlot; }
 
     /// <summary>统一的目标选择辅助方法——自动根据目标拥有者决定本地/远程选择UI。</summary>
     public static IEnumerator WaitForPlayerSelection(int targetOwnerSlotID, TargetType targetType, System.Action<BoardSlot> onSelected, string reason = "")
@@ -95,12 +95,12 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
         else
         {
-            _remoteSelectionDone = false;
             _remoteSelectionResultSlot = -1;
+            int expectId = _remoteSelectionId + 1;
             NetworkPlayer.Remote.TargetRequestSelection(
                 NetworkPlayer.Remote.connectionToClient, (int)targetType, targetOwnerSlotID);
             float deadline = Time.time + 30f;
-            yield return new WaitUntil(() => _remoteSelectionDone || Time.time > deadline);
+            yield return new WaitUntil(() => _remoteSelectionId >= expectId || Time.time > deadline);
             if (_remoteSelectionResultSlot >= 0)
             {
                 var slot = FindObjectOfType<BoardManager>()?.GetSlot(_remoteSelectionResultSlot);
@@ -399,10 +399,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public static bool _honorAttendantExitWaiting;
     public static int _honorAttendantExitTarget = -1;
     public static void NotifyHonorAttendantExitDone(int serverSlot) { _honorAttendantExitTarget = serverSlot; _honorAttendantExitWaiting = false; }
-    // 01522 殉难者：退场→为己方一召唤物+5+4 目标选择委托
-    public static bool _martyrDone;
-    public static int _martyrTargetSlot = -1;
-    public static void NotifyMartyrDone(int serverSlot) { _martyrTargetSlot = serverSlot; _martyrDone = true; }
+    // 01522 殉难者远程委托：_martyrRpcDone + _martyrBuffSlot
+    public static bool _martyrRpcDone;
+    public static int _martyrBuffSlot = -1;
+    public static void NotifyMartyrRpcDone(int targetServerSlot) { _martyrBuffSlot = targetServerSlot; _martyrRpcDone = true; }
     // 01347 荣誉侍者：主动退场完成标记
     public static bool _honorAttendantDone;
     void Start()
@@ -1788,17 +1788,19 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     }
     public IEnumerator MartyrDeathEffectCoroutine(CardInstance giver)
     {
+        NestingContext.Enter("MartyrDeath");
         NetworkPlayer owner = BoardManager.GetOwnerPlayer(slotID);
-        bool isRemote = NetworkServer.active && owner != null && !owner.isLocalPlayer;
+        if (owner == null) { NestingContext.Exit(); yield break; }
 
-        if (isRemote)
+        if (NetworkServer.active && !owner.isLocalPlayer)
         {
-            int serverSlot = slotID >= 6 ? slotID - 6 : slotID + 6;
-            _martyrDone = false;
-            _martyrTargetSlot = -1;
-            owner.TargetRequestSelection(owner.connectionToClient, (int)TargetType.SingleAlly, serverSlot);
-            yield return new WaitWhile(() => !_martyrDone);
-            int targetServerSlot = _martyrTargetSlot; // CmdSelectionResult已映射为serverSlot
+            _martyrRpcDone = false;
+            _martyrBuffSlot = -1;
+            owner.TargetMartyrDeathEffect(owner.connectionToClient, slotID);
+            float t = Time.time;
+            while (!_martyrRpcDone && Time.time - t < 30f) yield return null;
+            int targetServerSlot = _martyrBuffSlot;
+            _martyrRpcDone = false;
             if (targetServerSlot >= 0)
             {
                 BoardSlot targetSlot = FindObjectOfType<BoardManager>()?.GetSlot(targetServerSlot);
@@ -1815,6 +1817,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 }
             }
             BoardSyncManager.MarkDirty();
+            NestingContext.Exit();
             yield break;
         }
 
@@ -1854,6 +1857,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 onDone();
             }
         }));
+        NestingContext.Exit();
     }
     public IEnumerator RogueDeathEffect(CardInstance giver)
     {
@@ -1886,6 +1890,29 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         yield return StartCoroutine(RogueDoSummon(NetworkPlayer.Local));
         NestingContext.Exit();
         NetworkPlayer.Local?.CmdRogueDone();
+    }
+
+    /// <summary>远端客户端：01522 殉难者退场时选择己方目标（在客户端本地执行）。</summary>
+    public IEnumerator MartyrRemoteSelect()
+    {
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        bool hasAlly = false;
+        if (bm != null)
+        {
+            for (int j = 6; j <= 11; j++)
+                if (bm.GetSlot(j)?.currentCard3D != null) { hasAlly = true; break; }
+        }
+        if (!hasAlly) { NetworkPlayer.Local?.CmdMartyrDone(-1); yield break; }
+
+        bool done = false;
+        SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (s) =>
+        {
+            // 客户端视角 6-11（己方）→ 映射为服务端 0-5（远端己方）
+            int serverSlot = s != null ? (s.slotID >= 6 ? s.slotID - 6 : s.slotID + 6) : -1;
+            NetworkPlayer.Local?.CmdMartyrDone(serverSlot);
+            done = true;
+        });
+        yield return new WaitUntil(() => done);
     }
 
     IEnumerator RogueDoSummon(NetworkPlayer player)
