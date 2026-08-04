@@ -365,6 +365,7 @@ public class BoardSyncManager : MonoBehaviour
     {
         string tid = parts[0];
         var cur = slot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+        bool justCreated = false;
 
         // templateID 不匹配 → 当前模型已过时。纯客户端：TargetSpawnCard3D 权威处理，SyncNow 不做替换
         if (cur != null && cur.templateID != tid)
@@ -410,7 +411,7 @@ public class BoardSyncManager : MonoBehaviour
                 var c = m.GetComponent<Card3DInstance>();
                 if (c != null) { var n = m.AddComponent<CardInstance>(); n.InitFromTemplate(t, 0); if (t.templateID == "03007") n.isShadow = true; if (t.templateID == "01502") CardInstance.shadowMasterAlive = true; n._placedAtTime = Time.time; c.cardInstance = n; c.UpdateValues(); }
                 slot.SetCard(m);
-                cur = c?.cardInstance;
+                cur = c?.cardInstance; justCreated = true;
             }
         }
         if (cur != null && cur.templateID == tid && parts.Length >= 15)
@@ -422,7 +423,8 @@ public class BoardSyncManager : MonoBehaviour
             if (int.TryParse(p[4], out v)) cur.baseAttack = v;
             if (int.TryParse(p[5], out v)) cur.baseHealth = v;
             if (int.TryParse(p[6], out v)) cur.baseMaxHealth = v;
-            if (int.TryParse(p[7], out v)) cur.currentCost = v;
+            // 费用在场锁死——只设刚创建/重建的牌，已有牌不覆盖
+            if (justCreated && int.TryParse(p[7], out v)) cur.currentCost = v;
             if (int.TryParse(p[8], out v)) cur.currentTier = v;
             if (int.TryParse(p[9], out v)) cur.baseTier = v;
               // 护盾类型编码: 0=无 1=永久 2+1=攻击开始消失 4+1=攻击结束消失

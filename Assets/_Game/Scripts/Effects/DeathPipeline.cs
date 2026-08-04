@@ -181,7 +181,7 @@ public static class DeathPipeline
                 Object.Destroy(temp);
                 // Token 同步到服务器/对方——纯客户端不依赖 SyncNow 创建模型
                 if (NetworkClient.isConnected)
-                    NetworkPlayer.Local?.CmdPlayCard("03004", slot.slotID, -1, -1, -1, ti.instanceID);
+                    NetworkPlayer.Local?.CmdPlayCard("03004", slot.slotID, -1, -1, -1, -1, ti.instanceID);
             }
         }
 

@@ -336,9 +336,9 @@ public class NetworkPlayer : NetworkBehaviour
     /// are applied after InitFromTemplate so enter-effect stat boosts survive the server's fresh spawn.
     /// </summary>
     [Command]
-    public void CmdPlayCard(string templateID, int slotID, int overrideAtk, int overrideHP, int overrideMaxHP, string instanceID)
+    public void CmdPlayCard(string templateID, int slotID, int overrideAtk, int overrideHP, int overrideMaxHP, int overrideCost, string instanceID)
     {
-        Debug.Log($"[NetworkPlayer] CmdPlayCard: templateID={templateID}, slotID={slotID}, netId={netId}");
+        Debug.Log($"[NetworkPlayer] CmdPlayCard: templateID={templateID}, slotID={slotID}, cost={overrideCost}, netId={netId}, isLocal={this==NetworkPlayer.Local}");
         // slotID 仅允许 -1（手牌消耗通知）、0-11（板面放置）。其他值为非法输入，拒绝。
         if (slotID < -1 || slotID >= 12) return;
         TurnManager tm = FindObjectOfType<TurnManager>();
@@ -410,6 +410,7 @@ public class NetworkPlayer : NetworkBehaviour
                             if (overrideAtk >= 0) ci.currentAttack = overrideAtk;
                             if (overrideHP >= 0) ci.currentHealth = overrideHP;
                             if (overrideMaxHP >= 0) ci.currentMaxHealth = overrideMaxHP;
+                            if (overrideCost >= 0) ci.currentCost = overrideCost;
                             // 影子(03007)：overrideAtk 已含 bonus（客户端传入），不再重复加 currentAttack
                             // baseAttack 需单独补上（overrideAtk 不影响 base）
                             if (templateID == "03007")
@@ -448,7 +449,7 @@ public class NetworkPlayer : NetworkBehaviour
                 foreach (var kv in NetworkServer.connections)
                     if (kv.Value != connectionToClient) { other = kv.Value; break; }
                 if (other != null)
-                    TargetSpawnCard3D(other, templateID, slotID, overrideAtk, overrideHP, overrideMaxHP, instanceID);
+                    TargetSpawnCard3D(other, templateID, slotID, overrideAtk, overrideHP, overrideMaxHP, overrideCost, instanceID);
             }
         }
         // Non-counter cards: trigger opponent's OnCardPlayed counters on server.
@@ -785,6 +786,19 @@ public class NetworkPlayer : NetworkBehaviour
             handManager?.RegisterCard(cv);
         }
 
+        // 商户/能量收割者光环——新抽到手牌的召唤物减费
+        if (IsMerchantOnField() && template.cardType == CardType.Summon && !inst.merchantDiscounted)
+        {
+            inst.merchantDiscounted = true;
+            display?.Refresh();
+        }
+        if (IsEnergyReaperOnField() && template.cardType == CardType.Summon
+            && inst.prefixes.Contains("灵能") && !inst.energyReaperDiscounted)
+        {
+            inst.energyReaperDiscounted = true;
+            display?.Refresh();
+        }
+
         handCardCount = handCards.Count;
         // Registry
         RegistrySyncManager.Instance?.UpdateCard(inst, this == Local ? 0 : 1, CardZone.Hand, -1);
@@ -823,18 +837,22 @@ public class NetworkPlayer : NetworkBehaviour
         inst.tempHealthBoost = 0;
         inst.handledReturnToHand = false;
 
-        if (inst.energyReaperDiscounted && !IsEnergyReaperOnField())
-            inst.energyReaperDiscounted = false;
+        // 回手后根据光环状态同步标志——板面 currentCost 始终=baseCost，无需 +1/-1
         if (inst.templateID == "01524")
         {
             inst.scrollCorePhaseCount = 0;
             inst.currentCost = 0;
         }
         if (inst.merchantDiscounted && !IsMerchantOnField())
-        {
             inst.merchantDiscounted = false;
-            inst.currentCost += 1;
-        }
+        if (inst.energyReaperDiscounted && !IsEnergyReaperOnField())
+            inst.energyReaperDiscounted = false;
+        if (!inst.merchantDiscounted && IsMerchantOnField()
+            && template.cardType == CardType.Summon)
+            inst.merchantDiscounted = true;
+        if (!inst.energyReaperDiscounted && IsEnergyReaperOnField()
+            && template.cardType == CardType.Summon && inst.prefixes.Contains("灵能"))
+            inst.energyReaperDiscounted = true;
         if (inst.isShadow)
         {
             Destroy(card);
@@ -991,7 +1009,7 @@ public class NetworkPlayer : NetworkBehaviour
     /// </summary>
     [TargetRpc]
     public void TargetSpawnCard3D(NetworkConnectionToClient target, string templateID, int slotID,
-        int overrideAtk, int overrideHP, int overrideMaxHP, string instanceID)
+        int overrideAtk, int overrideHP, int overrideMaxHP, int overrideCost, string instanceID)
     {
         CardData template = CardDatabase.Instance?.GetTemplate(templateID);
         if (template?.prefab3D == null) return;
@@ -1041,6 +1059,7 @@ public class NetworkPlayer : NetworkBehaviour
             if (overrideAtk >= 0) ci.currentAttack = overrideAtk;
             if (overrideHP >= 0) ci.currentHealth = overrideHP;
             if (overrideMaxHP >= 0) ci.currentMaxHealth = overrideMaxHP;
+            if (overrideCost >= 0) ci.currentCost = overrideCost;
             // 影子(03007)：overrideAtk 已含 bonus（客户端传入），不再重复加 currentAttack
             // baseAttack 需单独补上（overrideAtk 不影响 base）
             if (templateID == "03007")
@@ -1273,7 +1292,7 @@ public class NetworkPlayer : NetworkBehaviour
                     if (p.Length > 4 && int.TryParse(p[4], out v)) ci.baseAttack = v;
                     if (p.Length > 5 && int.TryParse(p[5], out v)) ci.baseHealth = v;
                     if (p.Length > 6 && int.TryParse(p[6], out v)) ci.baseMaxHealth = v;
-                    if (p.Length > 7 && int.TryParse(p[7], out v)) ci.currentCost = v;
+                    // 场上费用绝对锁定——CmdPlayCard时已设，不覆盖
                     if (p.Length > 8 && int.TryParse(p[8], out v)) ci.currentTier = v;
                     if (p.Length > 9 && int.TryParse(p[9], out v)) ci.baseTier = v;
                     if (p.Length > 10 && int.TryParse(p[10], out int shieldEnc) && shieldEnc > 0)
@@ -1513,14 +1532,14 @@ public class NetworkPlayer : NetworkBehaviour
             if (ci != null && ci.templateID == tid)
             {
                 string[] p = raw.Split('|');
-                int hp2, atk2, mh2, ba2, bh2, bmh2, cost2, tier2, bt2;
+                int hp2, atk2, mh2, ba2, bh2, bmh2, tier2, bt2;
                 if (p.Length > 1 && int.TryParse(p[1], out hp2)) ci.currentHealth = hp2;
                 if (p.Length > 2 && int.TryParse(p[2], out atk2)) ci.currentAttack = atk2;
                 if (p.Length > 3 && int.TryParse(p[3], out mh2)) ci.currentMaxHealth = mh2;
                 if (p.Length > 4 && int.TryParse(p[4], out ba2)) ci.baseAttack = ba2;
                 if (p.Length > 5 && int.TryParse(p[5], out bh2)) ci.baseHealth = bh2;
                 if (p.Length > 6 && int.TryParse(p[6], out bmh2)) ci.baseMaxHealth = bmh2;
-                if (p.Length > 7 && int.TryParse(p[7], out cost2)) ci.currentCost = cost2;
+                // 场上费用锁定——不覆盖
                 if (p.Length > 8 && int.TryParse(p[8], out tier2)) ci.currentTier = tier2;
                 if (p.Length > 9 && int.TryParse(p[9], out bt2)) ci.baseTier = bt2;
                 if (p.Length > 10) ci.hasShield = (p[10] == "1");

@@ -763,16 +763,11 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             // 附着流程：模型尚未放置（PlaceCardToSlot 异步等待选择目标），由 HandManager.PlaceCardToSlot 回调处理同步和清理
             if (wasAttachFlow) return;
 
-            // Sync to remote client after placement is fully complete.
+            // CmdPlayCard 已在 PlaceIndependentCard/PlaceAttachedCard 中发送——此处不再重复。
+            // 仅同步 grantedTraitTexts 和 MarkDirty。
             if (NetworkClient.isConnected && !string.IsNullOrEmpty(playTemplateID))
             {
                 Card3DInstance placedC3D = currentCard3D?.GetComponent<Card3DInstance>();
-                int atk = placedC3D?.cardInstance?.currentAttack ?? -1;
-                int hp = placedC3D?.cardInstance?.currentHealth ?? -1;
-                int maxHp = placedC3D?.cardInstance?.currentMaxHealth ?? -1;
-                string iid = placedC3D?.cardInstance?.instanceID ?? "";
-                NetworkPlayer.Local?.CmdPlayCard(playTemplateID, slotID, atk, hp, maxHp, iid);
-                // 同步赋予特性到服务器——服务器侧 CardInstance 由 InitFromTemplate 创建不含 grantedTraitTexts
                 if (placedC3D?.cardInstance?.grantedTraitTexts?.Count > 0)
                     NetworkPlayer.Local?.CmdSyncGrantedTraits(slotID, string.Join(";;", placedC3D.cardInstance.grantedTraitTexts));
                 BoardSyncManager.MarkDirty();
@@ -3066,7 +3061,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 // Sync shadow to opponent
                 if (NetworkClient.isConnected)
                     NetworkPlayer.Local?.CmdPlayCard(shadowTemplate.templateID, selectedSlot.slotID,
-                        ti.currentAttack, ti.currentHealth, ti.currentMaxHealth, ti.instanceID);
+                        ti.currentAttack, ti.currentHealth, ti.currentMaxHealth, ti.currentCost, ti.instanceID);
 
                 placed = true;
                 SelectionManager.Instance.ForceEndAll();
@@ -3113,7 +3108,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
                 // Sync ghost to opponent — same instanceID as placed model
                 if (NetworkClient.isConnected)
-                    NetworkPlayer.Local?.CmdPlayCard(ghostTemplate.templateID, selectedSlot.slotID, -1, -1, -1, giid);
+                    NetworkPlayer.Local?.CmdPlayCard(ghostTemplate.templateID, selectedSlot.slotID, -1, -1, -1, -1, giid);
 
                 placed = true;
                 SelectionManager.Instance.ForceEndAll();
@@ -3150,7 +3145,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
                     // Sync soldier to opponent — same instanceID as the placed model
                     if (NetworkClient.isConnected)
-                        NetworkPlayer.Local?.CmdPlayCard(soldierTemplate.templateID, selectedSlot.slotID, -1, -1, -1, siid);
+                        NetworkPlayer.Local?.CmdPlayCard(soldierTemplate.templateID, selectedSlot.slotID, -1, -1, -1, -1, siid);
 
                     placed = true;
                     SelectionManager.Instance.ForceEndAll();
@@ -3317,6 +3312,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     c3d?.cardInstance?.currentAttack ?? -1,
                     c3d?.cardInstance?.currentHealth ?? -1,
                     c3d?.cardInstance?.currentMaxHealth ?? -1,
+                    c3d?.cardInstance?.currentCost ?? -1,
                     c3d?.cardInstance?.instanceID ?? "");
         }
 

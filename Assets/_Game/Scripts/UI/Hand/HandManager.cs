@@ -79,7 +79,7 @@ public class HandManager : MonoBehaviour
             bool isAttachOnly = removedTD != null && removedTD.canAttach && removedTD.baseHealth == 0;
             if (!isAttachOnly)
             {
-                NetworkPlayer.Local?.CmdPlayCard(removedTemplateID, -1, -1, -1, -1, "");
+                NetworkPlayer.Local?.CmdPlayCard(removedTemplateID, -1, -1, -1, -1, -1, "");
                 BoardSyncManager.MarkDirty();
             }
         }
@@ -363,7 +363,9 @@ public class HandManager : MonoBehaviour
         if (NetworkClient.isConnected && !string.IsNullOrEmpty(sourceInstance.templateID))
         {
             string iid = sourceInstance.instanceID ?? CardZoneManager.GenerateInstanceID(sourceInstance.templateID);
-            NetworkPlayer.Local?.CmdPlayCard(sourceInstance.templateID, slot.slotID, -1, -1, -1, iid);
+            int cost = instance3D?.cardInstance?.currentCost ?? sourceInstance.currentCost;
+            Debug.Log($"[PLACE-NORMAL] CmdPlayCard: tid={sourceInstance.templateID} slot={slot.slotID} handCost={sourceInstance.currentCost} boardCost={instance3D?.cardInstance?.currentCost} finalCost={cost} iid={iid}");
+            NetworkPlayer.Local?.CmdPlayCard(sourceInstance.templateID, slot.slotID, -1, -1, -1, cost, iid);
         }
         BoardSyncManager.MarkDirty();
         if (instance3D != null) instance3D.UpdateValues();
@@ -649,14 +651,16 @@ public class HandManager : MonoBehaviour
             Debug.LogWarning($"[PlaceIndependentCard] 附着专用卡 {sourceInstance.templateID} 被错误放置为独立卡！已拦截 CmdPlayCard，销毁本地模型。");
             Destroy(model);
             slot.SetCard(null);
+            return;
         }
-        else if (NetworkClient.isConnected && !string.IsNullOrEmpty(sourceInstance.templateID))
+
+        if (NetworkClient.isConnected)
         {
-            string iid = sourceInstance.instanceID ?? CardZoneManager.GenerateInstanceID(sourceInstance.templateID);
-            NetworkPlayer.Local?.CmdPlayCard(sourceInstance.templateID, slot.slotID, -1, -1, -1, iid);
+            string iid = instance3D?.cardInstance?.instanceID ?? sourceInstance.instanceID ?? CardZoneManager.GenerateInstanceID(sourceInstance.templateID);
+            int cost = instance3D?.cardInstance?.currentCost ?? sourceInstance.currentCost;
+            Debug.Log($"[PLACE-IND] CmdPlayCard: tid={sourceInstance.templateID} slot={slot.slotID} cost={cost} iid={iid}");
+            NetworkPlayer.Local?.CmdPlayCard(sourceInstance.templateID, slot.slotID, -1, -1, -1, cost, iid);
         }
-        // MarkDirty 必须在 CmdPlayCard 之后——确保服务器已登记卡牌后再触发 SyncNow，
-        // 否则客户端可能在 SyncNow 中收到空数据→TargetSpawnCard3D 再创建→SyncNow 又更新的竞态
         BoardSyncManager.MarkDirty();
 
         ProcessAuras(slot, sourceInstance);

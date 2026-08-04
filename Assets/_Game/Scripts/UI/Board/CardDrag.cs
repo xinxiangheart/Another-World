@@ -244,7 +244,10 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
 
         int actualCost = inst.currentCost;
         if (inst.merchantDiscounted && NetworkPlayer.Local.IsMerchantOnFieldPublic())
+        {
             actualCost = Mathf.Max(0, actualCost - 1);
+            inst.merchantDiscounted = false; // 减费已生效，清零防板面重复减费
+        }
         if (player == null || !player.UseEnergy(actualCost))
         {
             Debug.Log("能量不足！");
@@ -468,11 +471,11 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
             GraveyardManager.Instance?.AddToGraveyard(spellData);
         }
 
-        // 法术可能已造成死亡 → 启动嵌套树结算
-        StartCoroutine(WaitForSpellTree());
+        // 法术已造成死亡 → 启动嵌套树结算。GameObject 可能已被销毁，挂到 BattleManager
+        BattleManager.Instance?.StartCoroutine(WaitForSpellTreeCoroutine());
     }
 
-    IEnumerator WaitForSpellTree()
+    static IEnumerator WaitForSpellTreeCoroutine()
     {
         yield return null;
         BoardSlot.CheckAndHandleDeaths();

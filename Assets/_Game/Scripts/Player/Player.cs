@@ -149,10 +149,7 @@ public class Player : MonoBehaviour
             inst.currentCost = 0;
         }
         if (inst.merchantDiscounted && !IsMerchantOnField())
-        {
             inst.merchantDiscounted = false;
-            inst.currentCost += 1;
-        }
         if (inst.isShadow)
         {
             Destroy(card);
