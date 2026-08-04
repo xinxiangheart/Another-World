@@ -355,6 +355,8 @@ public class HandManager : MonoBehaviour
             CardInstance cardInst = model.AddComponent<CardInstance>();
             cardInst.CopyFrom(sourceInstance);
             cardInst.handledReturnToHand = false;
+            cardInst.merchantDiscounted = false;
+            cardInst.energyReaperDiscounted = false;
             instance3D.cardInstance = cardInst;
         }
 
@@ -639,6 +641,8 @@ public class HandManager : MonoBehaviour
             CopyCardInstance(cardInst, sourceInstance);
             cardInst.isAttached = false;
             cardInst.hostSlotID = -1;
+            cardInst.merchantDiscounted = false;
+            cardInst.energyReaperDiscounted = false;
             instance3D.cardInstance = cardInst;
         }
 

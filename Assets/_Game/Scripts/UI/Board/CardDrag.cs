@@ -18,6 +18,7 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
     private CanvasGroup canvasGroup;
     private RectTransform rectTransform;
     private HandManager handManager;
+    public static Coroutine SpellPending;
     private bool isOutsideHand = false;
     private Canvas tempCanvas;
 
@@ -438,7 +439,7 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
         // ── 法术效果分发 ──────────────────────────────────────────────
         var spellCtx = EffectContext.ForSpell(template, targetSlot);
         EffectDispatcher.Dispatch(Trigger.Spell, spellCtx);
-
+        SpellPending = spellCtx.StartedCoroutine;
 
         // ── 通用法术收尾 ──────────────────────────────────────────────
         if (template != null && (template.spellType & SpellType.Evil) != 0)

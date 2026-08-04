@@ -523,7 +523,7 @@ public static class SpellHandlers
 
     static void Handle02501(EffectContext ctx)
     {
-        HM().StartCoroutine(HM().DoorEffect());
+        ctx.StartedCoroutine = HM().StartCoroutine(HM().DoorEffect());
     }
 
     static void Handle02508(EffectContext ctx)

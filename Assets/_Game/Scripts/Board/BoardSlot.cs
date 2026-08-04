@@ -3685,6 +3685,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             if (td != null && td.cardType == CardType.Spell)
                 spellList.Add(ci);
         }
+        Debug.Log($"[01521] 手牌法术数量={spellList.Count}: {string.Join(",", spellList.ConvertAll(c=>c.templateID))}");
 
         if (spellList.Count == 0)
         {
@@ -3693,6 +3694,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             yield break;
         }
 
+        Debug.Log($"[01521] 弹窗前: 手牌法术数量={spellList.Count}, 手牌总数={NetworkPlayer.Local.handCards.Count}, handCards null数={NetworkPlayer.Local.handCards.FindAll(c => c == null).Count}");
         CardDisplayPanel.Instance.multiSelect = true;
         bool confirmed = false;
         CardDisplayPanel.Instance.ShowWithCallback(spellList, ci => true, () =>
@@ -3731,8 +3733,20 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         // 按 templateID 升序排列（与"卡牌编号从小到大"规则一致）
         selected.Sort((a, b) => string.Compare(a.templateID, b.templateID));
 
-        foreach (CardInstance ci in selected)
+        // 复制一份迭代——法术执行中 handCards/selected 可能被修改
+        var toPlay = new System.Collections.Generic.List<CardInstance>(selected);
+
+        // Snapshot: 法术结算中的嵌套(Enter/Exit)归零后回到此深度
+        int baseDepth = NestingContext.Snapshot();
+
+        int spellIdx = 0;
+        foreach (CardInstance ci in toPlay)
         {
+            spellIdx++;
+            // 上一法术弹窗未关闭 → 等
+            yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
+            if (CardDisplayPanel.Instance != null)
+                yield return new WaitWhile(() => CardDisplayPanel.Instance.panelRoot.activeSelf);
             GameObject cardObj = null;
             foreach (GameObject card in NetworkPlayer.Local.handCards)
             {
@@ -3743,10 +3757,18 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     break;
                 }
             }
-            if (cardObj == null) continue;
+            if (cardObj == null)
+            {
+                Debug.LogWarning($"[01521] [{spellIdx}] 手牌中找不到 cardObj, instanceID={ci.instanceID}, 跳过");
+                continue;
+            }
 
             CardData td = CardDatabase.Instance?.GetTemplate(ci.templateID);
-            if (td == null) continue;
+            if (td == null)
+            {
+                Debug.LogWarning($"[01521] [{spellIdx}] CardData 为空, 跳过");
+                continue;
+            }
 
             if ((td.spellType & SpellType.Counter) != 0)
             {
@@ -3761,14 +3783,18 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             {
                 NetworkPlayer.Local.handCards.Remove(cardObj);
                 CardDrag.ExecuteSpellEffect(td, null);
+                // 法术 handler 可能产生异步协程(02501等) → 等待
+                if (CardDrag.SpellPending != null) { yield return CardDrag.SpellPending; CardDrag.SpellPending = null; }
                 Destroy(cardObj);
                 yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
+                yield return new WaitForEndOfFrame();
+                yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
+                yield return new WaitWhile(() => BoardSlot.isPlacingCard);
             }
             else
             {
                 if (!CardDrag.HasValidTargetStatic((TargetType)td.targetType))
                 {
-                Debug.Log($"辉煌法师：打出{td.cardName}无合法目标，跳过");
                     NetworkPlayer.Local.handCards.Remove(cardObj);
                     Destroy(cardObj);
                     continue;
@@ -3778,22 +3804,31 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 SelectionManager.Instance.BeginSelection((TargetType)td.targetType, (slot) =>
                 {
                     CardDrag.ExecuteSpellEffect(td, slot);
-                    Destroy(cardObj);
                     targetDone = true;
                 });
                 yield return new WaitUntil(() => targetDone);
+                if (CardDrag.SpellPending != null) { yield return CardDrag.SpellPending; CardDrag.SpellPending = null; }
                 yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
+                yield return new WaitForEndOfFrame();
+                yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
+                yield return new WaitWhile(() => BoardSlot.isPlacingCard);
             }
 
             // 每个法术独立完成其嵌套同时树
+            Debug.Log($"[01521] [{spellIdx}] 开始结算嵌套树");
             CheckAndHandleDeaths();
             yield return ActionQueueManager.WaitForDrain();
-            yield return new WaitWhile(() => NestingContext.IsNested);
+            yield return new WaitWhile(() => NestingContext.Depth > baseDepth);
             if (pendingRevenges.Count > 0 && BattleManager.Instance != null)
-                yield return BattleManager.Instance.StartCoroutine(
-                    BattleManager.ResolveRevengesFromSnapshot());
+                yield return BattleManager.Instance.StartCoroutine(BattleManager.ResolveRevengesFromSnapshot());
+            // 法术可能弹出面板(02308/02309等)——延迟一帧检测面板
+            yield return null;
+            if (CardDisplayPanel.Instance != null)
+                yield return new WaitWhile(() => CardDisplayPanel.Instance.panelRoot.activeSelf);
+            Debug.Log($"[01521] [{spellIdx}] 树结算完成");
         }
 
+        Debug.Log($"[01521] 全部{toPlay.Count}张法术处理完毕");
         CardDisplayPanel.Instance.Hide();
         CardDisplayPanel.Instance.multiSelect = false;
         NestingContext.Exit();
