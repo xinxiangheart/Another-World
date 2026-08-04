@@ -2244,6 +2244,7 @@ public class NetworkPlayer : NetworkBehaviour
     {
         int serverSlot = isLocalPlayer ? selectedLocalSlot : (selectedLocalSlot >= 6 ? selectedLocalSlot - 6 : selectedLocalSlot + 6);
         BoardSlot.NotifyRemoteSelectionDone(serverSlot);
+        BoardSlot.NotifyMartyrDone(serverSlot);
     }
 
     /// <summary>客户端→服务器：纯客户端放置卡牌后委托服务器执行进场效果。</summary>

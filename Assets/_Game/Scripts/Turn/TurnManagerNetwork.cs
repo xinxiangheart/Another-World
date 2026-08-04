@@ -229,6 +229,19 @@ public partial class TurnManager
     /// <summary>远程客户端阶段开始处理完成，通知服务器。</summary>
     void RemotePhaseStartReady()
     {
+        // 01524 画卷之核 — 阶段数增加 + 费用更新（客户端也需要）
+        foreach (GameObject card in NetworkPlayer.Local.handCards)
+        {
+            if (card == null) continue;
+            CardInstance ci = card.GetComponent<CardInstance>();
+            if (ci != null && ci.templateID == "01524")
+            {
+                ci.scrollCorePhaseCount++;
+                if (ci.scrollCorePhaseCount > 5) ci.scrollCorePhaseCount = 5;
+                ci.currentCost = ci.scrollCorePhaseCount;
+                card.GetComponent<CardDisplay2D>()?.Refresh();
+            }
+        }
         ProcessPhaseStartTriggers();
         ProcessPhaseStartDeaths();
         ReportAllSlots();

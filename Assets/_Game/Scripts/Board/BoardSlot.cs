@@ -399,6 +399,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public static bool _honorAttendantExitWaiting;
     public static int _honorAttendantExitTarget = -1;
     public static void NotifyHonorAttendantExitDone(int serverSlot) { _honorAttendantExitTarget = serverSlot; _honorAttendantExitWaiting = false; }
+    // 01522 殉难者：退场→为己方一召唤物+5+4 目标选择委托
+    public static bool _martyrDone;
+    public static int _martyrTargetSlot = -1;
+    public static void NotifyMartyrDone(int serverSlot) { _martyrTargetSlot = serverSlot; _martyrDone = true; }
     // 01347 荣誉侍者：主动退场完成标记
     public static bool _honorAttendantDone;
     void Start()
@@ -1784,6 +1788,36 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     }
     public IEnumerator MartyrDeathEffectCoroutine(CardInstance giver)
     {
+        NetworkPlayer owner = BoardManager.GetOwnerPlayer(slotID);
+        bool isRemote = NetworkServer.active && owner != null && !owner.isLocalPlayer;
+
+        if (isRemote)
+        {
+            int serverSlot = slotID >= 6 ? slotID - 6 : slotID + 6;
+            _martyrDone = false;
+            _martyrTargetSlot = -1;
+            owner.TargetRequestSelection(owner.connectionToClient, (int)TargetType.SingleAlly, serverSlot);
+            yield return new WaitWhile(() => !_martyrDone);
+            int targetServerSlot = _martyrTargetSlot; // CmdSelectionResult已映射为serverSlot
+            if (targetServerSlot >= 0)
+            {
+                BoardSlot targetSlot = FindObjectOfType<BoardManager>()?.GetSlot(targetServerSlot);
+                if (targetSlot?.currentCard3D != null)
+                {
+                    CardInstance ci = targetSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                    if (ci != null && ci != giver)
+                    {
+                        if (!ci.cannotHealOrGainMaxHP)
+                        { ci.currentHealth += 5; ci.currentMaxHealth += 5; }
+                        ci.currentAttack += 4;
+                        targetSlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+                    }
+                }
+            }
+            BoardSyncManager.MarkDirty();
+            yield break;
+        }
+
         yield return null;
         yield return StartCoroutine(BattleManager.Instance.WaitForSelection((onDone) =>
         {
@@ -1809,7 +1843,6 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                             }
                             ci.currentAttack += 4;
                             targetSlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
-                            // 同步 buff 后数值到服务器/对方
                             TurnManager.SyncMyBoardToOpponent();
                         }
                     }

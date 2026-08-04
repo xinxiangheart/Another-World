@@ -973,6 +973,7 @@ public partial class TurnManager : MonoBehaviour
             }
             BoardSlot.isStrengtheningSlot = false;
             ConfirmQueueManager.ExitSelectionMode();
+            TurnManager.SyncMyBoardToOpponent();
             done = true;
         });
         yield return new WaitUntil(() => done);
