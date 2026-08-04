@@ -187,25 +187,126 @@ public static class GlobalDeathEventHandler
             if (!foundReaper) Debug.Log($"[01528] 未找到——不加能量");
         }
 
-        // ===== 6. 恐惧之龙(01530)：导致对方退场，弃对方一张牌 =====
-        if (!isAlly)
+        // ===== 6. 恐惧之龙(01530)：导致对方退场，随机弃对方一张牌 =====
+        // 不依赖 isAlly——01530可能在0-5导致6-11退场，也可能在6-11导致0-5退场。
+        // 每层独立检查01530与死亡卡是否在对侧。
+        // 一次 Trigger()（一死亡）最多弃1张牌。多次死亡累积弃多张。
+        // 弃牌模式参考 01316 窃贼 / 01347 荣誉侍者：RemoveCardFromLocalHand（本端）+
+        // TargetRemoveHandCard（远端RPC）。纯客户端 handCards 为空不执行。
         {
+            bool foundDragon = false;
+            NetworkPlayer discardTarget = null; // 01530 所在玩家的对手，其手牌将被弃
+
+            // ① 遍历 damageSourceInstanceIDs —— 只取在对侧的01530
             foreach (string sourceID in damageSourceInstanceIDs)
             {
                 CardInstance sourceCI = FindByInstanceID(bm, sourceID);
+                if (sourceCI != null)
+                    Debug.Log($"[01530] ①src={sourceID} tid={sourceCI.templateID} attached={sourceCI.isAttached}");
                 if (sourceCI != null && sourceCI.templateID == "01530" && !IsSilenced(sourceCI))
                 {
-                    NetworkPlayer dragonOwner = BoardManager.GetOwnerPlayer(GetSlotOf(bm, sourceCI.instanceID));
-                    NetworkPlayer dragonOpponent = BoardManager.GetOpponentPlayer(GetSlotOf(bm, sourceCI.instanceID));
-                    if (dragonOpponent != null && dragonOpponent.handCards.Count > 0)
+                    int dragonSlot = GetSlotOf(bm, sourceCI.instanceID);
+                    if ((dragonSlot >= 6) != isAlly)
                     {
-                        int randomIndex = Random.Range(0, dragonOpponent.handCards.Count);
-                        GameObject card = dragonOpponent.handCards[randomIndex];
-                        dragonOpponent.handCards.RemoveAt(randomIndex);
-                        Object.Destroy(card);
+                        discardTarget = BoardManager.GetOpponentPlayer(dragonSlot);
+                        foundDragon = true;
+                        Debug.Log($"[01530] ①命中 dragonSlot={dragonSlot}");
+                        break;
                     }
                 }
             }
+
+            // ② 遍历宿主身上的 01530 附着物——宿主与死亡卡对侧
+            if (!foundDragon)
+            {
+                foreach (string sourceID in damageSourceInstanceIDs)
+                {
+                    int hostSlotID = GetSlotOfByInstanceID(bm, sourceID);
+                    if (hostSlotID >= 0 && (hostSlotID >= 6) != isAlly)
+                    {
+                        foreach (GameObject obj in bm.attachedModels)
+                        {
+                            Card3DInstance c3d = obj?.GetComponent<Card3DInstance>();
+                            if (c3d?.cardInstance?.templateID == "01530" && c3d.cardInstance.hostSlotID == hostSlotID && !IsSilenced(c3d.cardInstance))
+                            {
+                                discardTarget = BoardManager.GetOpponentPlayer(hostSlotID);
+                                foundDragon = true;
+                                Debug.Log($"[01530] ②命中 hostSlot={hostSlotID}");
+                                break;
+                            }
+                        }
+                    }
+                    if (foundDragon) break;
+                }
+            }
+
+            // ③ 全板扫描回退——对侧（独立卡牌）
+            if (!foundDragon)
+            {
+                Debug.Log($"[01530] ③全板扫描");
+                for (int i = 0; i < 12; i++)
+                {
+                    if ((i >= 6) == isAlly) continue;
+                    var s = bm.GetSlot(i);
+                    var sci = s?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                    if (sci != null && sci.templateID == "01530" && !IsSilenced(sci))
+                    {
+                        discardTarget = BoardManager.GetOpponentPlayer(i);
+                        foundDragon = true;
+                        Debug.Log($"[01530] ③命中独立 slot={i}");
+                        break;
+                    }
+                }
+                // ③' 全板扫描回退——对侧（附着物）
+                if (!foundDragon)
+                {
+                    for (int i = 0; i < 12; i++)
+                    {
+                        if ((i >= 6) == isAlly) continue;
+                        foreach (GameObject obj in bm.attachedModels)
+                        {
+                            var aci = obj?.GetComponent<Card3DInstance>()?.cardInstance;
+                            if (aci?.templateID == "01530" && aci.hostSlotID == i && !IsSilenced(aci))
+                            {
+                                discardTarget = BoardManager.GetOpponentPlayer(i);
+                                foundDragon = true;
+                                Debug.Log($"[01530] ③命中附着 hostSlot={i}");
+                                break;
+                            }
+                        }
+                        if (foundDragon) break;
+                    }
+                }
+            }
+
+            // 执行随机弃牌：本端操作 + 远端 RPC（参考 01316/01347 模式）
+            if (foundDragon && discardTarget != null)
+            {
+                discardTarget.handCards.RemoveAll(c => c == null);
+                if (discardTarget.handCards.Count > 0)
+                {
+                    int randomIndex = Random.Range(0, discardTarget.handCards.Count);
+                    GameObject card = discardTarget.handCards[randomIndex];
+                    CardInstance ci = card?.GetComponent<CardInstance>();
+                    string iid = ci?.instanceID;
+
+                    Debug.Log($"[01530] 弃牌: idx={randomIndex}/{discardTarget.handCards.Count} iid={iid}");
+
+                    discardTarget.handCards.RemoveAt(randomIndex);
+                    if (card != null) Object.Destroy(card);
+
+                    // 同步远端客户端（与 01316/01347 完全相同的模式）
+                    if (!string.IsNullOrEmpty(iid))
+                    {
+                        // 弃 discardTarget 的牌 → 如果 discardTarget 是本端则直接 RemoveCardFromLocalHand
+                        if (discardTarget == NetworkPlayer.Local || discardTarget == null)
+                            NetworkPlayer.RemoveCardFromLocalHand(iid);
+                        else if (Mirror.NetworkServer.active)
+                            discardTarget.TargetRemoveHandCard(discardTarget.connectionToClient, iid);
+                    }
+                }
+            }
+            if (!foundDragon) Debug.Log($"[01530] 未找到——不弃牌");
         }
 
         // ===== 7. 活化母巢(01534)：对方退场+0+1 =====
