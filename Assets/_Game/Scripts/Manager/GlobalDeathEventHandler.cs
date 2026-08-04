@@ -6,6 +6,9 @@ public static class GlobalDeathEventHandler
     public static void Trigger(CardInstance dyingCI, int slotID, List<string> damageSourceInstanceIDs, bool isActiveExit)
     {
         if (dyingCI == null) return;
+        // 附着物随宿主退场——退场来源是宿主，和导致宿主退场的来源无关。
+        // 任何全局退场监听（01501/01528/01530等）不应对附着物的分离退场做出反应。
+        if (dyingCI.isAttached) return;
 
         BoardManager bm = GameObject.FindObjectOfType<BoardManager>();
         if (bm == null) return;
@@ -89,30 +92,41 @@ public static class GlobalDeathEventHandler
         }
 
         // ===== 5. 能量收割者(01528)：导致对方退场+3/+2能量 =====
-        Debug.Log($"[01528] Trigger: isAlly={isAlly} dyingSlot={slotID} dyingTid={dyingCI.templateID} srcCount={damageSourceInstanceIDs?.Count} enemySrcCount={dyingCI.enemyDamageSourceIDs?.Count} isServer={Mirror.NetworkServer.active}");
-        if (!isAlly)
+        // 不依赖 isAlly——01528可能在服务器0-5导致6-11退场，也可能在6-11导致0-5退场。
+        // 每层独立检查01528与死亡卡是否在对侧。
         {
+            string ctx = $"dyingSlot={slotID} dyingTid={dyingCI.templateID} src#={damageSourceInstanceIDs.Count} srv={Mirror.NetworkServer.active} ally={isAlly}";
+            Debug.Log($"[01528] 进入: {ctx}");
+            bool foundReaper = false;
+
+            // ① 遍历 damageSourceInstanceIDs —— 只取在对侧的01528
             foreach (string sourceID in damageSourceInstanceIDs)
             {
-                Debug.Log($"[01528] 遍历sourceID: {sourceID}");
                 CardInstance sourceCI = FindByInstanceID(bm, sourceID);
-                string srcTid = sourceCI != null ? sourceCI.templateID : "null";
-                Debug.Log($"[01528] sourceCI: {srcTid} isAttached={sourceCI != null && sourceCI.isAttached}");
+                if (sourceCI != null)
+                    Debug.Log($"[01528] ①src={sourceID} tid={sourceCI.templateID} attached={sourceCI.isAttached} slot={GetSlotOf(bm,sourceCI.instanceID)} oppSide={(GetSlotOf(bm,sourceCI.instanceID)>=6)!=isAlly}");
+                else Debug.Log($"[01528] ①src={sourceID} find=null");
                 if (sourceCI != null && sourceCI.templateID == "01528" && !IsSilenced(sourceCI))
                 {
                     int reaperSlot = GetSlotOf(bm, sourceCI.instanceID);
-                    NetworkPlayer reaperOwner = BoardManager.GetOwnerPlayer(reaperSlot);
-                    int addEnergy = sourceCI.isAttached ? 2 : 3;
-                    Debug.Log($"[01528] 独立01528加能: reaperSlot={reaperSlot} owner={reaperOwner?.netId} energy={addEnergy}");
-                    if (sourceCI.isAttached) reaperOwner?.AddEnergy(2);
-                    else reaperOwner?.AddEnergy(3);
+                    if ((reaperSlot >= 6) != isAlly)
+                    {
+                        NetworkPlayer reaperOwner = BoardManager.GetOwnerPlayer(reaperSlot);
+                        int add = sourceCI.isAttached ? 2 : 3;
+                        reaperOwner?.AddEnergy(add);
+                        foundReaper = true;
+                        Debug.Log($"[01528] ①命中 slot={reaperSlot} +{add}");
+                    }
                 }
-                else
+            }
+
+            // ② 遍历宿主身上的 01528 附着物——宿主与死亡卡对侧
+            if (!foundReaper)
+            {
+                foreach (string sourceID in damageSourceInstanceIDs)
                 {
-                    // 伤害来源是宿主，检查宿主身上的能量收割者附着物
                     int hostSlotID = GetSlotOfByInstanceID(bm, sourceID);
-                    Debug.Log($"[01528] 检查宿主附着: hostSlotID={hostSlotID}");
-                    if (hostSlotID >= 0)
+                    if (hostSlotID >= 0 && (hostSlotID >= 6) != isAlly)
                     {
                         foreach (GameObject obj in bm.attachedModels)
                         {
@@ -120,13 +134,57 @@ public static class GlobalDeathEventHandler
                             if (c3d?.cardInstance?.templateID == "01528" && c3d.cardInstance.hostSlotID == hostSlotID)
                             {
                                 NetworkPlayer hostOwner = BoardManager.GetOwnerPlayer(hostSlotID);
-                                Debug.Log($"[01528] 附着01528加能: hostSlot={hostSlotID} owner={hostOwner?.netId} energy=2");
                                 hostOwner?.AddEnergy(2);
+                                foundReaper = true;
+                                Debug.Log($"[01528] ②命中 hostSlot={hostSlotID}");
                             }
                         }
                     }
                 }
             }
+
+            // ③ 全板扫描回退——对侧
+            if (!foundReaper)
+            {
+                Debug.Log($"[01528] ③全板扫描");
+                for (int i = 0; i < 12; i++)
+                {
+                    if ((i >= 6) == isAlly) continue; // 同侧跳过
+                    var s = bm.GetSlot(i);
+                    var sci = s?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                    if (sci != null && sci.templateID == "01528" && !IsSilenced(sci))
+                    {
+                        NetworkPlayer reaperOwner = BoardManager.GetOwnerPlayer(sci.isAttached ? sci.hostSlotID : i);
+                        int add = sci.isAttached ? 2 : 3;
+                        reaperOwner?.AddEnergy(add);
+                        foundReaper = true;
+                        Debug.Log($"[01528] ③命中独立 slot={i} attached={sci.isAttached} +{add}");
+                        break;
+                    }
+                }
+                if (!foundReaper)
+                {
+                    for (int i = 0; i < 12; i++)
+                    {
+                        if ((i >= 6) == isAlly) continue;
+                        foreach (GameObject obj in bm.attachedModels)
+                        {
+                            var aci = obj?.GetComponent<Card3DInstance>()?.cardInstance;
+                            if (aci?.templateID == "01528" && aci.hostSlotID == i && !IsSilenced(aci))
+                            {
+                                NetworkPlayer hostOwner = BoardManager.GetOwnerPlayer(i);
+                                hostOwner?.AddEnergy(2);
+                                foundReaper = true;
+                                Debug.Log($"[01528] ③命中附着 hostSlot={i}");
+                                break;
+                            }
+                        }
+                        if (foundReaper) break;
+                    }
+                }
+            }
+
+            if (!foundReaper) Debug.Log($"[01528] 未找到——不加能量");
         }
 
         // ===== 6. 恐惧之龙(01530)：导致对方退场，弃对方一张牌 =====
