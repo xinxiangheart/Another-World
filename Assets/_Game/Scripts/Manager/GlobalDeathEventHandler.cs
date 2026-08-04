@@ -89,15 +89,21 @@ public static class GlobalDeathEventHandler
         }
 
         // ===== 5. 能量收割者(01528)：导致对方退场+3/+2能量 =====
+        Debug.Log($"[01528] Trigger: isAlly={isAlly} dyingSlot={slotID} dyingTid={dyingCI.templateID} srcCount={damageSourceInstanceIDs?.Count} enemySrcCount={dyingCI.enemyDamageSourceIDs?.Count} isServer={Mirror.NetworkServer.active}");
         if (!isAlly)
         {
             foreach (string sourceID in damageSourceInstanceIDs)
             {
+                Debug.Log($"[01528] 遍历sourceID: {sourceID}");
                 CardInstance sourceCI = FindByInstanceID(bm, sourceID);
+                string srcTid = sourceCI != null ? sourceCI.templateID : "null";
+                Debug.Log($"[01528] sourceCI: {srcTid} isAttached={sourceCI != null && sourceCI.isAttached}");
                 if (sourceCI != null && sourceCI.templateID == "01528" && !IsSilenced(sourceCI))
                 {
                     int reaperSlot = GetSlotOf(bm, sourceCI.instanceID);
                     NetworkPlayer reaperOwner = BoardManager.GetOwnerPlayer(reaperSlot);
+                    int addEnergy = sourceCI.isAttached ? 2 : 3;
+                    Debug.Log($"[01528] 独立01528加能: reaperSlot={reaperSlot} owner={reaperOwner?.netId} energy={addEnergy}");
                     if (sourceCI.isAttached) reaperOwner?.AddEnergy(2);
                     else reaperOwner?.AddEnergy(3);
                 }
@@ -105,6 +111,7 @@ public static class GlobalDeathEventHandler
                 {
                     // 伤害来源是宿主，检查宿主身上的能量收割者附着物
                     int hostSlotID = GetSlotOfByInstanceID(bm, sourceID);
+                    Debug.Log($"[01528] 检查宿主附着: hostSlotID={hostSlotID}");
                     if (hostSlotID >= 0)
                     {
                         foreach (GameObject obj in bm.attachedModels)
@@ -113,6 +120,7 @@ public static class GlobalDeathEventHandler
                             if (c3d?.cardInstance?.templateID == "01528" && c3d.cardInstance.hostSlotID == hostSlotID)
                             {
                                 NetworkPlayer hostOwner = BoardManager.GetOwnerPlayer(hostSlotID);
+                                Debug.Log($"[01528] 附着01528加能: hostSlot={hostSlotID} owner={hostOwner?.netId} energy=2");
                                 hostOwner?.AddEnergy(2);
                             }
                         }

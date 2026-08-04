@@ -1414,20 +1414,25 @@ public class NetworkPlayer : NetworkBehaviour
             if (sci != null && !string.IsNullOrEmpty(sci.templateID)) slotTids.Add(sci.templateID);
         }
 
-        if (!isServerProcessingClientReport)
+        // 服务端仍删——客户端02005等杀宿主后上报空槽位无附着物，
+        // 若拒绝删除则 SyncNow 带着旧附着物回到客户端重建。
+        for (int i = bm.attachedModels.Count - 1; i >= 0; i--)
         {
-            for (int i = bm.attachedModels.Count - 1; i >= 0; i--)
+            var obj = bm.attachedModels[i];
+            if (obj == null) { bm.attachedModels.RemoveAt(i); continue; }
+            var ci = obj.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci == null || !ci.isAttached) { bm.attachedModels.RemoveAt(i); continue; }
+            bool stillExists = incoming.Exists(x => {
+                if (!string.IsNullOrEmpty(x.iid) && x.iid == ci.instanceID) return true;
+                int xServerHS = isLocalPlayer ? x.hs : (x.hs >= 6 ? x.hs - 6 : x.hs + 6);
+                return x.tid == ci.templateID && xServerHS == ci.hostSlotID && x.order == ci.attachOrder;
+            });
+            if (!stillExists)
             {
-                var obj = bm.attachedModels[i];
-                if (obj == null) { bm.attachedModels.RemoveAt(i); continue; }
-                var ci = obj.GetComponent<Card3DInstance>()?.cardInstance;
-                if (ci == null || !ci.isAttached) { bm.attachedModels.RemoveAt(i); continue; }
-                bool stillExists = incoming.Exists(x => {
-                    if (!string.IsNullOrEmpty(x.iid) && x.iid == ci.instanceID) return true;
-                    int xServerHS = isLocalPlayer ? x.hs : (x.hs >= 6 ? x.hs - 6 : x.hs + 6);
-                    return x.tid == ci.templateID && xServerHS == ci.hostSlotID && x.order == ci.attachOrder;
-                });
-                if (!stillExists) { Destroy(obj); bm.attachedModels.RemoveAt(i); }
+                CardInstance aci = ci;
+                if (isServerProcessingClientReport && aci._placedAtTime > 0 && Time.time - aci._placedAtTime < 2f) continue;
+                bm.attachedModels.RemoveAt(i);
+                BoardManager.RecordAndRemoveAttach(obj);
             }
         }
 
@@ -1457,7 +1462,8 @@ public class NetworkPlayer : NetworkBehaviour
             }
 
             // 过期数据中被明确移除过的附件 → 不重建
-            if (!string.IsNullOrEmpty(iid) && BoardManager.removedAttachIDs.Contains(iid))
+            if ((!string.IsNullOrEmpty(iid) && BoardManager.removedAttachIDs.Contains(iid))
+                || BoardManager.removedAttachKeys.Contains($"{tid}|{mapped}|{o}"))
                 continue;
 
             var t = CardDatabase.Instance?.GetTemplate(tid);
@@ -1467,7 +1473,7 @@ public class NetworkPlayer : NetworkBehaviour
             if (c != null)
             {
                 var n = m.AddComponent<CardInstance>(); n.InitFromTemplate(t, 0);
-                n.isAttached = true; n.hostSlotID = mapped; n.attachOrder = o;
+                n.isAttached = true; n.hostSlotID = mapped; n.attachOrder = o; n._placedAtTime = Time.time;
                 c.cardInstance = n; c.UpdateValues();
             }
             bm.attachedModels.Add(m);
@@ -2118,6 +2124,36 @@ public class NetworkPlayer : NetworkBehaviour
         if (ci != null)
         {
             ci.isActiveExit = true;
+            slot.HandleDeath(slot.currentCard3D);
+        }
+        BoardSyncManager.MarkDirty();
+    }
+
+    /// <summary>客户端→服务器：02005等法术令目标退场，服务端权威执行HandleDeath。</summary>
+    [Command]
+    public void CmdDestroySlotCard(int clientSlotID)
+    {
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return;
+        int serverSlot = isLocalPlayer ? clientSlotID : (clientSlotID >= 6 ? clientSlotID - 6 : clientSlotID + 6);
+        var slot = bm.GetSlot(serverSlot);
+        var ci = slot?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+        if (ci != null)
+        {
+            ci.isActiveExit = false;
+            // 先清附着物——同 DeathPipeline step10
+            for (int iB = bm.attachedModels.Count - 1; iB >= 0; iB--)
+            {
+                var obj = bm.attachedModels[iB];
+                if (obj == null) continue;
+                var ca = obj.GetComponent<Card3DInstance>();
+                if (ca?.cardInstance != null && ca.cardInstance.hostSlotID == serverSlot
+                    && !ca.cardInstance.isAncientFairy)
+                {
+                    bm.attachedModels.RemoveAt(iB);
+                    BoardManager.RecordAndRemoveAttach(obj);
+                }
+            }
             slot.HandleDeath(slot.currentCard3D);
         }
         BoardSyncManager.MarkDirty();

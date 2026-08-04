@@ -99,8 +99,12 @@ public class BoardSyncManager : MonoBehaviour
         foreach (var o in bm.attachedModels)
         {
             var ci = o?.GetComponent<Card3DInstance>()?.cardInstance;
-            if (ci != null && !string.IsNullOrEmpty(ci.instanceID))
-                BoardManager.removedAttachIDs.Remove(ci.instanceID);
+            if (ci != null)
+            {
+                if (!string.IsNullOrEmpty(ci.instanceID))
+                    BoardManager.removedAttachIDs.Remove(ci.instanceID);
+                BoardManager.removedAttachKeys.Remove($"{ci.templateID}|{ci.hostSlotID}|{ci.attachOrder}");
+            }
         }
 
         // Signal whether the server-side has an active MistHider so the client hides the correct side
@@ -225,7 +229,8 @@ public class BoardSyncManager : MonoBehaviour
                     BoardSlot._fairyPending.Add(obj);
                     continue;
                 }
-                SafeDestroy(obj); bm.attachedModels.RemoveAt(i);
+                bm.attachedModels.RemoveAt(i);
+                BoardManager.RecordAndRemoveAttach(obj);
             }
         }
 
@@ -256,8 +261,9 @@ public class BoardSyncManager : MonoBehaviour
             }
 
             // 没有 — 新建
-            // 被明确移除过的 attachment 不重建（用 instanceID 精确匹配）
-            if (!string.IsNullOrEmpty(iid) && BoardManager.removedAttachIDs.Contains(iid))
+            // 被明确移除过的 attachment 不重建
+            if ((!string.IsNullOrEmpty(iid) && BoardManager.removedAttachIDs.Contains(iid))
+                || BoardManager.removedAttachKeys.Contains($"{tid}|{cs}|{o}"))
                 continue;
 
             var t = CardDatabase.Instance?.GetTemplate(tid);
@@ -267,7 +273,7 @@ public class BoardSyncManager : MonoBehaviour
             if (c != null)
             {
                 var n = m.AddComponent<CardInstance>(); n.InitFromTemplate(t, 0);
-                n.isAttached = true; n.hostSlotID = cs; n.attachOrder = o;
+                n.isAttached = true; n.hostSlotID = cs; n.attachOrder = o; n._placedAtTime = Time.time;
                 c.cardInstance = n; c.UpdateValues();
             }
             Card3DHover.SetHidden(m, mistHiderActive, true);

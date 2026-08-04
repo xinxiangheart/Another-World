@@ -6,13 +6,19 @@ public class BoardManager : MonoBehaviour
 {
     public static int attachGen = 0;
     public static System.Collections.Generic.HashSet<string> removedAttachIDs = new System.Collections.Generic.HashSet<string>();
+    public static System.Collections.Generic.HashSet<string> removedAttachKeys = new System.Collections.Generic.HashSet<string>();
 
-    /// <summary>记录并移除附着模型（权威删除）。过期同步不会重建此实例。</summary>
+    /// <summary>记录并移除附着模型。用 (tid,hostSlot,order) 匹配跨端同步，用 instanceID 兜底。</summary>
     public static void RecordAndRemoveAttach(GameObject attach)
     {
         if (attach == null) return;
-        string iid = attach.GetComponent<Card3DInstance>()?.cardInstance?.instanceID;
-        if (!string.IsNullOrEmpty(iid)) removedAttachIDs.Add(iid);
+        var ci = attach.GetComponent<Card3DInstance>()?.cardInstance;
+        if (ci != null)
+        {
+            string iid = ci.instanceID;
+            if (!string.IsNullOrEmpty(iid)) removedAttachIDs.Add(iid);
+            removedAttachKeys.Add($"{ci.templateID}|{ci.hostSlotID}|{ci.attachOrder}");
+        }
         Object.Destroy(attach);
     }
 

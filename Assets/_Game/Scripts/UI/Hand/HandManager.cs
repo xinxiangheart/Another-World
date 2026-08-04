@@ -722,6 +722,7 @@ public class HandManager : MonoBehaviour
             cardInst.isAttached = true;
             cardInst.hostSlotID = hostSlot.slotID;
             cardInst.attachOrder = attachOrder;
+            cardInst._placedAtTime = Time.time;
             instance3D.cardInstance = cardInst;
         }
         // 隐藏附着物的所有文字

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using Mirror;
 using Random = UnityEngine.Random;
 
 // ============================================================================
@@ -545,8 +546,17 @@ public static class SpellHandlers
             var t3d = ts.currentCard3D.GetComponent<Card3DInstance>();
             if (t3d?.cardInstance != null)
             {
-                t3d.cardInstance.isActiveExit = false;
-                ts.HandleDeath(ts.currentCard3D);
+                if (NetworkClient.isConnected && !NetworkServer.active)
+                {
+                    // 纯客户端：委托服务端权威执行退场——不做本地 HandleDeath，
+                    // 避免客户端 DeathPipeline step11 的 CmdReportAllSlots 携带过期附件覆盖服务端删除。
+                    NetworkPlayer.Local?.CmdDestroySlotCard(ts.slotID);
+                }
+                else
+                {
+                    t3d.cardInstance.isActiveExit = false;
+                    ts.HandleDeath(ts.currentCard3D);
+                }
             }
         }
         NetworkPlayer.Local.DrawCard();

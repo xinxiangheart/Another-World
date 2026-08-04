@@ -276,11 +276,16 @@ public static class DamagePipeline
             if (lastFollower != null)
             {
                 int hostSlot = GetHostSlotID(def);
-                RemoveFollower(lastFollower);
-                def.currentHealth = 2;
+                // 纯客户端不自己删——删了会被过期 SyncNow 的 attachBlock 重建。
+                // 服务端通过 CmdApplyDamageToCard 权威删除，SyncNow 后自然同步。
+                if (!NetworkClient.isConnected || NetworkServer.active)
+                {
+                    RemoveFollower(lastFollower);
+                    def.currentHealth = 2;
+                    ReorderAttachments(hostSlot);
+                    SyncAttachments(hostSlot);
+                }
                 ShowFloaterAt(def, 0, FloaterType.Blocked);
-                ReorderAttachments(hostSlot);
-                SyncAttachments(hostSlot);
                 ctx.negatedByFollower = true;
                 ctx.stopped = true;
                 return d;
