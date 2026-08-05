@@ -201,8 +201,8 @@ public static class DiscardHandlers
     static void Handle01534(EffectContext ctx)
     {
         int discardSlotID = ctx.discardSlotID;
-        int baseHP = ctx.source.totalDamageTaken;
-        int baseAtk = ctx.source.currentAttack;
+        int baseHP = ctx.savedTotalDamage;
+        int baseAtk = ctx.savedAttack;
         Card3DHover.ignoreSlotID = discardSlotID;
         HM()?.StartCoroutine(HM().SpawnTwoHorrors(baseHP, baseAtk));
     }

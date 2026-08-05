@@ -34,6 +34,9 @@ public class EffectContext
     /// <summary>退场/抛置前保存的攻击力（部分效果按此结算，如 01343）。</summary>
     public int savedAttack;
 
+    /// <summary>抛置前保存的累计受伤（01534 活化母巢抛置用，HandleDeath 前捕获）。</summary>
+    public int savedTotalDamage;
+
     /// <summary>抛置来源槽位 ID（Card3DHover.HandleDiscardEffect 用）。</summary>
     public int discardSlotID = -1;
 
@@ -61,7 +64,7 @@ public class EffectContext
         => new EffectContext { template = template, targetSlot = targetSlot, trigger = Trigger.Spell };
 
     public static EffectContext ForDiscard(CardInstance source, int discardSlotID)
-        => new EffectContext { source = source, discardSlotID = discardSlotID, savedAttack = source != null ? source.savedAttackForDiscard : 0, trigger = Trigger.Discard };
+        => new EffectContext { source = source, discardSlotID = discardSlotID, savedAttack = source != null ? source.savedAttackForDiscard : 0, savedTotalDamage = source != null ? source.savedTotalDamage : 0, trigger = Trigger.Discard };
 
     public static EffectContext ForExit(CardInstance source, BoardSlot sourceSlot, bool isActiveExit)
         => new EffectContext { source = source, sourceSlot = sourceSlot, isActiveExit = isActiveExit, trigger = isActiveExit ? Trigger.ActiveExit : Trigger.Exit };

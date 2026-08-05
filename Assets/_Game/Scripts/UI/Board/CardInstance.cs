@@ -60,6 +60,7 @@ public class CardInstance : MonoBehaviour
     public int totalDamageTaken; // 累计扣过的生命值（永久，只增不减）
     public bool isAncientFairy; // 古老精灵标记
     public int savedAttackForDiscard; // 不稳定实验品抛置用，保存点击时的攻击力
+    public int savedTotalDamage; // 01534 活化母巢抛置用，保存 HandleDeath 前的累计受伤
     public bool isWatcher; // 守望者标记
     public int consumedSpellCost; // 执行之剑消耗的法术费用
     public bool _rebornSummon;

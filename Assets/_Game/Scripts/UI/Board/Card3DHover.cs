@@ -73,6 +73,7 @@ public class Card3DHover : MonoBehaviour
         bool shouldTriggerDiscard = cardInstance.hasDiscard;
 
         cardInstance.savedAttackForDiscard = cardInstance.currentAttack;
+        cardInstance.savedTotalDamage = cardInstance.totalDamageTaken;
 
         slot.HandleDeath(gameObject);
 

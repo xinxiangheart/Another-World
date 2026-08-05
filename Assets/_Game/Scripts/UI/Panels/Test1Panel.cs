@@ -110,6 +110,10 @@ public class Test1Panel : MonoBehaviour
                 }
             }
         }
+
+        // 01534 活化母巢：显示累计受伤计数
+        if (instance.templateID == "01534")
+            infoText.text += $"\n当前计数：{instance.totalDamageTaken}";
     }
 
     string BuildTraitsText(CardInstance ci)

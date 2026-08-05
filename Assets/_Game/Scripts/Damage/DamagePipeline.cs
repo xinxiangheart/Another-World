@@ -388,7 +388,12 @@ public static class DamagePipeline
 
         // ── 活化母巢(01534) 累计受伤 ────────────────────────────────
         if (def.templateID == "01534")
-            def.totalDamageTaken += Mathf.Min(actual, def.currentHealth);
+        {
+            int add = Mathf.Min(actual, def.currentHealth);
+            def.totalDamageTaken += add;
+            NetworkPlayer owner = BoardManager.GetOwnerPlayer(GetSlotOf(def));
+            if (owner != null) owner.outlawNestTotalDamage += add;
+        }
 
         // ── 征服者(01508) 本次战斗累计受伤 ──────────────────────────
         if (def.templateID == "01508" && !IsSilenced(def))

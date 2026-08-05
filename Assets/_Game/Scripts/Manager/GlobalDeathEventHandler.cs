@@ -310,16 +310,9 @@ public static class GlobalDeathEventHandler
         }
 
         // ===== 7. 活化母巢(01534)：对方退场+0+1 =====
-        if (!isAlly)
-        {
-            CardInstance nest = FindByTemplateID_AnySide(bm, "01534");
-            if (nest != null && !IsSilenced(nest) && IsOnSameSide(bm, nest, slotID))
-            {
-                nest.currentAttack += 1;
-                nest.baseAttack += 1;
-                UpdateDisplay(bm, nest);
-            }
-        }
+        // 不依赖 isAlly——01534可能在0-5对6-11退场做出反应，也可能在6-11对0-5退场做出反应。
+        // 只要是退场都触发（击杀/特性/主动退场等）。
+        GiveNestBuff(slotID);
 
         // ===== 8. 复生造物(01513)：标记需要召唤杂兵 =====
         dyingCI._rebornSummon = false;
@@ -465,6 +458,24 @@ public static class GlobalDeathEventHandler
                 s.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
                 return;
             }
+        }
+    }
+
+    /// <summary>01534 活化母巢：对方退场+0+1。Host HandleDeath 和 DeathPipeline 附着物清理共用。</summary>
+    public static void GiveNestBuff(int dyingSlotID)
+    {
+        BoardManager bm = Object.FindObjectOfType<BoardManager>();
+        if (bm == null) return;
+        bool dyingIsAlly = dyingSlotID >= 6;
+
+        CardInstance nest = FindByTemplateID_AnySide(bm, "01534");
+        if (nest == null || IsSilenced(nest)) return;
+
+        int nestSlot = GetSlotOf(bm, nest.instanceID);
+        if (nestSlot >= 0 && (nestSlot >= 6) != dyingIsAlly)
+        {
+            nest.currentAttack += 1;
+            UpdateDisplay(bm, nest);
         }
     }
 }

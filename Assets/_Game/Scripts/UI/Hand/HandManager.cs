@@ -357,6 +357,12 @@ public class HandManager : MonoBehaviour
             cardInst.handledReturnToHand = false;
             cardInst.merchantDiscounted = false;
             cardInst.energyReaperDiscounted = false;
+            if (cardInst.templateID == "01534")
+            {
+                NetworkPlayer owner = BoardManager.GetOwnerPlayer(slot.slotID);
+                if (owner != null && owner.outlawNestTotalDamage > 0)
+                    cardInst.totalDamageTaken = owner.outlawNestTotalDamage;
+            }
             instance3D.cardInstance = cardInst;
         }
 
@@ -366,8 +372,11 @@ public class HandManager : MonoBehaviour
         {
             string iid = sourceInstance.instanceID ?? CardZoneManager.GenerateInstanceID(sourceInstance.templateID);
             int cost = instance3D?.cardInstance?.currentCost ?? sourceInstance.currentCost;
-            Debug.Log($"[PLACE-NORMAL] CmdPlayCard: tid={sourceInstance.templateID} slot={slot.slotID} handCost={sourceInstance.currentCost} boardCost={instance3D?.cardInstance?.currentCost} finalCost={cost} iid={iid}");
-            NetworkPlayer.Local?.CmdPlayCard(sourceInstance.templateID, slot.slotID, -1, -1, -1, cost, iid);
+            int atk = sourceInstance.currentAttack;
+            int hp = sourceInstance.currentHealth;
+            int maxHp = sourceInstance.currentMaxHealth;
+            Debug.Log($"[PLACE-NORMAL] CmdPlayCard: tid={sourceInstance.templateID} slot={slot.slotID} handCost={sourceInstance.currentCost} boardCost={instance3D?.cardInstance?.currentCost} finalCost={cost} iid={iid} atk={atk} hp={hp}");
+            NetworkPlayer.Local?.CmdPlayCard(sourceInstance.templateID, slot.slotID, atk, hp, maxHp, cost, iid);
         }
         BoardSyncManager.MarkDirty();
         if (instance3D != null) instance3D.UpdateValues();

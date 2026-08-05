@@ -237,6 +237,8 @@ public static class DeathPipeline
                 if (ca?.cardInstance != null && ca.cardInstance.hostSlotID == slotID)
                 {
                     if (ca.cardInstance.isAncientFairy) continue;
+                    // 01534 活化母巢：附着物退场也+0+1
+                    GlobalDeathEventHandler.GiveNestBuff(ca.cardInstance.hostSlotID);
                     bmAtt.attachedModels.RemoveAt(iB);
                     BoardManager.RecordAndRemoveAttach(obj);
                 }
