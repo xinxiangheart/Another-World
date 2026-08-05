@@ -36,6 +36,17 @@ public class UpdateManager : MonoBehaviour
     private string _latestTag;
     private string _downloadUrl;
 
+    private void Awake()
+    {
+        // 优先从 Resources/version.txt 读取版本号（CI 构建时自动写入）
+        // 编辑器/本地开发时回退到 Inspector 值
+        var versionAsset = Resources.Load<TextAsset>("version");
+        if (versionAsset != null && !string.IsNullOrWhiteSpace(versionAsset.text))
+        {
+            currentVersion = versionAsset.text.Trim();
+        }
+    }
+
     private void Start()
     {
         // 版本显示

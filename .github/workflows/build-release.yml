@@ -16,6 +16,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Write version.txt from git tag
+        run: |
+          set TAG=${{ github.ref_name }}
+          set VERSION=%TAG:~1%
+          echo %VERSION%> "Assets\_Game\Resources\version.txt"
+          echo Version baked: %VERSION%
+        shell: cmd
+
       - name: Copy Library from repo (speed up build)
         run: |
           if not exist Library mkdir Library
