@@ -16,9 +16,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Copy Library from repo (speed up build)
+        run: |
+          if not exist Library mkdir Library
+          xcopy "C:\Users\22589\Documents\GitHub\Another-World\Library\*" "Library\" /E /Y /Q 2>nul
+          echo Library copied (if available)
+        shell: cmd
+
       - name: Build Windows Player
         run: |
-          "C:\Program Files\Unity\Hub\Editor\2022.3.62f2c1\Editor\Unity.exe" -quit -batchmode -nographics -buildTarget StandaloneWindows64 -buildPath "build/StandaloneWindows64/Another-World.exe" -projectPath . -logFile build.log
+          "C:\Program Files\Unity\Hub\Editor\2022.3.62f2c1\Editor\Unity.exe" -quit -batchmode -nographics -projectPath . -buildWindows64Player "build/StandaloneWindows64/Another-World.exe" -logFile build.log
         shell: cmd
 
       - name: Show Build Log (on failure)
