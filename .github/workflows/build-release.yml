@@ -11,29 +11,23 @@ permissions:
 
 jobs:
   build-windows:
-    runs-on: windows-latest
+    runs-on: self-hosted
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Cache Unity Library
-        uses: actions/cache@v3
-        with:
-          path: Library
-          key: Library-${{ runner.os }}-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
-          restore-keys: |
-            Library-${{ runner.os }}-
-
       - name: Build Windows Player
-        uses: game-ci/unity-builder@v4
-        env:
-          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
-          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
-          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-        with:
-          targetPlatform: StandaloneWindows64
-          buildName: Another-World
-          versioning: None
+        run: |
+          "C:\Program Files\Unity\Hub\Editor\2022.3.62f2c1\Editor\Unity.exe" -quit -batchmode -nographics -buildTarget StandaloneWindows64 -buildPath build/StandaloneWindows64/Another-World.exe -projectPath . -logFile build.log
+        shell: pwsh
+
+      - name: Show Build Log (on failure)
+        if: failure()
+        run: |
+          if (Test-Path build.log) {
+            Get-Content build.log -Tail 100
+          }
+        shell: pwsh
 
       - name: Zip Build
         shell: pwsh
