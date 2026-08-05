@@ -1,0 +1,42 @@
+name: Build and Release
+
+# 推送 v* 标签时自动构建 Windows 包并发布到 Release
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache Unity Library
+        uses: actions/cache@v3
+        with:
+          path: Library
+          key: Library-${{ runner.os }}-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-${{ runner.os }}-
+
+      - name: Build Windows Player
+        uses: game-ci/unity-builder@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+        with:
+          targetPlatform: StandaloneWindows64
+          buildName: Another-World
+          versioning: None
+
+      - name: Zip Build
+        shell: pwsh
+        run: |
+          Compress-Archive -Path build/StandaloneWindows64/* -DestinationPath Another-World-Windows.zip
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: Another-World-Windows.zip
+          generate_release_notes: true
