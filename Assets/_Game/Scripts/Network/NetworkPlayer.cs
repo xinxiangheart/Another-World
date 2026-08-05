@@ -24,6 +24,9 @@ public class NetworkPlayer : NetworkBehaviour
     [SyncVar(hook = nameof(OnHandCountChanged))]
     public int handCardCount;
 
+    /// <summary>01534 活化母巢累计受伤——跨退场/回手永久保留，不退场不清零。</summary>
+    public int outlawNestTotalDamage;
+
     [SyncVar]
     public bool isReady;
 
@@ -403,6 +406,9 @@ public class NetworkPlayer : NetworkBehaviour
                             CardInstance ci = model.AddComponent<CardInstance>();
                             ci.InitFromTemplate(template, 0, instanceID);
                             if (templateID == "01502") CardInstance.shadowMasterAlive = true;
+                            // 01534 活化母巢：恢复玩家级永久累计受伤计数
+                            if (templateID == "01534" && outlawNestTotalDamage > 0)
+                                ci.totalDamageTaken = outlawNestTotalDamage;
                             // 01515 狂热萨满 / 01520 商户 — 光环需在服务器侧注册
                             if (templateID == "01515") GlobalEventManager.Instance?.RegisterAura(new FanaticShamanAura { source = ci });
                             if (templateID == "01520") GlobalEventManager.Instance?.RegisterAura(new MerchantAura { source = ci });
@@ -2532,6 +2538,81 @@ public class NetworkPlayer : NetworkBehaviour
     public void TargetHonorAttendantComplete(NetworkConnectionToClient target)
     {
         BoardSlot._honorAttendantDone = true;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 01535 执行之剑：攻击回合开始选择目标委托
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// <summary>服务端→远端客户端：你的01535触发，选择一个敌方随从造成伤害。</summary>
+    [TargetRpc]
+    public void TargetExecutionSwordSelect(NetworkConnectionToClient target, int serverSwordSlotID, int damage)
+    {
+        BoardSlot.isStrengtheningSlot = true;
+        SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (s) =>
+        {
+            BoardSlot.isStrengtheningSlot = false;
+            int result = (s != null && s.currentCard3D != null) ? s.slotID : -1;
+            CmdExecutionSwordResult(serverSwordSlotID, result, damage);
+        });
+    }
+
+    /// <summary>远端客户端完成01535选择后通知服务端。</summary>
+    [Command]
+    public void CmdExecutionSwordResult(int serverSwordSlotID, int localTargetSlot, int damage)
+    {
+        int serverTarget = localTargetSlot < 0 ? -1
+            : (isLocalPlayer ? localTargetSlot : (localTargetSlot >= 6 ? localTargetSlot - 6 : localTargetSlot + 6));
+        BoardSlot.NotifyExecutionSwordDone(serverTarget);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 01526 忤逆者：远程消耗手牌委托
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// <summary>纯客户端→服务器：01526 阶段开始消耗手牌，服务器权威执行。</summary>
+    [Command]
+    public void CmdRebelConsumeHand(int rebelSlotID, string cardInstanceID, int healAmount)
+    {
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return;
+        BoardSlot rebelSlot = bm.GetSlot(rebelSlotID);
+        CardInstance rebelCI = rebelSlot?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+        if (rebelCI == null || rebelCI.templateID != "01526") return;
+
+        // 从手牌找到并移除被消耗的卡
+        handCards.RemoveAll(c => c == null);
+        GameObject toRemove = null;
+        foreach (GameObject card in handCards)
+        {
+            CardInstance ci = card?.GetComponent<CardInstance>();
+            if (ci != null && ci.instanceID == cardInstanceID)
+            { toRemove = card; break; }
+        }
+        if (toRemove != null)
+        {
+            handCards.Remove(toRemove);
+            Destroy(toRemove);
+            handCards.RemoveAll(c => c == null);
+            handCardCount = handCards.Count;
+        }
+
+        // 忤逆者自身回复
+        rebelCI.currentHealth = Mathf.Min(rebelCI.currentMaxHealth, rebelCI.currentHealth + healAmount);
+        rebelSlot.currentCard3D?.GetComponent<Card3DInstance>()?.UpdateValues();
+
+        // 玩家回复
+        Heal(healAmount);
+        BoardSyncManager.MarkDirty();
+
+        TargetRebelConsumeComplete(connectionToClient);
+    }
+
+    /// <summary>服务端→远端客户端：01526 消耗完成，解除阻塞。</summary>
+    [TargetRpc]
+    public void TargetRebelConsumeComplete(NetworkConnectionToClient target)
+    {
+        BoardSlot.NotifyRebelConsumeDone();
     }
 
     // ═══════════════════════════════════════════════════════════════════
