@@ -41,6 +41,8 @@ jobs:
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
+        env:
+          NODE_OPTIONS: --use-system-ca
         with:
           files: Another-World-Windows.zip
           generate_release_notes: true
