@@ -1303,9 +1303,9 @@ public class NetworkPlayer : NetworkBehaviour
                         else
                         {
                             ci.hasShield = true;
-                            ci.shieldIsPermanent = (shieldEnc & 1) != 0;
-                            ci.shieldEndAtBattleStart = (shieldEnc & 2) != 0;
-                            ci.shieldEndAtBattleEnd = (shieldEnc & 4) != 0;
+                            ci.shieldIsPermanent = (shieldEnc & 2) != 0;
+                            ci.shieldEndAtBattleStart = (shieldEnc & 4) != 0;
+                            ci.shieldEndAtBattleEnd = (shieldEnc & 8) != 0;
                         }
                     }
                     else if (!isLocalPlayer && ci.hasShield && !ci.shieldIsPermanent)

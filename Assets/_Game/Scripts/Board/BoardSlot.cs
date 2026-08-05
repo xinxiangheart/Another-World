@@ -311,6 +311,17 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     ci2.hasFirstStrike = false;
                     break;
                 }
+                case "01531": // 亡命之徒：无护盾→扣2HP获永久护盾（非交互，仅本地状态，不弹浮字——服务器RPC已弹）
+                {
+                    if (!ci2.hasShield)
+                    {
+                        ci2.currentHealth -= 2;
+                        ci2.GrantShield(true, false, false);
+                        slot2.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+                    }
+                    ci2.hasFirstStrike = false;
+                    break;
+                }
             }
         }
 

@@ -134,7 +134,7 @@ public class BoardSyncManager : MonoBehaviour
         if (ci == null) return "";
         string gtt = ci.grantedTraitTexts != null && ci.grantedTraitTexts.Count > 0
             ? string.Join(";;", ci.grantedTraitTexts) : "";
-        return $"{ci.templateID}|{ci.currentHealth}|{ci.currentAttack}|{ci.currentMaxHealth}|{ci.baseAttack}|{ci.baseHealth}|{ci.baseMaxHealth}|{ci.currentCost}|{ci.currentTier}|{ci.baseTier}|{(ci.hasShield?(1+(ci.shieldIsPermanent?1:0)+(ci.shieldEndAtBattleStart?2:0)+(ci.shieldEndAtBattleEnd?4:0)):0)}|{(ci.silencedThisPhase?1:0)}|{(ci.isAttached?1:0)}|{(ci.poisoned?1:0)}|{ci.prefixes??""}|{gtt}|{ci.totalDamageTaken}";
+        return $"{ci.templateID}|{ci.currentHealth}|{ci.currentAttack}|{ci.currentMaxHealth}|{ci.baseAttack}|{ci.baseHealth}|{ci.baseMaxHealth}|{ci.currentCost}|{ci.currentTier}|{ci.baseTier}|{(ci.hasShield?(1+(ci.shieldIsPermanent?2:0)+(ci.shieldEndAtBattleStart?4:0)+(ci.shieldEndAtBattleEnd?8:0)):0)}|{(ci.silencedThisPhase?1:0)}|{(ci.isAttached?1:0)}|{(ci.poisoned?1:0)}|{ci.prefixes??""}|{gtt}|{ci.totalDamageTaken}";
     }
 
     // ============= Client =============
@@ -433,13 +433,13 @@ public class BoardSyncManager : MonoBehaviour
             if (justCreated && int.TryParse(p[7], out v)) cur.currentCost = v;
             if (int.TryParse(p[8], out v)) cur.currentTier = v;
             if (int.TryParse(p[9], out v)) cur.baseTier = v;
-              // 护盾类型编码: 0=无 1=永久 2+1=攻击开始消失 4+1=攻击结束消失
+              // 护盾类型编码: 0=无 bit0=hasShield bit1=永久 bit2=攻击开始消失 bit3=攻击结束消失
             if (int.TryParse(p[10], out int shieldEnc) && shieldEnc > 0)
             {
                 cur.hasShield = true;
-                cur.shieldIsPermanent = (shieldEnc & 1) != 0;
-                cur.shieldEndAtBattleStart = (shieldEnc & 2) != 0;
-                cur.shieldEndAtBattleEnd = (shieldEnc & 4) != 0;
+                cur.shieldIsPermanent = (shieldEnc & 2) != 0;
+                cur.shieldEndAtBattleStart = (shieldEnc & 4) != 0;
+                cur.shieldEndAtBattleEnd = (shieldEnc & 8) != 0;
             }
             else if (cur.hasShield && cur._placedAtTime > 0 && Time.time - cur._placedAtTime < 2f
                 && NetworkClient.isConnected && !NetworkServer.active)

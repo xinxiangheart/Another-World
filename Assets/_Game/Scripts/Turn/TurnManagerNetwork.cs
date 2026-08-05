@@ -188,7 +188,7 @@ public partial class TurnManager
                     ci.currentHealth, ci.currentAttack, ci.currentMaxHealth,
                     ci.baseAttack, ci.baseHealth, ci.baseMaxHealth,
                     ci.currentCost, ci.currentTier, ci.baseTier,
-                    ci.hasShield ? (1+(ci.shieldIsPermanent?1:0)+(ci.shieldEndAtBattleStart?2:0)+(ci.shieldEndAtBattleEnd?4:0)).ToString() : "0",
+                    ci.hasShield ? (1+(ci.shieldIsPermanent?2:0)+(ci.shieldEndAtBattleStart?4:0)+(ci.shieldEndAtBattleEnd?8:0)).ToString() : "0",
                     ci.silencedThisPhase ? "1" : "0",
                     ci.isAttached ? "1" : "0",
                     ci.poisoned ? "1" : "0",

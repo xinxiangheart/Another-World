@@ -40,7 +40,7 @@ public struct CardStateProto
             currentHealth, currentAttack, currentMaxHealth,
             baseAttack, baseHealth, baseMaxHealth,
             currentCost, currentTier, baseTier,
-            hasShield ? (1+(shieldIsPermanent?1:0)+(shieldEndAtBattleStart?2:0)+(shieldEndAtBattleEnd?4:0)).ToString() : "0",
+            hasShield ? (1+(shieldIsPermanent?2:0)+(shieldEndAtBattleStart?4:0)+(shieldEndAtBattleEnd?8:0)).ToString() : "0",
             silenced ? "1" : "0",
             isAttached ? "1" : "0",
             poisoned ? "1" : "0",
@@ -66,7 +66,7 @@ public struct CardStateProto
         if (p.Length > 8)  int.TryParse(p[8], out s.currentTier);
         if (p.Length > 9)  int.TryParse(p[9], out s.baseTier);
         if (p.Length > 10 && int.TryParse(p[10], out int shieldEnc) && shieldEnc > 0)
-        { s.hasShield = true; s.shieldIsPermanent = (shieldEnc & 1) != 0; s.shieldEndAtBattleStart = (shieldEnc & 2) != 0; s.shieldEndAtBattleEnd = (shieldEnc & 4) != 0; }
+        { s.hasShield = true; s.shieldIsPermanent = (shieldEnc & 2) != 0; s.shieldEndAtBattleStart = (shieldEnc & 4) != 0; s.shieldEndAtBattleEnd = (shieldEnc & 8) != 0; }
         if (p.Length > 11) s.silenced = p[11] == "1";
         if (p.Length > 12) s.isAttached = p[12] == "1";
         if (p.Length > 13) s.poisoned = p[13] == "1";

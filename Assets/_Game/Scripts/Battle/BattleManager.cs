@@ -455,10 +455,11 @@ public class BattleManager : MonoBehaviour
                 if (!ci.hasShield)
                 {
                     ci.currentHealth -= 2;
-                    DamagePipeline.ShowFloaterAt(ci, 2, FloaterType.Debuff);
+                    DamagePipeline.ShowFloaterAt(ci, 2, FloaterType.Damage);
                     ci.GrantShield(true, false, false);
                     slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
                 }
+                ci.hasFirstStrike = false;
             }
         }
 
