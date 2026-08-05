@@ -17,22 +17,22 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build Windows Player
+        shell: powershell
         run: |
-          "C:\Program Files\Unity\Hub\Editor\2022.3.62f2c1\Editor\Unity.exe" -quit -batchmode -nographics -buildTarget StandaloneWindows64 -buildPath build/StandaloneWindows64/Another-World.exe -projectPath . -logFile build.log
-        shell: pwsh
+          & "C:\Program Files\Unity\Hub\Editor\2022.3.62f2c1\Editor\Unity.exe" -quit -batchmode -nographics -buildTarget StandaloneWindows64 -buildPath "build/StandaloneWindows64/Another-World.exe" -projectPath . -logFile build.log
 
       - name: Show Build Log (on failure)
         if: failure()
+        shell: powershell
         run: |
           if (Test-Path build.log) {
             Get-Content build.log -Tail 100
           }
-        shell: pwsh
 
       - name: Zip Build
-        shell: pwsh
+        shell: powershell
         run: |
-          Compress-Archive -Path build/StandaloneWindows64/* -DestinationPath Another-World-Windows.zip
+          Compress-Archive -Path "build\StandaloneWindows64\*" -DestinationPath Another-World-Windows.zip
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
