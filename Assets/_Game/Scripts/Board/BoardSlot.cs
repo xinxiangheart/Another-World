@@ -410,6 +410,14 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public static bool _honorAttendantExitWaiting;
     public static int _honorAttendantExitTarget = -1;
     public static void NotifyHonorAttendantExitDone(int serverSlot) { _honorAttendantExitTarget = serverSlot; _honorAttendantExitWaiting = false; }
+    // 01535 执行之剑：攻击回合开始选择目标委托
+    public static bool _executionSwordWaiting;
+    public static int _executionSwordTargetSlot = -1;
+    public static int _executionSwordDamage;
+    public static void NotifyExecutionSwordDone(int serverSlot) { _executionSwordTargetSlot = serverSlot; _executionSwordWaiting = false; }
+    // 01526 忤逆者：远程消耗手牌委托
+    public static bool _rebelConsumeDone;
+    public static void NotifyRebelConsumeDone() { _rebelConsumeDone = true; }
     // 01522 殉难者远程委托：_martyrRpcDone + _martyrBuffSlot
     public static bool _martyrRpcDone;
     public static int _martyrBuffSlot = -1;

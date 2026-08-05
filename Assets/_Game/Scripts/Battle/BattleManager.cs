@@ -81,6 +81,7 @@ public class BattleManager : MonoBehaviour
             }
         }
         // 处刑剑(01535)：消耗法术费用造成伤害。遍历全部12槽。
+        // 仅在服务器处理——客户端由 TargetExecutionSwordSelect RPC 委托弹出选择。
         for (int i = 0; i < 12; i++)
         {
             BoardSlot slot = allSlots[i];
@@ -89,6 +90,9 @@ public class BattleManager : MonoBehaviour
             if (ci != null && ci.templateID == "01535" && ci.consumedSpellCost > 0)
             {
                 if (GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(ci))
+                    continue;
+
+                if (!Mirror.NetworkServer.active)
                     continue;
 
                 if (BoardManager.HasEnemyMinion(i))
@@ -1713,29 +1717,68 @@ public class BattleManager : MonoBehaviour
     }
     IEnumerator ExecutionSwordDamage(CardInstance sword, int damage, BoardSlot swordSlot)
     {
-        bool done = false;
-        CardInstance targetCI = null;
+        NetworkPlayer owner = BoardManager.GetOwnerPlayer(swordSlot.slotID);
 
-        SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (targetSlot) =>
+        if (owner == NetworkPlayer.Remote && Mirror.NetworkServer.active)
         {
-            if (targetSlot?.currentCard3D != null)
+            // 远端玩家的卡：委托远端选择目标（参考 01347 荣誉侍者模式）
+            BoardSlot._executionSwordWaiting = true;
+            BoardSlot._executionSwordTargetSlot = -1;
+            BoardSlot._executionSwordDamage = damage;
+            NetworkPlayer.Remote.TargetExecutionSwordSelect(
+                NetworkPlayer.Remote.connectionToClient, swordSlot.slotID, damage);
+            float t0 = Time.time;
+            while (BoardSlot._executionSwordWaiting && Time.time - t0 < 30f)
+                yield return null;
+            BoardSlot._executionSwordWaiting = false;
+
+            int targetSlot = BoardSlot._executionSwordTargetSlot;
+            if (targetSlot >= 0)
             {
-                targetCI = targetSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                BoardManager bm = FindObjectOfType<BoardManager>();
+                BoardSlot target = bm?.GetSlot(targetSlot);
+                if (target?.currentCard3D != null)
+                {
+                    CardInstance targetCI = target.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                    if (targetCI != null)
+                    {
+                        BattleManager.Instance.ApplyDamageToMinionPublic(targetCI, damage, swordSlot.currentCard3D);
+                        BoardSlot.CheckAndHandleDeaths();
+                        yield return ActionQueueManager.WaitForDrain();
+
+                        if (targetCI.currentHealth <= 0)
+                            BoardManager.GetOpponentPlayer(swordSlot.slotID)?.TakeDamage(2);
+                    }
+                }
+                BoardSyncManager.MarkDirty();
             }
-            done = true;
-        });
-
-        yield return new WaitUntil(() => done);
-
-        if (targetCI != null)
+        }
+        else
         {
-            BattleManager.Instance.ApplyDamageToMinionPublic(targetCI, damage, swordSlot.currentCard3D);
-            BoardSlot.CheckAndHandleDeaths();
-            yield return ActionQueueManager.WaitForDrain();
+            bool done = false;
+            CardInstance targetCI = null;
 
-            if (targetCI.currentHealth <= 0)
+            SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (targetSlot) =>
             {
-                BoardManager.GetOpponentPlayer(swordSlot.slotID)?.TakeDamage(2);
+                if (targetSlot?.currentCard3D != null)
+                {
+                    targetCI = targetSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                }
+                done = true;
+            });
+
+            yield return new WaitUntil(() => done);
+
+            if (targetCI != null)
+            {
+                BattleManager.Instance.ApplyDamageToMinionPublic(targetCI, damage, swordSlot.currentCard3D);
+                BoardSlot.CheckAndHandleDeaths();
+                yield return ActionQueueManager.WaitForDrain();
+
+                if (targetCI.currentHealth <= 0)
+                {
+                    BoardManager.GetOpponentPlayer(swordSlot.slotID)?.TakeDamage(2);
+                }
             }
         }
     }

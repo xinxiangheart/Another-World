@@ -1008,12 +1008,26 @@ public partial class TurnManager : MonoBehaviour
             bool isYuan = selectedCard.prefixes.Contains("渊");
             int healAmount = tier + (isYuan ? 1 : 0);
 
-            NetworkPlayer.Local.Heal(healAmount);
-            rebelCI.currentHealth = Mathf.Min(rebelCI.currentMaxHealth, rebelCI.currentHealth + healAmount);
-            rebel3D.UpdateValues();
+            if (NetworkClient.isConnected && !NetworkServer.active)
+            {
+                // 纯客户端：委托服务器权威执行（参考 01347/01316 远程委托模式）
+                int serverSlot = rebelSlot.slotID >= 6 ? rebelSlot.slotID - 6 : rebelSlot.slotID + 6;
+                BoardSlot._rebelConsumeDone = false;
+                NetworkPlayer.Local?.CmdRebelConsumeHand(serverSlot, selectedCard.instanceID, healAmount);
+                yield return new WaitUntil(() => BoardSlot._rebelConsumeDone);
+                // 客户端本地也刷新——SyncNow 后续会覆盖为权威值
+                NetworkPlayer.Local.RemoveCardFromHand(selectedCard.gameObject);
+                Destroy(selectedCard.gameObject);
+            }
+            else
+            {
+                NetworkPlayer.Local.Heal(healAmount);
+                rebelCI.currentHealth = Mathf.Min(rebelCI.currentMaxHealth, rebelCI.currentHealth + healAmount);
+                rebel3D.UpdateValues();
 
-            NetworkPlayer.Local.RemoveCardFromHand(selectedCard.gameObject);
-            Destroy(selectedCard.gameObject);
+                NetworkPlayer.Local.RemoveCardFromHand(selectedCard.gameObject);
+                Destroy(selectedCard.gameObject);
+            }
         }
 
         onComplete();
