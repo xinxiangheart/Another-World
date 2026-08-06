@@ -21,6 +21,7 @@ public class LobbyManager : MonoBehaviour
     public Button joinRoomButton;
     public Button viewCardsButton;
     public Button gameIntroButton;
+    public Button returnButton;
     public Button leaveButton;
 
     [Header("Input")]
@@ -37,6 +38,7 @@ public class LobbyManager : MonoBehaviour
         if (joinRoomButton != null) joinRoomButton.onClick.AddListener(JoinRoom);
         if (viewCardsButton != null) viewCardsButton.onClick.AddListener(() => SetStatus("卡牌浏览功能开发中"));
         if (gameIntroButton != null) gameIntroButton.onClick.AddListener(OpenGameIntro);
+        if (returnButton != null) returnButton.onClick.AddListener(ReturnToWelcome);
         if (leaveButton != null) leaveButton.onClick.AddListener(LeaveGame);
 
         // Find GameIntroPanel in scene (disabled at start)
@@ -77,6 +79,12 @@ public class LobbyManager : MonoBehaviour
         {
             LobbyConfig.IsDirectIP = false;
         }
+    }
+
+    public void ReturnToWelcome()
+    {
+        Debug.Log("[Lobby] ReturnToWelcome");
+        SceneManager.LoadScene("Welcome");
     }
 
     public void LeaveGame()
