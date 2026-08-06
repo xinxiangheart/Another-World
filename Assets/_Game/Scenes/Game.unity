@@ -660,7 +660,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1b3dfe224c9e8e444abbbc1c7bd477d8, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  graveyard: []
 --- !u!4 &84605842
 Transform:
   m_ObjectHideFlags: 0
@@ -3182,6 +3181,7 @@ MonoBehaviour:
   NextCardNullified: 0
   PendingEnterRedirectTemplate: {fileID: 0}
   PendingEnterRedirectInstance: {fileID: 0}
+  PendingEnterRedirectToHost: 0
 --- !u!4 &784924134
 Transform:
   m_ObjectHideFlags: 0
@@ -5572,7 +5572,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1276774473}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 6442dc8070ceb41f094e44de0bf87274, type: 3}
   m_Name: 
@@ -5591,6 +5591,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 587c584ba2ae877449e5fb743faf89c3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  showDebugGUI: 0
 --- !u!114 &1276774490
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -6657,7 +6658,7 @@ Transform:
   m_GameObject: {fileID: 1528155458}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 14.777699, y: 12.243329, z: -5}
+  m_LocalPosition: {x: -1.91, y: 9.33, z: -5}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -8010,6 +8011,8 @@ MonoBehaviour:
   startX: 0
   startY: 0
   multiSelect: 0
+  showBack: 0
+  backLabel: "\u53CD\u5236\u724C"
   enableCostCheck: 0
   maxTotalCost: 0
 --- !u!1 &1841755702
