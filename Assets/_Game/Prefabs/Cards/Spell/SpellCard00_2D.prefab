@@ -43,8 +43,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0}
   m_AnchorMax: {x: 0.5, y: 0}
-  m_AnchoredPosition: {x: 0.0000, y: -318.0000}
-  m_SizeDelta: {x: 249.9999, y: 438.9999}
+  m_AnchoredPosition: {x: 0, y: -106}
+  m_SizeDelta: {x: 83.3333, y: 146.3333}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &8329152156176830692
 CanvasRenderer:
@@ -306,8 +306,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 175.0001, y: -0.2796}
-  m_SizeDelta: {x: 600.0000, y: 150.0000}
+  m_AnchoredPosition: {x: 58.33335, y: -0.09320068}
+  m_SizeDelta: {x: 200, y: 50}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &1388116816722355239
 CanvasRenderer:
@@ -364,21 +364,21 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 162.0000
-  m_fontSizeBase: 108.0000
+  m_fontSize: 54
+  m_fontSizeBase: 36
   m_fontWeight: 400
   m_enableAutoSizing: 1
-  m_fontSizeMin: 3.0000
-  m_fontSizeMax: 162.0000
+  m_fontSizeMin: 1
+  m_fontSizeMax: 54
   m_fontStyle: 0
   m_HorizontalAlignment: 1
   m_VerticalAlignment: 256
   m_textAlignment: 65535
   m_characterSpacing: 0
   m_wordSpacing: 0
-  m_lineSpacing: 0.0000
-  m_lineSpacingMax: 0.0000
-  m_paragraphSpacing: 0.0000
+  m_lineSpacing: 0
+  m_lineSpacingMax: 0
+  m_paragraphSpacing: 0
   m_charWidthMaxAdj: 0
   m_enableWordWrapping: 1
   m_wordWrappingRatios: 0.4
@@ -400,7 +400,7 @@ MonoBehaviour:
   m_VertexBufferAutoSizeReduction: 0
   m_useMaxVisibleDescender: 1
   m_pageToDisplay: 1
-  m_margin: {x: -2451.8921, y: 796.8553, z: 1036.2827, w: -1766.8692}
+  m_margin: {x: -817.29736, y: 265.61844, z: 345.42755, w: -588.9564}
   m_isUsingLegacyAnimationComponent: 0
   m_isVolumetricText: 0
   m_hasFontAssetChanged: 0
@@ -440,8 +440,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 0, y: 0}
-  m_AnchoredPosition: {x: 140.0400, y: 146.1000}
-  m_SizeDelta: {x: 60.0000, y: 60.0000}
+  m_AnchoredPosition: {x: 46.68, y: 48.7}
+  m_SizeDelta: {x: 20, y: 20}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &7691217080574918600
 CanvasRenderer:
@@ -498,21 +498,21 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 11.2500
-  m_fontSizeBase: 15.0000
+  m_fontSize: 3.75
+  m_fontSizeBase: 5
   m_fontWeight: 400
   m_enableAutoSizing: 1
-  m_fontSizeMin: 3.0000
-  m_fontSizeMax: 12.0000
+  m_fontSizeMin: 1
+  m_fontSizeMax: 4
   m_fontStyle: 0
   m_HorizontalAlignment: 2
   m_VerticalAlignment: 512
   m_textAlignment: 65535
   m_characterSpacing: 0
   m_wordSpacing: 0
-  m_lineSpacing: 0.0000
-  m_lineSpacingMax: 0.0000
-  m_paragraphSpacing: 0.0000
+  m_lineSpacing: 0
+  m_lineSpacingMax: 0
+  m_paragraphSpacing: 0
   m_charWidthMaxAdj: 0
   m_enableWordWrapping: 1
   m_wordWrappingRatios: 0.4
@@ -534,7 +534,7 @@ MonoBehaviour:
   m_VertexBufferAutoSizeReduction: 0
   m_useMaxVisibleDescender: 1
   m_pageToDisplay: 1
-  m_margin: {x: 7.8313, y: 6.7787, z: 37.7603, w: 37.0013}
+  m_margin: {x: 2.6104312, y: 2.2595687, z: 12.586764, w: 12.333768}
   m_isUsingLegacyAnimationComponent: 0
   m_isVolumetricText: 0
   m_hasFontAssetChanged: 0
@@ -574,8 +574,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 0, y: 0}
-  m_AnchoredPosition: {x: 140.1000, y: 364.2002}
-  m_SizeDelta: {x: 60.0000, y: 60.0000}
+  m_AnchoredPosition: {x: 46.7, y: 121.40007}
+  m_SizeDelta: {x: 20, y: 20}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &5515164920696970972
 CanvasRenderer:
@@ -632,21 +632,21 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 24.0000
-  m_fontSizeBase: 15.0000
+  m_fontSize: 8
+  m_fontSizeBase: 5
   m_fontWeight: 400
   m_enableAutoSizing: 1
-  m_fontSizeMin: 24.0000
-  m_fontSizeMax: 30.0000
+  m_fontSizeMin: 8
+  m_fontSizeMax: 10
   m_fontStyle: 0
   m_HorizontalAlignment: 2
   m_VerticalAlignment: 512
   m_textAlignment: 65535
   m_characterSpacing: 0
   m_wordSpacing: 0
-  m_lineSpacing: 0.0000
-  m_lineSpacingMax: 0.0000
-  m_paragraphSpacing: 0.0000
+  m_lineSpacing: 0
+  m_lineSpacingMax: 0
+  m_paragraphSpacing: 0
   m_charWidthMaxAdj: 0
   m_enableWordWrapping: 1
   m_wordWrappingRatios: 0.4
@@ -668,7 +668,7 @@ MonoBehaviour:
   m_VertexBufferAutoSizeReduction: 0
   m_useMaxVisibleDescender: 1
   m_pageToDisplay: 1
-  m_margin: {x: -81.7185, y: -3.6162, z: -54.4937, w: 33.0730}
+  m_margin: {x: -27.239498, y: -1.2053986, z: -18.164562, w: 11.024331}
   m_isUsingLegacyAnimationComponent: 0
   m_isVolumetricText: 0
   m_hasFontAssetChanged: 0

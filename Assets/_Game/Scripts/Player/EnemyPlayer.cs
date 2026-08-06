@@ -59,6 +59,7 @@ public class EnemyPlayer : MonoBehaviour
         GameObject prefab = template.cardType == CardType.Spell ? spellCardPrefab2D : cardPrefab2D;
         GameObject card = Instantiate(prefab, handArea);
 
+        Player.Scale2DCard(card);
         CardInstance inst = card.GetComponent<CardInstance>();
         if (inst == null) inst = card.AddComponent<CardInstance>();
         inst.InitFromTemplate(template, 0);
@@ -76,6 +77,7 @@ public class EnemyPlayer : MonoBehaviour
         GameObject prefab = template.cardType == CardType.Spell ? spellCardPrefab2D : cardPrefab2D;
         GameObject card = Instantiate(prefab, handArea);
 
+        Player.Scale2DCard(card);
         CardInstance inst = card.GetComponent<CardInstance>();
         if (inst == null) inst = card.AddComponent<CardInstance>();
 

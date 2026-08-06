@@ -95,6 +95,7 @@ public class Player : MonoBehaviour
 
         GameObject prefab = template.cardType == CardType.Spell ? spellCardPrefab2D : cardPrefab2D;
         GameObject card = Instantiate(prefab, handArea);
+        Scale2DCard(card);
 
         CardInstance inst = card.GetComponent<CardInstance>();
         if (inst == null)
@@ -127,6 +128,7 @@ public class Player : MonoBehaviour
         if (!isEnemy && handCards.Count >= maxSize) return;
 
         GameObject card = Instantiate(prefab, handArea);
+        Scale2DCard(card);
         CardInstance inst = card.GetComponent<CardInstance>();
         if (inst == null) inst = card.AddComponent<CardInstance>();
 
@@ -200,6 +202,7 @@ public class Player : MonoBehaviour
 
         GameObject prefab = data.cardType == CardType.Spell ? spellCardPrefab2D : cardPrefab2D;
         GameObject card = Instantiate(prefab, handArea);
+        Scale2DCard(card);
         CardInstance instance = card.GetComponent<CardInstance>();
         if (instance != null)
         {
@@ -266,6 +269,7 @@ public class Player : MonoBehaviour
 
         GameObject prefab = data.cardType == CardType.Spell ? spellCardPrefab2D : cardPrefab2D;
         GameObject card = Instantiate(prefab, handArea);
+        Scale2DCard(card);
         CardInstance instance = card.GetComponent<CardInstance>();
         if (instance != null)
         {
@@ -405,5 +409,46 @@ public class Player : MonoBehaviour
             healthText.text = $" {currentHealth}";
         if (energyText != null)
             energyText.text = $" {currentEnergy}/{maxEnergy}";
+    }
+
+    /// <summary>Game 场景 2D 卡牌整体 ×3（预制体未 ×3，运行时补）</summary>
+    public static void Scale2DCard(GameObject card)
+    {
+        // 字号
+        var tmps = card.GetComponentsInChildren<TMPro.TextMeshProUGUI>(true);
+        foreach (var t in tmps)
+        {
+            t.fontSize *= 3f;
+            t.fontSizeMin *= 3f;
+            t.fontSizeMax *= 3f;
+            t.margin = new UnityEngine.Vector4(
+                t.margin.x * 3f, t.margin.y * 3f,
+                t.margin.z * 3f, t.margin.w * 3f);
+        }
+
+        // RectTransform 位置和尺寸
+        var allRTs = card.GetComponentsInChildren<RectTransform>(true);
+        foreach (var rt in allRTs)
+        {
+            if (rt == card.transform) continue; // 跳过根（由 HandManager 布局控制）
+            rt.anchoredPosition = new UnityEngine.Vector2(
+                rt.anchoredPosition.x * 3f,
+                rt.anchoredPosition.y * 3f);
+            rt.sizeDelta = new UnityEngine.Vector2(
+                rt.sizeDelta.x * 3f,
+                rt.sizeDelta.y * 3f);
+        }
+
+        // LayoutElement
+        var les = card.GetComponentsInChildren<UnityEngine.UI.LayoutElement>(true);
+        foreach (var le in les)
+        {
+            if (le.minWidth > 0) le.minWidth *= 3f;
+            if (le.minHeight > 0) le.minHeight *= 3f;
+            if (le.preferredWidth > 0) le.preferredWidth *= 3f;
+            if (le.preferredHeight > 0) le.preferredHeight *= 3f;
+            if (le.flexibleWidth > 0) le.flexibleWidth *= 3f;
+            if (le.flexibleHeight > 0) le.flexibleHeight *= 3f;
+        }
     }
 }

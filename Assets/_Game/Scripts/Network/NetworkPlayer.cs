@@ -660,6 +660,7 @@ public class NetworkPlayer : NetworkBehaviour
         }
 
         GameObject card = Instantiate(prefab, handArea);
+        Player.Scale2DCard(card);
         CardInstance instance = card.GetComponent<CardInstance>();
         if (instance != null)
         {
@@ -713,6 +714,7 @@ public class NetworkPlayer : NetworkBehaviour
         }
 
         GameObject card = Instantiate(prefab, handArea);
+        Player.Scale2DCard(card);
         CardInstance instance = card.GetComponent<CardInstance>();
         if (instance != null)
         {
@@ -778,6 +780,7 @@ public class NetworkPlayer : NetworkBehaviour
 
         GameObject card = Instantiate(prefab, handArea);
 
+        Player.Scale2DCard(card);
         CardInstance inst = card.GetComponent<CardInstance>();
         if (inst == null)
             inst = card.AddComponent<CardInstance>();
@@ -2204,6 +2207,7 @@ public class NetworkPlayer : NetworkBehaviour
         GameObject prefab = GetCardPrefab(template.cardType);
         if (prefab == null) return;
         GameObject card = Instantiate(prefab, handArea);
+        Player.Scale2DCard(card);
         CardInstance inst = card.GetComponent<CardInstance>();
         if (inst == null) inst = card.AddComponent<CardInstance>();
         inst.InitFromTemplate(template, 0);
