@@ -8,15 +8,15 @@ using Mirror;
 public class HandManager : MonoBehaviour
 {
     [Header("弧形布局")]
-    public float radius = 500f;
+    public float radius = 1500f;
     public float totalArcAngle = 30f;
-    public float maxWidth = 480f;
-    public float cardWidth = 83.333f;
+    public float maxWidth = 1440f;
+    public float cardWidth = 250f;
     public float maxOverlapRatio = 0.92f;
-    public float hoverOffsetY = 30f;
+    public float hoverOffsetY = 90f;
     public float hoverScale = 1.15f;
     public float pushRatio = 0.7f;
-    public float animationSpeed = 15f;
+    public float animationSpeed = 45f;
 
     private List<CardView> handCards = new List<CardView>();
     private CardView draggingCard;
@@ -592,18 +592,18 @@ public class HandManager : MonoBehaviour
         float x = 0f, y = 0f, z = -5.5f;
         switch (slotID)
         {
-            case 0: x = 3f; y = 2.3f; break;
-            case 1: x = 0f; y = 2.3f; break;
-            case 2: x = -3f; y = 2.3f; break;
-            case 3: x = 3f; y = 4.6f; break;
-            case 4: x = 0f; y = 4.6f; break;
-            case 5: x = -3f; y = 4.6f; break;
-            case 6: x = 3f; y = -0.27f; break;
-            case 7: x = 0f; y = -0.27f; break;
-            case 8: x = -3f; y = -0.27f; break;
-            case 9: x = 3f; y = -2.57f; break;
-            case 10: x = 0f; y = -2.57f; break;
-            case 11: x = -3f; y = -2.57f; break;
+            case 0: x = 9f; y = 6.9f; break;
+            case 1: x = 0f; y = 6.9f; break;
+            case 2: x = -9f; y = 6.9f; break;
+            case 3: x = 9f; y = 13.8f; break;
+            case 4: x = 0f; y = 13.8f; break;
+            case 5: x = -9f; y = 13.8f; break;
+            case 6: x = 9f; y = -0.81f; break;
+            case 7: x = 0f; y = -0.81f; break;
+            case 8: x = -9f; y = -0.81f; break;
+            case 9: x = 9f; y = -7.71f; break;
+            case 10: x = 0f; y = -7.71f; break;
+            case 11: x = -9f; y = -7.71f; break;
         }
         return new Vector3(x, y, z);
     }
@@ -621,7 +621,7 @@ public class HandManager : MonoBehaviour
             basePos = hm.GetSlotWorldPosition(slotID);
         else
             basePos = Vector3.zero;
-        return new Vector3(basePos.x - 0.5f - attachOrder * 0.5f, basePos.y, basePos.z + 0.1f + attachOrder * 0.1f);
+        return new Vector3(basePos.x - 1.5f - attachOrder * 1.5f, basePos.y, basePos.z + 0.3f + attachOrder * 0.3f);
     }
 
     public void HideAllCards()
@@ -1414,11 +1414,11 @@ public class HandManager : MonoBehaviour
     void ArrangeTempHand(List<GameObject> cards)
     {
         int count = cards.Count;
-        float startX = -((count - 1) * (cardWidth + 10f)) / 2f;
+        float startX = -((count - 1) * (cardWidth + 30f)) / 2f;
         for (int i = 0; i < count; i++)
         {
             RectTransform rt = cards[i].GetComponent<RectTransform>();
-            rt.anchoredPosition = new Vector2(startX + i * (cardWidth + 10f), 0);
+            rt.anchoredPosition = new Vector2(startX + i * (cardWidth + 30f), 0);
         }
     }
 

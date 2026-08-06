@@ -13,7 +13,7 @@ public class CounterManager : MonoBehaviour
     // 敌方打出的反制牌（己方视角看到牌背）
     public List<CounterCard> enemyCounters = new List<CounterCard>();
 
-    private float baseX = -7.5f;
+    private float baseX = -22.5f;
     private float baseY = 1f;
     private float baseZ = -5.5f;
 
@@ -43,7 +43,7 @@ public class CounterManager : MonoBehaviour
 
     int count = isMine ? myCounters.Count : enemyCounters.Count;
     float xPos = isMine ? baseX : -baseX;
-    Vector3 pos = new Vector3(xPos + count * 0.5f, baseY, baseZ - count * 0.1f);
+    Vector3 pos = new Vector3(xPos + count * 1.5f, baseY, baseZ - count * 0.3f);
 
     Quaternion rotation = isMine ? Quaternion.Euler(0, 180, 0) : Quaternion.Euler(0, 0, 0);
     GameObject model = Instantiate(prefab, pos, rotation);
@@ -487,7 +487,7 @@ public class CounterManager : MonoBehaviour
         List<CounterCard> list = isMine ? myCounters : enemyCounters;
         for (int i = 0; i < list.Count; i++)
         {
-            Vector3 pos = new Vector3(baseX + i * 0.5f, baseY, baseZ - i * 0.1f);
+            Vector3 pos = new Vector3(baseX + i * 1.5f, baseY, baseZ - i * 0.3f);
             list[i].model.transform.position = pos;
         }
     }

@@ -313,19 +313,21 @@ public class NetworkPlayer : NetworkBehaviour
     {
         Debug.Log($"[NetworkPlayer] CmdRequestDraw from netId={netId}");
         TurnManager tm = FindObjectOfType<TurnManager>();
-        if (tm == null) return;
+        if (tm == null) { TargetCancelDraw(connectionToClient); return; }
 
-        if (!IsMyTurnOnServer(tm)) return;
+        if (!IsMyTurnOnServer(tm)) { TargetCancelDraw(connectionToClient); return; }
 
-        DrawCardUI drawUI = FindObjectOfType<DrawCardUI>();
-        if (drawUI != null && drawUI.GetRemainingDraws() <= 0) return;
-
-        if (currentEnergy < 1) return;
+        // energy already pre-decremented on client; sync server-side energy
+        if (currentEnergy < 0) currentEnergy = 0;
 
         CardData data = DeckManager.Instance?.DrawFromMain();
-        if (data == null) { Debug.Log("[NetworkPlayer] CmdRequestDraw: deck empty"); return; }
+        if (data == null)
+        {
+            Debug.LogWarning("[NetworkPlayer] CmdRequestDraw: deck empty, cancelling draw");
+            TargetCancelDraw(connectionToClient);
+            return;
+        }
 
-        currentEnergy -= 1;
         string iid = data._instanceID ?? "";
         TargetReceiveCard(connectionToClient, data.templateID, iid);
         TargetConfirmDraw(connectionToClient);
@@ -998,12 +1000,19 @@ public class NetworkPlayer : NetworkBehaviour
     [TargetRpc]
     public void TargetConfirmDraw(NetworkConnectionToClient target)
     {
+        // Client already pre-decremented in DrawCardUI.OnPointerClick;
+        // no-op here — just acknowledge success.
+    }
+
+    [TargetRpc]
+    public void TargetCancelDraw(NetworkConnectionToClient target)
+    {
+        // Server rejected the draw — restore client state
         DrawCardUI drawUI = FindObjectOfType<DrawCardUI>();
-        if (drawUI != null)
-        {
-            drawUI.UseOneDraw();
-            drawUI.UpdateDisplay();
-        }
+        if (drawUI != null) drawUI.RestoreDraw();
+
+        NetworkPlayer player = NetworkPlayer.Local;
+        if (player != null) player.currentEnergy += 1;
     }
 
     /// <summary>
@@ -1121,7 +1130,7 @@ public class NetworkPlayer : NetworkBehaviour
         if (cm == null) return;
 
         int count = cm.enemyCounters.Count;
-        Vector3 pos = new Vector3(7.5f + count * 0.5f, 1f, -5.5f - count * 0.1f);
+        Vector3 pos = new Vector3(22.5f + count * 1.5f, 1f, -5.5f - count * 0.3f);
 
         GameObject model = Instantiate(prefab, pos, Quaternion.Euler(0, 180, 0));
         model.name = $"counter_enemy_{templateID}";

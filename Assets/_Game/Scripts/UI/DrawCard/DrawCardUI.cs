@@ -96,8 +96,16 @@ public class DrawCardUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandl
 
         if (NetworkClient.isConnected && !NetworkServer.active)
         {
-            // Pure client: send draw request to server
-            Debug.Log($"[DrawCardUI] Sending CmdRequestDraw, energy={player.currentEnergy}");
+            // Pure client: pre-decrement to prevent infinite clicking,
+            // server will restore via TargetCancelDraw on failure.
+            if (!player.UseEnergy(1))
+            {
+                Debug.LogWarning($"[DrawCardUI] UseEnergy(1) failed! energy={player.currentEnergy}");
+                return;
+            }
+            remainingDraws--;
+            UpdateDisplay();
+            Debug.Log($"[DrawCardUI] Sending CmdRequestDraw, remaining={remainingDraws}");
             player.CmdRequestDraw();
             return;
         }
@@ -120,6 +128,16 @@ public class DrawCardUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandl
     {
         if (remainingDraws > 0)
             remainingDraws--;
+    }
+
+    /// <summary>服务端拒绝抽牌时恢复客户端状态</summary>
+    public void RestoreDraw()
+    {
+        remainingDraws++;
+        UpdateDisplay();
+        NetworkPlayer player = NetworkPlayer.Local;
+        if (player != null) player.currentEnergy += 1;
+        Debug.Log($"[DrawCardUI] Draw restored (server rejected), remaining={remainingDraws}");
     }
 
     public void SetInteractable(bool enabled)

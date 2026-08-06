@@ -26,24 +26,24 @@ public class BoardManager : MonoBehaviour
     public GameObject slotPrefab;
 
     [Header("敌方前排")]
-    public Vector2 enemyFrontRight = new Vector2(109, 146f);
-    public Vector2 enemyFrontCenter = new Vector2(0, 146f);
-    public Vector2 enemyFrontLeft = new Vector2(-109, 146f);
+    public Vector2 enemyFrontRight = new Vector2(327f, 136.5f);
+    public Vector2 enemyFrontCenter = new Vector2(0, 136.5f);
+    public Vector2 enemyFrontLeft = new Vector2(-327f, 136.5f);
 
     [Header("敌方后排")]
-    public Vector2 enemyBackRight = new Vector2(109, 129.3f);
-    public Vector2 enemyBackCenter = new Vector2(0, 129.3f);
-    public Vector2 enemyBackLeft = new Vector2(-109, 129.3f);
+    public Vector2 enemyBackRight = new Vector2(327f, 387.9f);
+    public Vector2 enemyBackCenter = new Vector2(0, 387.9f);
+    public Vector2 enemyBackLeft = new Vector2(-327f, 387.9f);
 
     [Header("己方前排")]
-    public Vector2 myFrontRight = new Vector2(109, -46f);
-    public Vector2 myFrontCenter = new Vector2(0, -46f);
-    public Vector2 myFrontLeft = new Vector2(-109, -46f);
+    public Vector2 myFrontRight = new Vector2(327f, -138f);
+    public Vector2 myFrontCenter = new Vector2(0, -138f);
+    public Vector2 myFrontLeft = new Vector2(-327f, -138f);
 
     [Header("己方后排")]
-    public Vector2 myBackRight = new Vector2(109, -129.8f);
-    public Vector2 myBackCenter = new Vector2(0, -129.8f);
-    public Vector2 myBackLeft = new Vector2(-109, -129.8f);
+    public Vector2 myBackRight = new Vector2(327f, -389.4f);
+    public Vector2 myBackCenter = new Vector2(0, -389.4f);
+    public Vector2 myBackLeft = new Vector2(-327f, -389.4f);
 
     private BoardSlot[] allSlots = new BoardSlot[12];
     private Transform slotCanvasTransform;
@@ -307,7 +307,7 @@ public class BoardManager : MonoBehaviour
         for (int i = 0; i < attached.Count; i++)
         {
             if (attached[i] == null || attached[i].transform == null) continue;
-            Vector3 newPos = new Vector3(hostPos.x - 0.5f - i * 0.5f, hostPos.y, hostPos.z + 0.1f + i * 0.1f);
+            Vector3 newPos = new Vector3(hostPos.x - 1.5f - i * 1.5f, hostPos.y, hostPos.z + 0.3f + i * 0.3f);
             attached[i].transform.position = newPos;
         }
     }
