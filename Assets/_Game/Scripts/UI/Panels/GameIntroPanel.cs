@@ -21,6 +21,16 @@ public class GameIntroPanel : MonoBehaviour
             _canvasGroup = panelRoot.GetComponent<CanvasGroup>();
             if (_canvasGroup == null)
                 _canvasGroup = panelRoot.AddComponent<CanvasGroup>();
+
+            // 全屏透明遮罩：拦截射线 + 遮挡下层按钮
+            var mask = panelRoot.GetComponent<Image>();
+            if (mask == null)
+            {
+                mask = panelRoot.AddComponent<Image>();
+                mask.color = new Color(0, 0, 0, 0);
+                mask.raycastTarget = true;
+            }
+
             panelRoot.SetActive(false);
         }
     }

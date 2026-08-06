@@ -55,11 +55,12 @@ public partial class TurnManager : MonoBehaviour
         }
         else if (!NetworkClient.isConnected && NetworkPlayer.Local != null)
         {
-            for (int i = 0; i < 2; i++)
-                NetworkPlayer.Local.DrawCard();
+            // 先神选者，再普通牌
             CardData chosenOne = ChosenOneManager.Instance?.DrawChosenOne();
             if (chosenOne != null)
                 NetworkPlayer.Local.AddCardToHand(chosenOne);
+            for (int i = 0; i < 2; i++)
+                NetworkPlayer.Local.DrawCard();
             yield return StartNewPhase();
         }
     }
@@ -73,24 +74,30 @@ public partial class TurnManager : MonoBehaviour
 
         Debug.Log($"[TurnManager] ServerInitialDraw: Local={local?.netId}, Remote={remote?.netId}, remoteConn={remote?.connectionToClient != null}");
 
-        // Host draws directly
+        // Host draws — 先神选者，再普通牌
         if (local != null)
         {
+            CardData choLocal = ChosenOneManager.Instance?.DrawChosenOne();
+            if (choLocal != null) local.AddCardToHand(choLocal);
             for (int i = 0; i < 2; i++)
             {
                 CardData card = DeckManager.Instance?.DrawFromMain();
                 if (card != null) local.AddCardToHand(card);
             }
-            CardData choLocal = ChosenOneManager.Instance?.DrawChosenOne();
-            if (choLocal != null) local.AddCardToHand(choLocal);
             Debug.Log($"[TurnManager] Host local drawn: {local.handCards.Count} cards");
         }
 
-        // Remote gets cards via TargetRpc (fires on remote client only)
-        // ALSO create server-side tracking cards so CmdPlayCard can find them
+        // Remote gets cards via TargetRpc — 先神选者，再普通牌
         if (remote != null)
         {
-            Debug.Log($"[TurnManager] Sending {2} main + 1 chosen to Remote netId={remote.netId}");
+            Debug.Log($"[TurnManager] Sending 1 chosen + 2 main to Remote netId={remote.netId}");
+            CardData choRemote = ChosenOneManager.Instance?.DrawChosenOne();
+            if (choRemote != null)
+            {
+                string choIid = choRemote._instanceID ?? CardZoneManager.GenerateInstanceID(choRemote.templateID);
+                remote.TargetReceiveCard(remote.connectionToClient, choRemote.templateID, choIid);
+                remote.AddServerSideCard(choRemote, choIid);
+            }
             for (int i = 0; i < 2; i++)
             {
                 CardData card = DeckManager.Instance?.DrawFromMain();
@@ -100,13 +107,6 @@ public partial class TurnManager : MonoBehaviour
                     remote.TargetReceiveCard(remote.connectionToClient, card.templateID, iid);
                     remote.AddServerSideCard(card, iid);
                 }
-            }
-            CardData choRemote = ChosenOneManager.Instance?.DrawChosenOne();
-            if (choRemote != null)
-            {
-                string choIid = choRemote._instanceID ?? CardZoneManager.GenerateInstanceID(choRemote.templateID);
-                remote.TargetReceiveCard(remote.connectionToClient, choRemote.templateID, choIid);
-                remote.AddServerSideCard(choRemote, choIid);
             }
         }
         else

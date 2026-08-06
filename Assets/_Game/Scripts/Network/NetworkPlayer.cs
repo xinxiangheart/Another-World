@@ -259,9 +259,12 @@ public class NetworkPlayer : NetworkBehaviour
 
     // ========== Debug UI ==========
 
+    [Header("调试")]
+    public bool showDebugGUI = false;
+
     void OnGUI()
     {
-        if (!isLocalPlayer) return;
+        if (!showDebugGUI || !isLocalPlayer) return;
         GUI.Label(new Rect(10, 10, 400, 30),
             $"Server active: {NetworkServer.active}, connections: {NetworkServer.connections.Count}");
         GUI.Label(new Rect(10, 40, 400, 30),
