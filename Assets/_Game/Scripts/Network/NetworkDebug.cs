@@ -3,6 +3,9 @@ using Mirror;
 
 public class NetworkDebug : MonoBehaviour
 {
+    [Header("调试开关")]
+    public bool showDebugGUI = false;
+
     void Awake()
     {
         // 延迟绑定 transport 事件，因为 Transport.active 可能在 Awake 时尚未设置
@@ -87,6 +90,9 @@ public class NetworkDebug : MonoBehaviour
 
     void OnGUI()
     {
+        // 常态隐藏，开发调试时可在 Inspector 里勾选 showDebugGUI
+        if (!showDebugGUI) return;
+
         GUILayout.BeginArea(new Rect(10, 10, 400, 200));
         GUILayout.Label($"NetworkServer.active = {NetworkServer.active}");
         GUILayout.Label($"NetworkServer.connections.Count = {NetworkServer.connections.Count}");
