@@ -1,99 +1,91 @@
-using System.IO;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 
+public enum IntroSectionType { TextOnly, TextWithImage, ImageOnly }
+
 /// <summary>
-/// One editable section inside GameIntroPanel — text + optional image.
-/// Attached to the section prefab.
+/// 游戏介绍内容块 — 在 Unity Editor 中直接填入文字/图片，运行时只读展示。
+/// 挂在 ScrollView Content 下的每个内容项上。
 /// </summary>
 public class GameIntroSection : MonoBehaviour
 {
-    [Header("UI")]
-    public TMP_InputField textField;
-    public RawImage imageDisplay;
-    public Button insertImageButton;
-    public Button removeSectionButton;
-    public LayoutElement imageLayout;
+    [Header("类型")]
+    public IntroSectionType type = IntroSectionType.TextOnly;
 
-    private string _imagePath; // persistent storage path
-    private Texture2D _loadedTex;
-    private const float DEFAULT_IMAGE_HEIGHT = 250f;
+    [Header("文字（TMP 富文本支持）")]
+    [TextArea(3, 30)]
+    public string textContent;
+    [Tooltip("标题级样式（自动加粗放大）")]
+    public bool isHeading;
 
-    public string GetText() => textField != null ? textField.text : "";
-    public string GetImagePath() => _imagePath;
+    [Header("图片")]
+    public Sprite sprite;
+    [Tooltip("图片最大宽度，等比缩放")]
+    public float imageMaxWidth = 600f;
+    [Tooltip("图片外边距")]
+    public float imagePadding = 10f;
 
-    void Awake()
+    void Start()
     {
-        if (insertImageButton != null) insertImageButton.onClick.AddListener(PickImage);
-        if (removeSectionButton != null) removeSectionButton.onClick.AddListener(Remove);
-    }
+        // Remove any existing children (rebuild clean)
+        foreach (Transform child in transform)
+            Destroy(child.gameObject);
 
-    public void Init(string text, string imagePath)
-    {
-        if (textField != null) textField.text = text;
-
-        if (!string.IsNullOrEmpty(imagePath))
+        switch (type)
         {
-            _imagePath = imagePath;
-            if (File.Exists(imagePath))
-            {
-                byte[] bytes = File.ReadAllBytes(imagePath);
-                LoadImageFromBytes(bytes);
-            }
+            case IntroSectionType.TextOnly:
+                BuildText();
+                break;
+            case IntroSectionType.ImageOnly:
+                BuildImage();
+                break;
+            case IntroSectionType.TextWithImage:
+                BuildText();
+                BuildImage();
+                break;
         }
     }
 
-    void PickImage()
+    void BuildText()
     {
-#if UNITY_EDITOR
-        string path = UnityEditor.EditorUtility.OpenFilePanel("选择图片", "", "png,jpg,jpeg");
-#elif UNITY_STANDALONE_WIN
-        string path = WindowsFileDialog.Open("选择图片", "png,jpg,jpeg");
-#else
-        string path = "";
-#endif
-        if (string.IsNullOrEmpty(path)) return;
+        if (string.IsNullOrEmpty(textContent)) return;
 
-        // Copy to persistent data so it survives
-        string dir = Path.Combine(Application.persistentDataPath, "images");
-        Directory.CreateDirectory(dir);
-        string dest = Path.Combine(dir, Path.GetFileName(path));
-        File.Copy(path, dest, true);
-        _imagePath = dest;
+        var go = new GameObject("Text");
+        go.transform.SetParent(transform, false);
+        var tmp = go.AddComponent<TextMeshProUGUI>();
+        tmp.text = textContent;
+        tmp.fontSize = isHeading ? 28 : 20;
+        tmp.fontStyle = isHeading ? FontStyles.Bold : FontStyles.Normal;
+        tmp.color = isHeading ? new Color(0.1f, 0.1f, 0.1f) : new Color(0.2f, 0.2f, 0.2f);
+        tmp.alignment = TextAlignmentOptions.TopLeft;
+        tmp.enableWordWrapping = true;
+        tmp.richText = true;
 
-        byte[] bytes = File.ReadAllBytes(dest);
-        LoadImageFromBytes(bytes);
+        var le = go.AddComponent<LayoutElement>();
+        le.flexibleWidth = 1;
+        le.minHeight = 30;
     }
 
-    void LoadImageFromBytes(byte[] bytes)
+    void BuildImage()
     {
-        _loadedTex = new Texture2D(2, 2);
-        _loadedTex.LoadImage(bytes);
+        if (sprite == null) return;
 
-        if (imageDisplay != null)
-        {
-            imageDisplay.texture = _loadedTex;
-            imageDisplay.gameObject.SetActive(true);
+        var go = new GameObject("Image");
+        go.transform.SetParent(transform, false);
+        var img = go.AddComponent<Image>();
+        img.sprite = sprite;
+        img.preserveAspect = true;
+        img.color = Color.white;
 
-            // Scale layout to image aspect ratio
-            if (imageLayout != null)
-                imageLayout.preferredHeight = DEFAULT_IMAGE_HEIGHT;
-        }
-    }
+        float ratio = (float)sprite.rect.height / sprite.rect.width;
+        float width = Mathf.Min(imageMaxWidth, sprite.rect.width);
+        float height = width * ratio;
 
-    public void Remove()
-    {
-        // Clean up image file
-        if (!string.IsNullOrEmpty(_imagePath) && File.Exists(_imagePath))
-            File.Delete(_imagePath);
-
-        if (_loadedTex != null) Destroy(_loadedTex);
-        Destroy(gameObject);
-    }
-
-    void OnDestroy()
-    {
-        if (_loadedTex != null) Destroy(_loadedTex);
+        var le = go.AddComponent<LayoutElement>();
+        le.preferredWidth = width;
+        le.preferredHeight = height + imagePadding * 2;
+        le.minWidth = 100;
+        le.minHeight = 50;
     }
 }
