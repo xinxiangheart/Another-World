@@ -23,6 +23,12 @@ public class CardView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
         originalScale = transform.localScale;
     }
 
+    /// <summary>重新记录当前的 localScale 作为基准（Scale2DCard 调用后）</summary>
+    public void RefreshOriginalScale()
+    {
+        originalScale = transform.localScale;
+    }
+
     void Update()
     {
         if (!IsAnyCardDragging)

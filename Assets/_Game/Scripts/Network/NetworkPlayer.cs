@@ -405,6 +405,7 @@ public class NetworkPlayer : NetworkBehaviour
                         }
                         Vector3 pos = FindObjectOfType<HandManager>().GetSlotWorldPosition(enemySlot);
                         GameObject model = Instantiate(template.prefab3D, pos, Quaternion.Euler(0, 180, 0));
+                        Player.Scale3DModel(model);
                         Card3DInstance c3d = model.GetComponent<Card3DInstance>();
                         if (c3d != null)
                         {
@@ -1063,6 +1064,7 @@ public class NetworkPlayer : NetworkBehaviour
 
         Vector3 pos = FindObjectOfType<HandManager>().GetSlotWorldPosition(enemySlot);
         GameObject model = Instantiate(template.prefab3D, pos, Quaternion.Euler(0, 180, 0));
+        Player.Scale3DModel(model);
         model.name = templateID + "_enemy";
 
         Card3DInstance c3d = model.GetComponent<Card3DInstance>();
@@ -1136,9 +1138,10 @@ public class NetworkPlayer : NetworkBehaviour
         if (cm == null) return;
 
         int count = cm.enemyCounters.Count;
-        Vector3 pos = new Vector3(22.5f + count * 1.5f, 1f, -5.5f - count * 0.3f);
+        Vector3 pos = new Vector3(7.5f + count * 0.5f, 1f, -5.5f - count * 0.1f);
 
         GameObject model = Instantiate(prefab, pos, Quaternion.Euler(0, 180, 0));
+        Player.Scale3DModel(model);
         model.name = $"counter_enemy_{templateID}";
 
         // Opponent's counter is hidden — flipped, no text, no hover panel
@@ -1490,6 +1493,7 @@ public class NetworkPlayer : NetworkBehaviour
             var t = CardDatabase.Instance?.GetTemplate(tid);
             if (t?.prefab3D == null || hm == null) continue;
             var m = Instantiate(t.prefab3D, HandManager.GetAttachWorldPos(mapped, o), Quaternion.Euler(0, 180, 0));
+            Player.Scale3DModel(m);
             var c = m.GetComponent<Card3DInstance>();
             if (c != null)
             {
@@ -1544,6 +1548,7 @@ public class NetworkPlayer : NetworkBehaviour
                 {
                     Vector3 pos = FindObjectOfType<HandManager>().GetSlotWorldPosition(i);
                     GameObject model = Instantiate(t.prefab3D, pos, Quaternion.Euler(0, 180, 0));
+                    Player.Scale3DModel(model);
                     Card3DInstance c3d = model.GetComponent<Card3DInstance>();
                     if (c3d != null)
                     {
@@ -1623,6 +1628,7 @@ public class NetworkPlayer : NetworkBehaviour
                 var t = CardDatabase.Instance?.GetTemplate(p[0]);
                 if (t?.prefab3D == null || hm2 == null) continue;
                 GameObject model = Instantiate(t.prefab3D, HandManager.GetAttachWorldPos(serverHostSlot, o), Quaternion.Euler(0, 180, 0));
+                Player.Scale3DModel(model);
                 Card3DInstance c3dAtt = model.GetComponent<Card3DInstance>();
                 if (c3dAtt != null)
                 {
@@ -1881,6 +1887,7 @@ public class NetworkPlayer : NetworkBehaviour
         HandManager hm = FindObjectOfType<HandManager>();
         Vector3 pos = hm.GetSlotWorldPosition(slotID);
         GameObject model = UnityEngine.Object.Instantiate(t.prefab3D, pos, Quaternion.Euler(0, 180, 0));
+        Player.Scale3DModel(model);
         Card3DInstance c3d = model.GetComponent<Card3DInstance>();
         if (c3d != null)
         {
