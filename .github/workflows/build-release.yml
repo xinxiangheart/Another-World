@@ -1,0 +1,53 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Write version.txt from tag
+        shell: cmd
+        run: |
+          set TAG=${{ github.ref_name }}
+          set VERSION=%TAG:~1%
+          echo %VERSION%> "Assets\_Game\Resources\version.txt"
+          echo Version baked: %VERSION%
+
+      - name: Copy Library cache
+        shell: cmd
+        run: |
+          if not exist Library mkdir Library
+          xcopy "C:\Users\22589\Documents\GitHub\Another-World\Library\*" "Library\" /E /Y /Q 2>nul
+
+      - name: Build Windows Player
+        shell: cmd
+        run: |
+          "C:\Program Files\Unity\Hub\Editor\2022.3.62f2c1\Editor\Unity.exe" -quit -batchmode -nographics -projectPath . -buildWindows64Player "build/StandaloneWindows64/Another-World.exe" -logFile build.log
+
+      - name: Show Build Log
+        if: failure()
+        shell: cmd
+        run: type build.log 2>nul || echo build.log not found
+
+      - name: Zip Build
+        shell: cmd
+        run: |
+          powershell -ExecutionPolicy Bypass -Command "Compress-Archive -Path 'build\StandaloneWindows64\*' -DestinationPath Another-World-Windows.zip"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        env:
+          NODE_OPTIONS: --use-system-ca
+        with:
+          files: Another-World-Windows.zip
+          generate_release_notes: true
