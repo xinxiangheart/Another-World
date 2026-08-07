@@ -536,7 +536,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e266cef44c1bd2f4eb46d6b1c7c308a4, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  currentVersion: 0.1.0
+  currentVersion: 0.1.1
   repoOwner: xinxiangheart
   repoName: Another-World
   versionText: {fileID: 2029860148}
