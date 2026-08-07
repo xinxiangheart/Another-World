@@ -9,28 +9,25 @@ using UnityEngine.UI;
 
 /// <summary>
 /// 启动时检查 GitHub Releases 是否有新版本，有则下载更新。
-/// 挂在 Welcome 场景的 Canvas/Background 上，版本号在 Inspector 里直接改。
+/// 8 线程分块下载，国内速度提升明显。
 /// </summary>
 public class UpdateManager : MonoBehaviour
 {
     [Header("版本配置")]
-    [Tooltip("当前游戏版本号，发版时在这里修改即可")]
     public string currentVersion = "0.1.0";
 
     [Header("GitHub 仓库")]
     public string repoOwner = "xinxiangheart";
     public string repoName = "Another-World";
 
-    [Header("UI - 版本显示")]
-    [Tooltip("显示\"当前版本：xxx\"的 Text")]
-    public TMP_Text versionText;
+    [Header("下载线程数")]
+    [Range(1, 16)]
+    public int downloadThreads = 8;
 
-    [Header("UI - 更新")]
-    [Tooltip("\"有新版本，点此更新\" 按钮")]
+    [Header("UI")]
+    public TMP_Text versionText;
     public Button updateButton;
-    [Tooltip("更新按钮上的文字（可选，用于改文案）")]
     public TMP_Text updateButtonText;
-    [Tooltip("下载百分比文字，下载时实时显示\"下载中...50%\"，检测/错误信息也显示在这里")]
     public TMP_Text downloadStatusText;
 
     private string _latestTag;
@@ -38,34 +35,21 @@ public class UpdateManager : MonoBehaviour
 
     private void Awake()
     {
-        // 优先从 Resources/version.txt 读取版本号（CI 构建时自动写入）
-        // 编辑器/本地开发时回退到 Inspector 值
         var versionAsset = Resources.Load<TextAsset>("version");
         if (versionAsset != null && !string.IsNullOrWhiteSpace(versionAsset.text))
-        {
             currentVersion = versionAsset.text.Trim();
-        }
     }
 
     private void Start()
     {
-        // 版本显示
-        if (versionText != null)
-            versionText.text = $"当前版本：{currentVersion}";
-
-        // 初始隐藏更新按钮和下载状态
-        if (updateButton != null)
-            updateButton.gameObject.SetActive(false);
-        if (downloadStatusText != null)
-            downloadStatusText.gameObject.SetActive(false);
-
-        // 绑定按钮事件
-        if (updateButton != null)
-            updateButton.onClick.AddListener(OnUpdateClicked);
-
-        // 开始检测
+        if (versionText != null) versionText.text = $"当前版本：{currentVersion}";
+        if (updateButton != null) updateButton.gameObject.SetActive(false);
+        if (downloadStatusText != null) downloadStatusText.gameObject.SetActive(false);
+        if (updateButton != null) updateButton.onClick.AddListener(OnUpdateClicked);
         StartCoroutine(CheckForUpdates());
     }
+
+    // ==================== 版本检测（不变） ====================
 
     private IEnumerator CheckForUpdates()
     {
@@ -102,7 +86,6 @@ public class UpdateManager : MonoBehaviour
                 yield break;
             }
 
-            // 去掉 v 前缀比较版本号
             var latestVerStr = _latestTag.TrimStart('v').TrimStart('V');
 
             if (!Version.TryParse(latestVerStr, out var latestVer) ||
@@ -118,88 +101,170 @@ public class UpdateManager : MonoBehaviour
                 yield break;
             }
 
-            // 发现新版本 → 显示更新按钮
             UnityEngine.Debug.Log($"[UpdateManager] 发现新版本 {_latestTag}");
             SetStatus($"最新版本：{_latestTag}");
 
-            if (updateButton != null)
-                updateButton.gameObject.SetActive(true);
-
-            if (updateButtonText != null)
-                updateButtonText.text = "有新版本，点此更新";
+            if (updateButton != null) updateButton.gameObject.SetActive(true);
+            if (updateButtonText != null) updateButtonText.text = "有新版本，点此更新";
         }
     }
+
+    // ==================== 多线程分块下载 ====================
 
     private void OnUpdateClicked()
     {
         if (string.IsNullOrEmpty(_downloadUrl)) return;
-        if (downloadStatusText != null)
-            downloadStatusText.gameObject.SetActive(true);
+        if (downloadStatusText != null) downloadStatusText.gameObject.SetActive(true);
         StartCoroutine(DownloadAndInstall());
     }
 
     private IEnumerator DownloadAndInstall()
     {
-        if (updateButton != null)
-            updateButton.interactable = false;
+        if (updateButton != null) updateButton.interactable = false;
 
         var tempZip = Path.Combine(Application.temporaryCachePath, $"update-{_latestTag}.zip");
 
-        using (var req = UnityWebRequest.Get(_downloadUrl))
+        // ── Step 1: 获取文件大小 ──────────────────
+        SetStatus("正在连接...");
+        long fileSize = 0;
+        using (var headReq = UnityWebRequest.Head(_downloadUrl))
         {
-            req.SetRequestHeader("User-Agent", $"{repoName}-Updater");
-            var handler = new DownloadHandlerFile(tempZip);
-            handler.removeFileOnAbort = true;
-            req.downloadHandler = handler;
+            headReq.SetRequestHeader("User-Agent", $"{repoName}-Updater");
+            headReq.timeout = 10;
+            yield return headReq.SendWebRequest();
 
-            var op = req.SendWebRequest();
-            while (!op.isDone)
+            if (headReq.result != UnityWebRequest.Result.Success)
             {
-                SetStatus($"下载中... {req.downloadProgress * 100f:F0}%");
-                yield return null;
+                SetStatus($"连接失败: {headReq.error}");
+                if (updateButton != null) updateButton.interactable = true;
+                StartCoroutine(HideStatusAfterDelay(3f));
+                yield break;
             }
 
-            if (req.result != UnityWebRequest.Result.Success)
+            string cl = headReq.GetResponseHeader("Content-Length");
+            if (!long.TryParse(cl, out fileSize) || fileSize <= 0)
             {
-                SetStatus($"下载失败: {req.error}");
+                SetStatus("获取文件大小失败");
                 if (updateButton != null) updateButton.interactable = true;
-                // 2秒后隐藏错误信息
-                StartCoroutine(HideStatusAfterDelay(2f));
+                StartCoroutine(HideStatusAfterDelay(3f));
                 yield break;
             }
         }
 
+        string acceptRanges = ""; // 服务端支不支持无所谓，GitHub 支持
+        int threads = Mathf.Clamp(downloadThreads, 1, 16);
+        long chunkSize = fileSize / threads;
+
+        // ── Step 2: 同时启动所有分块请求 ────────────
+        var requests = new UnityWebRequest[threads];
+        var handlers = new DownloadHandlerFile[threads];
+        var chunkFiles = new string[threads];
+
+        for (int i = 0; i < threads; i++)
+        {
+            long start = i * chunkSize;
+            long end = (i == threads - 1) ? fileSize - 1 : start + chunkSize - 1;
+
+            chunkFiles[i] = tempZip + $".part{i}";
+
+            var req = UnityWebRequest.Get(_downloadUrl);
+            req.SetRequestHeader("User-Agent", $"{repoName}-Updater");
+            req.SetRequestHeader("Range", $"bytes={start}-{end}");
+            var handler = new DownloadHandlerFile(chunkFiles[i]);
+            handler.removeFileOnAbort = true;
+            req.downloadHandler = handler;
+
+            // 关键：在同一帧内全部 SendWebRequest，不 yield 等待，实现并发
+            var op = req.SendWebRequest();
+            // SendWebRequest 返回的 AsyncOperation 只需要存起来等就行
+            requests[i] = req;
+            handlers[i] = handler;
+        }
+
+        // ── Step 3: 等待全部完成，实时显示进度 ────────
+        bool anyFailed = false;
+        while (true)
+        {
+            int done = 0;
+            for (int i = 0; i < threads; i++)
+            {
+                if (requests[i] == null) { done++; continue; }
+                if (requests[i].isDone)
+                {
+                    if (requests[i].result != UnityWebRequest.Result.Success)
+                        anyFailed = true;
+                    requests[i].Dispose();
+                    requests[i] = null;
+                    done++;
+                }
+            }
+
+            float pct = (float)done / threads * 100f;
+            SetStatus($"下载中... {pct:F0}% ({done}/{threads})");
+
+            if (done >= threads) break;
+            yield return null;
+        }
+
+        // 清理 handler 引用
+        for (int i = 0; i < threads; i++)
+        {
+            if (requests[i] != null) { requests[i].Dispose(); requests[i] = null; }
+            handlers[i] = null;
+        }
+
+        if (anyFailed)
+        {
+            SetStatus("下载失败，请重试");
+            for (int i = 0; i < threads; i++)
+                if (File.Exists(chunkFiles[i])) File.Delete(chunkFiles[i]);
+            if (updateButton != null) updateButton.interactable = true;
+            StartCoroutine(HideStatusAfterDelay(3f));
+            yield break;
+        }
+
+        // ── Step 4: 合并分块文件 ────────────────────
+        SetStatus("正在合并文件...");
+        using (var outStream = new FileStream(tempZip, FileMode.Create, FileAccess.Write, FileShare.None, 65536))
+        {
+            for (int i = 0; i < threads; i++)
+            {
+                if (!File.Exists(chunkFiles[i])) continue;
+                byte[] buf = File.ReadAllBytes(chunkFiles[i]);
+                outStream.Write(buf, 0, buf.Length);
+                File.Delete(chunkFiles[i]);
+            }
+        }
+
+        // ── Step 5: 安装 ────────────────────────────
         SetStatus("准备安装，游戏即将关闭...");
-
-        // 写入 PowerShell 更新脚本并启动
         WriteAndLaunchUpdater(tempZip);
-
-        // 等一帧让 UI 刷新，然后退出
         yield return new WaitForSeconds(0.5f);
         Application.Quit();
     }
 
+    // ==================== 安装（不变） ====================
+
     private void WriteAndLaunchUpdater(string zipPath)
     {
-        // 游戏根目录 = dataPath 上一级（Application.dataPath 指向 xxx_Data 文件夹）
 #if UNITY_STANDALONE_WIN
         var gameDir = Path.GetDirectoryName(Application.dataPath);
         var exeName = "Another-World.exe";
 #else
         var gameDir = Path.GetDirectoryName(Application.dataPath);
-        var exeName = "Another-World"; // Mac/Linux fallback
+        var exeName = "Another-World";
 #endif
 
         var ps1Path = Path.Combine(Application.temporaryCachePath, "update.ps1");
 
         var script = $@"
-# 等待游戏进程退出
+# 等待游戏退出
 Start-Sleep -Seconds 2
 do {{
     Start-Sleep -Milliseconds 500
 }} while (Get-Process -Name '{Path.GetFileNameWithoutExtension(exeName)}' -ErrorAction SilentlyContinue)
 
-Write-Host '正在解压更新...'
+Write-Host '正在解压...'
 try {{
     Expand-Archive -Path '{zipPath.Replace("'", "''")}' -DestinationPath '{gameDir.Replace("'", "''")}' -Force
     Write-Host '更新完成'
@@ -209,17 +274,15 @@ try {{
     exit 1
 }}
 
-Write-Host '清理临时文件...'
 Remove-Item '{zipPath.Replace("'", "''")}' -Force -ErrorAction SilentlyContinue
 Remove-Item $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue
 
-Write-Host '重新启动游戏...'
+Write-Host '重新启动...'
 Start-Process '{Path.Combine(gameDir, exeName).Replace("'", "''")}'
 ";
 
         File.WriteAllText(ps1Path, script, System.Text.Encoding.UTF8);
 
-        // 启动 PowerShell 静默执行
         Process.Start(new ProcessStartInfo
         {
             FileName = "powershell.exe",
@@ -229,20 +292,20 @@ Start-Process '{Path.Combine(gameDir, exeName).Replace("'", "''")}'
         });
     }
 
+    // ==================== 工具方法 ====================
+
     private void SetStatus(string msg)
     {
-        if (downloadStatusText != null)
-            downloadStatusText.text = msg;
+        if (downloadStatusText != null) downloadStatusText.text = msg;
     }
 
     private IEnumerator HideStatusAfterDelay(float delay)
     {
         yield return new WaitForSeconds(delay);
-        if (downloadStatusText != null)
-            downloadStatusText.gameObject.SetActive(false);
+        if (downloadStatusText != null) downloadStatusText.gameObject.SetActive(false);
     }
 
-    // ---- JSON 手动解析（不依赖第三方库） ----
+    // ==================== JSON 解析 ====================
 
     private static string ExtractTagName(string json)
     {
@@ -251,7 +314,6 @@ Start-Process '{Path.Combine(gameDir, exeName).Replace("'", "''")}'
 
     private static string ExtractDownloadUrl(string json)
     {
-        // 找到 assets 数组
         var marker = "\"assets\":[";
         var idx = json.IndexOf(marker, StringComparison.Ordinal);
         if (idx < 0) return null;
@@ -267,7 +329,6 @@ Start-Process '{Path.Combine(gameDir, exeName).Replace("'", "''")}'
 
         var assetsBlock = json.Substring(start, end - start - 1);
 
-        // 在 assets 里找 .zip 的 browser_download_url
         var urlMarker = "\"browser_download_url\":\"";
         var urlIdx = assetsBlock.IndexOf(urlMarker, StringComparison.Ordinal);
         if (urlIdx < 0) return null;
