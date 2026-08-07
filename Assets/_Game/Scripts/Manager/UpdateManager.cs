@@ -20,6 +20,12 @@ public class UpdateManager : MonoBehaviour
     public string repoOwner = "xinxiangheart";
     public string repoName = "Another-World";
 
+    [Header("下载加速")]
+    [Tooltip("启用国内镜像加速下载（直连 GitHub 太慢时勾选）")]
+    public bool useMirror = true;
+    [Tooltip("镜像 URL 前缀，将 GitHub 原始链接转为镜像链接")]
+    public string mirrorUrl = "https://ghproxy.net/";
+
     [Header("下载线程数")]
     [Range(1, 16)]
     public int downloadThreads = 8;
@@ -32,6 +38,14 @@ public class UpdateManager : MonoBehaviour
 
     private string _latestTag;
     private string _downloadUrl;
+
+    /// <summary>返回下载链接（若启用镜像则走加速）</summary>
+    private string GetDownloadUrl()
+    {
+        if (useMirror && !string.IsNullOrEmpty(mirrorUrl) && !string.IsNullOrEmpty(_downloadUrl))
+            return mirrorUrl.TrimEnd('/') + "/" + _downloadUrl;
+        return _downloadUrl;
+    }
 
     private void Awake()
     {
@@ -127,7 +141,7 @@ public class UpdateManager : MonoBehaviour
         // ── Step 1: 获取文件大小 ──────────────────
         SetStatus("正在连接...");
         long fileSize = 0;
-        using (var headReq = UnityWebRequest.Head(_downloadUrl))
+        using (var headReq = UnityWebRequest.Head(GetDownloadUrl()))
         {
             headReq.SetRequestHeader("User-Agent", $"{repoName}-Updater");
             headReq.timeout = 10;
@@ -167,7 +181,7 @@ public class UpdateManager : MonoBehaviour
 
             chunkFiles[i] = tempZip + $".part{i}";
 
-            var req = UnityWebRequest.Get(_downloadUrl);
+            var req = UnityWebRequest.Get(GetDownloadUrl());
             req.SetRequestHeader("User-Agent", $"{repoName}-Updater");
             req.SetRequestHeader("Range", $"bytes={start}-{end}");
             var handler = new DownloadHandlerFile(chunkFiles[i]);
