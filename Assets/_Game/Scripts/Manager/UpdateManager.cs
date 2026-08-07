@@ -47,6 +47,15 @@ public class UpdateManager : MonoBehaviour
         return _downloadUrl;
     }
 
+    /// <summary>始终返回原始直连 URL</summary>
+    private string GetDownloadUrlDirect() { return _downloadUrl; }
+
+    bool IsCoroutineRunning(Coroutine c)
+    {
+        if (c == null) return false;
+        try { return c.ToString() != null; } catch { return false; }
+    }
+
     private void Awake()
     {
         var versionAsset = Resources.Load<TextAsset>("version");
@@ -136,17 +145,21 @@ public class UpdateManager : MonoBehaviour
     {
         if (updateButton != null) updateButton.interactable = false;
         var tempZip = Path.Combine(Application.temporaryCachePath, $"update-{_latestTag}.zip");
-        string dlUrl = GetDownloadUrl();
 
+        // ── 先试镜像，失败自动直连 ──────────────────
         if (useMirror)
         {
-            // ── 镜像: 单线程快速下载 ──────────────
-            yield return StartCoroutine(DownloadSingle(tempZip, dlUrl));
+            string mirrorUrl = GetDownloadUrl();
+            SetStatus("连接镜像...");
+            yield return StartCoroutine(DownloadSingle(tempZip, mirrorUrl));
+            if (!File.Exists(tempZip)) SetStatus("镜像失败，切换直连...");
         }
-        else
+
+        // ── 直连兜底 ──────────────────────────────
+        if (!File.Exists(tempZip))
         {
-            // ── 直连: 多线程分块下载 ──────────────
-            yield return StartCoroutine(DownloadMulti(tempZip, dlUrl));
+            string directUrl = GetDownloadUrlDirect();
+            yield return StartCoroutine(DownloadSingle(tempZip, directUrl));
         }
 
         if (!File.Exists(tempZip))
