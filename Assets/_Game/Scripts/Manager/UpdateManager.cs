@@ -135,67 +135,98 @@ public class UpdateManager : MonoBehaviour
     private IEnumerator DownloadAndInstall()
     {
         if (updateButton != null) updateButton.interactable = false;
-
         var tempZip = Path.Combine(Application.temporaryCachePath, $"update-{_latestTag}.zip");
+        string dlUrl = GetDownloadUrl();
 
-        // ── Step 1: 获取文件大小 ──────────────────
-        SetStatus("正在连接...");
+        if (useMirror)
+        {
+            // ── 镜像: 单线程快速下载 ──────────────
+            yield return StartCoroutine(DownloadSingle(tempZip, dlUrl));
+        }
+        else
+        {
+            // ── 直连: 多线程分块下载 ──────────────
+            yield return StartCoroutine(DownloadMulti(tempZip, dlUrl));
+        }
+
+        if (!File.Exists(tempZip))
+        {
+            SetStatus("下载失败，请重试");
+            if (updateButton != null) updateButton.interactable = true;
+            StartCoroutine(HideStatusAfterDelay(3f));
+            yield break;
+        }
+
+        SetStatus("准备安装，游戏即将关闭...");
+        WriteAndLaunchUpdater(tempZip);
+        yield return new WaitForSeconds(0.5f);
+        Application.Quit();
+    }
+
+    IEnumerator DownloadSingle(string tempZip, string url)
+    {
+        SetStatus("下载中（镜像加速）...");
+        using (var req = UnityWebRequest.Get(url))
+        {
+            req.SetRequestHeader("User-Agent", $"{repoName}-Updater");
+            var handler = new DownloadHandlerFile(tempZip);
+            handler.removeFileOnAbort = true;
+            req.downloadHandler = handler;
+            var op = req.SendWebRequest();
+            while (!op.isDone)
+            {
+                SetStatus($"下载中... {req.downloadProgress * 100f:F0}%");
+                yield return null;
+            }
+            if (req.result != UnityWebRequest.Result.Success)
+            {
+                SetStatus($"下载失败: {req.error}");
+                yield break;
+            }
+        }
+        SetStatus("下载完成");
+    }
+
+    IEnumerator DownloadMulti(string tempZip, string url)
+    {
         long fileSize = 0;
-        using (var headReq = UnityWebRequest.Head(GetDownloadUrl()))
+        SetStatus("正在连接...");
+        using (var headReq = UnityWebRequest.Head(url))
         {
             headReq.SetRequestHeader("User-Agent", $"{repoName}-Updater");
             headReq.timeout = 10;
             yield return headReq.SendWebRequest();
-
             if (headReq.result != UnityWebRequest.Result.Success)
             {
                 SetStatus($"连接失败: {headReq.error}");
-                if (updateButton != null) updateButton.interactable = true;
-                StartCoroutine(HideStatusAfterDelay(3f));
                 yield break;
             }
-
             string cl = headReq.GetResponseHeader("Content-Length");
             if (!long.TryParse(cl, out fileSize) || fileSize <= 0)
             {
                 SetStatus("获取文件大小失败");
-                if (updateButton != null) updateButton.interactable = true;
-                StartCoroutine(HideStatusAfterDelay(3f));
                 yield break;
             }
         }
 
-        string acceptRanges = ""; // 服务端支不支持无所谓，GitHub 支持
         int threads = Mathf.Clamp(downloadThreads, 1, 16);
         long chunkSize = fileSize / threads;
-
-        // ── Step 2: 同时启动所有分块请求 ────────────
         var requests = new UnityWebRequest[threads];
-        var handlers = new DownloadHandlerFile[threads];
         var chunkFiles = new string[threads];
 
         for (int i = 0; i < threads; i++)
         {
             long start = i * chunkSize;
             long end = (i == threads - 1) ? fileSize - 1 : start + chunkSize - 1;
-
             chunkFiles[i] = tempZip + $".part{i}";
-
-            var req = UnityWebRequest.Get(GetDownloadUrl());
+            var req = UnityWebRequest.Get(url);
             req.SetRequestHeader("User-Agent", $"{repoName}-Updater");
             req.SetRequestHeader("Range", $"bytes={start}-{end}");
-            var handler = new DownloadHandlerFile(chunkFiles[i]);
-            handler.removeFileOnAbort = true;
-            req.downloadHandler = handler;
-
-            // 关键：在同一帧内全部 SendWebRequest，不 yield 等待，实现并发
-            var op = req.SendWebRequest();
-            // SendWebRequest 返回的 AsyncOperation 只需要存起来等就行
+            req.downloadHandler = new DownloadHandlerFile(chunkFiles[i]) { removeFileOnAbort = true };
+            req.SendWebRequest();
             requests[i] = req;
-            handlers[i] = handler;
         }
 
-        // ── Step 3: 等待全部完成，实时显示进度 ────────
         bool anyFailed = false;
         while (true)
         {
@@ -205,42 +236,25 @@ public class UpdateManager : MonoBehaviour
                 if (requests[i] == null) { done++; continue; }
                 if (requests[i].isDone)
                 {
-                    if (requests[i].result != UnityWebRequest.Result.Success)
-                        anyFailed = true;
-                    requests[i].Dispose();
-                    requests[i] = null;
+                    if (requests[i].result != UnityWebRequest.Result.Success) anyFailed = true;
+                    requests[i].Dispose(); requests[i] = null;
                     done++;
                 }
             }
-
-            float pct = (float)done / threads * 100f;
-            SetStatus($"下载中... {pct:F0}% ({done}/{threads})");
-
+            SetStatus($"下载中... {(float)done / threads * 100f:F0}%");
             if (done >= threads) break;
             yield return null;
         }
 
-        // 清理 handler 引用
-        for (int i = 0; i < threads; i++)
-        {
-            if (requests[i] != null) { requests[i].Dispose(); requests[i] = null; }
-            handlers[i] = null;
-        }
-
         if (anyFailed)
         {
-            SetStatus("下载失败，请重试");
             for (int i = 0; i < threads; i++)
                 if (File.Exists(chunkFiles[i])) File.Delete(chunkFiles[i]);
-            if (updateButton != null) updateButton.interactable = true;
-            StartCoroutine(HideStatusAfterDelay(3f));
             yield break;
         }
 
-        // ── Step 4: 合并分块文件 ────────────────────
-        SetStatus("正在合并文件...");
+        SetStatus("正在合并...");
         using (var outStream = new FileStream(tempZip, FileMode.Create, FileAccess.Write, FileShare.None, 65536))
-        {
             for (int i = 0; i < threads; i++)
             {
                 if (!File.Exists(chunkFiles[i])) continue;
@@ -248,13 +262,6 @@ public class UpdateManager : MonoBehaviour
                 outStream.Write(buf, 0, buf.Length);
                 File.Delete(chunkFiles[i]);
             }
-        }
-
-        // ── Step 5: 安装 ────────────────────────────
-        SetStatus("准备安装，游戏即将关闭...");
-        WriteAndLaunchUpdater(tempZip);
-        yield return new WaitForSeconds(0.5f);
-        Application.Quit();
     }
 
     // ==================== 安装（不变） ====================
