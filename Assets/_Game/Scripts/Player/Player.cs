@@ -49,7 +49,10 @@ public class Player : MonoBehaviour
         {
             CounterManager.Instance?.CheckOnPlayerDying();
             if (currentHealth <= 0)
+            {
                 Debug.Log("玩家死亡，游戏结束");
+                GameEndPanel.Instance?.OnPlayerDied(true);
+            }
         }
     }
 

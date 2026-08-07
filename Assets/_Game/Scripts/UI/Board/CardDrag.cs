@@ -369,6 +369,8 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
 
                     ResolveSpellEffect(template, slot);
                     BoardSlot.extraTargetFilter = null;
+                    SetButtonsInteractable(true);
+                    if (hm != null) { hm.SetHandAreaRaycast(true); hm.ShowAllCards(); }
                 });
                 handManager.HideAllCards();
                 handManager.SetHandAreaRaycast(false);
@@ -569,6 +571,22 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
         }
     }
     public void SetButtonsInteractable(bool enabled)
+    {
+        ApplyButtonsInteractable(enabled);
+        // 每次禁用时，启动延迟守卫：手牌打空后强制恢复按钮
+        if (!enabled) StartCoroutine(WatchEmptyHand());
+    }
+
+    IEnumerator WatchEmptyHand()
+    {
+        yield return new WaitForEndOfFrame();
+        yield return new WaitForEndOfFrame(); // 等异步法术/入场效果清理完毕
+        NetworkPlayer.Local?.handCards.RemoveAll(c => c == null);
+        if (NetworkPlayer.Local != null && NetworkPlayer.Local.handCards.Count == 0)
+            ApplyButtonsInteractable(true);
+    }
+
+    void ApplyButtonsInteractable(bool enabled)
     {
         EndTurnButton endBtn = FindObjectOfType<EndTurnButton>();
         if (endBtn != null)

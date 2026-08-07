@@ -37,7 +37,11 @@ public class EnemyPlayer : MonoBehaviour
     {
         currentHealth -= amount;
         UpdateUI();
-        if (currentHealth <= 0) Debug.Log("敌方玩家死亡");
+        if (currentHealth <= 0)
+        {
+            Debug.Log("敌方玩家死亡");
+            GameEndPanel.Instance?.OnPlayerDied(false);
+        }
     }
 
     public void Heal(int amount)

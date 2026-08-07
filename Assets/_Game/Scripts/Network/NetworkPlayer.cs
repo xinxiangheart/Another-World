@@ -284,8 +284,11 @@ public class NetworkPlayer : NetworkBehaviour
     {
         Debug.Log($"[NetworkPlayer] Health: {oldValue} -> {newValue}, isLocal={isLocalPlayer}, netId={netId}");
         RefreshUI();
-        if (newValue <= 0 && isServer)
-            Debug.Log("[NetworkPlayer] Player died");
+        if (newValue <= 0)
+        {
+            Debug.Log($"[NetworkPlayer] Player died, isLocal={isLocalPlayer}");
+            GameEndPanel.Instance?.OnPlayerDied(isLocalPlayer);
+        }
     }
 
     void OnEnergyChanged(int oldValue, int newValue)
