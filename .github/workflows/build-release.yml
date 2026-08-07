@@ -47,7 +47,7 @@ jobs:
       - name: Add dummy data (for download speed test)
         shell: cmd
         run: |
-          powershell -ExecutionPolicy Bypass -Command "$bytes=New-Object byte[](200*1024*1024); (New-Object Random).NextBytes($bytes); [IO.File]::WriteAllBytes('dummy_data.bin',$bytes); Compress-Archive -Path dummy_data.bin -DestinationPath dummy.zip -Update; Compress-Archive -Path dummy.zip -DestinationPath Another-World-Windows.zip -Update; Remove-Item dummy_data.bin,dummy.zip"
+          powershell -ExecutionPolicy Bypass -Command "$bytes=New-Object byte[](10*1024*1024); (New-Object Random).NextBytes($bytes); [IO.File]::WriteAllBytes('dummy_data.bin',$bytes); Compress-Archive -Path dummy_data.bin -DestinationPath dummy.zip -Update; Compress-Archive -Path dummy.zip -DestinationPath Another-World-Windows.zip -Update; Remove-Item dummy_data.bin,dummy.zip"
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
