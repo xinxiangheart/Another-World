@@ -44,10 +44,12 @@ jobs:
         run: |
           powershell -ExecutionPolicy Bypass -Command "Compress-Archive -Path 'build\StandaloneWindows64\*' -DestinationPath Another-World-Windows.zip"
 
-      - name: Add dummy data (for download speed test)
+      - name: Add dummy data
         shell: cmd
         run: |
-          powershell -ExecutionPolicy Bypass -Command "$bytes=New-Object byte[](20*1024*1024); (New-Object Random).NextBytes($bytes); [IO.File]::WriteAllBytes('dummy_data.bin',$bytes); Compress-Archive -Path dummy_data.bin -DestinationPath dummy.zip -Update; Compress-Archive -Path dummy.zip -DestinationPath Another-World-Windows.zip -Update; Remove-Item dummy_data.bin,dummy.zip"
+          fsutil file createnew dummy_data.bin 20971520
+          powershell -ExecutionPolicy Bypass -Command "Compress-Archive -Path dummy_data.bin -DestinationPath dummy.zip -Force; Compress-Archive -Path dummy.zip -DestinationPath Another-World-Windows.zip -Update -Force"
+          del dummy_data.bin dummy.zip
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
