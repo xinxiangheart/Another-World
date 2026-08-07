@@ -1,6 +1,5 @@
 name: Auto Release on Version Change
 
-# 当 Welcome.unity 被修改并推送到 main 时自动检测版本号变化
 on:
   push:
     branches: [main]
@@ -33,7 +32,49 @@ jobs:
             git config user.email "actions@github.com"
             git tag v%VERSION%
             git push origin v%VERSION%
+            echo TAG_CREATED=true>> %GITHUB_OUTPUT%
             echo [AutoRelease] Tag v%VERSION% pushed. Build workflow will now pick it up.
           ) else (
             echo [AutoRelease] Tag v%VERSION% already exists, skip
+            echo TAG_CREATED=false>> %GITHUB_OUTPUT%
           )
+          echo VERSION=%VERSION%>> %GITHUB_OUTPUT%
+
+      - name: Write version.txt
+        if: steps.detect.outputs.TAG_CREATED == 'true'
+        shell: cmd
+        run: echo ${{steps.detect.outputs.VERSION}}> "Assets\_Game\Resources\version.txt"
+
+      - name: Copy Library cache
+        if: steps.detect.outputs.TAG_CREATED == 'true'
+        shell: cmd
+        run: |
+          if not exist Library mkdir Library
+          xcopy "C:\Users\22589\Documents\GitHub\Another-World\Library\*" "Library\" /E /Y /Q 2>nul
+
+      - name: Build Windows Player
+        if: steps.detect.outputs.TAG_CREATED == 'true'
+        shell: cmd
+        run: |
+          "C:\Program Files\Unity\Hub\Editor\2022.3.62f2c1\Editor\Unity.exe" -quit -batchmode -nographics -projectPath . -buildWindows64Player "build/StandaloneWindows64/Another-World.exe" -logFile build.log
+
+      - name: Show Build Log
+        if: failure()
+        shell: cmd
+        run: type build.log 2>nul || echo build.log not found
+
+      - name: Zip Build
+        if: steps.detect.outputs.TAG_CREATED == 'true'
+        shell: cmd
+        run: |
+          powershell -ExecutionPolicy Bypass -Command "Compress-Archive -Path 'build\StandaloneWindows64\*' -DestinationPath Another-World-Windows.zip"
+
+      - name: Create Release
+        if: steps.detect.outputs.TAG_CREATED == 'true'
+        uses: softprops/action-gh-release@v1
+        env:
+          NODE_OPTIONS: --use-system-ca
+        with:
+          tag_name: v${{steps.detect.outputs.VERSION}}
+          files: Another-World-Windows.zip
+          generate_release_notes: true
