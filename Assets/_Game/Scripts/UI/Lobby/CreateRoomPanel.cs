@@ -65,7 +65,7 @@ public class CreateRoomPanel : MonoBehaviour
 
         FillHostInfo();
         RegisterCallbacks();
-        SteamMatchmaking.CreateLobby(ELobbyType.k_ELobbyTypeFriendsOnly, 2);
+        SteamMatchmaking.CreateLobby(ELobbyType.k_ELobbyTypePublic, 2);
     }
 
     void RegisterCallbacks()
