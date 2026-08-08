@@ -20,7 +20,7 @@ public class QuickMatchPanel : MonoBehaviour
     private enum State { Idle, Searching, Found, WaitingOpponent }
     private State _state;
     private float _countdown, _pollTimer;
-    private bool _iAccepted, _iAmHost;
+    private bool _iAccepted, _iAmHost, _enteredLobby;
     private string _oppName;
     private CSteamID _lobbyID;
 
@@ -39,7 +39,7 @@ public class QuickMatchPanel : MonoBehaviour
 
     void ResetState()
     {
-        _state = State.Idle; _countdown = 15f; _iAccepted = false; _iAmHost = false; _oppName = "";
+        _state = State.Idle; _countdown = 15f; _iAccepted = false; _iAmHost = false; _enteredLobby = false; _oppName = "";
         if (opponentInfoGroup) opponentInfoGroup.SetActive(false);
         if (acceptButton) { acceptButton.gameObject.SetActive(false); acceptButton.interactable = true; }
         if (declineButton) { declineButton.gameObject.SetActive(false); declineButton.interactable = true; }
@@ -50,30 +50,45 @@ public class QuickMatchPanel : MonoBehaviour
     void StartSearch()
     {
         if (!SteamManager.Initialized) { SetStatus("Steam 未初始化"); return; }
-        _state = State.Searching; _iAccepted = false; _iAmHost = false; _oppName = ""; _pollTimer = 0;
-        _lobbyID = default;
+        _state = State.Searching;
         SetStatus("匹配中...");
-        SteamMatchmaking.AddRequestLobbyListStringFilter("game", "anotherworld_quick", ELobbyComparison.k_ELobbyComparisonEqual);
-        SteamMatchmaking.AddRequestLobbyListResultCountFilter(1);
-        SteamMatchmaking.RequestLobbyList();
         StartCoroutine(SearchPhase());
+    }
+
+    IEnumerator SearchPhase()
+    {
+        // Keep searching for 4s
+        for (float t = 0; t < 4f && _state == State.Searching && !_iAmHost; t += 0.5f)
+        {
+            yield return new WaitForSeconds(0.5f);
+            if (_lobbyID.m_SteamID != 0) yield break; // already joined via callback
+            SteamMatchmaking.AddRequestLobbyListStringFilter("game", "anotherworld_quick", ELobbyComparison.k_ELobbyComparisonEqual);
+            SteamMatchmaking.AddRequestLobbyListResultCountFilter(1);
+            SteamMatchmaking.RequestLobbyList();
+        }
+        if (_state != State.Searching || _lobbyID.m_SteamID != 0) yield break;
+        // No lobby found — become host
+        _iAmHost = true;
+        _enteredLobby = true; // created lobbies count as entered immediately
+        SetStatus("匹配中...");
+        SteamMatchmaking.CreateLobby(ELobbyType.k_ELobbyTypePublic, 2);
     }
 
     // =============== Steam Callbacks ===============
 
     Callback<LobbyMatchList_t> _listCB;
     Callback<LobbyCreated_t> _createdCB;
+    Callback<LobbyEnter_t> _enterCB;
 
-    void OnEnable() { _listCB = Callback<LobbyMatchList_t>.Create(cb => OnLobbyList(cb)); _createdCB = Callback<LobbyCreated_t>.Create(cb => OnLobbyCreated(cb)); }
-    void OnDisable() { _listCB?.Dispose(); _createdCB?.Dispose(); }
+    void OnEnable() { _listCB = Callback<LobbyMatchList_t>.Create(cb => OnLobbyList(cb)); _createdCB = Callback<LobbyCreated_t>.Create(cb => OnLobbyCreated(cb)); _enterCB = Callback<LobbyEnter_t>.Create(cb => OnLobbyEnter(cb)); }
+    void OnDisable() { _listCB?.Dispose(); _createdCB?.Dispose(); _enterCB?.Dispose(); }
 
     void OnLobbyList(LobbyMatchList_t cb)
     {
-        if (_state != State.Searching || _iAmHost) return;
-        if (cb.m_nLobbiesMatching == 0) return;
+        if (_state != State.Searching || _iAmHost || cb.m_nLobbiesMatching == 0) return;
         _lobbyID = SteamMatchmaking.GetLobbyByIndex(0);
         SteamMatchmaking.JoinLobby(_lobbyID);
-        Debug.Log($"[QuickMatch] 找到大厅 {_lobbyID}，加入");
+        SetStatus("找到对手，正在加入...");
     }
 
     void OnLobbyCreated(LobbyCreated_t cb)
@@ -82,47 +97,48 @@ public class QuickMatchPanel : MonoBehaviour
         _lobbyID = new CSteamID(cb.m_ulSteamIDLobby);
         SteamMatchmaking.SetLobbyData(_lobbyID, "game", "anotherworld_quick");
         WriteMyData("host_data");
-        Debug.Log($"[QuickMatch] 自建大厅: {_lobbyID}");
     }
 
-    // This runs via Update, not callback — simpler and more reliable
-    // When JoinLobby succeeds, SteamMatchmaking.GetLobbyData starts working
+    void OnLobbyEnter(LobbyEnter_t cb)
+    {
+        if (_state != State.Searching || _iAmHost) return;
+        _lobbyID = new CSteamID(cb.m_ulSteamIDLobby);
+        _enteredLobby = true;
+        WriteMyData("guest_data"); // now I have permission to write
+        // Try reading host data immediately
+        string hostJson = SteamMatchmaking.GetLobbyData(_lobbyID, "host_data");
+        if (!string.IsNullOrEmpty(hostJson)) TryShowOpponent(hostJson);
+    }
 
     void WriteMyData(string key)
     {
         if (_lobbyID.m_SteamID == 0) return;
         var sd = SteamDataManager.Instance; var d = sd?.playerData;
-        SteamMatchmaking.SetLobbyData(_lobbyID, key,
-            JsonUtility.ToJson(new QMPD { playerName = sd?.localPlayerName ?? "玩家", totalMatches = d?.totalMatches ?? 0, winRate = sd?.WinRate ?? 0, winStreak = d?.winStreak ?? 0, steamID = sd?.localSteamID.m_SteamID ?? 0 }));
+        SteamMatchmaking.SetLobbyData(_lobbyID, key, JsonUtility.ToJson(new QMPD { playerName = sd?.localPlayerName ?? "玩家", totalMatches = d?.totalMatches ?? 0, winRate = sd?.WinRate ?? 0, winStreak = d?.winStreak ?? 0, steamID = sd?.localSteamID.m_SteamID ?? 0 }));
     }
 
     // =============== Update ===============
 
     void Update()
     {
-        if (_state == State.Idle || _lobbyID.m_SteamID == 0) return;
+        if (_state == State.Idle || _lobbyID.m_SteamID == 0 || !_enteredLobby) return;
 
-        // reduce poll rate
         _pollTimer += Time.deltaTime;
         if (_pollTimer < 0.3f) return;
         _pollTimer = 0;
 
-        // Guest who just joined: write data & read host
-        if (!_iAmHost && _state == State.Searching)
-        {
-            WriteMyData("guest_data");
-        }
+        string hostOk = SteamMatchmaking.GetLobbyData(_lobbyID, "host_ok") ?? "";
+        string guestOk = SteamMatchmaking.GetLobbyData(_lobbyID, "guest_ok") ?? "";
+        string oppOk = _iAmHost ? guestOk : hostOk;
 
-        // Both: try to read opponent
+        // Searching — wait for opponent data (host waits for guest, guest already read in callback)
         if (_state == State.Searching)
         {
-            string oppJson = _iAmHost
-                ? SteamMatchmaking.GetLobbyData(_lobbyID, "guest_data")
-                : SteamMatchmaking.GetLobbyData(_lobbyID, "host_data");
+            string oppJson = _iAmHost ? SteamMatchmaking.GetLobbyData(_lobbyID, "guest_data") : SteamMatchmaking.GetLobbyData(_lobbyID, "host_data");
             if (!string.IsNullOrEmpty(oppJson)) TryShowOpponent(oppJson);
         }
 
-        // Countdown
+        // Found — countdown + check reject
         if (_state == State.Found)
         {
             _countdown -= Time.deltaTime;
@@ -130,53 +146,19 @@ public class QuickMatchPanel : MonoBehaviour
             if (_countdown <= 0) { LeaveLobby(); ResetState(); StartSearch(); return; }
         }
 
-        // Check reject / both accepted
-        string hostOk = SteamMatchmaking.GetLobbyData(_lobbyID, "host_ok") ?? "";
-        string guestOk = SteamMatchmaking.GetLobbyData(_lobbyID, "guest_ok") ?? "";
-        string oppOk = _iAmHost ? guestOk : hostOk;
-
+        // Check opponent reject or cancel
         if ((_state == State.Found || _state == State.WaitingOpponent) && oppOk == "0")
         {
             SetStatus("对方已拒绝\n重新匹配..."); LeaveLobby(); ResetState(); StartSearch(); return;
         }
 
+        // Both accepted
         if ((_state == State.WaitingOpponent || (_iAccepted && _state == State.Found)) && hostOk == "1" && guestOk == "1")
         {
-            SetStatus("双方已接受！");
             LobbyConfig.FromLobby = true; LobbyConfig.IsHost = _iAmHost; LobbyConfig.IsDirectIP = false; LobbyConfig.ServerIP = "";
             LeaveLobby(); _state = State.Idle; if (panelRoot) panelRoot.SetActive(false);
             JoinGamePanel.Instance?.Open();
         }
-
-        // Host: no guest after 8s → recreate (stale lobby)
-        if (_iAmHost && _state == State.Searching && _lobbyID.m_SteamID != 0)
-        {
-            int members = SteamMatchmaking.GetNumLobbyMembers(_lobbyID);
-            if (members >= 2 && string.IsNullOrEmpty(SteamMatchmaking.GetLobbyData(_lobbyID, "guest_data")))
-            {
-                // someone joined but didn't write data; wait
-            }
-        }
-    }
-
-    // =============== Search timeout → become host ===============
-
-    IEnumerator SearchPhase()
-    {
-        for (float t = 0; t < 2f && _state == State.Searching && _lobbyID.m_SteamID == 0; t += 0.5f)
-        {
-            yield return new WaitForSeconds(0.5f);
-            if (_lobbyID.m_SteamID != 0) yield break; // found a lobby
-            SteamMatchmaking.AddRequestLobbyListStringFilter("game", "anotherworld_quick", ELobbyComparison.k_ELobbyComparisonEqual);
-            SteamMatchmaking.AddRequestLobbyListResultCountFilter(1);
-            SteamMatchmaking.RequestLobbyList();
-        }
-        if (_state != State.Searching || _lobbyID.m_SteamID != 0) yield break;
-
-        // No lobby found, become host
-        _iAmHost = true;
-        SetStatus("匹配中...");
-        SteamMatchmaking.CreateLobby(ELobbyType.k_ELobbyTypePublic, 2);
     }
 
     // =============== UI ===============

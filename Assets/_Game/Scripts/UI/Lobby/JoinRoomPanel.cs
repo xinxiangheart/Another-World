@@ -107,8 +107,15 @@ public class JoinRoomPanel : MonoBehaviour
 
     IEnumerator JoinDelayed()
     {
-        yield return new WaitForSeconds(0.3f);
+        // Wait for lobby entry to complete (poll member count)
+        float waited = 0;
+        while (waited < 3f && SteamMatchmaking.GetNumLobbyMembers(_foundLobbyID) < 1)
+        {
+            yield return new WaitForSeconds(0.5f);
+            waited += 0.5f;
+        }
 
+        // Try writing guest data (CreateRoomPanel will retry if first write fails)
         var sd = SteamDataManager.Instance; var d = sd?.playerData;
         var myData = new RoomPlayerData { playerName = sd?.localPlayerName ?? "玩家", totalMatches = d?.totalMatches ?? 0, winRate = sd?.WinRate ?? 0, winStreak = d?.winStreak ?? 0, steamID = sd?.localSteamID.m_SteamID ?? 0 };
         SteamMatchmaking.SetLobbyData(_foundLobbyID, "guest_data", JsonUtility.ToJson(myData));

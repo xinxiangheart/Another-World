@@ -18,10 +18,10 @@ public class CreateRoomPanel : MonoBehaviour
 
     private bool _amHost;
     private CSteamID _lobbyID;
-    private Callback<LobbyCreated_t> _lobbyCreatedCB;
-    private Callback<LobbyDataUpdate_t> _lobbyDataCB;
     private bool _hasGuest;
+    private float _pollTimer;
     private string _roomCode;
+    private Callback<LobbyCreated_t> _lcb;
 
     void Awake()
     {
@@ -39,7 +39,7 @@ public class CreateRoomPanel : MonoBehaviour
     public void OpenAsHost()
     {
         if (!SteamManager.Initialized) return;
-        _amHost = true; _hasGuest = false;
+        _amHost = true; _hasGuest = false; _pollTimer = 0;
         _roomCode = Random.Range(100000, 999999).ToString();
 
         panelRoot.SetActive(true);
@@ -50,7 +50,16 @@ public class CreateRoomPanel : MonoBehaviour
         leaveButton.gameObject.SetActive(true);
 
         FillMyInfo(hostAvatar, hostNameText, hostStatsText);
-        RegisterCallbacks();
+
+        _lcb?.Dispose();
+        _lcb = Callback<LobbyCreated_t>.Create(cb =>
+        {
+            if (cb.m_eResult != EResult.k_EResultOK) return;
+            _lobbyID = new CSteamID(cb.m_ulSteamIDLobby);
+            SteamMatchmaking.SetLobbyData(_lobbyID, "game", "anotherworld_room");
+            SteamMatchmaking.SetLobbyData(_lobbyID, "room_code", _roomCode);
+        });
+
         SteamMatchmaking.CreateLobby(ELobbyType.k_ELobbyTypePublic, 2);
     }
 
@@ -59,7 +68,7 @@ public class CreateRoomPanel : MonoBehaviour
     public void OpenAsGuest(CSteamID lobbyID, string roomCode)
     {
         if (!SteamManager.Initialized) return;
-        _amHost = false; _hasGuest = true;
+        _amHost = false; _hasGuest = false; _pollTimer = 0;
         _lobbyID = lobbyID; _roomCode = roomCode;
 
         panelRoot.SetActive(true);
@@ -69,42 +78,52 @@ public class CreateRoomPanel : MonoBehaviour
         roomCodeText.text = $"房间号：{_roomCode}";
         leaveButton.gameObject.SetActive(true);
 
-        RegisterCallbacks();
         FillMyInfo(guestAvatar, guestNameText, guestStatsText);
 
-        // 初始化显示房主信息
+        // 尝试读房主信息
         string hostData = SteamMatchmaking.GetLobbyData(_lobbyID, "host_data");
         if (!string.IsNullOrEmpty(hostData)) FillHostInfo(hostData);
-    }
-
-    // ============== Steam ==============
-
-    void RegisterCallbacks() { DisposeCallbacks(); _lobbyCreatedCB = Callback<LobbyCreated_t>.Create(OnLobbyCreated); _lobbyDataCB = Callback<LobbyDataUpdate_t>.Create(OnLobbyDataUpdate); }
-    void DisposeCallbacks() { _lobbyCreatedCB?.Dispose(); _lobbyDataCB?.Dispose(); }
-
-    void OnLobbyCreated(LobbyCreated_t cb)
-    {
-        if (!_amHost || cb.m_eResult != EResult.k_EResultOK) return;
-        _lobbyID = new CSteamID(cb.m_ulSteamIDLobby);
-        SteamMatchmaking.SetLobbyData(_lobbyID, "game", "anotherworld_room");
-        SteamMatchmaking.SetLobbyData(_lobbyID, "room_code", _roomCode);
-        WriteMyData("host_data");
-    }
-
-    void OnLobbyDataUpdate(LobbyDataUpdate_t cb)
-    {
-        if (_lobbyID.m_SteamID != cb.m_ulSteamIDLobby) return;
-        if (_amHost) { string json = SteamMatchmaking.GetLobbyData(_lobbyID, "guest_data"); if (!string.IsNullOrEmpty(json) && !_hasGuest) { FillGuestInfo(json); guestInfoGroup.SetActive(true); kickButton.gameObject.SetActive(true); startGameButton.gameObject.SetActive(true); _hasGuest = true; } }
-        else { string json = SteamMatchmaking.GetLobbyData(_lobbyID, "host_data"); if (!string.IsNullOrEmpty(json)) FillHostInfo(json); }
     }
 
     void Update()
     {
         if (_lobbyID.m_SteamID == 0) return;
 
-        // 客人侧：等待房主 start / 被踢 / 房主离开
+        _pollTimer += Time.deltaTime;
+        if (_pollTimer < 0.3f) return;
+        _pollTimer = 0;
+
+        // Host: ensure lobby data is written
+        if (_amHost)
+        {
+            WriteMyData("host_data");
+            SteamMatchmaking.SetLobbyData(_lobbyID, "room_code", _roomCode);
+            SteamMatchmaking.SetLobbyData(_lobbyID, "game", "anotherworld_room");
+        }
+        // Guest: keep writing my data until host sees it
+        else
+        {
+            WriteMyData("guest_data");
+        }
+
+        // Host: detect guest
+        if (_amHost && !_hasGuest)
+        {
+            string guestJson = SteamMatchmaking.GetLobbyData(_lobbyID, "guest_data");
+            if (!string.IsNullOrEmpty(guestJson))
+            {
+                FillGuestInfo(guestJson); guestInfoGroup.SetActive(true);
+                kickButton.gameObject.SetActive(true); startGameButton.gameObject.SetActive(true);
+                _hasGuest = true;
+            }
+        }
+
+        // Guest: read host data
         if (!_amHost)
         {
+            string hostJson = SteamMatchmaking.GetLobbyData(_lobbyID, "host_data");
+            if (!string.IsNullOrEmpty(hostJson)) FillHostInfo(hostJson);
+
             if (SteamMatchmaking.GetLobbyData(_lobbyID, "kicked") == "1") { LeaveRoom(); return; }
             if (SteamMatchmaking.GetNumLobbyMembers(_lobbyID) < 2) { LeaveRoom(); return; }
             if (SteamMatchmaking.GetLobbyData(_lobbyID, "start") == "1")
@@ -112,30 +131,15 @@ public class CreateRoomPanel : MonoBehaviour
                 LobbyConfig.FromLobby = true; LobbyConfig.IsHost = false;
                 LobbyConfig.IsDirectIP = false; LobbyConfig.ServerIP = "";
                 panelRoot.SetActive(false); JoinGamePanel.Instance?.Open();
-                return;
             }
         }
-        else
+
+        // Host: guest left
+        if (_amHost && _hasGuest && SteamMatchmaking.GetNumLobbyMembers(_lobbyID) < 2)
         {
-            // 房主侧：检测客人加入 / 客人离开
-            if (!_hasGuest)
-            {
-                string guestJson = SteamMatchmaking.GetLobbyData(_lobbyID, "guest_data");
-                if (!string.IsNullOrEmpty(guestJson))
-                {
-                    FillGuestInfo(guestJson);
-                    guestInfoGroup.SetActive(true);
-                    kickButton.gameObject.SetActive(true);
-                    startGameButton.gameObject.SetActive(true);
-                    _hasGuest = true;
-                }
-            }
-            if (_hasGuest && SteamMatchmaking.GetNumLobbyMembers(_lobbyID) < 2)
-            {
-                _hasGuest = false; guestInfoGroup.SetActive(false);
-                kickButton.gameObject.SetActive(false); startGameButton.gameObject.SetActive(false);
-                SteamMatchmaking.SetLobbyData(_lobbyID, "guest_data", "");
-            }
+            _hasGuest = false; guestInfoGroup.SetActive(false);
+            kickButton.gameObject.SetActive(false); startGameButton.gameObject.SetActive(false);
+            SteamMatchmaking.SetLobbyData(_lobbyID, "guest_data", "");
         }
     }
 
@@ -197,10 +201,10 @@ public class CreateRoomPanel : MonoBehaviour
     void LeaveRoom()
     {
         if (_lobbyID.m_SteamID != 0) SteamMatchmaking.LeaveLobby(_lobbyID);
-        _lobbyID = default; DisposeCallbacks(); panelRoot.SetActive(false);
+        _lobbyID = default; _lcb?.Dispose(); panelRoot.SetActive(false);
     }
 
-    void OnDestroy() { DisposeCallbacks(); }
+    void OnDestroy() { _lcb?.Dispose(); }
 
     [System.Serializable] class RoomPlayerData { public string playerName; public int totalMatches; public double winRate; public int winStreak; public ulong steamID; }
 }
