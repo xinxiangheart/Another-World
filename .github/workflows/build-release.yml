@@ -44,13 +44,6 @@ jobs:
         run: |
           powershell -ExecutionPolicy Bypass -Command "Compress-Archive -Path 'build\StandaloneWindows64\*' -DestinationPath Another-World-Windows.zip"
 
-      - name: Add 10MB test data
-        shell: cmd
-        run: |
-          fsutil file createnew dummy_data.bin 10485760
-          powershell -ExecutionPolicy Bypass -Command "Compress-Archive -Path dummy_data.bin -DestinationPath dummy.zip -Force; Compress-Archive -Path dummy.zip -DestinationPath Another-World-Windows.zip -Update -Force"
-          del dummy_data.bin dummy.zip
-
       - name: Create Release
         uses: softprops/action-gh-release@v1
         env:
