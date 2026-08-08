@@ -7,8 +7,7 @@ using Steamworks;
 public class QuickMatchPanel : MonoBehaviour
 {
     public static QuickMatchPanel Instance { get; private set; }
-    public static bool MatchConfirmed { get; set; }
-    public string opponentName => opponentNameText != null ? opponentNameText.text : "";
+    public string opponentName => _oppName;
     public Texture opponentTexture => opponentAvatar != null ? opponentAvatar.texture : null;
 
     [Header("面板")] public GameObject panelRoot;
@@ -20,14 +19,14 @@ public class QuickMatchPanel : MonoBehaviour
 
     private enum State { Idle, Searching, Found, WaitingOpponent }
     private State _state;
-    private float _countdown;
+    private float _countdown, _pollTimer;
     private bool _iAccepted, _iAmHost;
+    private string _oppName;
     private CSteamID _lobbyID;
-    private Callback<LobbyCreated_t> _lobbyCreatedCB;
-    private Callback<LobbyMatchList_t> _lobbyListCB;
-    private Callback<LobbyEnter_t> _lobbyEnterCB;
-    private Callback<LobbyDataUpdate_t> _lobbyDataCB;
     private Coroutine _searchCoroutine;
+    private Callback<LobbyCreated_t> _lcb;
+    private Callback<LobbyMatchList_t> _lmlcb;
+    private Callback<LobbyEnter_t> _leb;
 
     void Awake()
     {
@@ -44,7 +43,7 @@ public class QuickMatchPanel : MonoBehaviour
 
     void ResetState()
     {
-        _state = State.Idle; _countdown = 15f; _iAccepted = false; _iAmHost = false;
+        _state = State.Idle; _countdown = 15f; _iAccepted = false; _iAmHost = false; _oppName = "";
         if (opponentInfoGroup) opponentInfoGroup.SetActive(false);
         if (acceptButton) { acceptButton.gameObject.SetActive(false); acceptButton.interactable = true; }
         if (declineButton) { declineButton.gameObject.SetActive(false); declineButton.interactable = true; }
@@ -55,8 +54,8 @@ public class QuickMatchPanel : MonoBehaviour
     void StartSearch()
     {
         if (!SteamManager.Initialized) { SetStatus("Steam 未初始化"); return; }
+        _state = State.Searching; _iAccepted = false; _iAmHost = false; _oppName = ""; _pollTimer = 0;
         RegisterCallbacks();
-        _state = State.Searching; _iAccepted = false; _iAmHost = false;
         SetStatus("匹配中...");
         SteamMatchmaking.AddRequestLobbyListStringFilter("game", "anotherworld_quick", ELobbyComparison.k_ELobbyComparisonEqual);
         SteamMatchmaking.AddRequestLobbyListResultCountFilter(1);
@@ -66,63 +65,80 @@ public class QuickMatchPanel : MonoBehaviour
 
     IEnumerator SearchTimeout()
     {
-        yield return new WaitForSeconds(4f);
+        yield return new WaitForSeconds(5f);
         if (_state != State.Searching) yield break;
         _iAmHost = true;
-        SetStatus("匹配中...");
         SteamMatchmaking.CreateLobby(ELobbyType.k_ELobbyTypePublic, 2);
     }
 
-    // =============== Steam Callbacks ===============
+    // =============== Steam ===============
 
-    void RegisterCallbacks() { DisposeCallbacks(); _lobbyCreatedCB = Callback<LobbyCreated_t>.Create(OnLobbyCreated); _lobbyListCB = Callback<LobbyMatchList_t>.Create(OnLobbyList); _lobbyEnterCB = Callback<LobbyEnter_t>.Create(OnLobbyEnter); _lobbyDataCB = Callback<LobbyDataUpdate_t>.Create(OnLobbyDataUpdate); }
-    void DisposeCallbacks() { _lobbyCreatedCB?.Dispose(); _lobbyListCB?.Dispose(); _lobbyEnterCB?.Dispose(); _lobbyDataCB?.Dispose(); }
+    void RegisterCallbacks() { DisposeCallbacks(); _lcb = Callback<LobbyCreated_t>.Create(cb => { if (_state == State.Searching && cb.m_eResult == EResult.k_EResultOK) { _lobbyID = new CSteamID(cb.m_ulSteamIDLobby); SteamMatchmaking.SetLobbyData(_lobbyID, "game", "anotherworld_quick"); WriteMyData("host_data"); } }); _lmlcb = Callback<LobbyMatchList_t>.Create(cb => { if (_state == State.Searching && !_iAmHost && cb.m_nLobbiesMatching > 0) SteamMatchmaking.JoinLobby(SteamMatchmaking.GetLobbyByIndex(0)); }); _leb = Callback<LobbyEnter_t>.Create(cb => { if (_state != State.Searching) return; _lobbyID = new CSteamID(cb.m_ulSteamIDLobby); if (!_iAmHost) WriteMyData("guest_data"); }); }
+    void DisposeCallbacks() { _lcb?.Dispose(); _lmlcb?.Dispose(); _leb?.Dispose(); }
 
-    void OnLobbyCreated(LobbyCreated_t cb) { if (_state != State.Searching || cb.m_eResult != EResult.k_EResultOK) return; _lobbyID = new CSteamID(cb.m_ulSteamIDLobby); SteamMatchmaking.SetLobbyData(_lobbyID, "game", "anotherworld_quick"); WriteMyData("host_data"); }
+    void WriteMyData(string key) { if (_lobbyID.m_SteamID == 0) return; var sd = SteamDataManager.Instance; var d = sd?.playerData; SteamMatchmaking.SetLobbyData(_lobbyID, key, JsonUtility.ToJson(new QMPD { playerName = sd?.localPlayerName ?? "玩家", totalMatches = d?.totalMatches ?? 0, winRate = sd?.WinRate ?? 0, winStreak = d?.winStreak ?? 0, steamID = sd?.localSteamID.m_SteamID ?? 0 })); }
 
-    void OnLobbyList(LobbyMatchList_t cb) { if (_state != State.Searching || _iAmHost || cb.m_nLobbiesMatching == 0) return; SteamMatchmaking.JoinLobby(SteamMatchmaking.GetLobbyByIndex(0)); }
+    // =============== Update ===============
 
-    void OnLobbyEnter(LobbyEnter_t cb)
+    void Update()
     {
-        if (_state != State.Searching) return;
-        _lobbyID = new CSteamID(cb.m_ulSteamIDLobby);
-        if (!_iAmHost) WriteMyData("guest_data");
-        else SteamMatchmaking.SetLobbyData(_lobbyID, "host_data", MakeMyJson()); // refresh
+        if (_state == State.Idle) return;
+
+        // Countdown
+        if (_state == State.Found)
+        {
+            _countdown -= Time.deltaTime;
+            SetStatus($"等待确认（{_countdown:F0}s）");
+            if (_countdown <= 0) { SetStatus("超时，重新匹配..."); SetReject(); LeaveLobby(); ResetState(); StartSearch(); }
+        }
+
+        // Poll lobby data
+        if (_lobbyID.m_SteamID == 0) return;
+        _pollTimer += Time.deltaTime;
+        if (_pollTimer < 0.3f) return;
+        _pollTimer = 0;
+
+        string hostOk = SteamMatchmaking.GetLobbyData(_lobbyID, "host_ok") ?? "";
+        string guestOk = SteamMatchmaking.GetLobbyData(_lobbyID, "guest_ok") ?? "";
+        string oppOk = _iAmHost ? guestOk : hostOk;
+
+        // Searching — look for opponent data
+        if (_state == State.Searching)
+        {
+            string oppJson = _iAmHost ? SteamMatchmaking.GetLobbyData(_lobbyID, "guest_data") : SteamMatchmaking.GetLobbyData(_lobbyID, "host_data");
+            if (!string.IsNullOrEmpty(oppJson)) TryShowOpponent(oppJson);
+        }
+
+        // Found / Waiting — check opponent reject
+        if ((_state == State.Found || _state == State.WaitingOpponent) && oppOk == "0")
+        {
+            SetStatus("对方已拒绝或取消\n重新匹配..."); LeaveLobby(); ResetState(); StartSearch(); return;
+        }
+
+        // Both accepted
+        if ((_state == State.WaitingOpponent || (_iAccepted && _state == State.Found)) && hostOk == "1" && guestOk == "1")
+        {
+            SetStatus("双方已接受！");
+            LobbyConfig.FromLobby = true; LobbyConfig.IsHost = _iAmHost; LobbyConfig.IsDirectIP = false; LobbyConfig.ServerIP = "";
+            LeaveLobby(); _state = State.Idle; if (panelRoot) panelRoot.SetActive(false);
+            JoinGamePanel.Instance?.Open();
+        }
     }
 
-    void OnLobbyDataUpdate(LobbyDataUpdate_t cb) { /* handled by Update polling */ }
-
-    // =============== Data helpers ===============
-
-    void WriteMyData(string key) { if (_lobbyID.m_SteamID != 0) SteamMatchmaking.SetLobbyData(_lobbyID, key, MakeMyJson()); }
-
-    string MakeMyJson()
+    void TryShowOpponent(string json)
     {
-        var sd = SteamDataManager.Instance; var d = sd?.playerData;
-        return JsonUtility.ToJson(new QMPData { playerName = sd?.localPlayerName ?? "玩家", totalMatches = d?.totalMatches ?? 0, winRate = sd?.WinRate ?? 0, winStreak = d?.winStreak ?? 0, steamID = sd?.localSteamID.m_SteamID ?? 0 });
-    }
-
-    bool TryReadOpponent(string key)
-    {
-        if (_lobbyID.m_SteamID == 0) return false;
-        string json = SteamMatchmaking.GetLobbyData(_lobbyID, key);
-        if (string.IsNullOrEmpty(json)) return false;
-        var opp = JsonUtility.FromJson<QMPData>(json);
-        if (opp == null || string.IsNullOrEmpty(opp.playerName)) return false;
+        var opp = JsonUtility.FromJson<QMPD>(json);
+        if (opp == null || string.IsNullOrEmpty(opp.playerName)) return;
         var sd = SteamDataManager.Instance;
-        if (opp.playerName == (sd?.localPlayerName ?? "玩家")) return false;
-        // Found!
-        if (_state != State.Searching) return true;
-        _state = State.Found; _countdown = 15f;
+        if (opp.playerName == (sd?.localPlayerName ?? "玩家")) return;
+        _state = State.Found; _countdown = 15f; _oppName = opp.playerName;
         if (_searchCoroutine != null) { StopCoroutine(_searchCoroutine); _searchCoroutine = null; }
         if (opponentInfoGroup) opponentInfoGroup.SetActive(true);
         if (opponentNameText) opponentNameText.text = opp.playerName;
         if (opponentStatsText) opponentStatsText.text = $"总场数：{opp.totalMatches}  胜率：{opp.winRate:F1}%  连胜数：{opp.winStreak}";
         if (acceptButton) acceptButton.gameObject.SetActive(true);
         if (declineButton) declineButton.gameObject.SetActive(true);
-        SetStatus($"等待确认（{_countdown:F0}s）");
         if (opp.steamID != 0 && opponentAvatar) LoadAvatar(opponentAvatar, opp.steamID);
-        return true;
     }
 
     // =============== Buttons ===============
@@ -138,62 +154,14 @@ public class QuickMatchPanel : MonoBehaviour
         SetStatus("已接受，等待对方确认");
     }
 
-    void OnDecline()
-    {
-        if (_state != State.Found) return;
-        SteamMatchmaking.SetLobbyData(_lobbyID, _iAmHost ? "host_ok" : "guest_ok", "0");
-        LeaveLobby(); Close();
-    }
-
-    void OnCancel()
-    {
-        if (_state == State.Found) SteamMatchmaking.SetLobbyData(_lobbyID, _iAmHost ? "host_ok" : "guest_ok", "0");
-        LeaveLobby(); Close();
-    }
-
-    // =============== Update ===============
-
-    void Update()
-    {
-        if (_lobbyID.m_SteamID == 0) return;
-
-        // Poll for opponent data during Searching (covers both host & guest)
-        if (_state == State.Searching)
-        {
-            string key = _iAmHost ? "guest_data" : "host_data";
-            TryReadOpponent(key);
-        }
-
-        // Countdown
-        if (_state == State.Found)
-        {
-            _countdown -= Time.deltaTime;
-            SetStatus($"等待确认（{_countdown:F0}s）");
-            string oppKey = _iAmHost ? "guest_ok" : "host_ok";
-            if (SteamMatchmaking.GetLobbyData(_lobbyID, oppKey) == "0") { SetStatus("对方已拒绝\n重新匹配..."); LeaveLobby(); ResetState(); StartSearch(); return; }
-            if (_countdown <= 0) { SetStatus("超时，重新匹配..."); LeaveLobby(); ResetState(); StartSearch(); }
-        }
-
-        // Check opponent declined while waiting
-        if (_state == State.WaitingOpponent)
-        {
-            string oppKey = _iAmHost ? "guest_ok" : "host_ok";
-            if (SteamMatchmaking.GetLobbyData(_lobbyID, oppKey) == "0") { SetStatus("对方已拒绝\n重新匹配..."); LeaveLobby(); ResetState(); StartSearch(); return; }
-        }
-
-        // Both accepted
-        if ((_state == State.WaitingOpponent || (_iAccepted && _state == State.Found)) && _lobbyID.m_SteamID != 0
-            && SteamMatchmaking.GetLobbyData(_lobbyID, "host_ok") == "1" && SteamMatchmaking.GetLobbyData(_lobbyID, "guest_ok") == "1")
-        {
-            SetStatus("双方已接受！"); MatchConfirmed = true;
-            LobbyConfig.FromLobby = true; LobbyConfig.IsHost = _iAmHost; LobbyConfig.IsDirectIP = false; LobbyConfig.ServerIP = "";
-            LeaveLobby(); _state = State.Idle; if (panelRoot) panelRoot.SetActive(false);
-            JoinGamePanel.Instance?.Open();
-        }
-    }
+    void OnDecline() { SetReject(); LeaveLobby(); Close(); }
+    void OnCancel() { SetReject(); LeaveLobby(); Close(); }
+    void SetReject() { if (_lobbyID.m_SteamID != 0) SteamMatchmaking.SetLobbyData(_lobbyID, _iAmHost ? "host_ok" : "guest_ok", "0"); }
 
     void LeaveLobby() { if (_lobbyID.m_SteamID != 0) { SteamMatchmaking.LeaveLobby(_lobbyID); _lobbyID = default; } DisposeCallbacks(); }
+
     void SetStatus(string msg) { Debug.Log("[QuickMatch] " + msg.Replace("\n", " ")); if (statusText) statusText.text = msg; }
+
     void OnDestroy() { DisposeCallbacks(); }
 
     static void LoadAvatar(RawImage target, ulong steamID)
@@ -202,13 +170,11 @@ public class QuickMatchPanel : MonoBehaviour
         if (ah <= 0 || !SteamUtils.GetImageSize(ah, out uint w, out uint h)) return;
         byte[] px = new byte[w * h * 4];
         if (!SteamUtils.GetImageRGBA(ah, px, (int)(w * h * 4))) return;
-        var tex = new Texture2D((int)w, (int)h, TextureFormat.RGBA32, false);
-        tex.LoadRawTextureData(px);
+        var tex = new Texture2D((int)w, (int)h, TextureFormat.RGBA32, false); tex.LoadRawTextureData(px);
         var cols = tex.GetPixels();
         for (int y = 0; y < h / 2; y++) for (int x = 0; x < w; x++) { int top = y * (int)w + x, bot = ((int)h - 1 - y) * (int)w + x; var t = cols[top]; cols[top] = cols[bot]; cols[bot] = t; }
-        tex.SetPixels(cols); tex.Apply();
-        target.texture = tex;
+        tex.SetPixels(cols); tex.Apply(); target.texture = tex;
     }
 
-    [System.Serializable] class QMPData { public string playerName; public int totalMatches; public double winRate; public int winStreak; public ulong steamID; }
+    [System.Serializable] class QMPD { public string playerName; public int totalMatches; public double winRate; public int winStreak; public ulong steamID; }
 }

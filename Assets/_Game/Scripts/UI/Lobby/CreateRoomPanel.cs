@@ -118,7 +118,19 @@ public class CreateRoomPanel : MonoBehaviour
         }
         else
         {
-            // 房主侧：客人离开
+            // 房主侧：检测客人加入 / 客人离开
+            if (!_hasGuest)
+            {
+                string guestJson = SteamMatchmaking.GetLobbyData(_lobbyID, "guest_data");
+                if (!string.IsNullOrEmpty(guestJson))
+                {
+                    FillGuestInfo(guestJson);
+                    guestInfoGroup.SetActive(true);
+                    kickButton.gameObject.SetActive(true);
+                    startGameButton.gameObject.SetActive(true);
+                    _hasGuest = true;
+                }
+            }
             if (_hasGuest && SteamMatchmaking.GetNumLobbyMembers(_lobbyID) < 2)
             {
                 _hasGuest = false; guestInfoGroup.SetActive(false);

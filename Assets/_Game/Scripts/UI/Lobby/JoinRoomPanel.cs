@@ -96,13 +96,22 @@ public class JoinRoomPanel : MonoBehaviour
         if (_foundLobbyID.m_SteamID == 0) return;
         if (SteamMatchmaking.GetNumLobbyMembers(_foundLobbyID) >= 2) { ShowStatus("该房间已满"); return; }
 
-        // Write guest data, join lobby, then hand off to CreateRoomPanel
+        panelRoot.SetActive(false);
+        StartCoroutine(JoinDelayed());
+    }
+
+    IEnumerator JoinDelayed()
+    {
+        // 先加入大厅（成为成员后才有 SetLobbyData 权限）
+        SteamMatchmaking.JoinLobby(_foundLobbyID);
+        yield return new WaitForSeconds(0.3f);
+
+        // 写入 guest data
         var sd = SteamDataManager.Instance; var d = sd?.playerData;
         var myData = new RoomPlayerData { playerName = sd?.localPlayerName ?? "玩家", totalMatches = d?.totalMatches ?? 0, winRate = sd?.WinRate ?? 0, winStreak = d?.winStreak ?? 0, steamID = sd?.localSteamID.m_SteamID ?? 0 };
         SteamMatchmaking.SetLobbyData(_foundLobbyID, "guest_data", JsonUtility.ToJson(myData));
-        SteamMatchmaking.JoinLobby(_foundLobbyID);
 
-        panelRoot.SetActive(false);
+        // 移交 CreateRoomPanel
         CreateRoomPanel.Instance?.OpenAsGuest(_foundLobbyID, _foundRoomCode);
     }
 
