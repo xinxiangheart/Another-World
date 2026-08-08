@@ -98,27 +98,29 @@ public class QuickMatchPanel : MonoBehaviour
 
     void OnLobbyCreated(LobbyCreated_t cb)
     {
+        Debug.Log($"[QM-Host] LobbyCreated result={cb.m_eResult}, state={_state}");
         if (_state != State.Searching || cb.m_eResult != EResult.k_EResultOK) return;
         _lobbyID = new CSteamID(cb.m_ulSteamIDLobby);
         SteamMatchmaking.SetLobbyData(_lobbyID, "game", "anotherworld_quick");
         WriteMyData("host_data");
+        Debug.Log($"[QM-Host] ★ 临时大厅已建 lobbyID={_lobbyID}，等待对手加入");
     }
 
     void OnLobbyEnter(LobbyEnter_t cb)
     {
+        Debug.Log($"[QM-Guest] LobbyEnter lobbyID={cb.m_ulSteamIDLobby}, state={_state}, iAmHost={_iAmHost}");
         if (_state != State.Searching || _iAmHost) return;
         _lobbyID = new CSteamID(cb.m_ulSteamIDLobby);
-        // Entered lobby — now we have write permission. Write guest_data.
-        // This triggers LobbyDataUpdate on the host side.
+        Debug.Log($"[QM-Guest] ★ 进入对方大厅 lobbyID={_lobbyID}，正在写入 guest_data...");
         WriteMyData("guest_data");
-        // Also try reading host data immediately
+        Debug.Log($"[QM-Guest] guest_data 已写入，正在读取 host_data...");
         RefreshOpponent();
     }
 
-    /// <summary>Steam notifies us that lobby data changed — refresh opponent info.</summary>
     void OnLobbyDataUpdate(LobbyDataUpdate_t cb)
     {
         if (_lobbyID.m_SteamID == 0 || cb.m_ulSteamIDLobby != _lobbyID.m_SteamID) return;
+        Debug.Log($"[QM-{(_iAmHost?"Host":"Guest")}] LobbyDataUpdate! lobbyID={_lobbyID}, state={_state}, iAmHost={_iAmHost}");
         RefreshOpponent();
     }
 
@@ -133,16 +135,25 @@ public class QuickMatchPanel : MonoBehaviour
     void RefreshOpponent()
     {
         if (_lobbyID.m_SteamID == 0) return;
-        string oppJson = _iAmHost
-            ? SteamMatchmaking.GetLobbyData(_lobbyID, "guest_data")
-            : SteamMatchmaking.GetLobbyData(_lobbyID, "host_data");
+        string oppKey = _iAmHost ? "guest_data" : "host_data";
+        string oppJson = SteamMatchmaking.GetLobbyData(_lobbyID, oppKey);
+        Debug.Log($"[QM-{(_iAmHost?"Host":"Guest")}] RefreshOpponent key={oppKey} jsonEmpty={string.IsNullOrEmpty(oppJson)} state={_state}");
         if (string.IsNullOrEmpty(oppJson)) return;
         var opp = JsonUtility.FromJson<QMPD>(oppJson);
-        if (opp == null || string.IsNullOrEmpty(opp.playerName)) return;
+        if (opp == null || string.IsNullOrEmpty(opp.playerName))
+        {
+            Debug.LogWarning($"[QM] 对手数据解析失败: json={(oppJson??"null").Substring(0,Mathf.Min(60,oppJson?.Length??0))}");
+            return;
+        }
         var sd = SteamDataManager.Instance;
-        if (opp.playerName == (sd?.localPlayerName ?? "玩家")) return;
-        if (_state == State.Found || _state == State.WaitingOpponent) return; // already showing
+        if (opp.playerName == (sd?.localPlayerName ?? "玩家"))
+        {
+            Debug.Log($"[QM] 跳过自己的数据 (name={opp.playerName})");
+            return;
+        }
+        if (_state == State.Found || _state == State.WaitingOpponent) return;
 
+        Debug.Log($"[QM] ★★★ 已找到对手: {opp.playerName} steamID={opp.steamID} matches={opp.totalMatches} ★★★");
         _state = State.Found; _countdown = 15f; _oppName = opp.playerName;
         if (opponentInfoGroup) opponentInfoGroup.SetActive(true);
         if (opponentNameText) opponentNameText.text = opp.playerName;

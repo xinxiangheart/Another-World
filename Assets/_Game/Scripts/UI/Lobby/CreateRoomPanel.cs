@@ -74,6 +74,7 @@ public class CreateRoomPanel : MonoBehaviour
         if (!SteamManager.Initialized) return;
         _amHost = false; _hasGuest = false;
         _lobbyID = lobbyID; _roomCode = roomCode;
+        Debug.Log($"[Room-Guest] ★ OpenAsGuest lobbyID={_lobbyID} roomCode={_roomCode}");
 
         panelRoot.SetActive(true);
         guestInfoGroup.SetActive(true);
@@ -98,14 +99,15 @@ public class CreateRoomPanel : MonoBehaviour
     {
         if (_lobbyID.m_SteamID == 0 || cb.m_ulSteamIDLobby != _lobbyID.m_SteamID) return;
 
-        // Poll the changed data
         string guestJson = SteamMatchmaking.GetLobbyData(_lobbyID, "guest_data");
         string hostJson = SteamMatchmaking.GetLobbyData(_lobbyID, "host_data");
+        Debug.Log($"[Room-{(_amHost?"Host":"Guest")}] LobbyDataUpdate! hasGuest={_hasGuest} guestJson={(string.IsNullOrEmpty(guestJson)?"empty":"SET")} hostJson={(string.IsNullOrEmpty(hostJson)?"empty":"SET")}");
 
         if (_amHost)
         {
             if (!string.IsNullOrEmpty(guestJson) && !_hasGuest)
             {
+                Debug.Log($"[Room-Host] ★★★ 玩家加入房间！guestLen={guestJson.Length} ★★★");
                 FillGuestInfo(guestJson);
                 guestInfoGroup.SetActive(true);
                 kickButton.gameObject.SetActive(true);
@@ -115,7 +117,11 @@ public class CreateRoomPanel : MonoBehaviour
         }
         else
         {
-            if (!string.IsNullOrEmpty(hostJson)) FillHostInfo(hostJson);
+            if (!string.IsNullOrEmpty(hostJson))
+            {
+                Debug.Log($"[Room-Guest] ★ 读取到房主信息");
+                FillHostInfo(hostJson);
+            }
         }
     }
 
@@ -123,8 +129,13 @@ public class CreateRoomPanel : MonoBehaviour
     {
         if (_lobbyID.m_SteamID == 0) return;
         var sd = SteamDataManager.Instance; var d = sd?.playerData;
+        var name = sd?.localPlayerName ?? "玩家";
         SteamMatchmaking.SetLobbyData(_lobbyID, key,
-            JsonUtility.ToJson(new RPD { playerName = sd?.localPlayerName ?? "玩家", totalMatches = d?.totalMatches ?? 0, winRate = sd?.WinRate ?? 0, winStreak = d?.winStreak ?? 0, steamID = sd?.localSteamID.m_SteamID ?? 0 }));
+            JsonUtility.ToJson(new RPD { playerName = name, totalMatches = d?.totalMatches ?? 0, winRate = sd?.WinRate ?? 0, winStreak = d?.winStreak ?? 0, steamID = sd?.localSteamID.m_SteamID ?? 0 }));
+        if (key == "guest_data")
+            Debug.Log($"[Room-Guest] write guest_data name={name} steamID={sd?.localSteamID.m_SteamID} lobbyID={_lobbyID}");
+        else if (key == "host_data")
+            Debug.Log($"[Room-Host] write host_data name={name} lobbyID={_lobbyID}");
     }
 
     // ======== Update ========
