@@ -23,6 +23,7 @@ public class QuickMatchPanel : MonoBehaviour
     bool _iAccepted, _iAmHost;
     string _oppName;
     CSteamID _lobbyID;
+    Coroutine _searchCoroutine;
 
     Callback<LobbyMatchList_t> _listCB;
     Callback<LobbyCreated_t> _createdCB;
@@ -58,7 +59,7 @@ public class QuickMatchPanel : MonoBehaviour
         _state = State.Searching; _iAmHost = false; _lobbyID = default;
         RegisterCallbacks();
         SetStatus("匹配中...");
-        StartCoroutine(SearchRoutine());
+        _searchCoroutine = StartCoroutine(SearchRoutine());
     }
 
     IEnumerator SearchRoutine()
