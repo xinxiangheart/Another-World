@@ -60,7 +60,7 @@ public class LobbyManager : MonoBehaviour
 
     public void CreateRoom()
     {
-        CreateRoomPanel.Instance?.Open();
+        CreateRoomPanel.Instance?.OpenAsHost();
     }
 
     public void JoinRoom()
