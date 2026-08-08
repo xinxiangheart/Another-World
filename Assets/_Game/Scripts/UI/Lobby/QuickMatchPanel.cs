@@ -20,7 +20,7 @@ public class QuickMatchPanel : MonoBehaviour
     enum State { Idle, Searching, Found, WaitingOpponent }
     State _state;
     float _countdown;
-    bool _iAccepted, _iAmHost;
+    bool _iAccepted, _iAmHost, _joining;
     string _oppName;
     CSteamID _lobbyID;
     Coroutine _searchCoroutine;
@@ -45,7 +45,7 @@ public class QuickMatchPanel : MonoBehaviour
 
     void ResetState()
     {
-        _state = State.Idle; _countdown = 15f; _iAccepted = false; _iAmHost = false; _oppName = "";
+        _state = State.Idle; _countdown = 15f; _iAccepted = false; _iAmHost = false; _joining = false; _oppName = "";
         if (opponentInfoGroup) opponentInfoGroup.SetActive(false);
         if (acceptButton) { acceptButton.gameObject.SetActive(false); acceptButton.interactable = true; }
         if (declineButton) { declineButton.gameObject.SetActive(false); declineButton.interactable = true; }
@@ -67,12 +67,14 @@ public class QuickMatchPanel : MonoBehaviour
         for (int i = 0; i < 10 && _state == State.Searching && !_iAmHost; i++)
         {
             yield return new WaitForSeconds(0.5f);
-            if (_lobbyID.m_SteamID != 0) yield break;
+            // 已经找到大厅正在加入中，停止搜索
+            if (_joining || _lobbyID.m_SteamID != 0) yield break;
             SteamMatchmaking.AddRequestLobbyListStringFilter("game", "anotherworld_quick", ELobbyComparison.k_ELobbyComparisonEqual);
             SteamMatchmaking.AddRequestLobbyListResultCountFilter(1);
             SteamMatchmaking.RequestLobbyList();
         }
-        if (_state != State.Searching || _lobbyID.m_SteamID != 0) yield break;
+        // 超时且没加入别人大厅 → 自建
+        if (_state != State.Searching || _joining || _lobbyID.m_SteamID != 0) yield break;
         _iAmHost = true;
         SetStatus("匹配中...");
         SteamMatchmaking.CreateLobby(ELobbyType.k_ELobbyTypePublic, 2);
@@ -93,7 +95,8 @@ public class QuickMatchPanel : MonoBehaviour
     void OnLobbyList(LobbyMatchList_t cb)
     {
         if (_state != State.Searching || cb.m_nLobbiesMatching == 0) return;
-        // 找到大厅 → 立即停协程（防止超时设 _iAmHost=true）+ 标记为非 Host
+        // 找到大厅 → 标为正在加入 + 立即停协程 + 重置 Host 标志
+        _joining = true;
         if (_searchCoroutine != null) { StopCoroutine(_searchCoroutine); _searchCoroutine = null; }
         _iAmHost = false;
         _lobbyID = SteamMatchmaking.GetLobbyByIndex(0);
@@ -117,9 +120,8 @@ public class QuickMatchPanel : MonoBehaviour
     {
         Debug.Log($"[QM] OnLobbyEnter lobbyID={cb.m_ulSteamIDLobby}, state={_state}, iAmHost={_iAmHost}");
         if (_state != State.Searching) return;
-        // 如果已经加入了别人大厅，_iAmHost 已被 OnLobbyList 重置为 false
-        // 这里不再用 _iAmHost 做判断——由上面 StopCoroutine 保证不会同时是 Guest+Host
         _lobbyID = new CSteamID(cb.m_ulSteamIDLobby);
+        _joining = false;
         if (_iAmHost) { Debug.Log($"[QM-Host] 有人加入我的大厅 lobbyID={_lobbyID}"); return; }
         Debug.Log($"[QM-Guest] ★ 进入对方大厅 lobbyID={_lobbyID}，正在写入 guest_data...");
         WriteMyData("guest_data");
@@ -223,7 +225,7 @@ public class QuickMatchPanel : MonoBehaviour
     void OnCancel() { SetReject(); LeaveLobby(); Close(); }
     void SetReject() { if (_lobbyID.m_SteamID != 0) SteamMatchmaking.SetLobbyData(_lobbyID, _iAmHost ? "host_ok" : "guest_ok", "0"); }
 
-    void LeaveLobby() { if (_lobbyID.m_SteamID != 0) { SteamMatchmaking.LeaveLobby(_lobbyID); _lobbyID = default; } DisposeCallbacks(); }
+    void LeaveLobby() { _joining = false; if (_lobbyID.m_SteamID != 0) { SteamMatchmaking.LeaveLobby(_lobbyID); _lobbyID = default; } DisposeCallbacks(); }
 
     void SetStatus(string msg) { Debug.Log("[QuickMatch] " + msg.Replace("\n", " ")); if (statusText) statusText.text = msg; }
     void OnDestroy() { DisposeCallbacks(); }
