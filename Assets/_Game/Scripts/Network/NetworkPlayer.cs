@@ -24,6 +24,9 @@ public class NetworkPlayer : NetworkBehaviour
     [SyncVar(hook = nameof(OnHandCountChanged))]
     public int handCardCount;
 
+    [SyncVar(hook = nameof(OnPlayerNameChanged))]
+    public string playerName = "";
+
     /// <summary>01534 活化母巢累计受伤——跨退场/回手永久保留，不退场不清零。</summary>
     public int outlawNestTotalDamage;
 
@@ -123,6 +126,23 @@ public class NetworkPlayer : NetworkBehaviour
         }
         RefreshUI();
         StartHeartbeat();
+
+        // 同步 Steam 名字到服务器
+        if (SteamDataManager.Instance != null)
+            CmdSetPlayerName(SteamDataManager.Instance.localPlayerName);
+    }
+
+    [Command]
+    void CmdSetPlayerName(string name)
+    {
+        playerName = name;
+    }
+
+    void OnPlayerNameChanged(string oldName, string newName)
+    {
+        // 对方名字变了 → 存到 SteamDataManager
+        if (!isLocalPlayer && !string.IsNullOrEmpty(newName))
+            SteamDataManager.Instance?.SetOpponentName(newName);
     }
 
     public override void OnStartServer()
@@ -1909,14 +1929,9 @@ public class NetworkPlayer : NetworkBehaviour
     {
         Debug.Log($"[NetworkPlayer] CmdSurrender from netId={netId}");
 
-        // Tell the other player to return to lobby
-        NetworkPlayer other = this == Local ? Remote : Local;
-        if (other != null)
-            TargetSurrender(other.connectionToClient);
-
-        // Each side already handles its own lobby return:
-        // - Surrendering player: Surrender() starts DoReturnToLobby after sending CmdSurrender
-        // - Other player: TargetSurrender triggers OnOpponentSurrendered()
+        // 将投降方直接击杀 → OnHealthChanged → GameEndPanel
+        currentHealth = 0; // SyncVar 自动同步到双方
+        Debug.Log("[NetworkPlayer] CmdSurrender — health set to 0");
     }
 
     [TargetRpc]

@@ -58,34 +58,23 @@ public class SettingsButton : MonoBehaviour, IPointerEnterHandler, IPointerExitH
 
         if (NetworkClient.isConnected)
         {
+            // 服务端将投降方血量归零 → OnHealthChanged → GameEndPanel
             NetworkPlayer.Local?.CmdSurrender();
-            StartCoroutine(DoReturnToLobby());
         }
         else
         {
-            // Offline: just go back to lobby
-            StartCoroutine(DoReturnToLobby());
+            // 离线模式：直接触发GameEndPanel
+            GameEndPanel.Instance?.OnPlayerDied(true);
         }
+
+        if (settingsPanel != null) settingsPanel.SetActive(false);
+        _panelOpen = false;
     }
 
-    System.Collections.IEnumerator DoReturnToLobby()
-    {
-        yield return new WaitForSeconds(1.5f);
-        var nm = FindObjectOfType<Mirror.NetworkManager>();
-        if (NetworkServer.active)
-            nm?.StopHost();
-        else if (NetworkClient.isConnected)
-            nm?.StopClient();
-        if (nm != null) Destroy(nm.gameObject);
-        SceneManager.LoadScene("Lobby");
-    }
-
-    // Called by server when the OTHER player surrenders
+    // 对方投降时由 GameEndPanel 统一处理，此方法删除
     public void OnOpponentSurrendered()
     {
-        if (_surrendering) return;
-        _surrendering = true;
-        Debug.Log("[SettingsButton] Opponent surrendered — returning to lobby");
-        StartCoroutine(DoReturnToLobby());
+        // No-op — 对方血量降到0时 OnHealthChanged → GameEndPanel.OnPlayerDied(false)
+        Debug.Log("[SettingsButton] OnOpponentSurrendered — handled by GameEndPanel");
     }
 }

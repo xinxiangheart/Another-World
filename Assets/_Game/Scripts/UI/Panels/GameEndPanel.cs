@@ -78,6 +78,12 @@ public class GameEndPanel : MonoBehaviour
             resultText.text = isLocalPlayer ? "你输了！" : "你赢了！";
 
         Debug.Log($"[GameEndPanel] Game over, isLocal={isLocalPlayer}");
+
+        // 记录胜/负
+        if (isLocalPlayer)
+            SteamDataManager.Instance?.RecordLoss();
+        else
+            SteamDataManager.Instance?.RecordWin();
     }
 
     void ReturnToLobby()

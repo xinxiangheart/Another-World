@@ -32,6 +32,16 @@ public class LobbyManager : MonoBehaviour
 
     private GameIntroPanel _gameIntro;
 
+    void Awake()
+    {
+        // 确保 SteamDataManager 存在
+        if (SteamDataManager.Instance == null)
+        {
+            var go = new GameObject("SteamDataManager");
+            go.AddComponent<SteamDataManager>();
+        }
+    }
+
     void Start()
     {
         if (createRoomButton != null) createRoomButton.onClick.AddListener(CreateRoom);
