@@ -1,6 +1,5 @@
 using System;
 using System.Collections;
-using System.Diagnostics;
 using System.IO;
 using UnityEngine;
 using UnityEngine.Networking;
@@ -28,6 +27,9 @@ public class UpdateManager : MonoBehaviour
     public Button updateButton;
     public TMP_Text updateButtonText;
     public TMP_Text downloadStatusText;
+    [Tooltip("\"手动下载\"按钮，点击跳转浏览器到 GitHub Releases")]
+    public Button manualDownloadButton;
+    public TMP_Text manualDownloadButtonText;
 
     private string _latestTag;
     private string _downloadUrl;
@@ -50,9 +52,18 @@ public class UpdateManager : MonoBehaviour
     {
         if (versionText != null) versionText.text = $"当前版本：{currentVersion}";
         if (updateButton != null) updateButton.gameObject.SetActive(false);
+        if (manualDownloadButton != null) manualDownloadButton.gameObject.SetActive(false);
         if (downloadStatusText != null) downloadStatusText.gameObject.SetActive(false);
         if (updateButton != null) updateButton.onClick.AddListener(OnUpdateClicked);
+        if (manualDownloadButton != null) manualDownloadButton.onClick.AddListener(OpenManualDownload);
         StartCoroutine(CheckForUpdates());
+    }
+
+    void OpenManualDownload()
+    {
+        string url = $"https://github.com/{repoOwner}/{repoName}/releases/tag/{_latestTag}";
+        Application.OpenURL(url);
+        Debug.Log($"[UpdateManager] 打开浏览器: {url}");
     }
 
     // ==================== 版本检测 ====================
@@ -106,7 +117,9 @@ public class UpdateManager : MonoBehaviour
             SetStatus($"最新版本：{_latestTag}");
 
             if (updateButton != null) updateButton.gameObject.SetActive(true);
-            if (updateButtonText != null) updateButtonText.text = "有新版本，点此更新";
+            if (updateButtonText != null) updateButtonText.text = "自动更新";
+            if (manualDownloadButton != null) manualDownloadButton.gameObject.SetActive(true);
+            if (manualDownloadButtonText != null) manualDownloadButtonText.text = "手动下载";
         }
     }
 
@@ -184,7 +197,7 @@ Start-Process '{Path.Combine(gameDir, exeName).Replace("'", "''")}'
 
         File.WriteAllText(ps1Path, script, System.Text.Encoding.UTF8);
 
-        Process.Start(new ProcessStartInfo
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
         {
             FileName = "powershell.exe",
             Arguments = $"-ExecutionPolicy Bypass -WindowStyle Hidden -File \"{ps1Path}\"",
