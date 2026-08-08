@@ -17,6 +17,7 @@ public static class LobbyConfig
 public class LobbyManager : MonoBehaviour
 {
     [Header("Buttons")]
+    public Button quickMatchButton;
     public Button createRoomButton;
     public Button joinRoomButton;
     public Button viewCardsButton;
@@ -44,6 +45,7 @@ public class LobbyManager : MonoBehaviour
 
     void Start()
     {
+        if (quickMatchButton != null) quickMatchButton.onClick.AddListener(() => QuickMatchPanel.Instance?.Open());
         if (createRoomButton != null) createRoomButton.onClick.AddListener(CreateRoom);
         if (joinRoomButton != null) joinRoomButton.onClick.AddListener(JoinRoom);
         if (viewCardsButton != null) viewCardsButton.onClick.AddListener(() => SetStatus("卡牌浏览功能开发中"));
@@ -58,37 +60,12 @@ public class LobbyManager : MonoBehaviour
 
     public void CreateRoom()
     {
-        LobbyConfig.FromLobby = true;
-        LobbyConfig.IsHost = true;
-        ApplyIP();
-        SetStatus(LobbyConfig.IsDirectIP
-            ? "正在创建本地房间..."
-            : "正在创建 Steam 大厅...");
-        SceneManager.LoadScene("Game");
+        CreateRoomPanel.Instance?.Open();
     }
 
     public void JoinRoom()
     {
-        LobbyConfig.FromLobby = true;
-        LobbyConfig.IsHost = false;
-        ApplyIP();
-        SetStatus(LobbyConfig.IsDirectIP
-            ? "正在连接 " + LobbyConfig.ServerIP + " ..."
-            : "正在搜索 Steam 大厅...");
-        SceneManager.LoadScene("Game");
-    }
-
-    void ApplyIP()
-    {
-        if (ipInputField != null && !string.IsNullOrEmpty(ipInputField.text.Trim()))
-        {
-            LobbyConfig.IsDirectIP = true;
-            LobbyConfig.ServerIP = ipInputField.text.Trim();
-        }
-        else
-        {
-            LobbyConfig.IsDirectIP = false;
-        }
+        JoinRoomPanel.Instance?.Open();
     }
 
     public void ReturnToWelcome()
