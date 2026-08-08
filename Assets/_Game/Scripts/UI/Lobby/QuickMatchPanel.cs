@@ -91,14 +91,20 @@ public class QuickMatchPanel : MonoBehaviour
 
     void OnLobbyList(LobbyMatchList_t cb)
     {
-        if (_state != State.Searching || _iAmHost || cb.m_nLobbiesMatching == 0) return;
+        if (_state != State.Searching || cb.m_nLobbiesMatching == 0) return;
+        // 找到大厅 → 立即停协程（防止超时设 _iAmHost=true）+ 标记为非 Host
+        if (_searchCoroutine != null) { StopCoroutine(_searchCoroutine); _searchCoroutine = null; }
+        _iAmHost = false;
         _lobbyID = SteamMatchmaking.GetLobbyByIndex(0);
+        Debug.Log($"[QM] OnLobbyList: 找到大厅 {_lobbyID}，正在加入...");
         SteamMatchmaking.JoinLobby(_lobbyID);
     }
 
     void OnLobbyCreated(LobbyCreated_t cb)
     {
-        Debug.Log($"[QM-Host] LobbyCreated result={cb.m_eResult}, state={_state}");
+        Debug.Log($"[QM-Host] LobbyCreated result={cb.m_eResult}, state={_state}, iAmHost={_iAmHost}");
+        // 如果已经加入别人大厅（_iAmHost 被 OnLobbyList 重置），销毁自己建的这个废弃大厅
+        if (!_iAmHost) { SteamMatchmaking.LeaveLobby(new CSteamID(cb.m_ulSteamIDLobby)); return; }
         if (_state != State.Searching || cb.m_eResult != EResult.k_EResultOK) return;
         _lobbyID = new CSteamID(cb.m_ulSteamIDLobby);
         SteamMatchmaking.SetLobbyData(_lobbyID, "game", "anotherworld_quick");
@@ -108,9 +114,12 @@ public class QuickMatchPanel : MonoBehaviour
 
     void OnLobbyEnter(LobbyEnter_t cb)
     {
-        Debug.Log($"[QM-Guest] LobbyEnter lobbyID={cb.m_ulSteamIDLobby}, state={_state}, iAmHost={_iAmHost}");
-        if (_state != State.Searching || _iAmHost) return;
+        Debug.Log($"[QM] OnLobbyEnter lobbyID={cb.m_ulSteamIDLobby}, state={_state}, iAmHost={_iAmHost}");
+        if (_state != State.Searching) return;
+        // 如果已经加入了别人大厅，_iAmHost 已被 OnLobbyList 重置为 false
+        // 这里不再用 _iAmHost 做判断——由上面 StopCoroutine 保证不会同时是 Guest+Host
         _lobbyID = new CSteamID(cb.m_ulSteamIDLobby);
+        if (_iAmHost) { Debug.Log($"[QM-Host] 有人加入我的大厅 lobbyID={_lobbyID}"); return; }
         Debug.Log($"[QM-Guest] ★ 进入对方大厅 lobbyID={_lobbyID}，正在写入 guest_data...");
         WriteMyData("guest_data");
         Debug.Log($"[QM-Guest] guest_data 已写入，正在读取 host_data...");
