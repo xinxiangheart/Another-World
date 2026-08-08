@@ -16,10 +16,11 @@ public class JoinRoomPanel : MonoBehaviour
     [Header("提示")] public TMP_Text statusText;
     [Header("按钮")] public Button joinButton, cancelButton;
 
-    private bool _searching;
+    private bool _searching, _joined;
     private CSteamID _foundLobbyID;
     private string _foundRoomCode;
     private Callback<LobbyMatchList_t> _lobbyListCB;
+    private Callback<LobbyEnter_t> _enterCB;
 
     void Awake()
     {
@@ -56,7 +57,7 @@ public class JoinRoomPanel : MonoBehaviour
         joinButton.gameObject.SetActive(false);
         statusText.gameObject.SetActive(false);
 
-        DisposeCallbacks();
+        _lobbyListCB?.Dispose();
         _lobbyListCB = Callback<LobbyMatchList_t>.Create(OnLobbyList);
         SteamMatchmaking.AddRequestLobbyListStringFilter("room_code", value, ELobbyComparison.k_ELobbyComparisonEqual);
         SteamMatchmaking.RequestLobbyList();
@@ -96,32 +97,40 @@ public class JoinRoomPanel : MonoBehaviour
         if (_foundLobbyID.m_SteamID == 0) return;
         if (SteamMatchmaking.GetNumLobbyMembers(_foundLobbyID) >= 2) { ShowStatus("该房间已满"); return; }
 
-        // 隐藏输入/按钮，防止重复点击
         if (joinButton) joinButton.gameObject.SetActive(false);
         ShowStatus("正在加入...");
+        _joined = false;
 
-        // 先加入大厅，写数据，再移交面板（最后才关自己）
+        // 注册 LobbyEnter 回调 —— 进入大厅后写数据 + 移交面板
+        _enterCB?.Dispose();
+        _enterCB = Callback<LobbyEnter_t>.Create(cb =>
+        {
+            if (_joined) return;
+            _joined = true;
+            _foundLobbyID = new CSteamID(cb.m_ulSteamIDLobby);
+
+            var sd = SteamDataManager.Instance; var d = sd?.playerData;
+            var myData = new RoomPlayerData { playerName = sd?.localPlayerName ?? "玩家", totalMatches = d?.totalMatches ?? 0, winRate = sd?.WinRate ?? 0, winStreak = d?.winStreak ?? 0, steamID = sd?.localSteamID.m_SteamID ?? 0 };
+            SteamMatchmaking.SetLobbyData(_foundLobbyID, "guest_data", JsonUtility.ToJson(myData));
+
+            panelRoot.SetActive(false);
+            CreateRoomPanel.Instance?.OpenAsGuest(_foundLobbyID, _foundRoomCode);
+        });
+
         SteamMatchmaking.JoinLobby(_foundLobbyID);
-        StartCoroutine(JoinDelayed());
+
+        // 超时兜底（10 秒后如果还没回调，也移交）
+        StartCoroutine(JoinTimeout());
     }
 
-    IEnumerator JoinDelayed()
+    IEnumerator JoinTimeout()
     {
-        // Wait for lobby entry to complete (poll member count)
-        float waited = 0;
-        while (waited < 3f && SteamMatchmaking.GetNumLobbyMembers(_foundLobbyID) < 1)
+        yield return new WaitForSeconds(10f);
+        if (!_joined)
         {
-            yield return new WaitForSeconds(0.5f);
-            waited += 0.5f;
+            _joined = true;
+            ShowStatus("加入失败，请检查房间号");
         }
-
-        // Try writing guest data (CreateRoomPanel will retry if first write fails)
-        var sd = SteamDataManager.Instance; var d = sd?.playerData;
-        var myData = new RoomPlayerData { playerName = sd?.localPlayerName ?? "玩家", totalMatches = d?.totalMatches ?? 0, winRate = sd?.WinRate ?? 0, winStreak = d?.winStreak ?? 0, steamID = sd?.localSteamID.m_SteamID ?? 0 };
-        SteamMatchmaking.SetLobbyData(_foundLobbyID, "guest_data", JsonUtility.ToJson(myData));
-
-        panelRoot.SetActive(false);
-        CreateRoomPanel.Instance?.OpenAsGuest(_foundLobbyID, _foundRoomCode);
     }
 
     static void LoadAvatar(RawImage target, ulong steamID)
@@ -136,8 +145,7 @@ public class JoinRoomPanel : MonoBehaviour
         tex.SetPixels(cols); tex.Apply(); target.texture = tex;
     }
 
-    void OnDestroy() { DisposeCallbacks(); }
-    void DisposeCallbacks() { _lobbyListCB?.Dispose(); }
+    void OnDestroy() { _lobbyListCB?.Dispose(); _enterCB?.Dispose(); }
 
     [System.Serializable] class RoomPlayerData { public string playerName; public int totalMatches; public double winRate; public int winStreak; public ulong steamID; }
 }
