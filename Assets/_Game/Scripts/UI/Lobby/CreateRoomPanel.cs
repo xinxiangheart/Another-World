@@ -22,7 +22,6 @@ public class CreateRoomPanel : MonoBehaviour
     private Callback<LobbyDataUpdate_t> _lobbyDataCB;
     private bool _hasGuest;
     private string _roomCode;
-    private string _hostJsonCache, _guestJsonCache;
 
     void Awake()
     {
@@ -40,7 +39,7 @@ public class CreateRoomPanel : MonoBehaviour
     public void OpenAsHost()
     {
         if (!SteamManager.Initialized) return;
-        _amHost = true; _hasGuest = false; _hostJsonCache = null; _guestJsonCache = null;
+        _amHost = true; _hasGuest = false;
         _roomCode = Random.Range(100000, 999999).ToString();
 
         panelRoot.SetActive(true);
@@ -60,7 +59,7 @@ public class CreateRoomPanel : MonoBehaviour
     public void OpenAsGuest(CSteamID lobbyID, string roomCode)
     {
         if (!SteamManager.Initialized) return;
-        _amHost = false; _hasGuest = true; _hostJsonCache = null; _guestJsonCache = null;
+        _amHost = false; _hasGuest = true;
         _lobbyID = lobbyID; _roomCode = roomCode;
 
         panelRoot.SetActive(true);
@@ -73,9 +72,9 @@ public class CreateRoomPanel : MonoBehaviour
         RegisterCallbacks();
         FillMyInfo(guestAvatar, guestNameText, guestStatsText);
 
-        // Poll host data — 已在 OnLobbyEnter 写过 guest_data
-        _hostJsonCache = SteamMatchmaking.GetLobbyData(_lobbyID, "host_data");
-        if (!string.IsNullOrEmpty(_hostJsonCache)) FillHostInfo(_hostJsonCache);
+        // 初始化显示房主信息
+        string hostData = SteamMatchmaking.GetLobbyData(_lobbyID, "host_data");
+        if (!string.IsNullOrEmpty(hostData)) FillHostInfo(hostData);
     }
 
     // ============== Steam ==============
