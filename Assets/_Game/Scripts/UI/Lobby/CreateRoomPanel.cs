@@ -21,7 +21,6 @@ public class CreateRoomPanel : MonoBehaviour
     string _roomCode;
     float _writeTimer;
     Callback<LobbyCreated_t> _lcb;
-    Callback<LobbyDataUpdate_t> _dataCB;
 
     void Awake()
     {
@@ -61,41 +60,22 @@ public class CreateRoomPanel : MonoBehaviour
             WriteMyData("host_data");
         });
 
-        _dataCB?.Dispose();
-        _dataCB = Callback<LobbyDataUpdate_t>.Create(OnDataUpdated);
-
         SteamMatchmaking.CreateLobby(ELobbyType.k_ELobbyTypePublic, 2);
-        StartCoroutine(PollForGuest());
-    }
-
-    System.Collections.IEnumerator PollForGuest()
-    {
-        for (int i = 0; i < 40; i++)
-        {
-            yield return new WaitForSeconds(0.5f);
-            if (_hasGuest || _lobbyID.m_SteamID == 0) yield break;
-            string guestJson = SteamMatchmaking.GetLobbyData(_lobbyID, "guest_data");
-            if (!string.IsNullOrEmpty(guestJson))
-            {
-                Debug.Log($"[Room-Host] PollForGuest: ★★★ found guest_data round {i} ★★★");
-                FillGuestInfo(guestJson);
-                guestInfoGroup.SetActive(true);
-                kickButton.gameObject.SetActive(true);
-                startGameButton.gameObject.SetActive(true);
-                _hasGuest = true;
-                yield break;
-            }
-        }
     }
 
     // ======== 客人入口 ========
 
+    string MakeMyJson()
+    {
+        var sd = SteamDataManager.Instance; var d = sd?.playerData;
+        return JsonUtility.ToJson(new RPD { playerName = sd?.localPlayerName ?? "玩家", totalMatches = d?.totalMatches ?? 0, winRate = sd?.WinRate ?? 0, winStreak = d?.winStreak ?? 0, steamID = sd?.localSteamID.m_SteamID ?? 0 });
+    }
+
     public void OpenAsGuest(CSteamID lobbyID, string roomCode)
     {
         if (!SteamManager.Initialized) return;
-        _amHost = false; _hasGuest = false;
+        _amHost = false; _hasGuest = false; _writeTimer = 0;
         _lobbyID = lobbyID; _roomCode = roomCode;
-        Debug.Log($"[Room-Guest] ★ OpenAsGuest lobbyID={_lobbyID} roomCode={_roomCode}");
 
         panelRoot.SetActive(true);
         guestInfoGroup.SetActive(true);
@@ -106,71 +86,29 @@ public class CreateRoomPanel : MonoBehaviour
 
         FillMyInfo(guestAvatar, guestNameText, guestStatsText);
 
-        _dataCB?.Dispose();
-        _dataCB = Callback<LobbyDataUpdate_t>.Create(OnDataUpdated);
-
-        // 立即写入 guest_data + 启动快速重试（0.3s×3次）确保 Host 收到推送
-        WriteMyData("guest_data");
+        // Guest writes via SetLobbyMemberData (only non-owner API that works)
+        Debug.Log($"[Room-Guest] ★ SetLobbyMemberData to lobbyID={_lobbyID}");
+        SteamMatchmaking.SetLobbyMemberData(_lobbyID, "player_data", MakeMyJson());
         StartCoroutine(RetryWriteGuest());
 
-        // Read host data immediately (host already wrote it)
         string hostData = SteamMatchmaking.GetLobbyData(_lobbyID, "host_data");
         if (!string.IsNullOrEmpty(hostData)) FillHostInfo(hostData);
     }
 
-    // ======== Steam: the ONLY data refresh entry ========
-
-    void OnDataUpdated(LobbyDataUpdate_t cb)
-    {
-        if (_lobbyID.m_SteamID == 0 || cb.m_ulSteamIDLobby != _lobbyID.m_SteamID) return;
-
-        string guestJson = SteamMatchmaking.GetLobbyData(_lobbyID, "guest_data");
-        string hostJson = SteamMatchmaking.GetLobbyData(_lobbyID, "host_data");
-        Debug.Log($"[Room-{(_amHost?"Host":"Guest")}] LobbyDataUpdate! hasGuest={_hasGuest} guestJson={(string.IsNullOrEmpty(guestJson)?"empty":"SET")} hostJson={(string.IsNullOrEmpty(hostJson)?"empty":"SET")}");
-
-        if (_amHost)
-        {
-            if (!string.IsNullOrEmpty(guestJson) && !_hasGuest)
-            {
-                Debug.Log($"[Room-Host] ★★★ 玩家加入房间！guestLen={guestJson.Length} ★★★");
-                FillGuestInfo(guestJson);
-                guestInfoGroup.SetActive(true);
-                kickButton.gameObject.SetActive(true);
-                startGameButton.gameObject.SetActive(true);
-                _hasGuest = true;
-            }
-        }
-        else
-        {
-            if (!string.IsNullOrEmpty(hostJson))
-            {
-                Debug.Log($"[Room-Guest] ★ 读取到房主信息");
-                FillHostInfo(hostJson);
-            }
-        }
-    }
-
     System.Collections.IEnumerator RetryWriteGuest()
     {
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < 5; i++)
         {
-            yield return new WaitForSeconds(0.3f);
+            yield return new WaitForSeconds(0.8f);
             if (_lobbyID.m_SteamID == 0 || _amHost) yield break;
-            WriteMyData("guest_data");
+            SteamMatchmaking.SetLobbyMemberData(_lobbyID, "player_data", MakeMyJson());
         }
     }
 
     void WriteMyData(string key)
     {
         if (_lobbyID.m_SteamID == 0) return;
-        var sd = SteamDataManager.Instance; var d = sd?.playerData;
-        var name = sd?.localPlayerName ?? "玩家";
-        SteamMatchmaking.SetLobbyData(_lobbyID, key,
-            JsonUtility.ToJson(new RPD { playerName = name, totalMatches = d?.totalMatches ?? 0, winRate = sd?.WinRate ?? 0, winStreak = d?.winStreak ?? 0, steamID = sd?.localSteamID.m_SteamID ?? 0 }));
-        if (key == "guest_data")
-            Debug.Log($"[Room-Guest] write guest_data name={name} steamID={sd?.localSteamID.m_SteamID} lobbyID={_lobbyID}");
-        else if (key == "host_data")
-            Debug.Log($"[Room-Host] write host_data name={name} lobbyID={_lobbyID}");
+        SteamMatchmaking.SetLobbyData(_lobbyID, key, MakeMyJson());
     }
 
     // ======== Update ========
@@ -179,19 +117,14 @@ public class CreateRoomPanel : MonoBehaviour
     {
         if (_lobbyID.m_SteamID == 0) return;
 
-        // Guest: write data + check start/kick/disconnect
         if (!_amHost)
         {
-            // 高频写入（0.4s 一次，确保 Host 能收到）
+            // Guest: keep writing member data + check start/kick/disconnect
             _writeTimer += Time.deltaTime;
-            if (_writeTimer > 0.4f) { _writeTimer = 0; WriteMyData("guest_data"); }
+            if (_writeTimer > 0.5f) { _writeTimer = 0; SteamMatchmaking.SetLobbyMemberData(_lobbyID, "player_data", MakeMyJson()); }
 
-            // 主动读房主信息（LobbyDataUpdate 回调不靠谱时兜底）
-            if (!_hasGuest)
-            {
-                string hostJson = SteamMatchmaking.GetLobbyData(_lobbyID, "host_data");
-                if (!string.IsNullOrEmpty(hostJson)) FillHostInfo(hostJson);
-            }
+            string hostJson = SteamMatchmaking.GetLobbyData(_lobbyID, "host_data");
+            if (!string.IsNullOrEmpty(hostJson)) FillHostInfo(hostJson);
 
             if (SteamMatchmaking.GetLobbyData(_lobbyID, "kicked") == "1") { LeaveRoom(); return; }
             if (SteamMatchmaking.GetNumLobbyMembers(_lobbyID) < 2) { LeaveRoom(); return; }
@@ -202,32 +135,36 @@ public class CreateRoomPanel : MonoBehaviour
                 panelRoot.SetActive(false); JoinGamePanel.Instance?.Open();
             }
         }
-        // Host: poll for guest data every 0.4s (LobbyDataUpdate fallback)
         else if (!_hasGuest)
         {
+            // Host: read guest's SetLobbyMemberData
             _writeTimer += Time.deltaTime;
-            if (_writeTimer > 0.4f)
+            if (_writeTimer > 0.5f)
             {
                 _writeTimer = 0;
-                string guestJson = SteamMatchmaking.GetLobbyData(_lobbyID, "guest_data");
-                Debug.Log($"[Room-Host] Poll guest_data: {(string.IsNullOrEmpty(guestJson)?"empty":"SET")}");
-                if (!string.IsNullOrEmpty(guestJson))
+                int count = SteamMatchmaking.GetNumLobbyMembers(_lobbyID);
+                for (int i = 0; i < count; i++)
                 {
-                    Debug.Log($"[Room-Host] ★★★ 玩家加入房间！guestLen={guestJson.Length} ★★★");
-                    FillGuestInfo(guestJson);
-                    guestInfoGroup.SetActive(true);
-                    kickButton.gameObject.SetActive(true);
-                    startGameButton.gameObject.SetActive(true);
-                    _hasGuest = true;
+                    CSteamID member = SteamMatchmaking.GetLobbyMemberByIndex(_lobbyID, i);
+                    if (member == SteamUser.GetSteamID()) continue;
+                    string guestJson = SteamMatchmaking.GetLobbyMemberData(_lobbyID, member, "player_data");
+                    if (!string.IsNullOrEmpty(guestJson))
+                    {
+                        Debug.Log($"[Room-Host] ★★★ 玩家加入房间！ ★★★");
+                        FillGuestInfo(guestJson);
+                        guestInfoGroup.SetActive(true);
+                        kickButton.gameObject.SetActive(true);
+                        startGameButton.gameObject.SetActive(true);
+                        _hasGuest = true;
+                        break;
+                    }
                 }
             }
         }
-        // Host: guest left
         else if (_hasGuest && SteamMatchmaking.GetNumLobbyMembers(_lobbyID) < 2)
         {
             _hasGuest = false; guestInfoGroup.SetActive(false);
             kickButton.gameObject.SetActive(false); startGameButton.gameObject.SetActive(false);
-            SteamMatchmaking.SetLobbyData(_lobbyID, "guest_data", "");
         }
     }
 
@@ -277,9 +214,9 @@ public class CreateRoomPanel : MonoBehaviour
     void LeaveRoom()
     {
         if (_lobbyID.m_SteamID != 0) SteamMatchmaking.LeaveLobby(_lobbyID);
-        _lobbyID = default; _lcb?.Dispose(); _dataCB?.Dispose(); panelRoot.SetActive(false);
+        _lobbyID = default; _lcb?.Dispose(); panelRoot.SetActive(false);
     }
-    void OnDestroy() { _lcb?.Dispose(); _dataCB?.Dispose(); }
+    void OnDestroy() { _lcb?.Dispose(); }
 
     [System.Serializable] class RPD { public string playerName; public int totalMatches; public double winRate; public int winStreak; public ulong steamID; }
 }

@@ -131,39 +131,35 @@ public class QuickMatchPanel : MonoBehaviour
             StartCoroutine(PollGuestData());
             return;
         }
-        Debug.Log($"[QM-Guest] ★ 进入大厅 lobbyID={_lobbyID} steamID={_lobbyID.m_SteamID} 开始写guest_data");
-        var sd = SteamDataManager.Instance;
-        var name = sd?.localPlayerName ?? "?";
-        Debug.Log($"[QM-Guest] WriteMyData name={name} steamID={sd?.localSteamID}");
-        WriteMyData("guest_data");
-        // Steam SetLobbyData is async — fire 5 more writes over 8s
+        Debug.Log($"[QM-Guest] ★ 进入大厅 lobbyID={_lobbyID}，写SetLobbyMemberData");
+        SteamMatchmaking.SetLobbyMemberData(_lobbyID, "player_data", MakeMyJson());
         StartCoroutine(RetryWriteGuestData());
         RefreshOpponent();
     }
 
     IEnumerator RetryWriteGuestData()
     {
-        for (int i = 0; i < 5; i++)
+        for (int i = 0; i < 4; i++)
         {
-            yield return new WaitForSeconds(1.2f);
+            yield return new WaitForSeconds(0.8f);
             if (_lobbyID.m_SteamID == 0 || _state == State.Idle || _state == State.Found) yield break;
-            Debug.Log($"[QM-Guest] RetryWrite round {i}: writing guest_data to lobbyID={_lobbyID.m_SteamID}");
-            WriteMyData("guest_data");
+            Debug.Log($"[QM-Guest] RetryWrite round {i}: SetLobbyMemberData");
+            SteamMatchmaking.SetLobbyMemberData(_lobbyID, "player_data", MakeMyJson());
         }
     }
 
     IEnumerator PollGuestData()
     {
-        for (int i = 0; i < 12; i++)
+        for (int i = 0; i < 8; i++)
         {
-            yield return new WaitForSeconds(0.8f);
+            yield return new WaitForSeconds(0.6f);
             if (_lobbyID.m_SteamID == 0 || _state == State.Idle || _state == State.Found) yield break;
             int members = SteamMatchmaking.GetNumLobbyMembers(_lobbyID);
-            string guestJson = SteamMatchmaking.GetLobbyData(_lobbyID, "guest_data");
-            Debug.Log($"[QM-Host] PollGuest round {i}: members={members} guest_data={(string.IsNullOrEmpty(guestJson) ? "empty" : "SET(len="+guestJson.Length+")")}");
-            if (!string.IsNullOrEmpty(guestJson)) { RefreshOpponent(); yield break; }
+            Debug.Log($"[QM-Host] PollGuest round {i}: members={members}");
+            RefreshOpponent();
+            if (_state == State.Found) yield break;
         }
-        Debug.LogWarning($"[QM-Host] PollGuest exhausted — guest_data never received");
+        Debug.LogWarning($"[QM-Host] PollGuest exhausted");
     }
 
     void OnLobbyDataUpdate(LobbyDataUpdate_t cb)
@@ -173,33 +169,46 @@ public class QuickMatchPanel : MonoBehaviour
         RefreshOpponent();
     }
 
+    string MakeMyJson()
+    {
+        var sd = SteamDataManager.Instance; var d = sd?.playerData;
+        return JsonUtility.ToJson(new QMPD { playerName = sd?.localPlayerName ?? "玩家", totalMatches = d?.totalMatches ?? 0, winRate = sd?.WinRate ?? 0, winStreak = d?.winStreak ?? 0, steamID = sd?.localSteamID.m_SteamID ?? 0 });
+    }
+
+    // 房主写 lobby data（有权限）
     void WriteMyData(string key)
     {
         if (_lobbyID.m_SteamID == 0) return;
-        var sd = SteamDataManager.Instance; var d = sd?.playerData;
-        SteamMatchmaking.SetLobbyData(_lobbyID, key,
-            JsonUtility.ToJson(new QMPD { playerName = sd?.localPlayerName ?? "玩家", totalMatches = d?.totalMatches ?? 0, winRate = sd?.WinRate ?? 0, winStreak = d?.winStreak ?? 0, steamID = sd?.localSteamID.m_SteamID ?? 0 }));
+        SteamMatchmaking.SetLobbyData(_lobbyID, key, MakeMyJson());
     }
 
     void RefreshOpponent()
     {
         if (_lobbyID.m_SteamID == 0) return;
-        string oppKey = _iAmHost ? "guest_data" : "host_data";
-        string oppJson = SteamMatchmaking.GetLobbyData(_lobbyID, oppKey);
-        Debug.Log($"[QM-{(_iAmHost?"Host":"Guest")}] RefreshOpponent key={oppKey} jsonEmpty={string.IsNullOrEmpty(oppJson)} state={_state}");
+        string oppJson = null;
+
+        if (_iAmHost)
+        {
+            // 房主读 guest 的 member data
+            int count = SteamMatchmaking.GetNumLobbyMembers(_lobbyID);
+            for (int i = 0; i < count; i++)
+            {
+                CSteamID member = SteamMatchmaking.GetLobbyMemberByIndex(_lobbyID, i);
+                if (member == SteamUser.GetSteamID()) continue;
+                oppJson = SteamMatchmaking.GetLobbyMemberData(_lobbyID, member, "player_data");
+                Debug.Log($"[QM-Host] ReadMemberData idx={i} member={member} data={(string.IsNullOrEmpty(oppJson)?"empty":"SET")}");
+                if (!string.IsNullOrEmpty(oppJson)) break;
+            }
+        }
+        else
+        {
+            oppJson = SteamMatchmaking.GetLobbyData(_lobbyID, "host_data");
+        }
+
+        Debug.Log($"[QM-{(_iAmHost?"Host":"Guest")}] RefreshOpponent jsonEmpty={string.IsNullOrEmpty(oppJson)} state={_state}");
         if (string.IsNullOrEmpty(oppJson)) return;
         var opp = JsonUtility.FromJson<QMPD>(oppJson);
-        if (opp == null || string.IsNullOrEmpty(opp.playerName))
-        {
-            Debug.LogWarning($"[QM] 对手数据解析失败: json={(oppJson??"null").Substring(0,Mathf.Min(60,oppJson?.Length??0))}");
-            return;
-        }
-        var sd = SteamDataManager.Instance;
-        if (opp.playerName == (sd?.localPlayerName ?? "玩家"))
-        {
-            Debug.Log($"[QM] 跳过自己的数据 (name={opp.playerName})");
-            return;
-        }
+        if (opp == null || string.IsNullOrEmpty(opp.playerName)) return;
         if (_state == State.Found || _state == State.WaitingOpponent) return;
 
         Debug.Log($"[QM] ★★★ 已找到对手: {opp.playerName} steamID={opp.steamID} matches={opp.totalMatches} ★★★");
@@ -223,13 +232,13 @@ public class QuickMatchPanel : MonoBehaviour
         bool doRetry = _retryTimer >= 0.5f;
         if (doRetry) _retryTimer = 0;
 
-        // Guest: keep retrying writing guest_data every 0.5s until match completes
-        if (!_iAmHost && (_state == State.Searching || _state == State.Found || _state == State.WaitingOpponent) && doRetry)
+        // Guest: keep retrying SetLobbyMemberData every 0.5s
+        if (!_iAmHost && doRetry)
         {
-            WriteMyData("guest_data");
+            SteamMatchmaking.SetLobbyMemberData(_lobbyID, "player_data", MakeMyJson());
         }
 
-        // Host: poll for guest data every 0.5s during Searching
+        // Host: poll for opponent data
         if (_iAmHost && _state == State.Searching && doRetry)
         {
             RefreshOpponent();
@@ -244,7 +253,9 @@ public class QuickMatchPanel : MonoBehaviour
 
         // Check accept/reject flags
         string hostOk = SteamMatchmaking.GetLobbyData(_lobbyID, "host_ok") ?? "";
-        string guestOk = SteamMatchmaking.GetLobbyData(_lobbyID, "guest_ok") ?? "";
+        string guestOk = _iAmHost
+            ? ReadMemberDataKey("guest_ok")
+            : (SteamMatchmaking.GetLobbyData(_lobbyID, "guest_ok") ?? "");
         string oppOk = _iAmHost ? guestOk : hostOk;
 
         if ((_state == State.Found || _state == State.WaitingOpponent) && oppOk == "0")
@@ -267,7 +278,9 @@ public class QuickMatchPanel : MonoBehaviour
     {
         if (_state != State.Found) return;
         _iAccepted = true;
-        SteamMatchmaking.SetLobbyData(_lobbyID, _iAmHost ? "host_ok" : "guest_ok", "1");
+        // Host writes to lobby data, guest writes to member data
+        if (_iAmHost) SteamMatchmaking.SetLobbyData(_lobbyID, "host_ok", "1");
+        else SteamMatchmaking.SetLobbyMemberData(_lobbyID, "guest_ok", "1");
         if (acceptButton) acceptButton.interactable = false;
         if (declineButton) declineButton.gameObject.SetActive(false);
         _state = State.WaitingOpponent;
@@ -275,7 +288,25 @@ public class QuickMatchPanel : MonoBehaviour
     }
     void OnDecline() { SetReject(); LeaveLobby(); Close(); }
     void OnCancel() { SetReject(); LeaveLobby(); Close(); }
-    void SetReject() { if (_lobbyID.m_SteamID != 0) SteamMatchmaking.SetLobbyData(_lobbyID, _iAmHost ? "host_ok" : "guest_ok", "0"); }
+    void SetReject()
+    {
+        if (_lobbyID.m_SteamID == 0) return;
+        if (_iAmHost) SteamMatchmaking.SetLobbyData(_lobbyID, "host_ok", "0");
+        else SteamMatchmaking.SetLobbyMemberData(_lobbyID, "guest_ok", "0");
+    }
+
+    string ReadMemberDataKey(string key)
+    {
+        int count = SteamMatchmaking.GetNumLobbyMembers(_lobbyID);
+        for (int i = 0; i < count; i++)
+        {
+            CSteamID member = SteamMatchmaking.GetLobbyMemberByIndex(_lobbyID, i);
+            if (member == SteamUser.GetSteamID()) continue;
+            string val = SteamMatchmaking.GetLobbyMemberData(_lobbyID, member, key);
+            if (!string.IsNullOrEmpty(val)) return val;
+        }
+        return "";
+    }
 
     void LeaveLobby() { _joining = false; if (_lobbyID.m_SteamID != 0) { SteamMatchmaking.LeaveLobby(_lobbyID); _lobbyID = default; } DisposeCallbacks(); }
 
