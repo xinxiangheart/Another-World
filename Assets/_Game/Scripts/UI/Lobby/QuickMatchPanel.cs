@@ -252,10 +252,10 @@ public class QuickMatchPanel : MonoBehaviour
         }
 
         // Check accept/reject flags
+        // Host: both flags in lobby data
+        // Guest: host_ok in lobby data, guest_ok in member data (self), or just use _iAccepted
         string hostOk = SteamMatchmaking.GetLobbyData(_lobbyID, "host_ok") ?? "";
-        string guestOk = _iAmHost
-            ? ReadMemberDataKey("guest_ok")
-            : (SteamMatchmaking.GetLobbyData(_lobbyID, "guest_ok") ?? "");
+        string guestOk = _iAmHost ? ReadMemberDataKey("guest_ok") : (_iAccepted ? "1" : "");
         string oppOk = _iAmHost ? guestOk : hostOk;
 
         if ((_state == State.Found || _state == State.WaitingOpponent) && oppOk == "0")

@@ -84,6 +84,7 @@ public class CreateRoomPanel : MonoBehaviour
         roomCodeText.text = $"房间号：{_roomCode}";
         leaveButton.gameObject.SetActive(true);
 
+        // 房主信息从 lobby data 读取，自己的信息填入 guest 区
         FillMyInfo(guestAvatar, guestNameText, guestStatsText);
 
         // Guest writes via SetLobbyMemberData (only non-owner API that works)
