@@ -60,6 +60,8 @@ public class CardDisplayPanel : MonoBehaviour
 
             var prefab = td.cardType == CardType.Spell ? player.spellCardPrefab2D : player.cardPrefab2D;
             var go = Instantiate(prefab, cardContainer);
+            if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "Game")
+                Player.Scale2DCard(go);
 
             var cv = go.GetComponent<CardView>();
             if (cv) { cv.enabled = false; cv.handManager = null; }

@@ -863,6 +863,7 @@ public class NetworkPlayer : NetworkBehaviour
         if (!isEnemy && handCards.Count >= maxSize) return;
 
         GameObject card = Instantiate(prefab, targetHandArea);
+        Player.Scale2DCard(card);
         CardInstance inst = card.GetComponent<CardInstance>();
         if (inst == null) inst = card.AddComponent<CardInstance>();
 

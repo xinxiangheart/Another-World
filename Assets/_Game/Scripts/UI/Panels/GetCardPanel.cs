@@ -12,30 +12,49 @@ public class GetCardPanel : MonoBehaviour
     public Button confirmButton;
     public Button closeButton;
 
+    private CanvasGroup _canvasGroup;
+
     void Awake()
     {
         if (Instance != null) { Destroy(gameObject); return; }
         Instance = this;
-        panelRoot.SetActive(false);
+
+        // 用 CanvasGroup 隐藏，不用 SetActive(false) —— 对话自身会禁用 Update
+        _canvasGroup = GetComponent<CanvasGroup>();
+        if (_canvasGroup == null) _canvasGroup = gameObject.AddComponent<CanvasGroup>();
+        _canvasGroup.alpha = 0;
+        _canvasGroup.interactable = false;
+        _canvasGroup.blocksRaycasts = false;
     }
 
     void Start()
     {
-        confirmButton.onClick.AddListener(OnConfirm);
-        closeButton.onClick.AddListener(Hide);
+        if (confirmButton != null) confirmButton.onClick.AddListener(OnConfirm);
+        if (closeButton != null) closeButton.onClick.AddListener(Hide);
+    }
+
+    void Update()
+    {
+        if (Input.GetKey(KeyCode.LeftControl) && Input.GetKey(KeyCode.LeftShift) && Input.GetKeyDown(KeyCode.A))
+        {
+            bool show = _canvasGroup.alpha < 0.5f;
+            if (show) Show(); else Hide();
+        }
     }
 
     public void Show()
     {
-        panelRoot.SetActive(true);
-        inputField.text = "";
-        inputField.Select();
-        inputField.ActivateInputField();
+        _canvasGroup.alpha = 1;
+        _canvasGroup.interactable = true;
+        _canvasGroup.blocksRaycasts = true;
+        if (inputField != null) { inputField.text = ""; inputField.Select(); inputField.ActivateInputField(); }
     }
 
     public void Hide()
     {
-        panelRoot.SetActive(false);
+        _canvasGroup.alpha = 0;
+        _canvasGroup.interactable = false;
+        _canvasGroup.blocksRaycasts = false;
     }
 
     void OnConfirm()

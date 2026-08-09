@@ -573,14 +573,15 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
     public void SetButtonsInteractable(bool enabled)
     {
         ApplyButtonsInteractable(enabled);
-        // 每次禁用时，启动延迟守卫：手牌打空后强制恢复按钮
-        if (!enabled) StartCoroutine(WatchEmptyHand());
+        // 每次禁用时，挂到 HandManager(常驻) 上启动延迟守卫
+        if (!enabled && handManager != null)
+            handManager.StartCoroutine(WatchEmptyHand());
     }
 
     IEnumerator WatchEmptyHand()
     {
-        yield return new WaitForEndOfFrame();
-        yield return new WaitForEndOfFrame(); // 等异步法术/入场效果清理完毕
+        yield return new WaitForSeconds(0.3f);
+        yield return new WaitForSeconds(0.3f);
         NetworkPlayer.Local?.handCards.RemoveAll(c => c == null);
         if (NetworkPlayer.Local != null && NetworkPlayer.Local.handCards.Count == 0)
             ApplyButtonsInteractable(true);

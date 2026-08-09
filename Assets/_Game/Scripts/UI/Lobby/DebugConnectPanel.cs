@@ -33,6 +33,7 @@ public class DebugConnectPanel : MonoBehaviour
         if (Input.GetKey(KeyCode.LeftControl) && Input.GetKey(KeyCode.LeftShift) && Input.GetKeyDown(KeyCode.D))
         {
             if (panelRoot != null) panelRoot.SetActive(!panelRoot.activeSelf);
+            if (panelRoot != null && panelRoot.activeSelf && ipInput != null) { ipInput.Select(); ipInput.ActivateInputField(); }
         }
     }
 

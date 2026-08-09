@@ -2807,8 +2807,14 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         if (data != null)
         {
-            data.isFullySilenced = GlobalEventManager.Instance != null
-                && GlobalEventManager.Instance.IsFullySilenced(null);
+            data.isFullySilenced = false;
+            if (GlobalEventManager.Instance != null)
+            {
+                var bmCheck = FindObjectOfType<BoardManager>();
+                var checkSlot = bmCheck?.GetSlot(data.slotID);
+                var checkCI = checkSlot?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                data.isFullySilenced = checkCI != null && GlobalEventManager.Instance.IsFullySilenced(checkCI);
+            }
 
             if (!data.isFullySilenced && !data.isDeathBlocked)
             {

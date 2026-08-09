@@ -400,17 +400,56 @@ public static class DeathHandlers
 
     static void Handle01301(EffectContext ctx)
     {
-        var bm = BM();
+        // 启动串行协程：前一个同伴选择面板完成后才处理下一个
+        ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(Handle01301Routine(ctx));
+    }
+
+    static System.Collections.IEnumerator Handle01301Routine(EffectContext ctx)
+    {
+        var bm = UnityEngine.Object.FindObjectOfType<BoardManager>();
         bool isActive = ctx.isActiveExit;
-        if (bm != null && BoardManager.GetSideRangeOf(ctx.source, out int s1301, out int e1301))
-            for (int i = s1301; i <= e1301; i++)
+        Debug.Log($"[01301] 开始: isActive={isActive} slot={ctx.sourceSlot?.slotID} Nesting={NestingContext.Depth}");
+
+        if (bm == null || !BoardManager.GetSideRangeOf(ctx.source, out int s1301, out int e1301))
+        {
+            Debug.Log($"[01301] 无棋盘");
+            yield break;
+        }
+
+        // ── 快照：先记录所有符合条件的同伴，后续依快照触发（即使中途被其他同伴退场也照常触发）──
+        var targets = new System.Collections.Generic.List<(CardInstance ci, BoardSlot slot, int slotIdx)>();
+
+        for (int i = s1301; i <= e1301; i++)
+        {
+            var slot = bm.GetSlot(i);
+            if (slot?.currentCard3D == null) continue;
+            var ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci != null && ci.templateID != "01111" && ci.templateID != "01301")
+                targets.Add((ci, slot, i));
+        }
+
+        Debug.Log($"[01301] 快照: {targets.Count} 个同伴待触发");
+        NestingContext.Enter("01301");
+
+        for (int t = 0; t < targets.Count; t++)
+        {
+            var target = targets[t];
+            var ci = target.ci; var slot = target.slot; var slotIdx = target.slotIdx;
+            Debug.Log($"[01301] 同伴[{t+1}/{targets.Count}] {ci.templateID} slot={slotIdx} dispatch");
+            var subCtx = EffectContext.ForExit(ci, slot, isActive);
+            Trigger subTrigger = isActive ? Trigger.ActiveExit : Trigger.Exit;
+            EffectDispatcher.Dispatch(subTrigger, subCtx);
+
+            if (subCtx.StartedCoroutine != null)
             {
-                var slot = bm.GetSlot(i);
-                if (slot?.currentCard3D == null) continue;
-                var ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                if (ci != null && ci.templateID != "01111" && ci.templateID != "01301")
-                    BoardSlot.TriggerDeathEffect(ci, isActive);
+                Debug.Log($"[01301] 同伴[{t+1}] 协程等待... Nesting={NestingContext.Depth}");
+                yield return subCtx.StartedCoroutine;
+                Debug.Log($"[01301] 同伴[{t+1}] 协程完成 Nesting={NestingContext.Depth}");
             }
+        }
+
+        Debug.Log($"[01301] 结束: {targets.Count}个 Nesting={NestingContext.Depth}");
+        NestingContext.Exit();
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -579,18 +618,47 @@ public static class DeathHandlers
 
     static void Handle01111(EffectContext ctx)
     {
-        var bm = BM();
-        if (bm != null && BoardManager.GetSideRangeOf(ctx.source, out int s1111, out int e1111))
-            for (int i = s1111; i <= e1111; i++)
+        ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(Handle01111Routine(ctx));
+    }
+
+    static System.Collections.IEnumerator Handle01111Routine(EffectContext ctx)
+    {
+        var bm = UnityEngine.Object.FindObjectOfType<BoardManager>();
+        Debug.Log($"[01111] 深潜者主动退场: slot={ctx.sourceSlot?.slotID} Nesting={NestingContext.Depth}");
+
+        if (bm == null || !BoardManager.GetSideRangeOf(ctx.source, out int s1111, out int e1111))
+        { yield break; }
+
+        var targets = new System.Collections.Generic.List<(CardInstance ci, BoardSlot slot, int slotIdx)>();
+        for (int i = s1111; i <= e1111; i++)
+        {
+            var slot = bm.GetSlot(i);
+            if (slot?.currentCard3D == null) continue;
+            var ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci != null && ci.templateID != "01111" && ci.templateID != "01301")
+                targets.Add((ci, slot, i));
+        }
+
+        Debug.Log($"[01111] 快照: {targets.Count} 个同伴");
+        NestingContext.Enter("01111");
+
+        for (int t = 0; t < targets.Count; t++)
+        {
+            var target = targets[t];
+            var ci = target.ci; var slot = target.slot; var slotIdx = target.slotIdx;
+            Debug.Log($"[01111] 同伴[{t+1}/{targets.Count}] {ci.templateID} slot={slotIdx}");
+            var subCtx = EffectContext.ForExit(ci, slot, true);
+            EffectDispatcher.Dispatch(Trigger.ActiveExit, subCtx);
+
+            if (subCtx.StartedCoroutine != null)
             {
-                var slot = bm.GetSlot(i);
-                if (slot?.currentCard3D == null) continue;
-                var ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                if (ci != null && ci.templateID != "01111" && ci.templateID != "01301")
-                {
-                    BoardSlot.TriggerDeathEffect(ci, true);
-                }
+                Debug.Log($"[01111] 同伴[{t+1}] 协程等待...");
+                yield return subCtx.StartedCoroutine;
             }
+        }
+
+        Debug.Log($"[01111] 结束: {targets.Count}个");
+        NestingContext.Exit();
     }
 
     static void Handle01306(EffectContext ctx)
