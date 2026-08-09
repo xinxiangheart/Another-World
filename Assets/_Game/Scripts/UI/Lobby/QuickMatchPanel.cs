@@ -131,34 +131,39 @@ public class QuickMatchPanel : MonoBehaviour
             StartCoroutine(PollGuestData());
             return;
         }
-        Debug.Log($"[QM-Guest] ★ 进入对方大厅 lobbyID={_lobbyID}，正在写入 guest_data...");
+        Debug.Log($"[QM-Guest] ★ 进入大厅 lobbyID={_lobbyID} steamID={_lobbyID.m_SteamID} 开始写guest_data");
+        var sd = SteamDataManager.Instance;
+        var name = sd?.localPlayerName ?? "?";
+        Debug.Log($"[QM-Guest] WriteMyData name={name} steamID={sd?.localSteamID}");
         WriteMyData("guest_data");
-        // Steam lobby data write is async — fire 3 more writes over 1s to guarantee propagation
+        // Steam SetLobbyData is async — fire 5 more writes over 8s
         StartCoroutine(RetryWriteGuestData());
-        Debug.Log($"[QM-Guest] guest_data 已写入，正在读取 host_data...");
         RefreshOpponent();
     }
 
     IEnumerator RetryWriteGuestData()
     {
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < 5; i++)
         {
-            yield return new WaitForSeconds(0.4f);
-            if (_lobbyID.m_SteamID == 0 || _state == State.Idle) yield break;
+            yield return new WaitForSeconds(1.2f);
+            if (_lobbyID.m_SteamID == 0 || _state == State.Idle || _state == State.Found) yield break;
+            Debug.Log($"[QM-Guest] RetryWrite round {i}: writing guest_data to lobbyID={_lobbyID.m_SteamID}");
             WriteMyData("guest_data");
         }
     }
 
     IEnumerator PollGuestData()
     {
-        for (int i = 0; i < 6; i++)
+        for (int i = 0; i < 12; i++)
         {
-            yield return new WaitForSeconds(0.5f);
+            yield return new WaitForSeconds(0.8f);
             if (_lobbyID.m_SteamID == 0 || _state == State.Idle || _state == State.Found) yield break;
+            int members = SteamMatchmaking.GetNumLobbyMembers(_lobbyID);
             string guestJson = SteamMatchmaking.GetLobbyData(_lobbyID, "guest_data");
-            Debug.Log($"[QM-Host] PollGuestData round {i}: guest_data {(string.IsNullOrEmpty(guestJson) ? "empty" : "SET")}");
+            Debug.Log($"[QM-Host] PollGuest round {i}: members={members} guest_data={(string.IsNullOrEmpty(guestJson) ? "empty" : "SET(len="+guestJson.Length+")")}");
             if (!string.IsNullOrEmpty(guestJson)) { RefreshOpponent(); yield break; }
         }
+        Debug.LogWarning($"[QM-Host] PollGuest exhausted — guest_data never received");
     }
 
     void OnLobbyDataUpdate(LobbyDataUpdate_t cb)
