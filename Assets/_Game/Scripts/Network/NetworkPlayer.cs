@@ -2952,4 +2952,16 @@ public class NetworkPlayer : NetworkBehaviour
     {
         RegistrySyncManager.Instance?.ApplyDelta(payload);
     }
+
+    [TargetRpc]
+    public void TargetShowEffectText(NetworkConnectionToClient target, string templateID, string cardName, string traitCN)
+    {
+        EffectDispatcher.ShowDebugText(cardName, traitCN);
+    }
+
+    [TargetRpc]
+    public void TargetHideEffectText(NetworkConnectionToClient target)
+    {
+        EffectDispatcher.HideDebugText();
+    }
 }

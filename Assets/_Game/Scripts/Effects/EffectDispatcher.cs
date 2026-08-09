@@ -6,6 +6,23 @@ public static class EffectDispatcher
 {
     public static TMP_Text debugText;
 
+    /// <summary>客户端直接设文字（不经过 Dispatch）</summary>
+    public static void ShowDebugText(string cardName, string traitCN)
+    {
+        if (debugText != null)
+        {
+            debugText.text = $"{cardName}的{traitCN}";
+            debugText.gameObject.SetActive(true);
+        }
+    }
+
+    /// <summary>客户端清除文字</summary>
+    public static void HideDebugText()
+    {
+        if (debugText != null)
+            debugText.gameObject.SetActive(false);
+    }
+
     public static bool Dispatch(Trigger trigger, EffectContext ctx)
     {
         if (ctx == null) return false;
@@ -37,22 +54,35 @@ public static class EffectDispatcher
                 debugText.gameObject.SetActive(true);
             }
 
+            // 广播给所有客户端（包括远程玩家）
+            EffectTextBroadcaster.Show(id, cardName, traitCN);
+
             Coroutine prevCoroutine = ctx.StartedCoroutine;
             handler(ctx);
 
-            // 同步handler: 执行完立刻清除文字
-            if (ctx.StartedCoroutine == null || ctx.StartedCoroutine == prevCoroutine)
+            // 挂监督协程：等特性完成后清除文字+广播隐藏
+            var runner = ctx.sourceSlot ?? Object.FindObjectOfType<BoardSlot>();
+            if (ctx.StartedCoroutine != null && ctx.StartedCoroutine != prevCoroutine)
             {
-                if (debugText != null) debugText.gameObject.SetActive(false);
+                // 异步handler: 等待协程完成
+                if (runner != null)
+                    runner.StartCoroutine(HideAfterCoroutine(ctx.StartedCoroutine));
+                else
+                {
+                    if (debugText != null) debugText.gameObject.SetActive(false);
+                    EffectTextBroadcaster.Hide();
+                }
             }
             else
             {
-                // 异步handler: 挂一个监督协程，等特性协程完成后清除文字
-                var runner = ctx.sourceSlot ?? Object.FindObjectOfType<BoardSlot>();
+                // 同步handler: 延迟0.5s再清除（给客户端 TargetRpc 到达时间）
                 if (runner != null)
-                    runner.StartCoroutine(HideAfterCoroutine(ctx.StartedCoroutine));
-                else if (debugText != null)
-                    debugText.gameObject.SetActive(false);
+                    runner.StartCoroutine(HideAfterDelay(0.5f));
+                else
+                {
+                    if (debugText != null) debugText.gameObject.SetActive(false);
+                    EffectTextBroadcaster.Hide();
+                }
             }
 
             return true;
@@ -67,5 +97,13 @@ public static class EffectDispatcher
     {
         if (co != null) yield return co;
         if (debugText != null) debugText.gameObject.SetActive(false);
+        EffectTextBroadcaster.Hide();
+    }
+
+    static System.Collections.IEnumerator HideAfterDelay(float seconds)
+    {
+        yield return new WaitForSeconds(seconds);
+        if (debugText != null) debugText.gameObject.SetActive(false);
+        EffectTextBroadcaster.Hide();
     }
 }

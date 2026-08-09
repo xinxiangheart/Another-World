@@ -51,6 +51,18 @@ public class CardDisplayPanel : MonoBehaviour
         foreach (Transform t in cardContainer) Destroy(t.gameObject);
         createdCards.Clear();
 
+        // Game 场景：Scale2DCard 设 localScale=3，视觉变大但 sizeDelta 不变
+        // 布局间距必须匹配视觉物理大小（= sizeDelta × localScale）
+        bool isGame = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "Game";
+        float scl = isGame ? 3f : 1f;
+
+        float rawCardW = 83.333333f;
+        float rawCardH = 146.333333f;
+        float spX = cardSpacing;       // 间距也随 scales
+        float spY = rowSpacing;
+        float sx = startX;
+        float sy = startY;
+
         for (int i = 0; i < cards.Count; i++)
         {
             var ci = cards[i];
@@ -60,8 +72,7 @@ public class CardDisplayPanel : MonoBehaviour
 
             var prefab = td.cardType == CardType.Spell ? player.spellCardPrefab2D : player.cardPrefab2D;
             var go = Instantiate(prefab, cardContainer);
-            if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "Game")
-                Player.Scale2DCard(go);
+            if (isGame) Player.Scale2DCard(go);
 
             var cv = go.GetComponent<CardView>();
             if (cv) { cv.enabled = false; cv.handManager = null; }
@@ -92,8 +103,10 @@ public class CardDisplayPanel : MonoBehaviour
             int row = i / cardsPerRow, col = i % cardsPerRow;
             var rt = go.GetComponent<RectTransform>();
             rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0, 1);
-            rt.sizeDelta = new Vector2(83.333333f, 146.333333f);
-            rt.anchoredPosition = new Vector2(startX + col * (83.333333f + cardSpacing), startY - row * (146.333333f + rowSpacing));
+            rt.sizeDelta = new Vector2(rawCardW, rawCardH);
+            rt.anchoredPosition = new Vector2(
+                sx + col * (rawCardW * scl + spX),
+                sy - row * (rawCardH * scl + spY));
 
             if (f == null || f(ci))
             {
@@ -118,7 +131,7 @@ public class CardDisplayPanel : MonoBehaviour
         int rows = Mathf.CeilToInt((float)cards.Count / cardsPerRow);
         float vh = scrollRect.viewport.rect.height;
         var crt = cardContainer.GetComponent<RectTransform>();
-        crt.sizeDelta = new Vector2(crt.sizeDelta.x, Mathf.Max(vh, rows * (146.333333f + rowSpacing)));
+        crt.sizeDelta = new Vector2(crt.sizeDelta.x, Mathf.Max(vh, rows * (rawCardH * scl + spY)));
 
         panelRoot.SetActive(true);
         panelRoot.transform.SetAsLastSibling();
@@ -133,18 +146,21 @@ public class CardDisplayPanel : MonoBehaviour
     {
         Debug.Log($"Click进入: multiSelect={multiSelect}, ci={ci?.templateID}, iid={ci?.instanceID}");
 
+        float scl = (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "Game") ? 3f : 1f;
+        Vector3 baseScale = Vector3.one * scl;
+
         if (multiSelect)
         {
             bool alreadySelected = selectedCards.Exists(s => s.instanceID == ci.instanceID);
             if (alreadySelected)
             {
                 selectedCards.RemoveAll(s => s.instanceID == ci.instanceID);
-                go.transform.localScale = Vector3.one;
+                go.transform.localScale = baseScale;
             }
             else
             {
                 selectedCards.Add(ci);
-                go.transform.localScale = Vector3.one * 1.15f;
+                go.transform.localScale = baseScale * 1.15f;
             }
 
             bool showConfirm = true;
@@ -180,12 +196,10 @@ public class CardDisplayPanel : MonoBehaviour
         }
         else
         {
-            // 按 instanceID 而非引用相等判断——临时 CardInstance 可能来自不同代码路径，
-            // 引用比较在对象被重建（如荣誉侍者/窃贼手牌展示）时会误判
             if (selected != null && selected.instanceID == ci.instanceID)
             {
                 selected = null;
-                go.transform.localScale = Vector3.one;
+                go.transform.localScale = baseScale;
                 ConfirmSelectionButton.Instance?.Hide();
             }
             else
@@ -197,14 +211,14 @@ public class CardDisplayPanel : MonoBehaviour
                         var inst = c.GetComponent<CardInstance>();
                         if (inst != null && inst.instanceID == selected.instanceID)
                         {
-                            c.transform.localScale = Vector3.one;
+                            c.transform.localScale = baseScale;
                             break;
                         }
                     }
                 }
 
                 selected = ci;
-                go.transform.localScale = Vector3.one * 1.15f;
+                go.transform.localScale = baseScale * 1.15f;
                 Test1Panel.Instance?.Show(ci);
                 var csb = ConfirmSelectionButton.Instance;
                 if (csb)
