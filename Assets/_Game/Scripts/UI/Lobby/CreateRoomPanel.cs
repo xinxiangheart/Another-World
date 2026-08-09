@@ -65,6 +65,27 @@ public class CreateRoomPanel : MonoBehaviour
         _dataCB = Callback<LobbyDataUpdate_t>.Create(OnDataUpdated);
 
         SteamMatchmaking.CreateLobby(ELobbyType.k_ELobbyTypePublic, 2);
+        StartCoroutine(PollForGuest());
+    }
+
+    System.Collections.IEnumerator PollForGuest()
+    {
+        for (int i = 0; i < 40; i++)
+        {
+            yield return new WaitForSeconds(0.5f);
+            if (_hasGuest || _lobbyID.m_SteamID == 0) yield break;
+            string guestJson = SteamMatchmaking.GetLobbyData(_lobbyID, "guest_data");
+            if (!string.IsNullOrEmpty(guestJson))
+            {
+                Debug.Log($"[Room-Host] PollForGuest: ★★★ found guest_data round {i} ★★★");
+                FillGuestInfo(guestJson);
+                guestInfoGroup.SetActive(true);
+                kickButton.gameObject.SetActive(true);
+                startGameButton.gameObject.SetActive(true);
+                _hasGuest = true;
+                yield break;
+            }
+        }
     }
 
     // ======== 客人入口 ========
@@ -87,6 +108,10 @@ public class CreateRoomPanel : MonoBehaviour
 
         _dataCB?.Dispose();
         _dataCB = Callback<LobbyDataUpdate_t>.Create(OnDataUpdated);
+
+        // 立即写入 guest_data + 启动快速重试（0.3s×3次）确保 Host 收到推送
+        WriteMyData("guest_data");
+        StartCoroutine(RetryWriteGuest());
 
         // Read host data immediately (host already wrote it)
         string hostData = SteamMatchmaking.GetLobbyData(_lobbyID, "host_data");
@@ -125,6 +150,16 @@ public class CreateRoomPanel : MonoBehaviour
         }
     }
 
+    System.Collections.IEnumerator RetryWriteGuest()
+    {
+        for (int i = 0; i < 3; i++)
+        {
+            yield return new WaitForSeconds(0.3f);
+            if (_lobbyID.m_SteamID == 0 || _amHost) yield break;
+            WriteMyData("guest_data");
+        }
+    }
+
     void WriteMyData(string key)
     {
         if (_lobbyID.m_SteamID == 0) return;
@@ -147,11 +182,17 @@ public class CreateRoomPanel : MonoBehaviour
         // Guest: write data + check start/kick/disconnect
         if (!_amHost)
         {
-            // 节流写入（每 1 秒一次，加上 LobbyDataUpdate 回调保证主机能收到）
+            // 高频写入（0.4s 一次，确保 Host 能收到）
             _writeTimer += Time.deltaTime;
-            if (_writeTimer > 1f) { _writeTimer = 0; WriteMyData("guest_data"); }
+            if (_writeTimer > 0.4f) { _writeTimer = 0; WriteMyData("guest_data"); }
 
-            // 主线读取走 LobbyDataUpdate 回调，这里仅作离开/开始检测
+            // 主动读房主信息（LobbyDataUpdate 回调不靠谱时兜底）
+            if (!_hasGuest)
+            {
+                string hostJson = SteamMatchmaking.GetLobbyData(_lobbyID, "host_data");
+                if (!string.IsNullOrEmpty(hostJson)) FillHostInfo(hostJson);
+            }
+
             if (SteamMatchmaking.GetLobbyData(_lobbyID, "kicked") == "1") { LeaveRoom(); return; }
             if (SteamMatchmaking.GetNumLobbyMembers(_lobbyID) < 2) { LeaveRoom(); return; }
             if (SteamMatchmaking.GetLobbyData(_lobbyID, "start") == "1")
@@ -159,6 +200,26 @@ public class CreateRoomPanel : MonoBehaviour
                 LobbyConfig.FromLobby = true; LobbyConfig.IsHost = false;
                 LobbyConfig.IsDirectIP = false; LobbyConfig.ServerIP = "";
                 panelRoot.SetActive(false); JoinGamePanel.Instance?.Open();
+            }
+        }
+        // Host: poll for guest data every 0.4s (LobbyDataUpdate fallback)
+        else if (!_hasGuest)
+        {
+            _writeTimer += Time.deltaTime;
+            if (_writeTimer > 0.4f)
+            {
+                _writeTimer = 0;
+                string guestJson = SteamMatchmaking.GetLobbyData(_lobbyID, "guest_data");
+                Debug.Log($"[Room-Host] Poll guest_data: {(string.IsNullOrEmpty(guestJson)?"empty":"SET")}");
+                if (!string.IsNullOrEmpty(guestJson))
+                {
+                    Debug.Log($"[Room-Host] ★★★ 玩家加入房间！guestLen={guestJson.Length} ★★★");
+                    FillGuestInfo(guestJson);
+                    guestInfoGroup.SetActive(true);
+                    kickButton.gameObject.SetActive(true);
+                    startGameButton.gameObject.SetActive(true);
+                    _hasGuest = true;
+                }
             }
         }
         // Host: guest left

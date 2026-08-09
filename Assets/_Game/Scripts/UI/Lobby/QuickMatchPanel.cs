@@ -24,6 +24,7 @@ public class QuickMatchPanel : MonoBehaviour
     string _oppName;
     CSteamID _lobbyID;
     Coroutine _searchCoroutine;
+    float _retryTimer;
 
     Callback<LobbyMatchList_t> _listCB;
     Callback<LobbyCreated_t> _createdCB;
@@ -122,11 +123,42 @@ public class QuickMatchPanel : MonoBehaviour
         if (_state != State.Searching) return;
         _lobbyID = new CSteamID(cb.m_ulSteamIDLobby);
         _joining = false;
-        if (_iAmHost) { Debug.Log($"[QM-Host] 有人加入我的大厅 lobbyID={_lobbyID}"); return; }
+        if (_iAmHost)
+        {
+            Debug.Log($"[QM-Host] 有人加入我的大厅 lobbyID={_lobbyID}");
+            // Re-write host_data for the new member, then poll guest_data for 3s
+            WriteMyData("host_data");
+            StartCoroutine(PollGuestData());
+            return;
+        }
         Debug.Log($"[QM-Guest] ★ 进入对方大厅 lobbyID={_lobbyID}，正在写入 guest_data...");
         WriteMyData("guest_data");
+        // Steam lobby data write is async — fire 3 more writes over 1s to guarantee propagation
+        StartCoroutine(RetryWriteGuestData());
         Debug.Log($"[QM-Guest] guest_data 已写入，正在读取 host_data...");
         RefreshOpponent();
+    }
+
+    IEnumerator RetryWriteGuestData()
+    {
+        for (int i = 0; i < 3; i++)
+        {
+            yield return new WaitForSeconds(0.4f);
+            if (_lobbyID.m_SteamID == 0 || _state == State.Idle) yield break;
+            WriteMyData("guest_data");
+        }
+    }
+
+    IEnumerator PollGuestData()
+    {
+        for (int i = 0; i < 6; i++)
+        {
+            yield return new WaitForSeconds(0.5f);
+            if (_lobbyID.m_SteamID == 0 || _state == State.Idle || _state == State.Found) yield break;
+            string guestJson = SteamMatchmaking.GetLobbyData(_lobbyID, "guest_data");
+            Debug.Log($"[QM-Host] PollGuestData round {i}: guest_data {(string.IsNullOrEmpty(guestJson) ? "empty" : "SET")}");
+            if (!string.IsNullOrEmpty(guestJson)) { RefreshOpponent(); yield break; }
+        }
     }
 
     void OnLobbyDataUpdate(LobbyDataUpdate_t cb)
@@ -176,11 +208,27 @@ public class QuickMatchPanel : MonoBehaviour
         if (opp.steamID != 0 && opponentAvatar) LoadAvatar(opponentAvatar, opp.steamID);
     }
 
-    // ============ Update (countdown + accept sync only) ============
+    // ============ Update ============
 
     void Update()
     {
         if (_state == State.Idle || _lobbyID.m_SteamID == 0) return;
+
+        _retryTimer += Time.deltaTime;
+        bool doRetry = _retryTimer >= 0.5f;
+        if (doRetry) _retryTimer = 0;
+
+        // Guest: keep retrying writing guest_data every 0.5s until match completes
+        if (!_iAmHost && (_state == State.Searching || _state == State.Found || _state == State.WaitingOpponent) && doRetry)
+        {
+            WriteMyData("guest_data");
+        }
+
+        // Host: poll for guest data every 0.5s during Searching
+        if (_iAmHost && _state == State.Searching && doRetry)
+        {
+            RefreshOpponent();
+        }
 
         // Countdown
         if (_state == State.Found)
@@ -189,8 +237,7 @@ public class QuickMatchPanel : MonoBehaviour
             if (_countdown <= 0) { LeaveLobby(); ResetState(); StartSearch(); return; }
         }
 
-        // Check accept/reject flags (these are written by the other party)
-        // LobbyDataUpdate fires for these too, but poll as backup every 0.5s
+        // Check accept/reject flags
         string hostOk = SteamMatchmaking.GetLobbyData(_lobbyID, "host_ok") ?? "";
         string guestOk = SteamMatchmaking.GetLobbyData(_lobbyID, "guest_ok") ?? "";
         string oppOk = _iAmHost ? guestOk : hostOk;
