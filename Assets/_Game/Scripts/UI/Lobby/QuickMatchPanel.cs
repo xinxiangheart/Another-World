@@ -238,10 +238,13 @@ public class QuickMatchPanel : MonoBehaviour
             SteamMatchmaking.SetLobbyMemberData(_lobbyID, "player_data", MakeMyJson());
         }
 
-        // Host: poll for opponent data
-        if (_iAmHost && _state == State.Searching && doRetry)
+        // Host: poll for opponent data. Guest: request fresh lobby data (cached GetLobbyData is stale).
+        if (doRetry)
         {
-            RefreshOpponent();
+            if (_iAmHost && _state == State.Searching)
+                RefreshOpponent();
+            if (!_iAmHost)
+                SteamMatchmaking.RequestLobbyData(_lobbyID);
         }
 
         // Countdown

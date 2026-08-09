@@ -25,9 +25,6 @@ public class LobbyManager : MonoBehaviour
     public Button returnButton;
     public Button leaveButton;
 
-    [Header("Input")]
-    public TMP_InputField ipInputField;
-
     [Header("Status")]
     public TextMeshProUGUI statusText;
 

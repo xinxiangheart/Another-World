@@ -84,14 +84,19 @@ public class CreateRoomPanel : MonoBehaviour
         roomCodeText.text = $"房间号：{_roomCode}";
         leaveButton.gameObject.SetActive(true);
 
-        // 房主信息从 lobby data 读取，自己的信息填入 guest 区
+        // 清空房主区域，防止残留上轮数据
+        if (hostAvatar) hostAvatar.texture = null;
+        if (hostNameText) hostNameText.text = "读取中...";
+        if (hostStatsText) hostStatsText.text = "";
+
+        // 客人自己的信息填入 guest 区
         FillMyInfo(guestAvatar, guestNameText, guestStatsText);
 
         // Guest writes via SetLobbyMemberData (only non-owner API that works)
-        Debug.Log($"[Room-Guest] ★ SetLobbyMemberData to lobbyID={_lobbyID}");
         SteamMatchmaking.SetLobbyMemberData(_lobbyID, "player_data", MakeMyJson());
         StartCoroutine(RetryWriteGuest());
 
+        // 尝试立即读房主数据
         string hostData = SteamMatchmaking.GetLobbyData(_lobbyID, "host_data");
         if (!string.IsNullOrEmpty(hostData)) FillHostInfo(hostData);
     }
