@@ -2032,7 +2032,9 @@ public class HandManager : MonoBehaviour
         if (returnTemplate != null)
             NetworkPlayer.Local.AddCardToHandFromInstance(returnTemplate, returnTarget);
 
-       
+        // 01322 进场完成，恢复界面状态
+        BoardSlot anySlot = FindSlotOf(returnTarget) ?? FindSlotOf(refundTarget) ?? returnSlot ?? refundSlot;
+        if (anySlot != null) anySlot.CleanupAfterPlacement();
     }
     BoardSlot FindSlotOf(CardInstance ci)
     {
