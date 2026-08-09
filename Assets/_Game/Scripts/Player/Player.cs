@@ -414,7 +414,7 @@ public class Player : MonoBehaviour
             energyText.text = $" {currentEnergy}/{maxEnergy}";
     }
 
-    /// <summary>Game 场景 2D 卡牌整体 ×3（预制体未 ×3，运行时补）</summary>
+    /// <summary>Game 场景 2D 卡牌整体 ×3 + 补视觉层（预制体未 ×3，运行时补）</summary>
     public static void Scale2DCard(GameObject card)
     {
         card.transform.localScale = Vector3.one * 3f;
