@@ -2699,6 +2699,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                         ? "血歌" : ci.prefixes + " 血歌";
                     CardDisplay2D d2d = card.GetComponent<CardDisplay2D>();
                     d2d?.Refresh();
+                    TurnManager.SyncMyBoardToOpponent();
                 }
                 SelectionManager.Instance.ForceEndAll();
                 foreach (var sc in spellCards) sc?.SetActive(true);
@@ -2717,6 +2718,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     c3d.cardInstance.prefixes = string.IsNullOrEmpty(c3d.cardInstance.prefixes) || c3d.cardInstance.prefixes == "无"
                         ? "血歌" : c3d.cardInstance.prefixes + " 血歌";
                     c3d.UpdateValues();
+                    TurnManager.SyncMyBoardToOpponent();
                 }
             }
             SelectionManager.Instance.ForceEndAll();
