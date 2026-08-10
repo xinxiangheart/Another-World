@@ -1133,11 +1133,11 @@ public class NetworkPlayer : NetworkBehaviour
         BoardSlot slot = bm.GetSlot(enemySlot);
         if (slot == null) return;
 
-        // 若槽位已有同模板ID的卡 → BoardSyncManager 已处理，跳过避免重复
+        // 按 instanceID 去重：仅拦截同一实例的重复 RPC 广播，不同 token 各自独立创建。
         var existing = slot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
-        if (existing != null && existing.templateID == templateID)
+        if (existing != null && existing.instanceID == instanceID)
             return;
-        // 不同模板ID → 替换场景（如狼王把旧卡变成狼、玩家顶替狼），先清旧卡
+        // instanceID 不同 → 旧卡需替换（如 token 重生、狼王变形），先清旧卡
         if (slot.currentCard3D != null)
         {
             Destroy(slot.currentCard3D);

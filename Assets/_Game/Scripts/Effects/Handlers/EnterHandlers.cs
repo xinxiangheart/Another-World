@@ -378,6 +378,9 @@ public static class EnterHandlers
             else { ctx.source.currentAttack += 3; DamagePipeline.ShowFloaterAt(ctx.source, 3, FloaterType.Buff); }
             var c3d = slot.FindGiver3D(ctx.source);
             c3d?.UpdateValues();
+            // 同步属性变更到服务器/对端（参照 Handle01313 的 CmdUpdateCardStats 模式）
+            NetworkPlayer.Local?.CmdUpdateCardStats(slot.slotID,
+                ctx.source.currentAttack, ctx.source.currentHealth, ctx.source.currentMaxHealth);
             slot.CleanupAfterPlacement();
         });
     }

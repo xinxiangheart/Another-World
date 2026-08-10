@@ -1164,6 +1164,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     }
                 }
                 BoardSyncManager.MarkDirty();
+                // 纯客户端：死亡链全部处理完毕后统一同步板面（替代 DeathPipeline step 11 的逐个同步）
+                if (NetworkClient.isConnected && !NetworkServer.active)
+                    TurnManager.SyncMyBoardToOpponent();
             }));
     }
 
@@ -4385,7 +4388,6 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                             }
                         }
                         BoardSlot.CheckAndHandleDeaths();
-                        TurnManager.SyncMyBoardToOpponent();
                     });
                 }
                 break;
@@ -4408,7 +4410,6 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                             }
                         }
                         BoardSlot.CheckAndHandleDeaths();
-                        TurnManager.SyncMyBoardToOpponent();
                     });
                 }
                 break;
@@ -4433,7 +4434,6 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                                 t3d?.UpdateValues();
                             }
                         }
-                        TurnManager.SyncMyBoardToOpponent();
                     });
                 }
                 break;
@@ -4456,7 +4456,6 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                                 DiscardHandlers.Apply01344Debuff(target);
                             }
                         }
-                        TurnManager.SyncMyBoardToOpponent();
                     });
                 }
                 break;

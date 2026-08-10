@@ -10,6 +10,9 @@ public class BoardSyncManager : MonoBehaviour
     public static BoardSyncManager Instance { get; private set; }
     bool _dirty;
 
+    /// <summary>防止刚放置/换位的卡牌被过期同步数据覆盖的时间窗口（秒）。</summary>
+    const float PLACE_PROTECT_WINDOW = 2.0f;
+
     void Awake() { if (Instance != null) { Destroy(gameObject); return; } Instance = this; }
     public static void MarkDirty() { if (Instance != null) Instance._dirty = true; }
 
@@ -35,7 +38,9 @@ public class BoardSyncManager : MonoBehaviour
 
                 if (seen.TryGetValue(iid, out var prev))
                 {
-                    // 两个槽位有同一 instanceID → 保留放置时间较新的
+                    // 两个槽位有同一 instanceID → 保留放置时间较新的。
+                    // 注意：跨半场比较时 _placedAtTime 来自不同客户端本地时钟，绝对值不可靠；
+                    // 同 instanceID 跨端重复极罕见，一般情况下不会触发此路径。
                     float curTime = ci._placedAtTime;
                     if (curTime > prev.placedAt)
                     {
@@ -340,7 +345,7 @@ public class BoardSyncManager : MonoBehaviour
         if (slot.currentCard3D != null)
         {
             var ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-            if (ci != null && Time.time - ci._placedAtTime < 2.0f) return;
+            if (ci != null && Time.time - ci._placedAtTime < PLACE_PROTECT_WINDOW) return;
 
             for (int i = bm.attachedModels.Count - 1; i >= 0; i--)
             {
@@ -380,7 +385,7 @@ public class BoardSyncManager : MonoBehaviour
             if (cur._hadEnterEffect) return;
             if (cur._enterEffectRunning) return;
             if (tid == "03006" && cur.templateID != "03006") return;
-            if (Time.time - cur._placedAtTime < 2.0f) return;
+            if (Time.time - cur._placedAtTime < PLACE_PROTECT_WINDOW) return;
 
             for (int i = bm.attachedModels.Count - 1; i >= 0; i--)
             {
@@ -441,7 +446,7 @@ public class BoardSyncManager : MonoBehaviour
                 cur.shieldEndAtBattleStart = (shieldEnc & 4) != 0;
                 cur.shieldEndAtBattleEnd = (shieldEnc & 8) != 0;
             }
-            else if (cur.hasShield && cur._placedAtTime > 0 && Time.time - cur._placedAtTime < 2f
+            else if (cur.hasShield && cur._placedAtTime > 0 && Time.time - cur._placedAtTime < PLACE_PROTECT_WINDOW
                 && NetworkClient.isConnected && !NetworkServer.active)
             {
                 // 纯客户端：进场2秒内保护护盾（进场效果异步设盾，

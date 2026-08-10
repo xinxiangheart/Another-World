@@ -245,8 +245,7 @@ public static class DeathPipeline
             }
         BoardSlot.SyncMistHiderDisplay();
 
-        // ── 11. 网络同步 ───────────────────────────────────────────────
-        if (NetworkClient.isConnected && !NetworkServer.active)
-            TurnManager.SyncMyBoardToOpponent();
+        // ── 11. 网络同步已移至 CheckAndHandleDeaths 的 onAllDeathsResolved 回调 ——
+        //     死亡链全部排空后统一同步，避免每个死亡中途上报中间态板面。
     }
 }

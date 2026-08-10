@@ -201,7 +201,7 @@ public class BattleManager : MonoBehaviour
 
                 Debug.Log($"舞者换位完成：{mySlotIndex}->{targetSlotIndex}");
                 // 刷新换位卡牌放置时间（替代全局12槽全量刷新，避免
-                // _placedAtTime 过新导致后续死亡同步时 EnsureEmpty 被 0.5s 守卫误保护）
+                // _placedAtTime 过新导致后续死亡同步时 EnsureEmpty 被 2s 守卫误保护）
                 var mySwapInst = mySlot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
                 if (mySwapInst != null) mySwapInst._placedAtTime = Time.time;
                 var targetSwapInst = targetSlot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
