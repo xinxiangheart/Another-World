@@ -1375,7 +1375,35 @@ public class NetworkPlayer : NetworkBehaviour
             // 仅更新上报方自己的槽位。敌方槽位由服务端保持权威——服务端可能在
             // DeepSeaPhaseStartDamage 等阶段处理中修改了 HP/攻击力，客户端上报的
             // 是尚未同步的过时值，覆盖会导致数据回退。
-            if (!isReportingOwnSlot) continue;
+            //
+            // 例外：跨半场 debuff——RunRemoteFirstStrikes 的 01318 等先手可对
+            // 对方半场卡牌造成攻击力削减。此时上报值低于服务端当前值（实际 debuff），
+            // 而非过时值覆盖。对此类情况，仅当上报攻击力更低且服务端无暂挂修改时放行。
+            if (!isReportingOwnSlot)
+            {
+                if (!string.IsNullOrEmpty(tid))
+                {
+                    var crossCi = slot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                    if (crossCi != null && crossCi.templateID == tid)
+                    {
+                        string[] xp = raw.Split('|');
+                        if (xp.Length > 2 && int.TryParse(xp[2], out int xv))
+                        {
+                            // 仅在服务端无暂挂修改 + 上报值更低（实际 debuff）时放行
+                            bool serverModified = crossCi.tempAttackBoost > 0 || crossCi.originalAttackBeforeDebuff > 0;
+                            bool isDebuff = xv < crossCi.currentAttack;
+                            bool hasAttachBonus = crossCi.currentAttack > xv && HasAttachBonusOn(crossCi, serverSlot, bm);
+                            if (!serverModified && isDebuff && !hasAttachBonus)
+                            {
+                                crossCi.originalAttackBeforeDebuff = crossCi.currentAttack;
+                                crossCi.currentAttack = xv;
+                                slot.currentCard3D?.GetComponent<Card3DInstance>()?.UpdateValues();
+                            }
+                        }
+                    }
+                }
+                continue;
+            }
 
             if (!string.IsNullOrEmpty(tid))
             {
