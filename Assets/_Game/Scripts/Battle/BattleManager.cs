@@ -200,8 +200,12 @@ public class BattleManager : MonoBehaviour
                     BoardManager.SyncAttachedModels(targetSlot);
 
                 Debug.Log($"舞者换位完成：{mySlotIndex}->{targetSlotIndex}");
-                // 刷新换位卡牌放置时间（替代全局12槽全量刷新，避免
-                // _placedAtTime 过新导致后续死亡同步时 EnsureEmpty 被 2s 守卫误保护）
+                // 通知双方客户端同步跨半场交换结果
+                if (Mirror.NetworkServer.active && NetworkPlayer.Remote != null)
+                    NetworkPlayer.Remote.TargetSwapCards(NetworkPlayer.Remote.connectionToClient,
+                        mySlotIndex >= 6 ? mySlotIndex - 6 : mySlotIndex + 6,
+                        targetSlotIndex >= 6 ? targetSlotIndex - 6 : targetSlotIndex + 6);
+                BoardSyncManager.MarkDirty();
                 var mySwapInst = mySlot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
                 if (mySwapInst != null) mySwapInst._placedAtTime = Time.time;
                 var targetSwapInst = targetSlot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;

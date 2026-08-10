@@ -3463,7 +3463,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
                 // 清理重定向标记
         HashSet<string> beforeEnter = new HashSet<string>();
-        for (int i = 0; i <= 5; i++)
+        BoardManager.GetEnemySideRange(slotID, out int terrEs, out int terrEe);
+        for (int i = terrEs; i <= terrEe; i++)
         {
             BoardSlot s = bm?.GetSlot(i);
             if (s?.currentCard3D != null)
@@ -3473,8 +3474,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             }
         }
 
-        // 第一次AOE
-        for (int i = 0; i <= 5; i++)
+        // 第一次AOE（基于来源槽位动态推断对方半场）
+        for (int i = terrEs; i <= terrEe; i++)
         {
             BoardSlot s = bm?.GetSlot(i);
             if (s?.currentCard3D != null)
@@ -4272,7 +4273,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         {
             giver._mindScholarCopyPrompted = true;
             List<CardInstance> targets = new List<CardInstance>();
-            for (int i = 0; i <= 5; i++) { BoardSlot s = bm?.GetSlot(i); if (s?.currentCard3D == null) continue; CardInstance ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance; CardData td = CardDatabase.Instance?.GetTemplate(ci?.templateID); if (td != null && (td.baseCost == 1 || td.baseCost == 3) && (td.hasOnEnter || ci.HasDiscard)) targets.Add(ci); }
+            BoardManager.GetEnemySideRange(slotID, out int msEs, out int msEe);
+            for (int i = msEs; i <= msEe; i++) { BoardSlot s = bm?.GetSlot(i); if (s?.currentCard3D == null) continue; CardInstance ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance; CardData td = CardDatabase.Instance?.GetTemplate(ci?.templateID); if (td != null && (td.baseCost == 1 || td.baseCost == 3) && (td.hasOnEnter || ci.HasDiscard)) targets.Add(ci); }
 
             if (targets.Count > 0)
             {

@@ -2517,8 +2517,8 @@ public class NetworkPlayer : NetworkBehaviour
     [Command]
     public void CmdDiscardDebuff01344(int localTargetSlot)
     {
-        // 远程客户端 localSlot 0-5 → 服务端坐标 6-11（敌方从远程视角=主机己方）
-        int serverSlot = isLocalPlayer ? localTargetSlot : (localTargetSlot + 6);
+        // 统一使用 MirrorSlot 工具方法——替代非对称 localTargetSlot + 6
+        int serverSlot = isLocalPlayer ? localTargetSlot : BoardSlot.MirrorSlot(localTargetSlot);
         BoardManager bm = FindObjectOfType<BoardManager>();
         BoardSlot target = bm?.GetSlot(serverSlot);
         if (target != null)

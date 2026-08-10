@@ -74,7 +74,8 @@ public static class DiscardHandlers
         int discardSlotID = ctx.discardSlotID;
         bool hasEnemy = false;
         var bm = BM();
-        for (int i = 0; i <= 5; i++)
+        BoardManager.GetEnemySideRange(discardSlotID, out int es, out int ee);
+        for (int i = es; i <= ee; i++)
             if (bm?.GetSlot(i)?.currentCard3D != null) { hasEnemy = true; break; }
         if (hasEnemy)
         {
@@ -129,7 +130,8 @@ public static class DiscardHandlers
         int mySlot = ctx.discardSlotID;
         bool hasEnemy = false;
         var bm = BM();
-        for (int i = 0; i <= 5; i++)
+        BoardManager.GetEnemySideRange(mySlot, out int es2, out int ee2);
+        for (int i = es2; i <= ee2; i++)
             if (bm?.GetSlot(i)?.currentCard3D != null) { hasEnemy = true; break; }
         if (hasEnemy)
         {
@@ -159,7 +161,8 @@ public static class DiscardHandlers
         int discardSlotID = ctx.discardSlotID;
         bool hasEnemy = false;
         var bm = BM();
-        for (int i = 0; i <= 5; i++)
+        BoardManager.GetEnemySideRange(discardSlotID, out int es, out int ee);
+        for (int i = es; i <= ee; i++)
             if (bm?.GetSlot(i)?.currentCard3D != null) { hasEnemy = true; break; }
         if (hasEnemy)
         {

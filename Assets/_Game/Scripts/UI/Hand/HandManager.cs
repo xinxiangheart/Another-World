@@ -2518,10 +2518,20 @@ public class HandManager : MonoBehaviour
             // 敌方单位朝向
             selectedSlot.currentCard3D.transform.rotation = Quaternion.Euler(0, 180, 0);
 
+            // 同步至服务器/对端——PlaceCardToSlot 不调 CmdPlayCard，需手动发出
+            if (NetworkClient.isConnected)
+            {
+                int atk = ti.baseAttack;
+                int hp = ti.baseHealth;
+                int maxHp = ti.baseMaxHealth;
+                int cost = ti.currentCost;
+                string iid = ti.instanceID ?? CardZoneManager.GenerateInstanceID("03025");
+                NetworkPlayer.Local?.CmdPlayCard("03025", selectedSlot.slotID, atk, hp, maxHp, cost, iid);
+            }
+
             placed = true;
             BoardSlot.isPlacingCard = false;
             BoardSlot.isStrengtheningSlot = false;
-            // CmdPlayCard is called from PlaceIndependentCard — no separate sync needed
         });
 
         yield return new WaitUntil(() => placed);

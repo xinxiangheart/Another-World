@@ -75,7 +75,10 @@ public class FanaticShamanAura : AuraBase
         if (GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(source))
             return false;
         int targetSlot = GetSlotOf(target);
-        if (targetSlot >= 6) return false;
+        int sourceSlot = GetSlotOf(source);
+        // 基于光环来源槽位动态判断对方半场——替代硬编码 targetSlot >= 6
+        bool isEnemy = BoardManager.IsAllySide(sourceSlot) != BoardManager.IsAllySide(targetSlot);
+        if (!isEnemy) return false;
         return traitType == "进场" || traitType == "抛置";
     }
 }
@@ -90,7 +93,10 @@ public class JudgeAura : AuraBase
         if (GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(source))
             return false;
         int targetSlot = GetSlotOf(target);
-        if (targetSlot >= 6) return false;
+        int sourceSlot = GetSlotOf(source);
+        // 基于光环来源槽位动态判断对方半场——替代硬编码 targetSlot >= 6
+        bool isEnemy = BoardManager.IsAllySide(sourceSlot) != BoardManager.IsAllySide(targetSlot);
+        if (!isEnemy) return false;
         return traitType == "退场";
     }
 }
@@ -169,10 +175,11 @@ public class ScarletSaintAura : AuraBase
 
         if (bloodCount > 0)
         {
-            entered.currentHealth -= bloodCount;
+            // 走 DamagePipeline 权威管道——确保亡语触发和死亡同步
+            BattleManager.Instance?.ApplyDamageToMinionPublic(entered, bloodCount, null);
             var e3d = Find3DOf(entered);
             e3d?.UpdateValues();
-            DamagePipeline.ShowFloaterAt(entered, bloodCount, FloaterType.Damage);
+            // ShowFloaterAt 已在 DamagePipeline 内调用，此处不再重复弹出浮字
         }
     }
 

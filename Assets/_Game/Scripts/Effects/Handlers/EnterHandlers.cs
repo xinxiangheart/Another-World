@@ -81,7 +81,9 @@ public static class EnterHandlers
     static void AoeEnemy1(CardInstance inst, BoardSlot slot)
     {
         var bm = BM();
-        for (int i = 0; i <= 5; i++)
+        // 基于来源槽位动态推断对方半场——替代硬编码 0-5
+        BoardManager.GetEnemySideRange(slot.slotID, out int enemyStart, out int enemyEnd);
+        for (int i = enemyStart; i <= enemyEnd; i++)
         {
             var es = bm?.GetSlot(i);
             if (es?.currentCard3D != null)
@@ -403,10 +405,12 @@ public static class EnterHandlers
         }
         if (scrollCount >= 2)
         {
-            // 纯客户端：委托服务端权威执行敌方死亡——本地 HandleDeath 不报告 0-5 槽位变更
+            // 基于来源槽位动态推断对方半场——替代硬编码 0-5
+            BoardManager.GetEnemySideRange(slot.slotID, out int enemyStart, out int enemyEnd);
+            // 纯客户端：委托服务端权威执行敌方死亡——本地 HandleDeath 不报告对方槽位变更
             if (NetworkClient.isConnected && !NetworkServer.active)
             {
-                for (int i = 0; i <= 5; i++)
+                for (int i = enemyStart; i <= enemyEnd; i++)
                 {
                     var s = bm?.GetSlot(i);
                     if (s?.currentCard3D != null)
@@ -419,7 +423,7 @@ public static class EnterHandlers
             }
             else
             {
-                for (int i = 0; i <= 5; i++)
+                for (int i = enemyStart; i <= enemyEnd; i++)
                 {
                     var s = bm?.GetSlot(i);
                     if (s?.currentCard3D != null)
