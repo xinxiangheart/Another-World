@@ -86,8 +86,14 @@ public class CardInstance : MonoBehaviour
     public bool _conquerorPendingCheck;
     public GameObject _conquerorTargetEnemyCard;
     public bool immuneToEnemySpell;
-    /// <summary>记录此卡被放置到槽位的时间（用于同步保护）</summary>
+    /// <summary>记录此卡被放置到槽位的时间（用于同步保护）。后续由 placementGeneration 替代。</summary>
     [System.NonSerialized] public float _placedAtTime = -999f;
+    /// <summary>卡牌放置的单调递增世代号。用于替代时间窗口去重（如 EnsureCard 2s 保护）。</summary>
+    [System.NonSerialized] public int placementGeneration;
+    /// <summary>此卡是否已被 HandleDeath 处理过。用于替代 lastHandleDeathTime 时间窗口。</summary>
+    [System.NonSerialized] public bool isDead;
+    /// <summary>死亡时记录的当前世代。用于判断死亡事件是否已被同步处理。</summary>
+    [System.NonSerialized] public int deathGeneration;
     /// <summary>[Legacy] 进场效果正在执行中——死亡扫描应跳过此卡。后续由 NestingContext.IsNested 替代。</summary>
     [System.NonSerialized] public bool _enterEffectRunning;
     /// <summary>进场效果已运行过（一次性的持久标记，不清除）。用于保护玩家放置的卡不被网络同步覆盖。</summary>

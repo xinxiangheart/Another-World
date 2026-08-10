@@ -37,6 +37,23 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         get => _isPlacingCard;
         set => _isPlacingCard = value;
     }
+
+    /// <summary>全局单调递增的卡牌放置世代号，用于替代 _placedAtTime 时间窗口去重。</summary>
+    static int _globalPlacementGeneration;
+
+    /// <summary>分配一个新的放置世代号并返回。</summary>
+    public static int NextPlacementGeneration() => ++_globalPlacementGeneration;
+
+    /// <summary>将客户端视角的 slotID 镜像映射为对端视角（0-5 ↔ 6-11）。</summary>
+    public static int MirrorSlot(int slotID)
+    {
+        return slotID >= 6 ? slotID - 6 : slotID + 6;
+    }
+
+    // ── 超时常量 ──────────────────────────────────────────────
+    public const float RPC_TIMEOUT = 30f;
+    public const float PHASE_TIMEOUT = 20f;
+    public const float BLOCK_WARNING = 10f;
     public static bool isReplaceMode
     {
         get => _isReplaceMode;
@@ -947,6 +964,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         // ── Step 3: 进场效果分发（新 → EffectRegistry，回退 → 旧 switch）──
         NestingContext.Enter($"Enter_{template.templateID}");
+        try
+        {
         if (inst != null) { inst._enterEffectRunning = true; inst._hadEnterEffect = true; }
         var enterCtx = EffectContext.ForEnter(template, inst, this);
         if (EffectDispatcher.Dispatch(Trigger.Enter, enterCtx))
@@ -982,6 +1001,16 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         Debug.LogWarning($"[StartOnEnterEffect] 未注册: {template.templateID}");
         CleanupAfterPlacement();
         NestingContext.Exit();
+        }
+        finally
+        {
+            // 安全网：若任意异常路径导致 Exit 未执行，强制复位以防 Depth 永久泄漏
+            if (NestingContext.Depth > 0)
+            {
+                Debug.LogWarning($"[NestingContext] StartOnEnterEffect 异常退出，强制复位深度 depth={NestingContext.Depth}");
+                NestingContext.ForceClear("StartOnEnterEffect leak");
+            }
+        }
     }
 
   
@@ -1041,7 +1070,12 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         if (card3D != null)
         {
             var ci = card3D.GetComponent<Card3DInstance>()?.cardInstance;
-            if (ci != null) ci._placedAtTime = Time.time;
+            if (ci != null)
+            {
+                ci._placedAtTime = Time.time;
+                ci.placementGeneration = BoardSlot.NextPlacementGeneration();
+                ci.isDead = false;
+            }
             lastHandleDeathTime = -1f; // 新卡入槽，重置死亡时间戳
             // Registry: 板面入槽
             if (ci != null && RegistrySyncManager.Instance != null)
@@ -1178,6 +1212,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         // Registry: 板面退场 → 墓地
         RegistrySyncManager.Instance?.UpdateCard(c3d.cardInstance, slotID >= 6 ? 0 : 1, CardZone.Graveyard, slotID);
         lastHandleDeathTime = Time.time;
+        c3d.cardInstance.isDead = true;
+        c3d.cardInstance.deathGeneration = c3d.cardInstance.placementGeneration;
         c3d.cardInstance.hasLifePriestBlessing = false;
         c3d.cardInstance.lifePriestBlessingSource = null;
         string templateID = c3d.cardInstance.templateID;
@@ -1844,41 +1880,40 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
 
         yield return null;
-        yield return StartCoroutine(BattleManager.Instance.WaitForSelection((onDone) =>
+        // 本地选择路径加 30 秒超时，防止选择永不回调导致死锁
+        bool selDone = false;
+        float selDeadline = Time.time + 30f;
+        BoardManager bmLocal = FindObjectOfType<BoardManager>();
+        bool hasAlly = false;
+        for (int j = 6; j <= 11; j++)
         {
-            BoardManager bm = FindObjectOfType<BoardManager>();
-            bool hasAlly = false;
-            for (int j = 6; j <= 11; j++)
+            if (bmLocal?.GetSlot(j)?.currentCard3D != null) { hasAlly = true; break; }
+        }
+        if (hasAlly)
+        {
+            SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (targetSlot) =>
             {
-                if (bm?.GetSlot(j)?.currentCard3D != null) { hasAlly = true; break; }
-            }
-            if (hasAlly)
-            {
-                SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (targetSlot) =>
+                if (!selDone && targetSlot?.currentCard3D != null)
                 {
-                    if (targetSlot?.currentCard3D != null)
+                    CardInstance ci = targetSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                    if (ci != null && ci != giver)
                     {
-                        CardInstance ci = targetSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                        if (ci != null && ci != giver)
+                        if (!ci.cannotHealOrGainMaxHP)
                         {
-                            if (!ci.cannotHealOrGainMaxHP)
-                            {
-                                ci.currentHealth += 5;
-                                ci.currentMaxHealth += 5;
-                            }
-                            ci.currentAttack += 4;
-                            targetSlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
-                            TurnManager.SyncMyBoardToOpponent();
+                            ci.currentHealth += 5;
+                            ci.currentMaxHealth += 5;
                         }
+                        ci.currentAttack += 4;
+                        targetSlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+                        TurnManager.SyncMyBoardToOpponent();
                     }
-                    onDone();
-                });
-            }
-            else
-            {
-                onDone();
-            }
-        }));
+                }
+                selDone = true;
+            });
+        }
+        else { selDone = true; }
+        yield return new WaitUntil(() => selDone || Time.time > selDeadline);
+        if (!selDone) { SelectionManager.Instance.ForceEndAll(); Debug.LogWarning("[MartyrDeath] 本地选择超时（30s），强制结束"); }
         NestingContext.Exit();
     }
     public IEnumerator RogueDeathEffect(CardInstance giver)
@@ -3390,6 +3425,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 wolfCI.baseMaxHealth += stackMaxHp;
                 wolfCI.wolfKingInstanceID = giver.instanceID;
                 wolfCI._placedAtTime = Time.time;
+                wolfCI.placementGeneration = BoardSlot.NextPlacementGeneration();
                 c3d.cardInstance = wolfCI;
                 c3d.UpdateValues();
             }

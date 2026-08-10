@@ -710,7 +710,10 @@ public class BattleManager : MonoBehaviour
         {
             BoardSlot._remoteFirstStrikeDone = false;
             NetworkPlayer.Remote.TargetRunRemoteFirstStrikes(NetworkPlayer.Remote.connectionToClient);
-            yield return new WaitWhile(() => !BoardSlot._remoteFirstStrikeDone);
+            float remoteFsDeadline = Time.time + 30f;
+            yield return new WaitWhile(() => !BoardSlot._remoteFirstStrikeDone && Time.time < remoteFsDeadline);
+            if (!BoardSlot._remoteFirstStrikeDone)
+                Debug.LogError("[BattleManager] 远程先手 RPC 超时（30s），强制继续");
             // 广播完整板面给远端客户端，确保交换后的正确状态同步出去
             BoardSyncManager.MarkDirty();
             yield return null; // 让 LateUpdate 中的 SyncNow 执行
@@ -1990,16 +1993,24 @@ public class BattleManager : MonoBehaviour
     public static IEnumerator WaitForSimultaneousWindow()
     {
         yield return ActionQueueManager.WaitForDrain();
-        float t0 = Time.time;
-        yield return new WaitWhile(() => NestingContext.IsNested);
-        if (Time.time - t0 > 10f) Debug.LogWarning($"[WaitForSimultaneousWindow] NestingContext 阻塞 {Time.time - t0:F1}s depth={NestingContext.Depth}");
-        t0 = Time.time;
-        yield return new WaitWhile(() => BoardSlot.isPlacingCard);
-        if (Time.time - t0 > 10f) Debug.LogWarning($"[WaitForSimultaneousWindow] isPlacingCard 阻塞 {Time.time - t0:F1}s");
-        t0 = Time.time;
+        // 等待嵌套上下文排空，超时 30s 后强制复位（防止协程异常导致 Depth 永久泄漏）
+        float deadDepth = Time.time;
+        yield return new WaitWhile(() => NestingContext.IsNested && Time.time - deadDepth < 30f);
+        if (NestingContext.IsNested)
+        {
+            Debug.LogError($"[WaitForSimultaneousWindow] NestingContext 阻塞超过 30s depth={NestingContext.Depth}，强制复位！");
+            NestingContext.ForceClear("WaitForSimultaneousWindow 超时");
+        }
+        // 等待 isPlacingCard 复位，超时 30s 后强制清除
+        float deadPlace = Time.time;
+        yield return new WaitWhile(() => BoardSlot.isPlacingCard && Time.time - deadPlace < 30f);
+        if (BoardSlot.isPlacingCard)
+        {
+            Debug.LogError("[WaitForSimultaneousWindow] isPlacingCard 阻塞超过 30s，强制复位！");
+            BoardSlot.isPlacingCard = false;
+        }
         if (SelectionManager.Instance != null)
             yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
-        if (Time.time - t0 > 10f) Debug.LogWarning($"[WaitForSimultaneousWindow] IsSelecting 阻塞 {Time.time - t0:F1}s");
         var cqm = ConfirmQueueManager.Instance;
         if (cqm != null) yield return new WaitWhile(() => cqm.IsBusy());
         if (BoardSlot.pendingRevenges.Count > 0)

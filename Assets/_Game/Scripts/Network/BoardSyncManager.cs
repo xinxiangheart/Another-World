@@ -11,7 +11,7 @@ public class BoardSyncManager : MonoBehaviour
     bool _dirty;
 
     /// <summary>防止刚放置/换位的卡牌被过期同步数据覆盖的时间窗口（秒）。</summary>
-    const float PLACE_PROTECT_WINDOW = 2.0f;
+    public const float PLACE_PROTECT_WINDOW = 2.0f;
 
     void Awake() { if (Instance != null) { Destroy(gameObject); return; } Instance = this; }
     public static void MarkDirty() { if (Instance != null) Instance._dirty = true; }
@@ -279,6 +279,7 @@ public class BoardSyncManager : MonoBehaviour
             {
                 var n = m.AddComponent<CardInstance>(); n.InitFromTemplate(t, 0);
                 n.isAttached = true; n.hostSlotID = cs; n.attachOrder = o; n._placedAtTime = Time.time;
+                n.placementGeneration = BoardSlot.NextPlacementGeneration();
                 c.cardInstance = n; c.UpdateValues();
             }
             Card3DHover.SetHidden(m, mistHiderActive, true);
@@ -368,6 +369,11 @@ public class BoardSyncManager : MonoBehaviour
             }
 
             slot.lastHandleDeathTime = Time.time;
+            if (slot.currentCard3D != null)
+            {
+                var dyingCi = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                if (dyingCi != null) { dyingCi.isDead = true; dyingCi.deathGeneration = dyingCi.placementGeneration; }
+            }
             SafeDestroy(slot.currentCard3D); slot.SetCard(null);
         }
     }
@@ -412,7 +418,7 @@ public class BoardSyncManager : MonoBehaviour
         if (cur == null && hm != null)
         {
             if (NetworkClient.isConnected && !NetworkServer.active) return;
-            if (slot.lastHandleDeathTime > 0 && Time.time - slot.lastHandleDeathTime < 2f) return;
+            if (slot.lastHandleDeathTime > 0 && Time.time - slot.lastHandleDeathTime < PLACE_PROTECT_WINDOW) return;
 
             var t = CardDatabase.Instance?.GetTemplate(tid);
             if (t != null && t.canAttach && t.baseHealth == 0) return;
@@ -420,7 +426,7 @@ public class BoardSyncManager : MonoBehaviour
             {
                 var m = Instantiate(t.prefab3D, hm.GetSlotWorldPosition(idx), Quaternion.Euler(0, 180, 0));
                 var c = m.GetComponent<Card3DInstance>();
-                if (c != null) { var n = m.AddComponent<CardInstance>(); n.InitFromTemplate(t, 0); if (t.templateID == "03007") n.isShadow = true; if (t.templateID == "01502") CardInstance.shadowMasterAlive = true; n._placedAtTime = Time.time; c.cardInstance = n; c.UpdateValues(); }
+                if (c != null) { var n = m.AddComponent<CardInstance>(); n.InitFromTemplate(t, 0); if (t.templateID == "03007") n.isShadow = true; if (t.templateID == "01502") CardInstance.shadowMasterAlive = true; n._placedAtTime = Time.time; n.placementGeneration = BoardSlot.NextPlacementGeneration(); c.cardInstance = n; c.UpdateValues(); }
                 slot.SetCard(m);
                 cur = c?.cardInstance; justCreated = true;
             }

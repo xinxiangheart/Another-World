@@ -443,27 +443,38 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
     {
         Debug.Log($"ResolveSpellEffect 进入：effect=\"{template.effect}\"");
 
-        // ── 法术效果分发 ──
-        var spellCtx = EffectContext.ForSpell(template, targetSlot);
-        EffectDispatcher.Dispatch(Trigger.Spell, spellCtx);
-        SpellPending = spellCtx.StartedCoroutine;
-
-        // ── 通用法术收尾 ──────────────────────────────────────────────
-        if (template != null && (template.spellType & SpellType.Evil) != 0)
+        // 纯客户端：委托服务器权威执行法术效果。
+        // 例外：02004 皇帝认可需要客户端 UI 选择面板，保留本地执行。
+        if (NetworkClient.isConnected && !NetworkServer.active && template.templateID != "02004")
         {
-            BoardManager bm = FindObjectOfType<BoardManager>();
-            BoardSlot[] slots = bm?.GetAllSlots();
-            if (slots != null)
+            int slotID = targetSlot?.slotID ?? -1;
+            NetworkPlayer.Local?.CmdResolveSpell(template.templateID, slotID);
+            // 服务器侧 CmdResolveSpell 会执行 Dispatch→CheckDeaths→MarkDirty，
+            // 客户端通过 SyncNow 获得最终板面。坟场记录保留在本地。
+        }
+        else
+        {
+            var spellCtx = EffectContext.ForSpell(template, targetSlot);
+            EffectDispatcher.Dispatch(Trigger.Spell, spellCtx);
+            SpellPending = spellCtx.StartedCoroutine;
+
+            // ── 通用法术收尾（仅 Host/离线/客户端 UI 法术）────────────
+            if (template != null && (template.spellType & SpellType.Evil) != 0)
             {
-                foreach (BoardSlot slot in slots)
+                BoardManager bm = FindObjectOfType<BoardManager>();
+                BoardSlot[] slots = bm?.GetAllSlots();
+                if (slots != null)
                 {
-                    if (slot?.currentCard3D != null)
+                    foreach (BoardSlot slot in slots)
                     {
-                        CardInstance cardInst = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                        if (cardInst != null && cardInst.templateID == "03503")
+                        if (slot?.currentCard3D != null)
                         {
-                            NetworkPlayer.Local.TakeDamage(1);
-                            Debug.Log("智者效果：对方打出邪恶法术，扣1血");
+                            CardInstance cardInst = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                            if (cardInst != null && cardInst.templateID == "03503")
+                            {
+                                NetworkPlayer.Local.TakeDamage(1);
+                                Debug.Log("智者效果：对方打出邪恶法术，扣1血");
+                            }
                         }
                     }
                 }

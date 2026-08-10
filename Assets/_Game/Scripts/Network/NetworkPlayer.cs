@@ -10,12 +10,16 @@ public class NetworkPlayer : NetworkBehaviour
     public static NetworkPlayer Local { get; private set; }
     public static NetworkPlayer Remote { get; private set; }
 
-    /// <summary>服务器替远程客户端执行时，临时把 Local 设为对应玩家。</summary>
+    /// <summary>服务器替远程客户端执行时，临时把 Local 设为对应玩家，同时正确维护 Remote 语义（始终指向施法者的对手）。</summary>
     public void RunAsLocal(System.Action action)
     {
-        var saved = Local; Local = this;
+        var savedLocal = Local;
+        var savedRemote = Remote;
+        Local = this;
+        // 施法者切换时 Remote 也需要对应切换，否则 handler 内 Remote 不再代表对手
+        Remote = (this == savedLocal) ? savedRemote : savedLocal;
         try { action(); }
-        finally { Local = saved; }
+        finally { Local = savedLocal; Remote = savedRemote; }
     }
 
     [Header("Player Stats")]
@@ -397,7 +401,7 @@ public class NetworkPlayer : NetworkBehaviour
     public void CmdResolveSpell(string templateID, int clientSlotID)
     {
         int serverSlot = clientSlotID < 0 ? -1
-            : (isLocalPlayer ? clientSlotID : (clientSlotID >= 6 ? clientSlotID - 6 : clientSlotID + 6));
+            : (isLocalPlayer ? clientSlotID : BoardSlot.MirrorSlot(clientSlotID));
         RunAsLocal(() =>
         {
             BoardManager bm = FindObjectOfType<BoardManager>();
@@ -621,9 +625,17 @@ public class NetworkPlayer : NetworkBehaviour
     public void TakeDamage(int amount)
     {
         if (NetworkServer.active)
+        {
             currentHealth -= amount;
-        else
+        }
+        else if (isLocalPlayer)
+        {
             CmdTakeDamage(amount);
+        }
+        else
+        {
+            Debug.LogError("[NetworkPlayer] 纯客户端不能对非本地玩家调用 TakeDamage，请走服务端路由");
+        }
     }
 
     [Command]
@@ -635,9 +647,17 @@ public class NetworkPlayer : NetworkBehaviour
     public void Heal(int amount)
     {
         if (NetworkServer.active)
+        {
             currentHealth = Mathf.Min(maxHealth, currentHealth + amount);
-        else
+        }
+        else if (isLocalPlayer)
+        {
             CmdHeal(amount);
+        }
+        else
+        {
+            Debug.LogError("[NetworkPlayer] 纯客户端不能对非本地玩家调用 Heal，请走服务端路由");
+        }
     }
 
     [Command]
@@ -656,8 +676,14 @@ public class NetworkPlayer : NetworkBehaviour
             if (!_energyCanExceedLimit && currentEnergy > maxEnergy)
                 currentEnergy = maxEnergy;
         }
-        else
+        else if (isLocalPlayer)
+        {
             CmdAddEnergy(amount);
+        }
+        else
+        {
+            Debug.LogError("[NetworkPlayer] 纯客户端不能对非本地玩家调用 AddEnergy，请走服务端路由");
+        }
     }
 
     [Command]
@@ -1536,7 +1562,7 @@ public class NetworkPlayer : NetworkBehaviour
             if (!stillExists)
             {
                 CardInstance aci = ci;
-                if (isServerProcessingClientReport && aci._placedAtTime > 0 && Time.time - aci._placedAtTime < 2f) continue;
+                if (isServerProcessingClientReport && aci._placedAtTime > 0 && Time.time - aci._placedAtTime < BoardSyncManager.PLACE_PROTECT_WINDOW) continue;
                 bm.attachedModels.RemoveAt(i);
                 BoardManager.RecordAndRemoveAttach(obj);
             }
@@ -1580,7 +1606,7 @@ public class NetworkPlayer : NetworkBehaviour
             if (c != null)
             {
                 var n = m.AddComponent<CardInstance>(); n.InitFromTemplate(t, 0);
-                n.isAttached = true; n.hostSlotID = mapped; n.attachOrder = o; n._placedAtTime = Time.time;
+                n.isAttached = true; n.hostSlotID = mapped; n.attachOrder = o; n._placedAtTime = Time.time; n.placementGeneration = BoardSlot.NextPlacementGeneration();
                 c.cardInstance = n; c.UpdateValues();
             }
             bm.attachedModels.Add(m);
@@ -2059,6 +2085,12 @@ public class NetworkPlayer : NetworkBehaviour
     [Command]
     public void CmdSetPrisonSlots(string instanceID, int myPrisonSlot, int enemyPrisonSlot)
     {
+        // Remote 客户端上报的槽位是本地视角（6-11=己方），需镜像映射为服务端坐标
+        if (!isLocalPlayer)
+        {
+            myPrisonSlot = myPrisonSlot >= 6 ? myPrisonSlot - 6 : myPrisonSlot + 6;
+            enemyPrisonSlot = enemyPrisonSlot >= 6 ? enemyPrisonSlot - 6 : enemyPrisonSlot + 6;
+        }
         BoardManager bm = FindObjectOfType<BoardManager>();
         if (bm == null) return;
         for (int i = 0; i < 12; i++)
