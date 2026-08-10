@@ -10,6 +10,14 @@ public class NetworkPlayer : NetworkBehaviour
     public static NetworkPlayer Local { get; private set; }
     public static NetworkPlayer Remote { get; private set; }
 
+    /// <summary>服务器替远程客户端执行时，临时把 Local 设为对应玩家。</summary>
+    public void RunAsLocal(System.Action action)
+    {
+        var saved = Local; Local = this;
+        try { action(); }
+        finally { Local = saved; }
+    }
+
     [Header("Player Stats")]
     public int maxHealth = 20;
     public int maxEnergy = 15;
@@ -362,6 +370,49 @@ public class NetworkPlayer : NetworkBehaviour
         AddServerSideCard(data, iid);
     }
 
+    [Command]
+    public void CmdDrawWithoutLimit()
+    {
+        CardData data = DeckManager.Instance?.DrawFromMain();
+        if (data == null) return;
+        string iid = data._instanceID ?? "";
+        TargetReceiveCard(connectionToClient, data.templateID, iid);
+        AddServerSideCard(data, iid);
+    }
+
+    [Command]
+    public void CmdAddCardToHand(string templateID, int count)
+    {
+        CardData template = CardDatabase.Instance?.GetTemplate(templateID);
+        if (template == null) return;
+        for (int i = 0; i < count; i++)
+        {
+            string iid = CardZoneManager.GenerateInstanceID(templateID);
+            TargetReceiveCard(connectionToClient, templateID, iid);
+            AddServerSideCard(template, iid);
+        }
+    }
+
+    [Command]
+    public void CmdResolveSpell(string templateID, int clientSlotID)
+    {
+        int serverSlot = clientSlotID < 0 ? -1
+            : (isLocalPlayer ? clientSlotID : (clientSlotID >= 6 ? clientSlotID - 6 : clientSlotID + 6));
+        RunAsLocal(() =>
+        {
+            BoardManager bm = FindObjectOfType<BoardManager>();
+            BoardSlot targetSlot = serverSlot >= 0 ? bm?.GetSlot(serverSlot) : null;
+            CardData template = CardDatabase.Instance?.GetTemplate(templateID);
+            if (template != null)
+            {
+                var spellCtx = EffectContext.ForSpell(template, targetSlot);
+                EffectDispatcher.Dispatch(Trigger.Spell, spellCtx);
+            }
+            BoardSlot.CheckAndHandleDeaths();
+            BoardSyncManager.MarkDirty();
+        });
+    }
+
     /// <summary>
     /// Server-side card placement. overrideAtk/overrideHP/overrideMaxHP (-1 = use template default)
     /// are applied after InitFromTemplate so enter-effect stat boosts survive the server's fresh spawn.
@@ -654,6 +705,7 @@ public class NetworkPlayer : NetworkBehaviour
 
     public void DrawCard()
     {
+        if (NetworkServer.active && !isLocalPlayer) { CmdRequestDraw(); return; }
         handCards.RemoveAll(c => c == null);
 
         DrawCardUI drawUI = FindObjectOfType<DrawCardUI>();
@@ -715,6 +767,7 @@ public class NetworkPlayer : NetworkBehaviour
 
     public void DrawCardWithoutLimit()
     {
+        if (NetworkServer.active && !isLocalPlayer) { CmdDrawWithoutLimit(); return; }
         handCards.RemoveAll(c => c == null);
 
         if (handCards.Count >= maxHandSize)
@@ -790,8 +843,13 @@ public class NetworkPlayer : NetworkBehaviour
 
     public void AddCardToHand(CardData template, string instanceID = null)
     {
-        // 先清理已打出/销毁的手牌（GameObject 被 Destroy 后仅剩 null 残留在列表里），
-        // 否则陈旧计数会把未满手误判为满手，导致抽牌被错误拦截。
+        if (NetworkServer.active && !isLocalPlayer)
+        {
+            string iid = instanceID ?? CardZoneManager.GenerateInstanceID(template.templateID);
+            TargetReceiveCard(connectionToClient, template.templateID, iid);
+            AddServerSideCard(template, iid);
+            return;
+        }
         handCards.RemoveAll(c => c == null);
         if (handCards.Count >= maxHandSize) return;
 
@@ -2057,18 +2115,6 @@ public class NetworkPlayer : NetworkBehaviour
         }
     }
 
-    /// <summary>客户端→服务器：通知服务器将指定模板的卡加入该客户端手牌追踪。</summary>
-    [Command]
-    public void CmdAddCardToHand(string templateID, int count)
-    {
-        CardData template = CardDatabase.Instance?.GetTemplate(templateID);
-        if (template == null) return;
-        for (int i = 0; i < count; i++)
-        {
-            string iid = CardZoneManager.GenerateInstanceID(templateID);
-            AddServerSideCard(template, iid);
-        }
-    }
 
     /// <summary>客户端→服务器：同步 01535 执行之剑消耗的法术费用。</summary>
     [Command]

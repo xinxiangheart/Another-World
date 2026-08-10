@@ -1622,6 +1622,25 @@ public class BattleManager : MonoBehaviour
     }
     public void ApplyDamageToMinionPublic(CardInstance target, int damage, GameObject source)
     {
+        // Pure client: route through server-authoritative command
+        if (NetworkClient.isConnected && !NetworkServer.active)
+        {
+            BoardManager bm = FindObjectOfType<BoardManager>();
+            for (int i = 0; i < 12; i++)
+            {
+                var s = bm?.GetSlot(i);
+                if (s?.currentCard3D != null)
+                {
+                    var ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                    if (ci == target)
+                    {
+                        NetworkPlayer.Local?.CmdApplyDamageToCard(i, damage);
+                        return;
+                    }
+                }
+            }
+            return;
+        }
         ApplyDamageToMinion(target, damage, source);
     }
     public IEnumerator WaitForSelection(Action<Action> selection)
@@ -1971,9 +1990,16 @@ public class BattleManager : MonoBehaviour
     public static IEnumerator WaitForSimultaneousWindow()
     {
         yield return ActionQueueManager.WaitForDrain();
+        float t0 = Time.time;
         yield return new WaitWhile(() => NestingContext.IsNested);
+        if (Time.time - t0 > 10f) Debug.LogWarning($"[WaitForSimultaneousWindow] NestingContext 阻塞 {Time.time - t0:F1}s depth={NestingContext.Depth}");
+        t0 = Time.time;
         yield return new WaitWhile(() => BoardSlot.isPlacingCard);
-        yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
+        if (Time.time - t0 > 10f) Debug.LogWarning($"[WaitForSimultaneousWindow] isPlacingCard 阻塞 {Time.time - t0:F1}s");
+        t0 = Time.time;
+        if (SelectionManager.Instance != null)
+            yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
+        if (Time.time - t0 > 10f) Debug.LogWarning($"[WaitForSimultaneousWindow] IsSelecting 阻塞 {Time.time - t0:F1}s");
         var cqm = ConfirmQueueManager.Instance;
         if (cqm != null) yield return new WaitWhile(() => cqm.IsBusy());
         if (BoardSlot.pendingRevenges.Count > 0)

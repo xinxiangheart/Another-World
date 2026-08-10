@@ -443,7 +443,7 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
     {
         Debug.Log($"ResolveSpellEffect 进入：effect=\"{template.effect}\"");
 
-        // ── 法术效果分发 ──────────────────────────────────────────────
+        // ── 法术效果分发 ──
         var spellCtx = EffectContext.ForSpell(template, targetSlot);
         EffectDispatcher.Dispatch(Trigger.Spell, spellCtx);
         SpellPending = spellCtx.StartedCoroutine;
@@ -718,6 +718,9 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
             c3d?.UpdateValues();
             CardDisplay2D display2D = target.GetComponent<CardDisplay2D>();
             display2D?.Refresh();
+
+            // 前缀修改同步到对方
+            TurnManager.SyncMyBoardToOpponent();
 
             NetworkPlayer.Local.DrawCard();
         }

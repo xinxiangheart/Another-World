@@ -359,7 +359,7 @@ public static class SpellHandlers
         var ts = ctx.targetSlot;
         if (ts != null)
         {
-            int rs = ts.slotID < 3 ? 0 : 3;
+            int rs = (ts.slotID / 3) * 3;
             var bm = BM();
             for (int c = 0; c < 3; c++)
             {

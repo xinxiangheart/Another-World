@@ -2425,6 +2425,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             c3d?.UpdateValues();
             CardDisplay2D d2d = target.GetComponent<CardDisplay2D>();
             d2d?.Refresh();
+            // 前缀修改同步到对方
+            TurnManager.SyncMyBoardToOpponent();
         }
     }
     public void SetHighlightColor(Color color)
@@ -3558,7 +3560,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             }
         });
 
-        yield return new WaitUntil(() => done);
+        // 与远程路径一致的 20 秒超时，防止战斗阶段卡死
+        float deadlineLocal = Time.time + 20f;
+        yield return new WaitUntil(() => done || Time.time > deadlineLocal);
+        if (!done) Debug.LogWarning($"[AncientFairyReattach] 本地选择超时（20s），自动重附着");
 
         if (newHost != null)
             ApplyFairyReattachToSlot(fairy, fairyCI, newHost.slotID);
