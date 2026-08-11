@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using TMPro;
 
 /// <summary>
 /// Game场景资源预加载器——在Lobby场景中提前异步加载重资源，
@@ -132,7 +133,8 @@ public class Preloader : MonoBehaviour
             var op = Resources.LoadAsync<GameObject>(t);
             op.completed += req =>
             {
-                if (req.asset != null) _cache[t] = req.asset;
+                var rr = req as ResourceRequest;
+                if (rr?.asset != null) _cache[t] = rr.asset;
                 _completedOps++;
             };
             _loadOps.Add(op);
