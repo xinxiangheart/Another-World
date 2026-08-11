@@ -444,8 +444,26 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
         Debug.Log($"ResolveSpellEffect 进入：effect=\"{template.effect}\"");
 
         // 纯客户端：委托服务器权威执行法术效果。
-        // 例外：02004 皇帝认可需要客户端 UI 选择面板，保留本地执行。
-        if (NetworkClient.isConnected && !NetworkServer.active && template.templateID != "02004")
+        // 例外：需要客户端本地 UI 选择面板的法术（它们的协程调用了 SelectionManager/BeginOpenSelection 等），
+        // 必须在客户端本地 Dispatch，否则面板会错误地出现在 Host 端。
+        // 判断依据：handler 内部是否调用了 StartCoroutine 启动含 UI 的协程。
+        bool needsLocalUI = template.templateID switch
+        {
+            "02004" => true,  // 皇帝认可 — EmperorsApprovalEffectCoroutine
+            "02010" => true,  // 背叛 — BetrayalEffect
+            "02106" => true,  // 改编列队 — ReformFormationEffect
+            "02111" => true,  // 手牌净化 — HandCleanseEffect
+            "02203" => true,  // 伟大进化 — GreatEvolutionEffect
+            "02212" => true,  // 核心召唤 — SummonCoreEffect
+            "02307" => true,  // 多卡效应 — ManyCardsEffect
+            "02310" => true,  // 聚光灯 — SpotlightEffect
+            "02311" => true,  // 冲锋号角 — ChargeHornEffect
+            "02403" => true,  // 小型邪恶召唤 — SummonSmallEvilEffect
+            "02408" => true,  // 瘟疫 — PlagueEffect
+            "02501" => true,  // 传送门 — DoorEffect（异步协程需要本地上下文）
+            _ => false,
+        };
+        if (NetworkClient.isConnected && !NetworkServer.active && !needsLocalUI)
         {
             int slotID = targetSlot?.slotID ?? -1;
             NetworkPlayer.Local?.CmdResolveSpell(template.templateID, slotID);
