@@ -215,8 +215,12 @@ public class NetworkPlayer : NetworkBehaviour
         // UI-only references — only used on the actual client for enemy health/energy display.
         // Do NOT set handArea/handManager for Remote — server-side draws for Remote must
         // use TargetReceiveCard RPC, never local Instantiate (which would land on EnemyHandArea).
-        _healthText = FindTMP("EnemyHealthLabel");
-        _energyText = FindTMP("EnemyEnergyLabel");
+        // EnemyHealthLabel/EnemyEnergyLabel 仅本地玩家需要——Remote 的 prefab 不含这些组件
+        if (isLocalPlayer)
+        {
+            _healthText = FindTMP("EnemyHealthLabel");
+            _energyText = FindTMP("EnemyEnergyLabel");
+        }
         RefreshUI();
     }
 

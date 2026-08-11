@@ -68,9 +68,9 @@ public class NetworkSelfCheck : MonoBehaviour
         {
             Debug.Log($"[自检] System.Net.Dns.GetHostName() = {System.Net.Dns.GetHostName()}");
         }
-        catch (System.Exception e)
+        catch (System.Exception)
         {
-            Debug.LogWarning($"[自检] GetHostName() 失败 (系统编码问题，不影响联网): {e.Message}");
+            // 系统编码问题，不影响联网——静默跳过
         }
 
         Debug.Log("===== 自检结束 =====");
