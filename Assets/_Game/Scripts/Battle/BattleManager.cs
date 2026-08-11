@@ -551,12 +551,14 @@ public class BattleManager : MonoBehaviour
         }
 
         // ===== 阶段2.4：伤害处理 =====
+        Debug.Log("=== 阶段2.4：先手伤害 全12槽扫描 ===");
         for (int i = 0; i < 12; i++)
         {
             BoardSlot slot = allSlots[i];
             if (slot?.currentCard3D == null) continue;
             CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
             if (ci == null || !ci.HasFirstStrike) continue;
+            Debug.Log($"[FS-dmg] slot={i} tid={ci.templateID} hasFS={ci.hasFirstStrike} silenced={GlobalEventManager.Instance?.IsFullySilenced(ci)}");
 
         // 检查对方是否有合法目标
             if (ci.templateID == "03506")
