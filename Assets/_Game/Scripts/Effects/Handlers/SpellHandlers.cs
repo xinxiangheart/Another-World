@@ -267,7 +267,10 @@ public static class SpellHandlers
             if (ci != null)
             {
                 int oldAtk = ci.currentAttack, oldHp = ci.currentHealth;
-                ci.currentAttack = oldHp; ci.currentMaxHealth = oldAtk; ci.currentHealth = oldAtk;
+                int oldBaseAtk = ci.baseAttack, oldBaseHp = ci.baseHealth, oldBaseMaxHp = ci.baseMaxHealth;
+                ci.currentAttack = oldHp;   ci.baseAttack = oldBaseHp;
+                ci.currentMaxHealth = oldAtk; ci.baseMaxHealth = oldBaseAtk;
+                ci.currentHealth = oldAtk;  ci.baseHealth = oldBaseAtk;
                 t3d.UpdateValues();
                 if (ci.currentHealth <= 0) BoardSlot.CheckAndHandleDeaths();
             }
