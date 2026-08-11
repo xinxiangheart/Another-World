@@ -23,6 +23,9 @@ public class Preloader : MonoBehaviour
 
     public float Progress => _totalOps > 0 ? (float)_completedOps / _totalOps : 0f;
     public bool IsDone => _completedOps >= _totalOps && _totalOps > 0;
+    public bool TimedOut { get; private set; }
+    float _startTime;
+    public float Elapsed => Time.time - _startTime;
 
     AsyncOperation _sceneLoadOp;
 
@@ -66,6 +69,8 @@ public class Preloader : MonoBehaviour
     public void StartPreload()
     {
         if (_loadOps.Count > 0) return; // already started
+        _startTime = Time.time;
+        TimedOut = false;
 
         // ── 卡牌数据 ──────────────────────────────────────────
         // 230+ 张卡牌 ScriptableObjects——CardDatabase.Awake 的最大瓶颈
@@ -150,9 +155,16 @@ public class Preloader : MonoBehaviour
         if (_sceneLoadOp != null)
             _sceneLoadOp.allowSceneActivation = false;
 
-        // 2. 等待资源预加载完成
+        // 2. 等待资源预加载完成或超时（10秒）
+        const float preloadTimeout = 10f;
         while (!IsDone)
         {
+            if (Elapsed > preloadTimeout)
+            {
+                TimedOut = true;
+                Debug.LogWarning($"[Preloader] 预加载超时 ({preloadTimeout}s)，强制继续");
+                break;
+            }
             yield return null;
         }
 

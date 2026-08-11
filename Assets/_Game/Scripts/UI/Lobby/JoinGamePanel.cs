@@ -80,16 +80,21 @@ public class JoinGamePanel : MonoBehaviour
             remaining -= Time.deltaTime;
         }
 
-        // 倒计时结束但预加载未完成→等待预加载完成
+        // 倒计时结束但预加载未完成→等待预加载完成，超时10秒兜底
         if (!Preloader.Instance.IsDone)
         {
             if (countdownText != null) countdownText.text = "等待资源加载...";
-            while (!Preloader.Instance.IsDone)
+            while (!Preloader.Instance.IsDone && !Preloader.Instance.TimedOut)
             {
                 float p = Preloader.Instance.Progress;
                 if (progressBar != null) progressBar.value = p;
                 if (progressText != null) progressText.text = $"加载中 {Mathf.RoundToInt(p * 100)}%";
                 yield return null;
+            }
+            if (Preloader.Instance.TimedOut)
+            {
+                if (progressText != null) progressText.text = "加载超时，正在进入游戏...";
+                Debug.LogWarning($"[JoinGamePanel] 预加载超时 ({Preloader.Instance.Elapsed:F1}s)，强制继续");
             }
         }
 
