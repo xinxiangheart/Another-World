@@ -2172,6 +2172,79 @@ public class NetworkPlayer : NetworkBehaviour
         Debug.Log("[NetworkPlayer] CmdSurrender — health set to 0");
     }
 
+    // ── Remote 先手效果委托 Cmd —— RunRemoteFirstStrikes 面板选完统一发 Cmd ──────
+
+    /// <summary>Remote 03502 毒巫先手：选目标→ClearShield+Poison(+神选者扣对方1能量)。</summary>
+    [Command]
+    public void Cmd03502FirstStrike(int localTargetSlot)
+    {
+        int serverSlot = isLocalPlayer ? localTargetSlot : BoardSlot.MirrorSlot(localTargetSlot);
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        BoardSlot ts = bm?.GetSlot(serverSlot);
+        if (ts?.currentCard3D == null) return;
+        var ti = ts.currentCard3D.GetComponent<Card3DInstance>();
+        if (ti?.cardInstance == null) return;
+        ti.cardInstance.RemoveShield();
+        ti.cardInstance.poisoned = true;
+        if (ti.cardInstance.summonType == SummonType.ChosenOne)
+        {
+            NetworkPlayer owner = BoardManager.GetOwnerPlayer(serverSlot);
+            owner.AddEnergy(-1);
+            owner.UpdateUI();
+        }
+        ti.UpdateValues();
+        BoardSyncManager.MarkDirty();
+    }
+
+    /// <summary>Remote 01318 弱化棱晶先手：选目标→攻击力→1。</summary>
+    [Command]
+    public void Cmd01318FirstStrike(int localTargetSlot)
+    {
+        int serverSlot = isLocalPlayer ? localTargetSlot : BoardSlot.MirrorSlot(localTargetSlot);
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        BoardSlot ts = bm?.GetSlot(serverSlot);
+        if (ts?.currentCard3D == null) return;
+        var ti = ts.currentCard3D.GetComponent<Card3DInstance>();
+        if (ti?.cardInstance == null) return;
+        ti.cardInstance.originalAttackBeforeDebuff = ti.cardInstance.currentAttack;
+        ti.cardInstance.currentAttack = 1;
+        ti.UpdateValues();
+        BoardSyncManager.MarkDirty();
+    }
+
+    /// <summary>Remote 01519 守护骑士先手：选目标→给友方无盾随从上buff(攻击回合结束消失)。</summary>
+    [Command]
+    public void Cmd01519FirstStrike(int localSlot)
+    {
+        int serverSlot = isLocalPlayer ? localSlot : BoardSlot.MirrorSlot(localSlot);
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        BoardSlot ts = bm?.GetSlot(serverSlot);
+        if (ts?.currentCard3D == null) return;
+        var ti = ts.currentCard3D.GetComponent<Card3DInstance>();
+        if (ti?.cardInstance == null || ti.cardInstance.hasShield || ti.cardInstance.isAttached) return;
+        ti.cardInstance.GrantShield(false, false, true);
+        ti.UpdateValues();
+        BoardSyncManager.MarkDirty();
+    }
+
+    /// <summary>Remote 03012 阴阳先手：选目标→平衡攻击力和生命值。</summary>
+    [Command]
+    public void Cmd03012FirstStrike(int localSlot)
+    {
+        int serverSlot = isLocalPlayer ? localSlot : BoardSlot.MirrorSlot(localSlot);
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        BoardSlot ts = bm?.GetSlot(serverSlot);
+        if (ts?.currentCard3D == null) return;
+        var ti = ts.currentCard3D.GetComponent<Card3DInstance>();
+        if (ti?.cardInstance == null) return;
+        int atk = ti.cardInstance.Attack;
+        int hp = ti.cardInstance.currentHealth - ti.cardInstance.tempHealthBoost;
+        if (atk > hp) ti.cardInstance.AddTempHealth(atk - hp);
+        else if (hp > atk) ti.cardInstance.AddTempAttack(hp - atk);
+        ti.UpdateValues();
+        BoardSyncManager.MarkDirty();
+    }
+
     [TargetRpc]
     public void TargetSurrender(NetworkConnectionToClient target)
     {

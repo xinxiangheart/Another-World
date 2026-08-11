@@ -277,50 +277,38 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
             switch (ci2.templateID)
             {
-                case "03012": // 阴阳：友方攻血平衡
+                case "03012": // 阴阳：友方攻血平衡 → Cmd 委托服务端处理
                 {
-                    bool dd = false;
+                    bool selDone = false;
                     SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (t) =>
                     {
                         if (t != null && t != slot2 && t.currentCard3D != null)
-                        {
-                            var t3d = t.currentCard3D.GetComponent<Card3DInstance>();
-                            var tci = t3d?.cardInstance;
-                            if (tci != null)
-                            {
-                                int atk = tci.Attack;
-                                int hp = tci.currentHealth - tci.tempHealthBoost;
-                                if (atk > hp) tci.AddTempHealth(atk - hp);
-                                else if (hp > atk) tci.AddTempAttack(hp - atk);
-                                t3d.UpdateValues();
-                            }
-                        }
-                        dd = true;
+                            NetworkPlayer.Local?.Cmd03012FirstStrike(t.slotID);
+                        selDone = true;
                     });
-                    while (!dd) yield return null;
+                    while (!selDone) yield return null;
                     ci2.hasFirstStrike = false;
                     break;
                 }
-                case "01519": // 守护骑士：给友方上护盾
+                case "01519": // 守护骑士：给友方上护盾 → Cmd 委托服务端处理
                 {
-                    var sel19 = SelectionManager.Instance;
-                    if (sel19 == null) break;
                     var cdd = new List<BoardSlot>();
                     for (int j = 6; j <= 11; j++)
                     { var s3 = bm.GetSlot(j); if (s3?.currentCard3D != null && j != i2) { var bc = s3.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance; if (bc != null && !bc.hasShield && !bc.isAttached) cdd.Add(s3); } }
                     if (cdd.Count == 0) continue;
-                    if (cdd.Count <= 3) { foreach (var cs in cdd) { var bc = cs.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance; if (bc != null) { bc.GrantShield(false, false, true); cs.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues(); } } }
+                    if (cdd.Count <= 3) { foreach (var cs in cdd) NetworkPlayer.Local?.Cmd01519FirstStrike(cs.slotID); }
                     else
                     {
+                        var sel = new List<BoardSlot>();
+                        var sel19 = SelectionManager.Instance;
                         string lid2 = sel19.BeginSelection(TargetType.SingleAlly, null);
                         BoardSlot.isStrengtheningSlot = true;
-                        var sel = new List<BoardSlot>();
                         BoardSlot.onTargetSelected = (t) =>
                         {
                             if (t == null || !cdd.Contains(t)) return;
                             if (sel.Contains(t)) { sel.Remove(t); t.SetHighlightColor(t.GetNormalColor()); }
                             else if (sel.Count < 3) { sel.Add(t); t.SetHighlightColor(Color.yellow); }
-                            if (sel.Count == 3) { foreach (var s3 in sel) { var bc = s3.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance; if (bc != null) { bc.GrantShield(false, false, true); s3.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues(); s3.SetHighlightColor(s3.GetNormalColor()); } } sel19.EndSelection(lid2); }
+                            if (sel.Count == 3) { foreach (var s3 in sel) { NetworkPlayer.Local?.Cmd01519FirstStrike(s3.slotID); s3.SetHighlightColor(s3.GetNormalColor()); } sel19.EndSelection(lid2); }
                         };
                         yield return new WaitUntil(() => !sel19.IsSelecting);
                         BoardSlot.isStrengtheningSlot = false;
@@ -346,22 +334,20 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
             switch (ci3.templateID)
             {
-                case "01318": // 弱化棱晶：目标攻击力→1
+                case "01318": // 弱化棱晶：目标攻击力→1 → Cmd 委托服务端处理
                 {
-                    bool anyTarget = false;
-                    for (int j = 0; j < 12; j++) if (bm.GetSlot(j)?.currentCard3D != null) { anyTarget = true; break; }
-                    if (!anyTarget) continue;
                     bool dd = false;
                     SelectionManager.Instance.BeginSelection(TargetType.AllMinions, (t) =>
                     {
-                        if (t?.currentCard3D != null) { var tci3 = t.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance; if (tci3 != null) { tci3.originalAttackBeforeDebuff = tci3.currentAttack; tci3.currentAttack = 1; t.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues(); } }
+                        if (t?.currentCard3D != null)
+                            NetworkPlayer.Local?.Cmd01318FirstStrike(t.slotID);
                         dd = true;
                     });
                     yield return new WaitUntil(() => dd);
                     ci3.hasFirstStrike = false;
                     break;
                 }
-                case "03502": // 毒巫：清护盾+中毒（+对神选者扣对方1能量）
+                case "03502": // 毒巫：清护盾+中毒 → Cmd 委托服务端处理
                 {
                     bool hasEnemy = false;
                     for (int j = 0; j <= 5; j++) if (bm.GetSlot(j)?.currentCard3D != null) { hasEnemy = true; break; }
@@ -369,15 +355,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     bool dd = false;
                     SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (t) =>
                     {
-                        if (t?.currentCard3D != null) { var ti3 = t.currentCard3D.GetComponent<Card3DInstance>(); if (ti3?.cardInstance != null) {
-                            ti3.cardInstance.RemoveShield();
-                            ti3.cardInstance.poisoned = true;
-                            if (ti3.cardInstance.summonType == SummonType.ChosenOne)
-                            {
-                                NetworkPlayer.Local.AddEnergy(-1);
-                                NetworkPlayer.Local?.UpdateUI();
-                            }
-                        }}
+                        if (t?.currentCard3D != null)
+                            NetworkPlayer.Local?.Cmd03502FirstStrike(t.slotID);
                         dd = true;
                     });
                     while (!dd) yield return null;
