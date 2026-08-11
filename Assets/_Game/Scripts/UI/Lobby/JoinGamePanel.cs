@@ -1,12 +1,11 @@
 using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
-using UnityEngine.SceneManagement;
 using TMPro;
 
 /// <summary>
 /// 加入游戏过渡面板——双方头像/名字 + 倒计时后加载 Game。
-/// 中间文字自己建一个 TMP_Text 挂在面板下，不用拖脚本。
+/// 倒计时期间后台异步预加载Game场景重资源，完成后异步切换场景。
 /// </summary>
 public class JoinGamePanel : MonoBehaviour
 {
@@ -23,12 +22,20 @@ public class JoinGamePanel : MonoBehaviour
 
     [Header("倒计时")]
     public TMP_Text countdownText;
+    public Slider progressBar;       // 预加载进度条（可选）
+    public TMP_Text progressText;    // 预加载进度文字（可选）
 
     void Awake()
     {
         if (Instance != null) { Destroy(gameObject); return; }
         Instance = this;
         if (panelRoot != null) panelRoot.SetActive(false);
+        // 确保 Preloader 在 Lobby 场景已创建
+        if (Preloader.Instance == null)
+        {
+            var go = new GameObject("Preloader");
+            go.AddComponent<Preloader>();
+        }
     }
 
     public void Open()
@@ -48,6 +55,11 @@ public class JoinGamePanel : MonoBehaviour
         if (opponentAvatar != null && qm != null && qm.opponentTexture != null)
             opponentAvatar.texture = qm.opponentTexture;
 
+        // 启动后台预加载
+        Preloader.Instance.StartPreload();
+        if (progressBar != null) progressBar.gameObject.SetActive(true);
+        if (progressText != null) progressText.gameObject.SetActive(true);
+
         StartCoroutine(CountdownRoutine());
     }
 
@@ -58,11 +70,34 @@ public class JoinGamePanel : MonoBehaviour
         {
             if (countdownText != null)
                 countdownText.text = Mathf.CeilToInt(remaining).ToString();
+
+            // 更新预加载进度条
+            float p = Preloader.Instance.Progress;
+            if (progressBar != null) progressBar.value = p;
+            if (progressText != null) progressText.text = $"加载中 {Mathf.RoundToInt(p * 100)}%";
+
             yield return null;
             remaining -= Time.deltaTime;
         }
 
-        if (countdownText != null) countdownText.text = "0";
-        SceneManager.LoadScene("Game");
+        // 倒计时结束但预加载未完成→等待预加载完成
+        if (!Preloader.Instance.IsDone)
+        {
+            if (countdownText != null) countdownText.text = "等待资源加载...";
+            while (!Preloader.Instance.IsDone)
+            {
+                float p = Preloader.Instance.Progress;
+                if (progressBar != null) progressBar.value = p;
+                if (progressText != null) progressText.text = $"加载中 {Mathf.RoundToInt(p * 100)}%";
+                yield return null;
+            }
+        }
+
+        if (countdownText != null) countdownText.text = "进入游戏";
+        if (progressBar != null) progressBar.gameObject.SetActive(false);
+        if (progressText != null) progressText.gameObject.SetActive(false);
+
+        // 异步加载场景（场景内 Awake/Start 在激活后才执行）
+        Preloader.Instance.LoadGameScene();
     }
 }
