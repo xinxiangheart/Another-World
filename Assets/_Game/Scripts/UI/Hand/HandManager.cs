@@ -536,6 +536,20 @@ public class HandManager : MonoBehaviour
         return false;
     }
 
+    /// <summary>中枢(03027)是否在同半场？用于持续生效的灵能前缀光环。</summary>
+    bool IsCoreOnField(int slotID)
+    {
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return false;
+        BoardManager.GetSideRange(slotID, out int s, out int e);
+        for (int i = s; i <= e; i++)
+        {
+            var ci = bm.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci != null && ci.templateID == "03027") return true;
+        }
+        return false;
+    }
+
     // BoardSlot.HandleDeath 完整方法
 
     void ApplySageAura(CardInstance card, int slotID)
@@ -1158,6 +1172,23 @@ public class HandManager : MonoBehaviour
                         if (NetworkClient.isConnected)
                             NetworkPlayer.Local?.CmdSetHandCardPrefix(ci.instanceID, "灵能");
                     }
+                }
+            }
+        }
+        // 中枢(03027)在场时，新进场的随从自动获得灵能前缀（持续生效）
+        if (sourceInstance != null && sourceInstance.templateID != "03027")
+        {
+            if (IsCoreOnField(slot.slotID))
+            {
+                CardInstance placedCI = slot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                if (placedCI != null && !placedCI.prefixes.Contains("灵能"))
+                {
+                    if (string.IsNullOrEmpty(placedCI.prefixes) || placedCI.prefixes == "无")
+                        placedCI.prefixes = "灵能";
+                    else
+                        placedCI.prefixes += " 灵能";
+                    slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+                    // 场上随从前缀通过 SyncNow 同步
                 }
             }
         }
