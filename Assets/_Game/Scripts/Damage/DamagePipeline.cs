@@ -693,6 +693,8 @@ public static class DamagePipeline
     public static void ShowFloaterAt(CardInstance ci, int value, FloaterType type)
     {
         if (ci == null) return;
+        if (type == FloaterType.Damage)
+            Debug.LogWarning($"[Floater-Dmg] tid={ci.templateID} val={value}\n{UnityEngine.StackTraceUtility.ExtractStackTrace()}");
         Vector3 worldPos = GetWorldPosOf(ci);
         DamageFloater.Show(worldPos, value, type);
 
