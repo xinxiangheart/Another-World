@@ -923,9 +923,8 @@ public class BattleManager : MonoBehaviour
         BoardSlot targetSlot = allSlots[targetDefenderSlotIndex];
         GameObject targetCard = targetSlot?.currentCard3D;
         CardInstance targetInst = targetCard?.GetComponent<Card3DInstance>()?.cardInstance;
-        bool targetSilenced = targetInst != null && GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(targetInst);
 
-        if (targetCard != null && targetInst != null && !targetInst.silencedThisPhase)
+        if (targetCard != null && targetInst != null)
         {
             int atk = attackerInst.Attack;
             if (!attackerInst.isXValue)
