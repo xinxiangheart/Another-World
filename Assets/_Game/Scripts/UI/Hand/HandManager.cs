@@ -1731,44 +1731,54 @@ public class HandManager : MonoBehaviour
         }
         if (!hasAvailableSlot) { CardDrag.CleanupSpellResources(); yield break; }
 
-        BoardSlot.isStrengtheningSlot = true;
-        bool done = false;
-        SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (selectedSlot) =>
-        {
-            if (selectedSlot != null && !selectedSlot.isBlocked && !selectedSlot.hasSpotlight)
-            {
-                selectedSlot.hasSpotlight = true;
-                selectedSlot.spotlightTierBoost = 2;
-                if (selectedSlot.currentCard3D != null)
-                {
-                    CardInstance ci = selectedSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                    if (ci != null)
-                    {
-                        ci.currentTier += 2;
-                        selectedSlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
-                    }
-                }
-            }
-            done = true;
-            TurnManager.SyncMyBoardToOpponent();
-        });
+        int resultSlot = -1;
+        yield return WaitForSingleSelect(TargetType.SingleAlly, (s) => s != null && !s.isBlocked && !s.hasSpotlight, ref resultSlot);
 
-        foreach (GameObject card in NetworkPlayer.Local.handCards)
+        if (resultSlot >= 0)
         {
-            if (card != null) card.SetActive(false);
+            BoardSlot sel = bm.GetSlot(resultSlot);
+            if (sel != null) { sel.hasSpotlight = true; sel.spotlightTierBoost = 2;
+                var ci = sel.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                if (ci != null) { ci.currentTier += 2; sel.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues(); } }
+            if (NetworkServer.active) BoardSyncManager.MarkDirty();
+            else TurnManager.SyncMyBoardToOpponent();
         }
-        SetHandAreaRaycast(false);
-        FindObjectOfType<CardDrag>()?.SetButtonsInteractable(false);
-        Card3DHover.allowDiscard = false;
-
-        yield return new WaitUntil(() => done);
-        BoardSlot.isStrengtheningSlot = false;
-        foreach (GameObject card in NetworkPlayer.Local.handCards)
-        {
-            if (card != null) card.SetActive(true);
-        }
-        RefreshLayout(true);
         CardDrag.CleanupSpellResources();
+    }
+
+    /// <summary>通用单选委托：服务器端走StartClientSelection，离线走BeginSelection。</summary>
+    IEnumerator WaitForSingleSelect(TargetType targetType, System.Func<BoardSlot, bool> filter, ref int resultSlot)
+    {
+        resultSlot = -1;
+        if (NetworkServer.active)
+        {
+            // 服务器端(CmdResolveSpell) → 委托打牌客户端弹出面板（服务器端无需隐藏手牌/禁用 UI）
+            int selId = NetworkPlayer.StartClientSelection(NetworkPlayer.Local, targetType);
+            yield return NetworkPlayer.WaitForClientSelection(selId);
+            int raw = NetworkPlayer.GetSelectionResult(selId);
+            if (raw >= 0) { var s = FindObjectOfType<BoardManager>()?.GetSlot(raw); if (filter(s)) resultSlot = raw; }
+        }
+        else
+        {
+            // 离线/本地 → 直接弹出面板
+            BoardSlot.isStrengtheningSlot = true;
+            bool done = false;
+            SelectionManager.Instance.BeginSelection(targetType, (selectedSlot) =>
+            {
+                if (filter(selectedSlot)) resultSlot = selectedSlot?.slotID ?? -1;
+                done = true;
+            });
+            foreach (GameObject c in NetworkPlayer.Local?.handCards ?? new()) if (c) c.SetActive(false);
+            SetHandAreaRaycast(false);
+            FindObjectOfType<CardDrag>()?.SetButtonsInteractable(false);
+            Card3DHover.allowDiscard = false;
+            yield return new WaitUntil(() => done);
+            BoardSlot.isStrengtheningSlot = false;
+            foreach (GameObject c in NetworkPlayer.Local?.handCards ?? new()) if (c) c.SetActive(true);
+            SetHandAreaRaycast(true);
+            FindObjectOfType<CardDrag>()?.SetButtonsInteractable(true);
+            Card3DHover.allowDiscard = true;
+        }
     }
     public IEnumerator GreatEvolutionEffect()
     {
@@ -2349,92 +2359,45 @@ public class HandManager : MonoBehaviour
     }
     public IEnumerator PlagueEffect()
     {
-        // 第一次：隐藏手牌
-        BoardSlot first = null;
-        bool firstDone = false;
-        SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (s) =>
-        {
-            if (s != null && !s.isBlocked) { first = s; firstDone = true; }
-        });
-        BoardSlot.isStrengtheningSlot = true;
-        yield return new WaitUntil(() => firstDone);
-        if (first == null) { CardDrag.CleanupSpellResources(); yield break; }
-
-        // 第二次：隐藏手牌
-        BoardSlot second = null;
-        bool secondDone = false;
-        BoardSlot.extraTargetFilter = (s) => s != first;
-        SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (s) =>
-        {
-            if (s != null && !s.isBlocked && s != first) { second = s; secondDone = true; }
-        });
-        BoardSlot.isStrengtheningSlot = true;
-        yield return new WaitUntil(() => secondDone);
-        BoardSlot.extraTargetFilter = null;
-        if (second == null) { CardDrag.CleanupSpellResources(); yield break; }
-
-        first.hasPlague = true;
-        first.plagueRoundCount = 1;
-        second.hasPlague = true;
-        second.plagueRoundCount = 1;
-        // hasPlague/plagueRoundCount 已在 BoardSyncManager 同步管道中，只需触发上报
-        TurnManager.SyncMyBoardToOpponent();
-
+        int fS = -1, sS = -1;
+        yield return WaitForSingleSelect(TargetType.SingleEnemy, s => s != null && !s.isBlocked, ref fS);
+        if (fS < 0) { CardDrag.CleanupSpellResources(); yield break; }
+        yield return WaitForSingleSelect(TargetType.SingleEnemy, s => s != null && !s.isBlocked && s.slotID != fS, ref sS);
+        if (sS < 0) { CardDrag.CleanupSpellResources(); yield break; }
+        var bm = FindObjectOfType<BoardManager>();
+        var a = bm?.GetSlot(fS); var b = bm?.GetSlot(sS);
+        if (a != null) { a.hasPlague = true; a.plagueRoundCount = 1; }
+        if (b != null) { b.hasPlague = true; b.plagueRoundCount = 1; }
+        if (NetworkServer.active) BoardSyncManager.MarkDirty();
+        else TurnManager.SyncMyBoardToOpponent();
         CardDrag.CleanupSpellResources();
     }
     public IEnumerator ChargeHornEffect()
     {
         yield return null;
-
         BoardManager bm = FindObjectOfType<BoardManager>();
         bool hasValid = false;
-        for (int i = 6; i <= 11; i++)
-            if (bm.GetSlot(i)?.currentCard3D != null) { hasValid = true; break; }
+        for (int i = 6; i <= 11; i++) if (bm.GetSlot(i)?.currentCard3D != null) { hasValid = true; break; }
         if (!hasValid) { CardDrag.CleanupSpellResources(); yield break; }
-
-        bool done = false;
-        SelectionManager.Instance.BeginSelection(TargetType.AllyAnyRow, (selectedSlot) =>
+        int sel = -1;
+        yield return WaitForSingleSelect(TargetType.AllyAnyRow, s => s != null, ref sel);
+        if (sel < 0) { CardDrag.CleanupSpellResources(); yield break; }
+        int rS = sel < 9 ? 6 : 9, eRS = sel < 9 ? 0 : 3;
+        for (int c = 0; c < 3; c++)
         {
-            int rowStart = selectedSlot.slotID < 9 ? 6 : 9;
-            int enemyRowStart = selectedSlot.slotID < 9 ? 0 : 3;
-
-            for (int col = 0; col < 3; col++)
-            {
-                BoardSlot mySlot = bm.GetSlot(rowStart + col);
-                if (mySlot?.currentCard3D == null) continue;
-
-                CardInstance myInst = mySlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                if (myInst == null) continue;
-
-                int atk = myInst.currentAttack;
-                if (atk <= 0)
-                {
-                    myInst.currentAttack = Mathf.Max(0, myInst.currentAttack - 1);
-                    mySlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
-                    continue;
-                }
-
-                BoardSlot enemySlot = bm.GetSlot(enemyRowStart + col);
-                if (enemySlot?.currentCard3D != null)
-                {
-                    CardInstance enemyInst = enemySlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                    if (enemyInst != null)
-                    {
-                        BattleManager.Instance.ApplyDamageToMinionPublic(enemyInst, atk, mySlot.currentCard3D);
-                        enemySlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
-                    }
-                }
-
-                myInst.currentAttack = Mathf.Max(0, myInst.currentAttack - 1);
-                mySlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
-            }
-
-            BoardSlot.CheckAndHandleDeaths();
-            TurnManager.SyncMyBoardToOpponent();
-            done = true;
-        });
-
-        yield return new WaitUntil(() => done);
+            var ms = bm.GetSlot(rS + c); var es = bm.GetSlot(eRS + c);
+            if (ms?.currentCard3D == null) continue;
+            var mi = ms.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+            if (mi == null) continue;
+            int atk = mi.currentAttack;
+            if (atk > 0 && es?.currentCard3D != null)
+                BattleManager.Instance?.ApplyDamageToMinionPublic(es.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance, atk, null);
+            mi.currentAttack = Mathf.Max(0, mi.currentAttack - 1);
+            ms.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+        }
+        BoardSlot.CheckAndHandleDeaths();
+        if (NetworkServer.active) BoardSyncManager.MarkDirty();
+        else TurnManager.SyncMyBoardToOpponent();
         CardDrag.CleanupSpellResources();
     }
     public IEnumerator CounterKillerEffect()
