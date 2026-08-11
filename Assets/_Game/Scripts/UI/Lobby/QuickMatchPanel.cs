@@ -274,7 +274,7 @@ public class QuickMatchPanel : MonoBehaviour
         if (!_iAmHost || _state != State.Searching || _lobbyID.m_SteamID == 0 || cb.m_nLobbiesMatching == 0) return;
         Debug.Log($"[QM-Bg] 搜到 {cb.m_nLobbiesMatching} 个大厅");
 
-        for (uint i = 0; i < cb.m_nLobbiesMatching; i++)
+        for (int i = 0; i < (int)cb.m_nLobbiesMatching; i++)
         {
             CSteamID found = SteamMatchmaking.GetLobbyByIndex(i);
             if (found == _lobbyID) continue; // 忽略自己的大厅
