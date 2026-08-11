@@ -137,6 +137,10 @@ public class BoardSyncManager : MonoBehaviour
         if (o == null) return "";
         var ci = o.GetComponent<Card3DInstance>()?.cardInstance;
         if (ci == null) return "";
+        // 管道字段索引: 0=tid  1=HP⛔  2=ATK⛔  3=maxHP⛔  4=baseATK⛔  5=baseHP⛔  6=baseMaxHP⛔
+        //   7=cost⛔  8=tier⛔  9=baseTier⛔  10=shield⛔  11=silenced✓  12=attached⛔  13=poisoned✓
+        //   14=prefixes⛔  15=grantedTraits⛔  16=totalDamageTaken⛔
+        //   ✓=允许跨半场  ⛔=仅己方半场
         string gtt = ci.grantedTraitTexts != null && ci.grantedTraitTexts.Count > 0
             ? string.Join(";;", ci.grantedTraitTexts) : "";
         return $"{ci.templateID}|{ci.currentHealth}|{ci.currentAttack}|{ci.currentMaxHealth}|{ci.baseAttack}|{ci.baseHealth}|{ci.baseMaxHealth}|{ci.currentCost}|{ci.currentTier}|{ci.baseTier}|{(ci.hasShield?(1+(ci.shieldIsPermanent?2:0)+(ci.shieldEndAtBattleStart?4:0)+(ci.shieldEndAtBattleEnd?8:0)):0)}|{(ci.silencedThisPhase?1:0)}|{(ci.isAttached?1:0)}|{(ci.poisoned?1:0)}|{ci.prefixes??""}|{gtt}|{ci.totalDamageTaken}";

@@ -1373,12 +1373,15 @@ public class NetworkPlayer : NetworkBehaviour
         BoardSyncManager.Instance?.ApplySync(data, "");
     }
 
-    /// <summary>
-    /// Unified sync: client reports full 12-slot board snapshot + attachments.
-    /// Server applies state, runs CheckAndHandleDeaths, then MarkDirty to broadcast.
-    /// </summary>
-    [Command]
-    public void CmdReportAllSlots(string[] allStats, string attachBlock)
+    // ── 交叉半场白名单 ──────────────────────────────────────────
+    // 部分字段（沉默、中毒等）允许客户端上报到对方半场。
+    // 这些字段是纯布尔且设 true 不覆盖服务端权威，无需条件判断。
+    // 字段索引对应 SyncNow 管道:
+    //   0=templateID 1=HP 2=ATK 3=maxHP 4=baseATK 5=baseHP 6=baseMaxHP
+    //   7=cost 8=tier 9=baseTier 10=shield 11=silenced 12=attached 13=poisoned
+    //   14=prefixes 15=grantedTraits 16=totalDamageTaken
+    static readonly HashSet<int> CrossHalfBoolFields = new() { 11 /*silencedThisPhase*/, 13 /*poisoned*/ };
+    // 交叉半场属性白名单——仅上报值"更严重"时适用（debuf 攻击力=更低更好）
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
         if (bm == null) return;
@@ -1442,12 +1445,13 @@ public class NetworkPlayer : NetworkBehaviour
                     if (crossCi != null && crossCi.templateID == tid)
                     {
                         string[] xp = raw.Split('|');
-                        // 跨半场沉默/中毒——03501/03502等选择对方半场目标时被isReportingOwnSlot守卫阻挡
-                        if (xp.Length > 11 && xp[11] == "1")
-                            crossCi.silencedThisPhase = true;
-                        if (xp.Length > 13 && xp[13] == "1")
-                            crossCi.poisoned = true;
-                        // 跨半场先手debuff——01318弱化棱晶等攻击力削减
+                        // 跨半场布尔标志——直接放行（设 true 不覆盖服务端权威）
+                        foreach (int fieldIdx in CrossHalfBoolFields)
+                        {
+                            if (xp.Length > fieldIdx && xp[fieldIdx] == "1")
+                                ApplyCrossHalfBool(crossCi, fieldIdx);
+                        }
+                        // 跨半场先手 debuff——攻击力削减（仅上报值更低且无服务端暂挂修改时放行）
                         if (xp.Length > 2 && int.TryParse(xp[2], out int xv))
                         {
                             bool serverModified = crossCi.tempAttackBoost > 0 || crossCi.originalAttackBeforeDebuff > 0;
@@ -1591,6 +1595,17 @@ public class NetworkPlayer : NetworkBehaviour
             }
         }
         return false;
+    }
+
+    /// <summary>根据字段索引设置卡牌实例的布尔属性（跨半场白名单用）。</summary>
+    static void ApplyCrossHalfBool(CardInstance ci, int fieldIdx)
+    {
+        switch (fieldIdx)
+        {
+            case 11: ci.silencedThisPhase = true; break;
+            case 13: ci.poisoned = true; break;
+            // 新字段加 case 即可
+        }
     }
 
     /// <summary>附着物 diff 更新：已有→移坐标，不存在→创建。</summary>
