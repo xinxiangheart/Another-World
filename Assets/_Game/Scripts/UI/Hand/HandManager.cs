@@ -1710,6 +1710,7 @@ public class HandManager : MonoBehaviour
                 }
             }
             done = true;
+            TurnManager.SyncMyBoardToOpponent();
         });
 
         foreach (GameObject card in NetworkPlayer.Local.handCards)
@@ -1872,6 +1873,11 @@ public class HandManager : MonoBehaviour
             ti.InitFromTemplate(template, 0);
             hm.PlaceCardToSlot(selectedSlot, temp);
             Destroy(temp);
+            // 同步新召唤的核心到服务器/对端（PlaceCardToSlot 不调 CmdPlayCard）
+            if (NetworkClient.isConnected)
+                NetworkPlayer.Local?.CmdPlayCard("03027", selectedSlot.slotID,
+                    ti.baseAttack, ti.baseHealth, ti.baseMaxHealth, ti.currentCost,
+                    ti.instanceID ?? CardZoneManager.GenerateInstanceID("03027"));
             placed = true;
             SelectionManager.Instance.ForceEndAll();
             BoardSlot.isPlacingCard = false;
@@ -2084,6 +2090,11 @@ public class HandManager : MonoBehaviour
             ti.InitFromTemplate(template, 0);
             PlaceCardToSlot(selectedSlot, temp);
             Destroy(temp);
+            // 同步新召唤物到服务器/对端（PlaceCardToSlot 不调 CmdPlayCard）
+            if (NetworkClient.isConnected)
+                NetworkPlayer.Local?.CmdPlayCard("03010", selectedSlot.slotID,
+                    ti.baseAttack, ti.baseHealth, ti.baseMaxHealth, ti.currentCost,
+                    ti.instanceID ?? CardZoneManager.GenerateInstanceID("03010"));
             placed = true;
             SelectionManager.Instance.ForceEndAll();
             BoardSlot.isPlacingCard = false;
@@ -2324,6 +2335,8 @@ public class HandManager : MonoBehaviour
         first.plagueRoundCount = 1;
         second.hasPlague = true;
         second.plagueRoundCount = 1;
+        // hasPlague/plagueRoundCount 已在 BoardSyncManager 同步管道中，只需触发上报
+        TurnManager.SyncMyBoardToOpponent();
 
         CardDrag.CleanupSpellResources();
     }
@@ -2375,6 +2388,7 @@ public class HandManager : MonoBehaviour
             }
 
             BoardSlot.CheckAndHandleDeaths();
+            TurnManager.SyncMyBoardToOpponent();
             done = true;
         });
 

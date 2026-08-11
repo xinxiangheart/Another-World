@@ -2202,12 +2202,20 @@ public class NetworkPlayer : NetworkBehaviour
     // ── 手牌阶位覆盖 ──────────────────────────────────────────────
     // 02203 伟大进化等效果修改手牌 tier 后通知服务器记录覆盖值，
     // CmdPlayCard 放牌时自动检查并应用，保证打出后阶位不丢失。
+    // 注意：被反制/弃牌/手牌满丢弃的卡不会打到场上，其覆盖键将残留。
+    // instanceID 是全局唯一的，不会误作用于其他卡，仅微量内存浪费。
     Dictionary<string, (int tier, int baseTier)> _handTierOverrides = new();
 
     [Command]
     public void CmdSetHandCardTier(string instanceID, int currentTier, int baseTier)
     {
         _handTierOverrides[instanceID] = (currentTier, baseTier);
+    }
+
+    [Command]
+    public void CmdClearHandTierOverride(string instanceID)
+    {
+        _handTierOverrides.Remove(instanceID);
     }
 
     bool ConsumeHandTierOverride(string instanceID, out int currentTier, out int baseTier)
