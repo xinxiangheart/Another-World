@@ -23,10 +23,9 @@ public class QuickMatchPanel : MonoBehaviour
     bool _iAccepted, _iAmHost, _joining;
     string _oppName;
     CSteamID _lobbyID;
-    Coroutine _searchCoroutine;
-    float _retryTimer;
-
-    Callback<LobbyMatchList_t> _listCB;
+    Coroutine _searchCoroutine, _bgSearchCoroutine;
+    float _retryTimer, _bgSearchTimer;
+    Callback<LobbyMatchList_t> _listCB, _bgListCB;
     Callback<LobbyCreated_t> _createdCB;
     Callback<LobbyEnter_t> _enterCB;
     Callback<LobbyDataUpdate_t> _dataCB;
@@ -91,7 +90,7 @@ public class QuickMatchPanel : MonoBehaviour
         _enterCB = Callback<LobbyEnter_t>.Create(OnLobbyEnter);
         _dataCB = Callback<LobbyDataUpdate_t>.Create(OnLobbyDataUpdate);
     }
-    void DisposeCallbacks() { _listCB?.Dispose(); _createdCB?.Dispose(); _enterCB?.Dispose(); _dataCB?.Dispose(); }
+    void DisposeCallbacks() { _listCB?.Dispose(); _createdCB?.Dispose(); _enterCB?.Dispose(); _dataCB?.Dispose(); StopBackgroundSearch(); }
 
     void OnLobbyList(LobbyMatchList_t cb)
     {
@@ -115,6 +114,8 @@ public class QuickMatchPanel : MonoBehaviour
         SteamMatchmaking.SetLobbyData(_lobbyID, "game", "anotherworld_quick");
         WriteMyData("host_data");
         Debug.Log($"[QM-Host] ★ 临时大厅已建 lobbyID={_lobbyID}，等待对手加入");
+        // 自建成功后启动后台搜索——防止两人同时自建永远碰不到
+        StartBackgroundSearch();
     }
 
     void OnLobbyEnter(LobbyEnter_t cb)
@@ -123,6 +124,8 @@ public class QuickMatchPanel : MonoBehaviour
         if (_state != State.Searching) return;
         _lobbyID = new CSteamID(cb.m_ulSteamIDLobby);
         _joining = false;
+        // 已进入大厅 → 停止后台搜索（无论是自己还是别人的大厅）
+        StopBackgroundSearch();
         if (_iAmHost)
         {
             Debug.Log($"[QM-Host] 有人加入我的大厅 lobbyID={_lobbyID}");
@@ -220,6 +223,78 @@ public class QuickMatchPanel : MonoBehaviour
         if (declineButton) declineButton.gameObject.SetActive(true);
         SetStatus($"等待确认（{_countdown:F0}s）");
         if (opp.steamID != 0 && opponentAvatar) LoadAvatar(opponentAvatar, opp.steamID);
+    }
+
+    // ============ 后台搜索 — 自建大厅后持续搜别人 ============
+
+    void StartBackgroundSearch()
+    {
+        if (!_iAmHost || _lobbyID.m_SteamID == 0) return;
+        Debug.Log("[QM-Bg] 启动后台搜索...");
+        StopBackgroundSearch();
+        _bgListCB?.Dispose();
+        _bgListCB = Callback<LobbyMatchList_t>.Create(OnBgLobbyList);
+        _bgSearchCoroutine = StartCoroutine(BackgroundSearchRoutine());
+    }
+
+    void StopBackgroundSearch()
+    {
+        if (_bgSearchCoroutine != null) { StopCoroutine(_bgSearchCoroutine); _bgSearchCoroutine = null; }
+        _bgListCB?.Dispose(); _bgListCB = null;
+    }
+
+    IEnumerator BackgroundSearchRoutine()
+    {
+        while (_iAmHost && _state == State.Searching && _lobbyID.m_SteamID != 0)
+        {
+            // 每 3 秒搜一次——避免过于频繁调用 Steam API
+            for (float t = 0; t < 3f; t += 0.5f)
+            {
+                yield return new WaitForSeconds(0.5f);
+                if (!_iAmHost || _state != State.Searching || _lobbyID.m_SteamID == 0) yield break;
+            }
+            // 确认自己的大厅还有效
+            if (_lobbyID.m_SteamID == 0) yield break;
+            int members = SteamMatchmaking.GetNumLobbyMembers(_lobbyID);
+            // 如果已经有人加入自己的大厅，停止后台搜索
+            if (members >= 2) { Debug.Log("[QM-Bg] 自己大厅已有客人，停止后台搜索"); yield break; }
+            SteamMatchmaking.AddRequestLobbyListStringFilter("game", "anotherworld_quick", ELobbyComparison.k_ELobbyComparisonEqual);
+            SteamMatchmaking.AddRequestLobbyListResultCountFilter(3);
+            SteamMatchmaking.RequestLobbyList();
+            Debug.Log("[QM-Bg] RequestLobbyList 已发送");
+        }
+    }
+
+    void OnBgLobbyList(LobbyMatchList_t cb)
+    {
+        if (!_iAmHost || _state != State.Searching || _lobbyID.m_SteamID == 0 || cb.m_nLobbiesMatching == 0) return;
+        Debug.Log($"[QM-Bg] 搜到 {cb.m_nLobbiesMatching} 个大厅");
+
+        for (uint i = 0; i < cb.m_nLobbiesMatching; i++)
+        {
+            CSteamID found = SteamMatchmaking.GetLobbyByIndex(i);
+            if (found == _lobbyID) continue; // 忽略自己的大厅
+
+            // 检查对方是否一个人在等（未满员、未开始）
+            int foundMembers = SteamMatchmaking.GetNumLobbyMembers(found);
+            string foundHostOk = SteamMatchmaking.GetLobbyData(found, "host_ok") ?? "";
+            string foundStart = SteamMatchmaking.GetLobbyData(found, "start") ?? "";
+            if (foundMembers >= 2 || foundHostOk == "1" || foundStart == "1")
+            {
+                Debug.Log($"[QM-Bg] 大厅 {found} 已满/已确认/已开始 (members={foundMembers}, host_ok={foundHostOk}, start={foundStart})，跳过");
+                continue;
+            }
+
+            Debug.Log($"[QM-Bg] ★ 发现候选大厅 {found}，放弃自己的大厅并加入");
+            StopBackgroundSearch();
+            CSteamID myOldLobby = _lobbyID;
+            _lobbyID = default;
+            SteamMatchmaking.LeaveLobby(myOldLobby);
+            _iAmHost = false; _joining = true;
+            _lobbyID = found;
+            SteamMatchmaking.JoinLobby(found);
+            return;
+        }
     }
 
     // ============ Update ============
