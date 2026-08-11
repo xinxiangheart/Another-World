@@ -447,13 +447,21 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
         // 例外：需要客户端本地 UI 选择面板的法术（它们的协程调用了 SelectionManager/BeginOpenSelection 等），
         // 必须在客户端本地 Dispatch，否则面板会错误地出现在 Host 端。
         // 判断依据：handler 内部是否调用了 StartCoroutine 启动含 UI 的协程。
-        // 复杂 UI 法术——待完成面板委托迁移
         bool needsLocalUI = template.templateID switch
         {
-            "02106" => true,  // 改编列队 (onTargetSelected+ConfirmSelectionButton双选)
-            "02111" => true,  // 手牌净化 (BeginOpenSelection+ConfirmSelectionButton多选)
-            "02307" => true,  // 多卡效应 (BeginOpenSelection+ConfirmSelectionButton多选)
-            "02501" => true,  // 传送门 (CardDisplayPanel异步多选)
+            "02004" => true,  // 皇帝认可 — EmperorsApprovalEffectCoroutine
+            "02005" => true,  // 爬! — 使己方一召唤物退场+摸1牌（需目标选择+退场+抽牌分离执行）
+            "02010" => true,  // 背叛 — BetrayalEffect
+            "02106" => true,  // 改编列队 — ReformFormationEffect
+            "02111" => true,  // 手牌净化 — HandCleanseEffect
+            "02203" => true,  // 伟大进化 — GreatEvolutionEffect
+            "02212" => true,  // 核心召唤 — SummonCoreEffect
+            "02307" => true,  // 多卡效应 — ManyCardsEffect
+            "02310" => true,  // 聚光灯 — SpotlightEffect
+            "02311" => true,  // 冲锋号角 — ChargeHornEffect
+            "02403" => true,  // 小型邪恶召唤 — SummonSmallEvilEffect
+            "02408" => true,  // 瘟疫 — PlagueEffect
+            "02501" => true,  // 传送门 — DoorEffect（异步协程需要本地上下文）
             _ => false,
         };
         if (NetworkClient.isConnected && !NetworkServer.active && !needsLocalUI)

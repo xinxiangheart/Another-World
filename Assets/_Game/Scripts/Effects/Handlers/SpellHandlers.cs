@@ -101,31 +101,8 @@ public static class SpellHandlers
 
     static void Handle02004(EffectContext ctx)
     {
-        ctx.StartedCoroutine = HM().StartCoroutine(EmperorDelegateRoutine());
-    }
-    static IEnumerator EmperorDelegateRoutine()
-    {
-        int selId = NetworkPlayer.StartOpenSelection(NetworkPlayer.Local, TargetType.SingleAlly);
-        yield return NetworkPlayer.WaitForClientSelection(selId);
-        int boardSlot = NetworkPlayer.GetSelectionResult(selId);
-        string handInstID = NetworkPlayer.GetSelectionInstID(selId);
-
-        if (boardSlot >= 0)
-        {
-            var slot = FindObjectOfType<BoardManager>()?.GetSlot(boardSlot);
-            var ci = slot?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
-            if (ci != null && !ci.prefixes.Contains("渊"))
-            {
-                ci.prefixes = string.IsNullOrEmpty(ci.prefixes) || ci.prefixes == "无" ? "渊" : ci.prefixes + " 渊";
-                slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
-            }
-        }
-        else if (!string.IsNullOrEmpty(handInstID))
-        {
-            NetworkPlayer.Local?.CmdSetHandCardPrefix(handInstID, "渊");
-        }
-        NetworkPlayer.Local.DrawCard();
-        BoardSyncManager.MarkDirty();
+        var cd = UnityEngine.Object.FindObjectOfType<CardDrag>();
+        SelectionManager.Instance.StartSafeCoroutine(cd.EmperorsApprovalEffectCoroutine());
     }
 
     static void Handle02006(EffectContext ctx)
@@ -277,28 +254,7 @@ public static class SpellHandlers
 
     static void Handle02203(EffectContext ctx)
     {
-        ctx.StartedCoroutine = HM().StartCoroutine(GreatEvolutionDelegateRoutine());
-    }
-    static IEnumerator GreatEvolutionDelegateRoutine()
-    {
-        int selId = NetworkPlayer.StartOpenSelection(NetworkPlayer.Local, TargetType.SingleAlly);
-        yield return NetworkPlayer.WaitForClientSelection(selId);
-        int boardSlot = NetworkPlayer.GetSelectionResult(selId);
-        string handInstID = NetworkPlayer.GetSelectionInstID(selId);
-
-        if (boardSlot >= 0)
-        {
-            var slot = FindObjectOfType<BoardManager>()?.GetSlot(boardSlot);
-            var ci = slot?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
-            if (ci != null) { ci.currentTier += 3; ci.baseTier += 3; slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues(); }
-        }
-        else if (!string.IsNullOrEmpty(handInstID))
-        {
-            var hc = NetworkPlayer.Local?.handCards?.Find(c => c?.GetComponent<CardInstance>()?.instanceID == handInstID);
-            var hci = hc?.GetComponent<CardInstance>();
-            if (hci != null) { hci.currentTier += 3; hci.baseTier += 3; NetworkPlayer.Local?.CmdSetHandCardTier(handInstID, hci.currentTier, hci.baseTier); }
-        }
-        BoardSyncManager.MarkDirty();
+        HM().StartCoroutine(HM().GreatEvolutionEffect());
     }
 
     static void Handle02204(EffectContext ctx)
