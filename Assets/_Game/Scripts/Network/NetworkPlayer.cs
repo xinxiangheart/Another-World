@@ -1409,6 +1409,13 @@ public class NetworkPlayer : NetworkBehaviour
     //   14=prefixes 15=grantedTraits 16=totalDamageTaken
     static readonly HashSet<int> CrossHalfBoolFields = new() { 11 /*silencedThisPhase*/, 13 /*poisoned*/ };
     // 交叉半场属性白名单——仅上报值"更严重"时适用（debuf 攻击力=更低更好）
+
+    /// <summary>
+    /// Unified sync: client reports full 12-slot board snapshot + attachments.
+    /// Server applies state, runs CheckAndHandleDeaths, then MarkDirty to broadcast.
+    /// </summary>
+    [Command]
+    public void CmdReportAllSlots(string[] allStats, string attachBlock)
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
         if (bm == null) return;
