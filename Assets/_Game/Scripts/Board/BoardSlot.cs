@@ -370,7 +370,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     ci3.hasFirstStrike = false;
                     break;
                 }
-                case "03502": // 毒巫：清护盾+中毒
+                case "03502": // 毒巫：清护盾+中毒（+对神选者扣对方1能量）
                 {
                     bool hasEnemy = false;
                     for (int j = 0; j <= 5; j++) if (bm.GetSlot(j)?.currentCard3D != null) { hasEnemy = true; break; }
@@ -378,7 +378,15 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     bool dd = false;
                     SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (t) =>
                     {
-                        if (t?.currentCard3D != null) { var ti3 = t.currentCard3D.GetComponent<Card3DInstance>(); if (ti3?.cardInstance != null) { ti3.cardInstance.RemoveShield(); ti3.cardInstance.poisoned = true; } }
+                        if (t?.currentCard3D != null) { var ti3 = t.currentCard3D.GetComponent<Card3DInstance>(); if (ti3?.cardInstance != null) {
+                            ti3.cardInstance.RemoveShield();
+                            ti3.cardInstance.poisoned = true;
+                            if (ti3.cardInstance.summonType == SummonType.ChosenOne)
+                            {
+                                NetworkPlayer.Local.AddEnergy(-1);
+                                NetworkPlayer.Local?.UpdateUI();
+                            }
+                        }}
                         dd = true;
                     });
                     while (!dd) yield return null;
