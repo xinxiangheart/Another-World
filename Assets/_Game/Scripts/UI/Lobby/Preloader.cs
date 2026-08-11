@@ -19,7 +19,8 @@ public class Preloader : MonoBehaviour
     readonly Dictionary<string, Object> _cache = new();
     readonly List<ResourceRequest> _loadOps = new();
     int _completedOps;
-    int _totalOps => _loadOps.Count;
+    int _syncDirOps;     // PreloadDir 同步完成数（替代 CompletedOp）
+    int _totalOps => _loadOps.Count + _syncDirOps;
 
     public float Progress => _totalOps > 0 ? (float)_completedOps / _totalOps : 0f;
     public bool IsDone => _completedOps >= _totalOps && _totalOps > 0;
@@ -109,7 +110,9 @@ public class Preloader : MonoBehaviour
             string key = $"{dir}/{asset.name}";
             _cache[key] = asset;
         }
-        _loadOps.Add(new CompletedOp());
+        // 标记此目录已预加载，供 GetAll<T>(dir) 命中
+        _cache[$"__dir__{dir}"] = null;
+        _syncDirOps++;
         _completedOps++;
     }
 
@@ -195,14 +198,5 @@ public class Preloader : MonoBehaviour
     void OnDestroy()
     {
         if (Instance == this) Instance = null;
-    }
-
-    /// <summary>已完成的假请求——用于同步加载的目录型预加载占位。</summary>
-    class CompletedOp : AsyncOperation
-    {
-        public override bool isDone => true;
-        public override float progress => 1f;
-        public override int priority { get; set; }
-        public override bool allowSceneActivation { get; set; }
     }
 }
