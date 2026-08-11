@@ -111,7 +111,10 @@ public class JoinRoomPanel : MonoBehaviour
 
             var sd = SteamDataManager.Instance; var d = sd?.playerData;
             var myData = new RoomPlayerData { playerName = sd?.localPlayerName ?? "玩家", totalMatches = d?.totalMatches ?? 0, winRate = sd?.WinRate ?? 0, winStreak = d?.winStreak ?? 0, steamID = sd?.localSteamID.m_SteamID ?? 0 };
-            SteamMatchmaking.SetLobbyData(_foundLobbyID, "guest_data", JsonUtility.ToJson(myData));
+            // 客人必须用 SetLobbyMemberData——SetLobbyData 只有房主能调用
+            SteamMatchmaking.SetLobbyMemberData(_foundLobbyID, "player_data", JsonUtility.ToJson(myData));
+            // 立即刷新，确保房主读到最新数据
+            SteamMatchmaking.RequestLobbyData(_foundLobbyID);
 
             panelRoot.SetActive(false);
             CreateRoomPanel.Instance?.OpenAsGuest(_foundLobbyID, _foundRoomCode);

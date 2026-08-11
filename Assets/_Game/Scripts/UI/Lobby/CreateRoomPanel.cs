@@ -127,7 +127,12 @@ public class CreateRoomPanel : MonoBehaviour
         {
             // Guest: keep writing member data + check start/kick/disconnect
             _writeTimer += Time.deltaTime;
-            if (_writeTimer > 0.5f) { _writeTimer = 0; SteamMatchmaking.SetLobbyMemberData(_lobbyID, "player_data", MakeMyJson()); }
+            if (_writeTimer > 0.5f)
+            {
+                _writeTimer = 0;
+                SteamMatchmaking.SetLobbyMemberData(_lobbyID, "player_data", MakeMyJson());
+                SteamMatchmaking.RequestLobbyData(_lobbyID); // 刷新缓存
+            }
 
             string hostJson = SteamMatchmaking.GetLobbyData(_lobbyID, "host_data");
             if (!string.IsNullOrEmpty(hostJson)) FillHostInfo(hostJson);
@@ -148,6 +153,9 @@ public class CreateRoomPanel : MonoBehaviour
             if (_writeTimer > 0.5f)
             {
                 _writeTimer = 0;
+                // 刷新 lobby 缓存——Steam 的 GetLobbyMemberData 依赖本地缓存，
+                // 不调 RequestLobbyData 会一直读到空数据
+                SteamMatchmaking.RequestLobbyData(_lobbyID);
                 int count = SteamMatchmaking.GetNumLobbyMembers(_lobbyID);
                 for (int i = 0; i < count; i++)
                 {
