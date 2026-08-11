@@ -2127,6 +2127,24 @@ public class NetworkPlayer : NetworkBehaviour
         ci.InitFromTemplate(template, 0);
         CounterManager.Instance?.PlayCounter(temp, false);
         Destroy(temp);
+
+        // 02305/02306 的 remainingDuration 在 PlayCounter 内用 TurnManager.isMyTurnFirst
+        // 计算——但服务器端 isMyTurnFirst 是 Host 视角。Remote(第二玩家)打牌时服务端
+        // 算出 duration=1 而非2 → 过早触发。此处用连接身份修正：
+        //   发送方是 Remote → 使用 !isMyTurnFirst（Remote 视角）
+        //   发送方是 Local  → 使用 isMyTurnFirst（Host 视角）
+        if (templateID == "02305" || templateID == "02306")
+        {
+            TurnManager tm = FindObjectOfType<TurnManager>();
+            if (tm != null && !isLocalPlayer)
+            {
+                // Remote 的反制牌在服务端 enemyCounters 中
+                var last = CounterManager.Instance?.enemyCounters?.Count > 0
+                    ? CounterManager.Instance.enemyCounters[^1] : null;
+                if (last != null && last.template.templateID == templateID)
+                    last.remainingDuration = tm.isMyTurnFirst ? 2 : 1;
+            }
+        }
     }
 
     /// <summary>
