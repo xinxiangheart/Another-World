@@ -42,19 +42,42 @@ public class Preloader : MonoBehaviour
         return loaded;
     }
 
+    /// <summary>从缓存读取指定目录下所有资源（用于 CardDatabase.LoadTemplates 等）。</summary>
+    public T[] GetAll<T>(string folderName) where T : Object
+    {
+        // 检查缓存中是否有此目录的标记
+        string key = $"__dir__{folderName}";
+        if (_cache.ContainsKey(key))
+        {
+            // 从缓存中筛选属于该目录的资源
+            var list = new List<T>();
+            string prefix = $"{folderName}/";
+            foreach (var kv in _cache)
+            {
+                if (kv.Key.StartsWith(prefix) && kv.Value is T t)
+                    list.Add(t);
+            }
+            if (list.Count > 0) return list.ToArray();
+        }
+        return null; // 未预加载→调用方回退到 Resources.LoadAll
+    }
+
     /// <summary>启动预加载——异步加载Game场景的重资源，可在Lobby场景提前调用。</summary>
     public void StartPreload()
     {
         if (_loadOps.Count > 0) return; // already started
 
         // ── 卡牌数据 ──────────────────────────────────────────
-        // ChosenOneData ScriptableObjects（03501~03513 等）
+        // 230+ 张卡牌 ScriptableObjects——CardDatabase.Awake 的最大瓶颈
+        PreloadDir<CardData>("CardData");
         PreloadDir<CardData>("ChosenOneData");
 
         // ── 通用 UI Prefab ────────────────────────────────────
         Preload<GameObject>("UI/SpellCard2D");
         Preload<GameObject>("UI/Card2D");
+        // AutoConnect.CreateWaitingUI 和 DamageFloater 用的字体
         Preload<TMP_FontAsset>("Fonts & Materials/NotoSansSC SDF");
+        Preload<TMP_FontAsset>("Fonts & Materials/NotoSerifCJKsc-Bold SDF");
 
         // ── 卡牌 3D Prefab（按卡牌模板列表预加载）───
         // 启动时不需要全部 ~230 张牌，只预加载最常用的 Token 和英雄 Prefab

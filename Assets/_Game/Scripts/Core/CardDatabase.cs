@@ -20,7 +20,12 @@ public class CardDatabase : MonoBehaviour
 
     void LoadTemplates(string folderName)
     {
-        CardData[] templates = Resources.LoadAll<CardData>(folderName);
+        // 优先从 Preloader 缓存读取（Lobby场景已预加载），未命中回退到同步 LoadAll
+        CardData[] templates = Preloader.Instance != null
+            ? Preloader.Instance.GetAll<CardData>(folderName)
+            : null;
+        if (templates == null || templates.Length == 0)
+            templates = Resources.LoadAll<CardData>(folderName);
         foreach (CardData data in templates)
         {
             if (!templateDict.ContainsKey(data.templateID))
