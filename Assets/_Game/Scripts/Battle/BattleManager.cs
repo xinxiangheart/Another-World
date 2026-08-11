@@ -565,17 +565,18 @@ public class BattleManager : MonoBehaviour
             {
                 int offset = i >= 6 ? 0 : 6;
                 int[] targets = { 2 + offset, 0 + offset, 4 + offset };
+                Debug.Log($"[FS-03506] attacker slot={i} attacker tid={ci.templateID} offset={offset} targets=[{targets[0]},{targets[1]},{targets[2]}]");
                 foreach (int id in targets)
                 {
                     BoardSlot targetSlot = allSlots[id];
                     if (targetSlot?.currentCard3D != null)
                     {
                         Card3DInstance targetInst = targetSlot.currentCard3D.GetComponent<Card3DInstance>();
-                        if (targetInst?.cardInstance != null)
-                        {
-                            ApplyDamageToMinion(targetInst.cardInstance, 2, slot.currentCard3D);
-                            targetInst.UpdateValues();
-                        }
+                        int hpBefore = targetInst?.cardInstance?.currentHealth ?? -1;
+                        ApplyDamageToMinionPublic(targetInst.cardInstance, 2, slot.currentCard3D);
+                        int hpAfter = targetInst?.cardInstance?.currentHealth ?? -1;
+                        Debug.Log($"[FS-03506] target slot={id} tid={targetInst?.cardInstance?.templateID} hp {hpBefore}→{hpAfter}");
+                        targetInst.UpdateValues();
                     }
                 }
             }
@@ -585,17 +586,18 @@ public class BattleManager : MonoBehaviour
             {
                 int offset = i >= 6 ? 0 : 6;
                 int[] targets = { 1 + offset, 5 + offset, 3 + offset };
+                Debug.Log($"[FS-03513] attacker slot={i} attacker tid={ci.templateID} offset={offset} targets=[{targets[0]},{targets[1]},{targets[2]}]");
                 foreach (int id in targets)
                 {
                     BoardSlot targetSlot = allSlots[id];
                     if (targetSlot?.currentCard3D != null)
                     {
                         Card3DInstance targetInst = targetSlot.currentCard3D.GetComponent<Card3DInstance>();
-                        if (targetInst?.cardInstance != null)
-                        {
-                            ApplyDamageToMinion(targetInst.cardInstance, 2, slot.currentCard3D);
-                            targetInst.UpdateValues();
-                        }
+                        int hpBefore = targetInst?.cardInstance?.currentHealth ?? -1;
+                        ApplyDamageToMinionPublic(targetInst.cardInstance, 2, slot.currentCard3D);
+                        int hpAfter = targetInst?.cardInstance?.currentHealth ?? -1;
+                        Debug.Log($"[FS-03513] target slot={id} tid={targetInst?.cardInstance?.templateID} hp {hpBefore}→{hpAfter}");
+                        targetInst.UpdateValues();
                     }
                 }
             }
