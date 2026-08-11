@@ -552,11 +552,12 @@ public class NetworkPlayer : NetworkBehaviour
             }
         }
         // Non-counter cards: trigger opponent's OnCardPlayed counters on server.
-        // Host's own placement already checks in OnPointerClick before enter effect runs.
-        // Here we only need to handle the Remote→Host counter direction.
-        if ((template.spellType & SpellType.Counter) == 0 && this != NetworkPlayer.Local)
+        if ((template.spellType & SpellType.Counter) == 0)
         {
-            CounterManager.Instance?.ServerCheckOnCardPlayed(template, false);
+            // Remote 打牌 → 检查 Host 的反制牌（myCounters）
+            // Host 打牌 → 检查 Remote 的反制牌（enemyCounters）
+            CounterManager.Instance?.ServerCheckOnCardPlayed(template, this == NetworkPlayer.Local);
+        }
 
             // 蛊惑之音(02304): if Host's counter redirected this Remote card's enter effect,
             // tell Host client to select an ally and run the redirected enter effect.

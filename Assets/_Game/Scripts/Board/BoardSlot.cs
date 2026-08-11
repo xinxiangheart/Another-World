@@ -778,14 +778,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 // ❗isPlacingCard 不在此处清除——由 CleanupAfterPlacement 在 StartOnEnterEffect 完成后调用。
                 // RogueDoSummon 等协程依赖 isPlacingCard 阻塞来等待进场效果子树完全结束。
 
-                // 进场效果前检查反制牌（02304 蛊惑之音等需在进场前触发重定向）。
-                // Host/server 侧同步触发——否则 GlobalEventManager 重定向标记来不及被 StartOnEnterEffect 读到。
-                // 无畏者(01319)不触发任何反制牌，跳过。
-                if (NetworkServer.active && template != null && template.hasOnEnter
-                    && template.templateID != "01319")
-                {
-                    CounterManager.Instance?.ServerCheckOnCardPlayed(template, true);
-                }
+                // 反制牌检查已由 CmdPlayCard 统一处理（覆盖全部 cardType，不限于 hasOnEnter）。
+                // 保留此注释标记此处为进场效果前的自然时序点。
 
                 if (template != null && template.hasOnEnter && inst != null)
                 {
