@@ -347,7 +347,12 @@ public class QuickMatchPanel : MonoBehaviour
         {
             SetStatus("双方已接受！");
             LobbyConfig.FromLobby = true; LobbyConfig.IsHost = _iAmHost; LobbyConfig.IsDirectIP = false; LobbyConfig.ServerIP = "";
-            LeaveLobby(); _state = State.Idle; if (panelRoot) panelRoot.SetActive(false);
+            // 保留大厅供 Game 场景 AutoConnect 复用——不调 LeaveLobby()
+            LobbyConfig.CurrentLobbyID = _lobbyID;
+            if (_iAmHost)
+                LobbyConfig.HostSteamID = SteamUser.GetSteamID().m_SteamID.ToString();
+            _lobbyID = default; _state = State.Idle;
+            if (panelRoot) panelRoot.SetActive(false);
             JoinGamePanel.Instance?.Open();
         }
     }

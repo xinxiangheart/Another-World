@@ -55,17 +55,40 @@ public class AutoConnect : MonoBehaviour
 
         if (LobbyConfig.IsHost)
         {
-            SetText("正在创建房间...");
-            SetupFizzy();
-            RegisterCallbacks();
-            SteamMatchmaking.CreateLobby(ELobbyType.k_ELobbyTypePublic, 2);
+            // 优先复用 Lobby 场景已有大厅——跳过 CreateLobby
+            if (LobbyConfig.CurrentLobbyID.m_SteamID != 0)
+            {
+                Debug.Log($"[AutoConnect] 复用已有大厅 {LobbyConfig.CurrentLobbyID}，跳过创建");
+                SetText("正在连接...");
+                SetupFizzy();
+                _nm.StartHost();
+            }
+            else
+            {
+                SetText("正在创建房间...");
+                SetupFizzy();
+                RegisterCallbacks();
+                SteamMatchmaking.CreateLobby(ELobbyType.k_ELobbyTypePublic, 2);
+            }
         }
         else
         {
-            SetText("正在搜索可用房间...");
-            SetupFizzy();
-            RegisterCallbacks();
-            InvokeRepeating(nameof(SearchLobbies), 0f, 2f);
+            // 优先复用 Lobby 场景已有大厅——跳过搜索+加入
+            if (LobbyConfig.CurrentLobbyID.m_SteamID != 0 && !string.IsNullOrEmpty(LobbyConfig.HostSteamID))
+            {
+                Debug.Log($"[AutoConnect] 复用已有大厅 {LobbyConfig.CurrentLobbyID}，host={LobbyConfig.HostSteamID}");
+                SetText("正在连接...");
+                SetupFizzy();
+                _nm.networkAddress = LobbyConfig.HostSteamID;
+                _nm.StartClient();
+            }
+            else
+            {
+                SetText("正在搜索可用房间...");
+                SetupFizzy();
+                RegisterCallbacks();
+                InvokeRepeating(nameof(SearchLobbies), 0f, 2f);
+            }
         }
     }
 
