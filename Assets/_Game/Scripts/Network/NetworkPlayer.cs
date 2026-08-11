@@ -557,15 +557,18 @@ public class NetworkPlayer : NetworkBehaviour
             // Remote 打牌 → 检查 Host 的反制牌（myCounters）
             // Host 打牌 → 检查 Remote 的反制牌（enemyCounters）
             CounterManager.Instance?.ServerCheckOnCardPlayed(template, this == NetworkPlayer.Local);
-        }
 
-            // 蛊惑之音(02304): if Host's counter redirected this Remote card's enter effect,
-            // tell Host client to select an ally and run the redirected enter effect.
+            // 蛊惑之音(02304): if Remote's counter redirected this card's enter effect,
+            // tell the owning client to select an ally and run the redirected enter effect.
             if (GlobalEventManager.Instance != null &&
                 GlobalEventManager.Instance.PendingEnterRedirectTemplate == template)
             {
                 GlobalEventManager.Instance.PendingEnterRedirectTemplate = null;
-                TargetHandleEnterRedirect(NetworkPlayer.Local.connectionToClient, templateID);
+                NetworkConnectionToClient redirectTarget = this == NetworkPlayer.Local
+                    ? NetworkPlayer.Remote?.connectionToClient
+                    : NetworkPlayer.Local?.connectionToClient;
+                if (redirectTarget != null)
+                    TargetHandleEnterRedirect(redirectTarget, templateID);
             }
         }
 
