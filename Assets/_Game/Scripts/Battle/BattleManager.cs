@@ -712,7 +712,12 @@ public class BattleManager : MonoBehaviour
             }
         }
 
-        // ── 先手同时窗口结束 → 等待远端先手完成 → 处理死亡 → 反击 ──
+        // ── 先手伤害同步 → 远程先手 → 死亡 ──
+        // 必须先 MarkDirty+SyncNow 把先手伤害推给远端客户端，
+        // 否则远端 RunRemoteFirstStrikes 末尾的 SyncMyBoardToOpponent 会带回旧 HP 覆盖服务端。
+        BoardSyncManager.MarkDirty();
+        yield return null; // 让 LateUpdate 中的 SyncNow 执行
+
         // 触发远端客户端运行己方的交互式先手（Remote 的 6-11 = 服务器的 0-5）
         if (Mirror.NetworkServer.active && NetworkPlayer.Remote != null)
         {
@@ -722,7 +727,7 @@ public class BattleManager : MonoBehaviour
             yield return new WaitWhile(() => !BoardSlot._remoteFirstStrikeDone && Time.time < remoteFsDeadline);
             if (!BoardSlot._remoteFirstStrikeDone)
                 Debug.LogError("[BattleManager] 远程先手 RPC 超时（30s），强制继续");
-            // 广播完整板面给远端客户端，确保交换后的正确状态同步出去
+            // 远程先手可能产生交换/buff/debuff → 再同一次把最终板面推出去
             BoardSyncManager.MarkDirty();
             yield return null; // 让 LateUpdate 中的 SyncNow 执行
         }
