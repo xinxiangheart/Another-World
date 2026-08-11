@@ -1154,6 +1154,9 @@ public class HandManager : MonoBehaviour
                             ci.prefixes += " 灵能";
                         CardDisplay2D d2d = handCard.GetComponent<CardDisplay2D>();
                         d2d?.Refresh();
+                        // 同步手牌前缀到服务器（打出时 ConsumeHandPrefixOverride 注入）
+                        if (NetworkClient.isConnected)
+                            NetworkPlayer.Local?.CmdSetHandCardPrefix(ci.instanceID, "灵能");
                     }
                 }
             }
@@ -1620,9 +1623,8 @@ public class HandManager : MonoBehaviour
                 CardData data = CardDatabase.Instance?.GetTemplate(ci.templateID);
                 if (data != null && data.baseCost == 5)
                     energyGain++;
+                if (NetworkClient.isConnected) NetworkPlayer.Local?.CmdDiscardCard(ci.instanceID);
             }
-            var ci = card?.GetComponent<CardInstance>();
-            if (ci != null && NetworkClient.isConnected) NetworkPlayer.Local?.CmdDiscardCard(ci.instanceID);
             player.handCards.Remove(card);
             Destroy(card);
         }
@@ -1920,6 +1922,8 @@ public class HandManager : MonoBehaviour
                             ci.prefixes += " 灵能";
                         CardDisplay2D d2d = handCard.GetComponent<CardDisplay2D>();
                         d2d?.Refresh();
+                        if (NetworkClient.isConnected)
+                            NetworkPlayer.Local?.CmdSetHandCardPrefix(ci.instanceID, "灵能");
                     }
                 }
             }

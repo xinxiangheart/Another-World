@@ -790,6 +790,14 @@ public class NetworkPlayer : NetworkBehaviour
             handManager?.RegisterCard(cv);
         }
 
+        // 中枢(03027)在场时为召唤物附加灵能前缀
+        if (instance != null)
+        {
+            CardData dtCore = CardDatabase.Instance?.GetTemplate(instance.templateID);
+            if (dtCore != null && dtCore.cardType == CardType.Summon)
+                ApplyCorePrefix(instance);
+        }
+
         handCardCount = handCards.Count;
         Debug.Log($"[NetworkPlayer] DrawCard: templateID={data.templateID}, instanceID={data._instanceID}, handCount={handCardCount}");
         // Registry
@@ -844,9 +852,41 @@ public class NetworkPlayer : NetworkBehaviour
             handManager?.RegisterCard(cv);
         }
 
+        // 中枢(03027)在场时为召唤物附加灵能前缀
+        if (instance != null)
+        {
+            CardData dtCore2 = CardDatabase.Instance?.GetTemplate(instance.templateID);
+            if (dtCore2 != null && dtCore2.cardType == CardType.Summon)
+                ApplyCorePrefix(instance);
+        }
+
         handCardCount = handCards.Count;
         // Registry: 本地抽牌入区
         RegistrySyncManager.Instance?.UpdateCard(instance, this == Local ? 0 : 1, CardZone.Hand, -1);
+    }
+
+    /// <summary>中枢(03027)在场时为新抽取的召唤物附加灵能前缀并同步到服务器。</summary>
+    void ApplyCorePrefix(CardInstance ci)
+    {
+        if (ci == null || ci.prefixes.Contains("灵能")) return;
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return;
+        bool coreOnField = false;
+        for (int i = 0; i < 12; i++)
+        {
+            var s = bm.GetSlot(i);
+            if (s?.currentCard3D == null) continue;
+            var fci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+            if (fci != null && fci.templateID == "03027") { coreOnField = true; break; }
+        }
+        if (!coreOnField) return;
+        if (string.IsNullOrEmpty(ci.prefixes) || ci.prefixes == "无")
+            ci.prefixes = "灵能";
+        else
+            ci.prefixes += " 灵能";
+        ci.GetComponent<CardDisplay2D>()?.Refresh();
+        if (NetworkClient.isConnected)
+            CmdSetHandCardPrefix(ci.instanceID, "灵能");
     }
 
     public void RemoveCardFromHand(GameObject card)

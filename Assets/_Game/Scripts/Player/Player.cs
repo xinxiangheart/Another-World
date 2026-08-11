@@ -351,7 +351,7 @@ public class Player : MonoBehaviour
         currentHealth = Mathf.Min(maxHealth, currentHealth + amount);
         UpdateUI();
     }
-    void ApplyCorePrefix(CardInstance ci)
+    public void ApplyCorePrefix(CardInstance ci)
     {
         if (ci == null) return;
         if (ci.prefixes.Contains("灵能")) return;
@@ -380,6 +380,9 @@ public class Player : MonoBehaviour
                 ci.prefixes += " 灵能";
             CardDisplay2D d2d = ci.GetComponent<CardDisplay2D>();
             d2d?.Refresh();
+            // 同步手牌前缀到服务器（打出时 ConsumeHandPrefixOverride 注入）
+            if (Mirror.NetworkClient.isConnected)
+                NetworkPlayer.Local?.CmdSetHandCardPrefix(ci.instanceID, "灵能");
         }
     }
     bool IsMerchantOnField()
