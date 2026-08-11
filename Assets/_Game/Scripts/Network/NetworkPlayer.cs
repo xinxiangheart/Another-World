@@ -1440,9 +1440,11 @@ public class NetworkPlayer : NetworkBehaviour
                     if (crossCi != null && crossCi.templateID == tid)
                     {
                         string[] xp = raw.Split('|');
-                        // 跨半场沉默标志——03501选择对方半场目标时上报silenced=1被守卫阻挡
+                        // 跨半场沉默/中毒——03501/03502等选择对方半场目标时被isReportingOwnSlot守卫阻挡
                         if (xp.Length > 11 && xp[11] == "1")
                             crossCi.silencedThisPhase = true;
+                        if (xp.Length > 13 && xp[13] == "1")
+                            crossCi.poisoned = true;
                         // 跨半场先手debuff——01318弱化棱晶等攻击力削减
                         if (xp.Length > 2 && int.TryParse(xp[2], out int xv))
                         {
