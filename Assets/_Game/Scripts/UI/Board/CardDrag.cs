@@ -447,18 +447,15 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
         // 例外：需要客户端本地 UI 选择面板的法术（它们的协程调用了 SelectionManager/BeginOpenSelection 等），
         // 必须在客户端本地 Dispatch，否则面板会错误地出现在 Host 端。
         // 判断依据：handler 内部是否调用了 StartCoroutine 启动含 UI 的协程。
-        // 需要客户端本地 UI 的法术——未完成面板委托迁移
+        // 复杂 UI 法术——待完成面板委托迁移
         bool needsLocalUI = template.templateID switch
         {
             "02004" => true,  // 皇帝认可 (BeginOpenSelection+CardClickHandler)
-            "02010" => true,  // 背叛 (BeginSelection+PlaceCardToSlot)
-            "02106" => true,  // 改编列队 (BeginSelection+onTargetSelected)
-            "02111" => true,  // 手牌净化 (BeginOpenSelection+ConfirmSelectionButton)
-            "02203" => true,  // 伟大进化 (BeginOpenSelection+CardClickHandler)
-            "02212" => true,  // 核心召唤 (BeginSelection+PlaceCardToSlot)
-            "02307" => true,  // 多卡效应 (BeginOpenSelection+ConfirmSelectionButton)
-            "02403" => true,  // 召唤小恶 (BeginSelection+PlaceCardToSlot)
-            "02501" => true,  // 传送门 (异步多选面板)
+            "02106" => true,  // 改编列队 (BeginSelection+onTargetSelected+ConfirmSelectionButton)
+            "02111" => true,  // 手牌净化 (BeginOpenSelection+ConfirmSelectionButton+CardClickHandler)
+            "02203" => true,  // 伟大进化 (BeginOpenSelection+CardClickHandler+onTargetSelected)
+            "02307" => true,  // 多卡效应 (BeginOpenSelection+ConfirmSelectionButton+CardClickHandler)
+            "02501" => true,  // 传送门 (异步多选面板+CardDisplayPanel)
             _ => false,
         };
         if (NetworkClient.isConnected && !NetworkServer.active && !needsLocalUI)

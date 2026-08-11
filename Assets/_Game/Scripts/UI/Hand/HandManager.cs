@@ -1747,37 +1747,47 @@ public class HandManager : MonoBehaviour
     }
 
     /// <summary>通用单选委托：服务器端走StartClientSelection，离线走BeginSelection。</summary>
+    /// <summary>在选中槽位创建召唤物 Temp→PlaceCardToSlot→CmdPlayCard→返回 slotID。</summary>
+    void PlaceTokenSync(string templateID, int slotID, CardData template = null)
+    {
+        if (template == null) template = CardDatabase.Instance?.GetTemplate(templateID);
+        if (template?.prefab3D == null) return;
+        GameObject temp = new GameObject($"Temp_{templateID}");
+        CardInstance ti = temp.AddComponent<CardInstance>();
+        ti.InitFromTemplate(template, 0);
+        string iid = ti.instanceID ?? CardZoneManager.GenerateInstanceID(templateID);
+        PlaceCardToSlot(FindObjectOfType<BoardManager>()?.GetSlot(slotID), temp);
+        Destroy(temp);
+        if (NetworkClient.isConnected)
+            NetworkPlayer.Local?.CmdPlayCard(templateID, slotID, ti.baseAttack, ti.baseHealth, ti.baseMaxHealth, ti.currentCost, iid);
+    }
+
     IEnumerator WaitForSingleSelect(TargetType targetType, System.Func<BoardSlot, bool> filter, ref int resultSlot)
     {
         resultSlot = -1;
         if (NetworkServer.active)
         {
-            // 服务器端(CmdResolveSpell) → 委托打牌客户端弹出面板（服务器端无需隐藏手牌/禁用 UI）
             int selId = NetworkPlayer.StartClientSelection(NetworkPlayer.Local, targetType);
             yield return NetworkPlayer.WaitForClientSelection(selId);
             int raw = NetworkPlayer.GetSelectionResult(selId);
-            if (raw >= 0) { var s = FindObjectOfType<BoardManager>()?.GetSlot(raw); if (filter(s)) resultSlot = raw; }
+            if (raw >= 0)
+            {
+                int serverSlot = NetworkPlayer.Local.isLocalPlayer ? raw : BoardSlot.MirrorSlot(raw);
+                var s = FindObjectOfType<BoardManager>()?.GetSlot(serverSlot);
+                if (filter(s)) resultSlot = serverSlot;
+            }
         }
         else
         {
-            // 离线/本地 → 直接弹出面板
             BoardSlot.isStrengtheningSlot = true;
             bool done = false;
-            SelectionManager.Instance.BeginSelection(targetType, (selectedSlot) =>
-            {
-                if (filter(selectedSlot)) resultSlot = selectedSlot?.slotID ?? -1;
-                done = true;
-            });
+            SelectionManager.Instance.BeginSelection(targetType, s => { if (filter(s)) resultSlot = s?.slotID ?? -1; done = true; });
             foreach (GameObject c in NetworkPlayer.Local?.handCards ?? new()) if (c) c.SetActive(false);
-            SetHandAreaRaycast(false);
-            FindObjectOfType<CardDrag>()?.SetButtonsInteractable(false);
-            Card3DHover.allowDiscard = false;
+            SetHandAreaRaycast(false); FindObjectOfType<CardDrag>()?.SetButtonsInteractable(false); Card3DHover.allowDiscard = false;
             yield return new WaitUntil(() => done);
             BoardSlot.isStrengtheningSlot = false;
             foreach (GameObject c in NetworkPlayer.Local?.handCards ?? new()) if (c) c.SetActive(true);
-            SetHandAreaRaycast(true);
-            FindObjectOfType<CardDrag>()?.SetButtonsInteractable(true);
-            Card3DHover.allowDiscard = true;
+            SetHandAreaRaycast(true); FindObjectOfType<CardDrag>()?.SetButtonsInteractable(true); Card3DHover.allowDiscard = true;
         }
     }
     public IEnumerator GreatEvolutionEffect()
@@ -1895,90 +1905,39 @@ public class HandManager : MonoBehaviour
     {
         CardData template = CardDatabase.Instance?.GetTemplate("03027");
         if (template?.prefab3D == null) { CardDrag.CleanupSpellResources(); yield break; }
-
+        // 确认方式动态获取己方半场（服务端 Remote 施法者= server 0-5, Host= server 6-11）
+        int allyStart = (Mirror.NetworkServer.active && !NetworkPlayer.Local.isLocalPlayer) ? 0 : 6;
+        int allyEnd = allyStart + 5;
         BoardManager bm = FindObjectOfType<BoardManager>();
         bool hasEmpty = false;
-        for (int i = 6; i <= 11; i++)
+        for (int i = allyStart; i <= allyEnd; i++)
             if (bm.GetSlot(i) != null && !bm.GetSlot(i).isBlocked && !bm.GetSlot(i).hasCard) { hasEmpty = true; break; }
         if (!hasEmpty) { CardDrag.CleanupSpellResources(); yield break; }
 
-        HandManager hm = FindObjectOfType<HandManager>();
-        BoardSlot.isPlacingCard = true;
-        BoardSlot.isStrengtheningSlot = true;
-        SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, null);
-        foreach (GameObject card in NetworkPlayer.Local.handCards)
+        int sel = -1;
+        yield return WaitForSingleSelect(TargetType.SingleAlly, s => s != null && !s.isBlocked && !s.hasCard, ref sel);
+        if (sel < 0) { CardDrag.CleanupSpellResources(); yield break; }
+        PlaceTokenSync("03027", sel);
+
+        // 场上友方随从加"灵能"前缀
+        for (int i = allyStart; i <= allyEnd; i++)
         {
-            if (card != null) card.SetActive(false);
+            var s = bm.GetSlot(i); if (s?.currentCard3D == null) continue;
+            var ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci != null && !ci.prefixes.Contains("灵能"))
+            { ci.prefixes = string.IsNullOrEmpty(ci.prefixes) || ci.prefixes == "无" ? "灵能" : ci.prefixes + " 灵能"; s.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues(); }
         }
-        SetHandAreaRaycast(false);
-        FindObjectOfType<CardDrag>()?.SetButtonsInteractable(false);
-        Card3DHover.allowDiscard = false;
-
-        bool placed = false;
-        BoardSlot.onTargetSelected = (selectedSlot) =>
+        // 手牌中召唤物加"灵能"前缀
+        foreach (GameObject hc in NetworkPlayer.Local.handCards)
         {
-            if (selectedSlot == null || selectedSlot.isBlocked || selectedSlot.hasCard || selectedSlot.slotID < 6) return;
-            GameObject temp = new GameObject("TempCore");
-            CardInstance ti = temp.AddComponent<CardInstance>();
-            ti.InitFromTemplate(template, 0);
-            hm.PlaceCardToSlot(selectedSlot, temp);
-            Destroy(temp);
-            // 同步新召唤的核心到服务器/对端（PlaceCardToSlot 不调 CmdPlayCard）
-            if (NetworkClient.isConnected)
-                NetworkPlayer.Local?.CmdPlayCard("03027", selectedSlot.slotID,
-                    ti.baseAttack, ti.baseHealth, ti.baseMaxHealth, ti.currentCost,
-                    ti.instanceID ?? CardZoneManager.GenerateInstanceID("03027"));
-            placed = true;
-            SelectionManager.Instance.ForceEndAll();
-            BoardSlot.isPlacingCard = false;
-            BoardSlot.isStrengtheningSlot = false;
-
-            for (int i = 6; i <= 11; i++)
-            {
-                BoardSlot slot = bm.GetSlot(i);
-                if (slot?.currentCard3D == null) continue;
-                CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                if (ci != null && !ci.prefixes.Contains("灵能"))
-                {
-                        if (string.IsNullOrEmpty(ci.prefixes) || ci.prefixes == "无")
-                            ci.prefixes = "灵能";
-                    else
-                            ci.prefixes += " 灵能";
-                    slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
-                }
-            }
-            // 附加灵能前缀：手牌中召唤物
-            foreach (GameObject handCard in NetworkPlayer.Local.handCards)
-            {
-                if (handCard == null) continue;
-                CardInstance ci = handCard.GetComponent<CardInstance>();
-                if (ci != null)
-                {
-                    CardData cd = CardDatabase.Instance?.GetTemplate(ci.templateID);
-                    if (cd != null && cd.cardType == CardType.Summon && !ci.prefixes.Contains("灵能"))
-                    {
-                        if (string.IsNullOrEmpty(ci.prefixes) || ci.prefixes == "无")
-                            ci.prefixes = "灵能";
-                        else
-                            ci.prefixes += " 灵能";
-                        CardDisplay2D d2d = handCard.GetComponent<CardDisplay2D>();
-                        d2d?.Refresh();
-                        if (NetworkClient.isConnected)
-                            NetworkPlayer.Local?.CmdSetHandCardPrefix(ci.instanceID, "灵能");
-                    }
-                }
-            }
-            foreach (GameObject card in NetworkPlayer.Local.handCards)
-            {
-                if (card != null) card.SetActive(true);
-            }
-            RefreshLayout(true);
-            CardDrag.CleanupSpellResources();
-
-            // Sync core model + ally prefix changes to opponent
-            TurnManager.SyncMyBoardToOpponent();
-        };
-        yield return new WaitUntil(() => placed);
+            var ci = hc?.GetComponent<CardInstance>(); if (ci == null) continue;
+            var cd = CardDatabase.Instance?.GetTemplate(ci.templateID);
+            if (cd?.cardType == CardType.Summon && !ci.prefixes.Contains("灵能"))
+            { ci.prefixes = string.IsNullOrEmpty(ci.prefixes) || ci.prefixes == "无" ? "灵能" : ci.prefixes + " 灵能"; hc.GetComponent<CardDisplay2D>()?.Refresh(); if (NetworkClient.isConnected) NetworkPlayer.Local?.CmdSetHandCardPrefix(ci.instanceID, "灵能"); }
+        }
+        if (NetworkServer.active) BoardSyncManager.MarkDirty();
+        else TurnManager.SyncMyBoardToOpponent();
+        CardDrag.CleanupSpellResources();
     }
     public IEnumerator CollectorEnterEffect(CardInstance giver)
     {
@@ -2122,38 +2081,20 @@ public class HandManager : MonoBehaviour
     {
         CardData template = CardDatabase.Instance?.GetTemplate("03010");
         if (template?.prefab3D == null) { CardDrag.CleanupSpellResources(); yield break; }
-
+        int allyStart = (NetworkServer.active && !NetworkPlayer.Local.isLocalPlayer) ? 0 : 6;
+        int allyEnd = allyStart + 5;
         BoardManager bm = FindObjectOfType<BoardManager>();
         bool hasEmpty = false;
-        for (int i = 6; i <= 11; i++)
+        for (int i = allyStart; i <= allyEnd; i++)
             if (bm.GetSlot(i) != null && !bm.GetSlot(i).isBlocked && !bm.GetSlot(i).hasCard) { hasEmpty = true; break; }
         if (!hasEmpty) { CardDrag.CleanupSpellResources(); yield break; }
-
-        BoardSlot.isPlacingCard = true;
-        BoardSlot.isStrengtheningSlot = true;
-        SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, null);
-
-        bool placed = false;
-        BoardSlot.onTargetSelected = (selectedSlot) =>
-        {
-            if (selectedSlot == null || selectedSlot.isBlocked || selectedSlot.hasCard || selectedSlot.slotID < 6) return;
-            GameObject temp = new GameObject("TempSmallEvil");
-            CardInstance ti = temp.AddComponent<CardInstance>();
-            ti.InitFromTemplate(template, 0);
-            PlaceCardToSlot(selectedSlot, temp);
-            Destroy(temp);
-            // 同步新召唤物到服务器/对端（PlaceCardToSlot 不调 CmdPlayCard）
-            if (NetworkClient.isConnected)
-                NetworkPlayer.Local?.CmdPlayCard("03010", selectedSlot.slotID,
-                    ti.baseAttack, ti.baseHealth, ti.baseMaxHealth, ti.currentCost,
-                    ti.instanceID ?? CardZoneManager.GenerateInstanceID("03010"));
-            placed = true;
-            SelectionManager.Instance.ForceEndAll();
-            BoardSlot.isPlacingCard = false;
-            BoardSlot.isStrengtheningSlot = false;
-            CardDrag.CleanupSpellResources();
-        };
-        yield return new WaitUntil(() => placed);
+        int sel = -1;
+        yield return WaitForSingleSelect(TargetType.SingleAlly, s => s != null && !s.isBlocked && !s.hasCard, ref sel);
+        if (sel < 0) { CardDrag.CleanupSpellResources(); yield break; }
+        PlaceTokenSync("03010", sel);
+        if (NetworkServer.active) BoardSyncManager.MarkDirty();
+        else TurnManager.SyncMyBoardToOpponent();
+        CardDrag.CleanupSpellResources();
     }
     public IEnumerator SpawnTwoHorrors(int baseHP, int baseAtk)
     {
@@ -2508,63 +2449,17 @@ public class HandManager : MonoBehaviour
     }
   public  IEnumerator BetrayalEffect()
     {
-        BoardManager bm = FindObjectOfType<BoardManager>();
-
-        // 检查对方区域是否有空位
+        var bm = FindObjectOfType<BoardManager>();
         bool hasEmpty = false;
-        for (int i = 0; i <= 5; i++)
-        {
-            BoardSlot s = bm?.GetSlot(i);
-            if (s != null && !s.isBlocked && !s.hasCard && !s.prisonBlocked)
-            { hasEmpty = true; break; }
-        }
-
-        if (!hasEmpty)
-        {
-                Debug.Log("对方场上没有召唤物，阴阳无法打出");
-            CardDrag.CleanupSpellResources();
-            yield break;
-        }
-
-        CardData traitorTemplate = CardDatabase.Instance?.GetTemplate("03025");
-        if (traitorTemplate?.prefab3D == null) { CardDrag.CleanupSpellResources(); yield break; }
-
-        // 选择对方空位
-        BoardSlot.isPlacingCard = true;
-        BoardSlot.isStrengtheningSlot = true;
-        bool placed = false;
-
-        SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (selectedSlot) =>
-        {
-            if (selectedSlot == null || selectedSlot.isBlocked || selectedSlot.hasCard || selectedSlot.slotID > 5) return;
-
-            GameObject temp = new GameObject("TempTraitor");
-            CardInstance ti = temp.AddComponent<CardInstance>();
-            ti.InitFromTemplate(traitorTemplate, 0);
-            HandManager hm = FindObjectOfType<HandManager>();
-            hm.PlaceCardToSlot(selectedSlot, temp);
-            Destroy(temp);
-
-            // 敌方单位朝向
-            selectedSlot.currentCard3D.transform.rotation = Quaternion.Euler(0, 180, 0);
-
-            // 同步至服务器/对端——PlaceCardToSlot 不调 CmdPlayCard，需手动发出
-            if (NetworkClient.isConnected)
-            {
-                int atk = ti.baseAttack;
-                int hp = ti.baseHealth;
-                int maxHp = ti.baseMaxHealth;
-                int cost = ti.currentCost;
-                string iid = ti.instanceID ?? CardZoneManager.GenerateInstanceID("03025");
-                NetworkPlayer.Local?.CmdPlayCard("03025", selectedSlot.slotID, atk, hp, maxHp, cost, iid);
-            }
-
-            placed = true;
-            BoardSlot.isPlacingCard = false;
-            BoardSlot.isStrengtheningSlot = false;
-        });
-
-        yield return new WaitUntil(() => placed);
+        for (int i = 0; i <= 5; i++) { var s = bm?.GetSlot(i); if (s != null && !s.isBlocked && !s.hasCard && !s.prisonBlocked) { hasEmpty = true; break; } }
+        if (!hasEmpty) { CardDrag.CleanupSpellResources(); yield break; }
+        if (CardDatabase.Instance?.GetTemplate("03025")?.prefab3D == null) { CardDrag.CleanupSpellResources(); yield break; }
+        int sel = -1;
+        yield return WaitForSingleSelect(TargetType.SingleEnemy, s => s != null && !s.isBlocked && !s.hasCard && !s.prisonBlocked, ref sel);
+        if (sel < 0) { CardDrag.CleanupSpellResources(); yield break; }
+        PlaceTokenSync("03025", sel);
+        if (NetworkServer.active) BoardSyncManager.MarkDirty();
+        else TurnManager.SyncMyBoardToOpponent();
         CardDrag.CleanupSpellResources();
     }
 }
