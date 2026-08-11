@@ -635,79 +635,12 @@ public class NetworkPlayer : NetworkBehaviour
         Heal(amount);
     }
 
-    public void TakeDamage(int amount)
-    {
-        if (NetworkServer.active)
-        {
-            currentHealth -= amount;
-            GlobalEventManager.Instance?.TriggerPlayerDamaged(amount);
-        }
-        else if (isLocalPlayer)
-        {
-            CmdTakeDamage(amount);
-        }
-        else
-        {
-            Debug.LogError("[NetworkPlayer] 纯客户端不能对非本地玩家调用 TakeDamage，请走服务端路由");
-        }
-    }
-
-    [Command]
-    void CmdTakeDamage(int amount)
-    {
-        currentHealth -= amount;
-        GlobalEventManager.Instance?.TriggerPlayerDamaged(amount);
-    }
-
-    public void Heal(int amount)
-    {
-        if (NetworkServer.active)
-        {
-            currentHealth = Mathf.Min(maxHealth, currentHealth + amount);
-        }
-        else if (isLocalPlayer)
-        {
-            CmdHeal(amount);
-        }
-        else
-        {
-            Debug.LogError("[NetworkPlayer] 纯客户端不能对非本地玩家调用 Heal，请走服务端路由");
-        }
-    }
-
-    [Command]
-    void CmdHeal(int amount)
-    {
-        currentHealth = Mathf.Min(maxHealth, currentHealth + amount);
-    }
-
-    // ========== Energy ==========
-
-    public void AddEnergy(int amount)
-    {
-        if (NetworkServer.active)
-        {
-            currentEnergy += amount;
-            if (!_energyCanExceedLimit && currentEnergy > maxEnergy)
-                currentEnergy = maxEnergy;
-        }
-        else if (isLocalPlayer)
-        {
-            CmdAddEnergy(amount);
-        }
-        else
-        {
-            Debug.LogError("[NetworkPlayer] 纯客户端不能对非本地玩家调用 AddEnergy，请走服务端路由");
-        }
-    }
-
-    [Command]
-    void CmdAddEnergy(int amount)
-    {
-        currentEnergy += amount;
-        if (!_energyCanExceedLimit && currentEnergy > maxEnergy)
-            currentEnergy = maxEnergy;
-    }
+    public void TakeDamage(int amount) => ApplyTakeDamage(this, amount);
+    [Command] void CmdTakeDamage(int amount) => ApplyTakeDamage(this, amount);
+    public void Heal(int amount) => ApplyHeal(this, amount);
+    [Command] void CmdHeal(int amount) => ApplyHeal(this, amount);
+    public void AddEnergy(int amount) => ApplyAddEnergy(this, amount);
+    [Command] void CmdAddEnergy(int amount) => ApplyAddEnergy(this, amount);
 
     public bool UseEnergy(int amount)
     {
@@ -1605,6 +1538,69 @@ public class NetworkPlayer : NetworkBehaviour
             case 11: ci.silencedThisPhase = true; break;
             case 13: ci.poisoned = true; break;
             // 新字段加 case 即可
+        }
+    }
+
+    // ── 共用副作用方法 —— Player 和 NetworkPlayer 统一入口 ──────────────────
+    // 消除双玩家类不一致：所有 TakeDamage/Heal/AddEnergy 经同一入口发全局事件。
+
+    /// <summary>对指定玩家对象权威扣血，触发 GlobalEventManager.OnPlayerDamaged。</summary>
+    public static void ApplyTakeDamage(NetworkPlayer np, int amount)
+    {
+        if (np == null) return;
+        if (NetworkServer.active)
+        {
+            np.currentHealth -= amount;
+            GlobalEventManager.Instance?.TriggerPlayerDamaged(amount);
+            np.RefreshUI();
+        }
+        else if (np.isLocalPlayer)
+        {
+            np.CmdTakeDamage(amount);
+        }
+        else
+        {
+            Debug.LogError("[NetworkPlayer] 纯客户端不能对非本地玩家调用 TakeDamage，请走服务端路由");
+        }
+    }
+
+    /// <summary>对指定玩家对象权威回血。</summary>
+    public static void ApplyHeal(NetworkPlayer np, int amount)
+    {
+        if (np == null) return;
+        if (NetworkServer.active)
+        {
+            np.currentHealth = Mathf.Min(np.maxHealth, np.currentHealth + amount);
+            np.RefreshUI();
+        }
+        else if (np.isLocalPlayer)
+        {
+            np.CmdHeal(amount);
+        }
+        else
+        {
+            Debug.LogError("[NetworkPlayer] 纯客户端不能对非本地玩家调用 Heal，请走服务端路由");
+        }
+    }
+
+    /// <summary>对指定玩家对象权威加能量。</summary>
+    public static void ApplyAddEnergy(NetworkPlayer np, int amount)
+    {
+        if (np == null) return;
+        if (NetworkServer.active)
+        {
+            np.currentEnergy += amount;
+            if (!np._energyCanExceedLimit && np.currentEnergy > np.maxEnergy)
+                np.currentEnergy = np.maxEnergy;
+            np.RefreshUI();
+        }
+        else if (np.isLocalPlayer)
+        {
+            np.CmdAddEnergy(amount);
+        }
+        else
+        {
+            Debug.LogError("[NetworkPlayer] 纯客户端不能对非本地玩家调用 AddEnergy，请走服务端路由");
         }
     }
 
