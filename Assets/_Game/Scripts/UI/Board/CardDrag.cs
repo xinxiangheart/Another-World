@@ -450,6 +450,7 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
         bool needsLocalUI = template.templateID switch
         {
             "02004" => true,  // 皇帝认可 — EmperorsApprovalEffectCoroutine
+            "02005" => true,  // 爬! — 使己方一召唤物退场+摸1牌（需目标选择+退场+抽牌分离执行）
             "02010" => true,  // 背叛 — BetrayalEffect
             "02106" => true,  // 改编列队 — ReformFormationEffect
             "02111" => true,  // 手牌净化 — HandCleanseEffect
