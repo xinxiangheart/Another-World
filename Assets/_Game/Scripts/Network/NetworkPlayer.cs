@@ -401,6 +401,60 @@ public class NetworkPlayer : NetworkBehaviour
         }
     }
 
+    // ── 通用面板委托 —— 服务端 Dispatch 需要客户端 UI 时用 ──────────
+    // 使用: handler(服务器RunAsLocal内)调用 TargetShowClientSelection
+    //       → 指定客户端弹出面板 → 选完 CmdSelectionResult 回传 → 协程继续
+    static int _nextSelectionId = 1;
+    static readonly Dictionary<int, (int resultSlot, bool done)> _pendingSelections = new();
+
+    /// <summary>服务端告诉指定客户端弹出选择面板。</summary>
+    [TargetRpc]
+    void TargetShowClientSelection(NetworkConnectionToClient _, int selectionId, TargetType targetType)
+    {
+        SelectionManager.Instance.BeginSelection(targetType, (selectedSlot) =>
+        {
+            CmdSelectionResult(selectionId, selectedSlot?.slotID ?? -1);
+        });
+    }
+
+    /// <summary>客户端选择结果回传服务端。</summary>
+    [Command]
+    void CmdSelectionResult(int selectionId, int resultSlot)
+    {
+        if (_pendingSelections.ContainsKey(selectionId))
+            _pendingSelections[selectionId] = (resultSlot, true);
+    }
+
+    /// <summary>等待指定客户端完成选择。</summary>
+    public static IEnumerator WaitForClientSelection(int selectionId, float timeout = 30f)
+    {
+        _pendingSelections[selectionId] = (-1, false);
+        float deadline = Time.time + timeout;
+        yield return new WaitUntil(() =>
+            _pendingSelections.TryGetValue(selectionId, out var s) && (s.done || Time.time > deadline));
+        if (Time.time > deadline)
+            Debug.LogError($"[PanelDelegation] selection #{selectionId} 超时 ({timeout}s)");
+    }
+
+    /// <summary>获取选择结果槽位（-1=未选/超时）。</summary>
+    public static int GetSelectionResult(int selectionId)
+    {
+        if (_pendingSelections.TryGetValue(selectionId, out var st))
+        {
+            _pendingSelections.Remove(selectionId);
+            return st.done ? st.resultSlot : -1;
+        }
+        return -1;
+    }
+
+    /// <summary>启动面板委托：给指定客户端弹面板，分配 selectionId 并返回。</summary>
+    public static int StartClientSelection(NetworkPlayer client, TargetType targetType)
+    {
+        int id = System.Threading.Interlocked.Increment(ref _nextSelectionId);
+        client.TargetShowClientSelection(client.connectionToClient, id, targetType);
+        return id;
+    }
+
     [Command]
     public void CmdResolveSpell(string templateID, int clientSlotID)
     {
