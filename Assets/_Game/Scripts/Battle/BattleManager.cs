@@ -557,7 +557,7 @@ public class BattleManager : MonoBehaviour
             BoardSlot slot = allSlots[i];
             if (slot?.currentCard3D == null) continue;
             CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-            if (ci == null || !ci.HasFirstStrike) continue;
+            if (ci == null || !ci.HasFirstStrike || ci.silencedThisPhase) continue;
             Debug.Log($"[FS-dmg] slot={i} tid={ci.templateID} hasFS={ci.hasFirstStrike} silenced={GlobalEventManager.Instance?.IsFullySilenced(ci)}");
 
         // 检查对方是否有合法目标
