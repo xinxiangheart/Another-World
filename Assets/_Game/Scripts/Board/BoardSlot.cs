@@ -1700,10 +1700,11 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     }
     public void OnDisasterWalkerDamage(int amount)
     {
-        Debug.Log($"灾厄行者触发: 扣血{amount}");
+        Debug.Log($"灾厄行者触发: 扣血{amount}, slotID={slotID}");
+        NetworkPlayer owner = BoardManager.GetOwnerPlayer(slotID);
         for (int i = 0; i < amount; i++)
         {
-            NetworkPlayer.Local.DrawCardWithoutLimit();
+            owner?.DrawCardWithoutLimit();
         }
     }
     void CopyToGrave(CardInstance dest, CardInstance src)
