@@ -842,7 +842,11 @@ public class BattleManager : MonoBehaviour
         NetworkPlayer attackerOwner, NetworkPlayer defenderOwner)
     {
         if (attackerCard == null || attackerInst == null || attackerInst.silencedThisPhase)
+        {
+            if (attackerInst != null && attackerInst.silencedThisPhase)
+                Debug.Log($"[MinionAttack] slot={attackerSlotID} tid={attackerInst.templateID} 跳过——silencedThisPhase=true");
             return;
+        }
 
         bool attackerSilenced = GlobalEventManager.Instance != null
             && GlobalEventManager.Instance.IsFullySilenced(attackerInst);

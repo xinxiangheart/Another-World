@@ -118,9 +118,10 @@ public static class EnterHandlers
         {
             if (targetSlot?.currentCard3D != null)
             {
-                targetSlot.currentCard3D.GetComponent<Card3DInstance>().cardInstance.silencedThisPhase = true;
+                var targetCI = targetSlot.currentCard3D.GetComponent<Card3DInstance>().cardInstance;
+                targetCI.silencedThisPhase = true;
+                Debug.Log($"[03501] 沉默目标: slot={targetSlot.slotID} tid={targetCI.templateID} instID={targetCI.instanceID}");
                 targetSlot.currentCard3D.GetComponent<Card3DInstance>().UpdateValues();
-                // silencedThisPhase 已在 SyncNow 管道中，此处仅触发上报
                 TurnManager.SyncMyBoardToOpponent();
             }
         });
