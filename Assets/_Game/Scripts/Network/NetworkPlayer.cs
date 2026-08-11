@@ -640,6 +640,7 @@ public class NetworkPlayer : NetworkBehaviour
         if (NetworkServer.active)
         {
             currentHealth -= amount;
+            GlobalEventManager.Instance?.TriggerPlayerDamaged(amount);
         }
         else if (isLocalPlayer)
         {
@@ -655,6 +656,7 @@ public class NetworkPlayer : NetworkBehaviour
     void CmdTakeDamage(int amount)
     {
         currentHealth -= amount;
+        GlobalEventManager.Instance?.TriggerPlayerDamaged(amount);
     }
 
     public void Heal(int amount)
