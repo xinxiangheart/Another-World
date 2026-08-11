@@ -41,7 +41,11 @@ public class QuickMatchPanel : MonoBehaviour
     }
 
     public void Open() { if (panelRoot) panelRoot.SetActive(true); ResetState(); StartSearch(); }
-    public void Close() { LeaveLobby(); if (panelRoot) panelRoot.SetActive(false); _state = State.Idle; }
+    public void Close()
+    {
+        if (_searchCoroutine != null) { StopCoroutine(_searchCoroutine); _searchCoroutine = null; }
+        LeaveLobby(); if (panelRoot) panelRoot.SetActive(false); _state = State.Idle;
+    }
 
     void ResetState()
     {
