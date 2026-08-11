@@ -132,7 +132,7 @@ public class BattleManager : MonoBehaviour
         Debug.Log("[战斗] 阶段2：先手特性");
         Debug.Log($"FirstStrikeCoroutine 开始，allSlots[6]={allSlots[6]?.currentCard3D?.name}, allSlots[7]={allSlots[7]?.currentCard3D?.name}");
         // ===== 阶段2.1：先手换位 =====
-        Debug.Log("=== 阶段2.1：开始全面换位 ===");
+        Debug.LogWarning("[FS] === Phase 1: Position Move ===");
        
 
         for (int i = 0; i < 12; i++)
@@ -288,7 +288,9 @@ public class BattleManager : MonoBehaviour
             }
         }
 
+        Debug.LogWarning("[FS] === Phase 1 Complete (Position Move) ===");
         // 阶段2.2：有利Buff和护盾附加
+        Debug.LogWarning("[FS] === Phase 2: Buff ===");
         for (int i = 0; i < 12; i++)
         {
             BoardSlot slot = allSlots[i];
@@ -471,7 +473,9 @@ public class BattleManager : MonoBehaviour
             }
         }
 
+        Debug.LogWarning("[FS] === Phase 2 Complete (Buff) ===");
         // ===== 阶段2.3：Debuff判定 =====
+        Debug.LogWarning("[FS] === Phase 3: Debuff ===");
         for (int i = 0; i < 12; i++)
         {
             BoardSlot slot = allSlots[i];
@@ -550,7 +554,9 @@ public class BattleManager : MonoBehaviour
             }
         }
 
+        Debug.LogWarning("[FS] === Phase 3 Complete (Debuff) ===");
         // ===== 阶段2.4：伤害处理 =====
+        Debug.LogWarning("[FS] === Phase 4: Damage ===");
         Debug.Log("=== 阶段2.4：先手伤害 全12槽扫描 ===");
         for (int i = 0; i < 12; i++)
         {
@@ -711,6 +717,8 @@ public class BattleManager : MonoBehaviour
                     NetworkPlayer.Remote.TakeDamage(1);
             }
         }
+
+        Debug.LogWarning("[FS] === Phase 4 Complete (Damage) ===");
 
         // ── 先手伤害同步 → 远程先手 → 死亡 ──
         // 必须先 MarkDirty+SyncNow 把先手伤害推给远端客户端，
