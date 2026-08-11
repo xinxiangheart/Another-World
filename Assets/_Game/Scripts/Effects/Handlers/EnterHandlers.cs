@@ -117,8 +117,14 @@ public static class EnterHandlers
         SM().BeginSelection(TargetType.SingleEnemy, (targetSlot) =>
         {
             if (targetSlot?.currentCard3D != null)
+            {
                 targetSlot.currentCard3D.GetComponent<Card3DInstance>().cardInstance.silencedThisPhase = true;
+                targetSlot.currentCard3D.GetComponent<Card3DInstance>().UpdateValues();
+                // silencedThisPhase 已在 SyncNow 管道中，此处仅触发上报
+                TurnManager.SyncMyBoardToOpponent();
+            }
         });
+        ctx.sourceSlot.CleanupAfterPlacement();
         BoardSlot.SyncMistHiderDisplay();
     }
 
