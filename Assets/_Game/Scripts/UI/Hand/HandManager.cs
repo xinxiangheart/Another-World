@@ -1825,6 +1825,17 @@ public class HandManager : MonoBehaviour
             c3d?.UpdateValues();
             CardDisplay2D d2d = target.GetComponent<CardDisplay2D>();
             d2d?.Refresh();
+            // 同步阶位变更
+            if (c3d != null)
+            {
+                // 场上随从：板面同步携带当前 tier
+                TurnManager.SyncMyBoardToOpponent();
+            }
+            else if (d2d != null && NetworkClient.isConnected)
+            {
+                // 手牌：通知服务器记录 tier 覆盖，放牌时 CmdPlayCard 自动应用
+                NetworkPlayer.Local?.CmdSetHandCardTier(ci.instanceID, ci.currentTier, ci.baseTier);
+            }
             Debug.Log($"伟大进化：{ci.instanceID} 阶位永久+3");
         }
     }

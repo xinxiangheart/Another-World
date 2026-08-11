@@ -493,6 +493,12 @@ public class NetworkPlayer : NetworkBehaviour
                             // 01534 活化母巢：恢复玩家级永久累计受伤计数
                             if (templateID == "01534" && outlawNestTotalDamage > 0)
                                 ci.totalDamageTaken = outlawNestTotalDamage;
+                            // 手牌阶位覆盖（02203 伟大进化等）：客户端修改手牌 tier 后通知的覆盖值
+                            if (ConsumeHandTierOverride(instanceID, out int hTO, out int hTB))
+                            {
+                                ci.currentTier = hTO;
+                                ci.baseTier = hTB;
+                            }
                             // 01515 狂热萨满 / 01520 商户 — 光环需在服务器侧注册
                             if (templateID == "01515") GlobalEventManager.Instance?.RegisterAura(new FanaticShamanAura { source = ci });
                             if (templateID == "01520") GlobalEventManager.Instance?.RegisterAura(new MerchantAura { source = ci });
@@ -2191,6 +2197,31 @@ public class NetworkPlayer : NetworkBehaviour
                 return;
             }
         }
+    }
+
+    // ── 手牌阶位覆盖 ──────────────────────────────────────────────
+    // 02203 伟大进化等效果修改手牌 tier 后通知服务器记录覆盖值，
+    // CmdPlayCard 放牌时自动检查并应用，保证打出后阶位不丢失。
+    Dictionary<string, (int tier, int baseTier)> _handTierOverrides = new();
+
+    [Command]
+    public void CmdSetHandCardTier(string instanceID, int currentTier, int baseTier)
+    {
+        _handTierOverrides[instanceID] = (currentTier, baseTier);
+    }
+
+    bool ConsumeHandTierOverride(string instanceID, out int currentTier, out int baseTier)
+    {
+        if (_handTierOverrides.TryGetValue(instanceID, out var value))
+        {
+            _handTierOverrides.Remove(instanceID);
+            currentTier = value.tier;
+            baseTier = value.baseTier;
+            return true;
+        }
+        currentTier = 0;
+        baseTier = 0;
+        return false;
     }
 
     /// <summary>远程客户端→服务器：01511死亡回手。state 由客户端序列化——服务端的 ci 从未跑过 MindScholarEnterEffect，状态为空。</summary>
