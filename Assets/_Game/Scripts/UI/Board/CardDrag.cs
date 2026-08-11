@@ -450,12 +450,10 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
         // 复杂 UI 法术——待完成面板委托迁移
         bool needsLocalUI = template.templateID switch
         {
-            "02004" => true,  // 皇帝认可 (BeginOpenSelection+CardClickHandler)
-            "02106" => true,  // 改编列队 (BeginSelection+onTargetSelected+ConfirmSelectionButton)
-            "02111" => true,  // 手牌净化 (BeginOpenSelection+ConfirmSelectionButton+CardClickHandler)
-            "02203" => true,  // 伟大进化 (BeginOpenSelection+CardClickHandler+onTargetSelected)
-            "02307" => true,  // 多卡效应 (BeginOpenSelection+ConfirmSelectionButton+CardClickHandler)
-            "02501" => true,  // 传送门 (异步多选面板+CardDisplayPanel)
+            "02106" => true,  // 改编列队 (onTargetSelected+ConfirmSelectionButton双选)
+            "02111" => true,  // 手牌净化 (BeginOpenSelection+ConfirmSelectionButton多选)
+            "02307" => true,  // 多卡效应 (BeginOpenSelection+ConfirmSelectionButton多选)
+            "02501" => true,  // 传送门 (CardDisplayPanel异步多选)
             _ => false,
         };
         if (NetworkClient.isConnected && !NetworkServer.active && !needsLocalUI)
