@@ -493,12 +493,11 @@ public class NetworkPlayer : NetworkBehaviour
                             // 01534 活化母巢：恢复玩家级永久累计受伤计数
                             if (templateID == "01534" && outlawNestTotalDamage > 0)
                                 ci.totalDamageTaken = outlawNestTotalDamage;
-                            // 手牌阶位覆盖（02203 伟大进化等）：客户端修改手牌 tier 后通知的覆盖值
+                            // 手牌阶位覆盖（02203 伟大进化等）
                             if (ConsumeHandTierOverride(instanceID, out int hTO, out int hTB))
-                            {
-                                ci.currentTier = hTO;
-                                ci.baseTier = hTB;
-                            }
+                            { ci.currentTier = hTO; ci.baseTier = hTB; }
+                            // 手牌前缀覆盖（02004 皇帝认可等）
+                            ConsumeHandPrefixOverride(instanceID, ci);
                             // 01515 狂热萨满 / 01520 商户 — 光环需在服务器侧注册
                             if (templateID == "01515") GlobalEventManager.Instance?.RegisterAura(new FanaticShamanAura { source = ci });
                             if (templateID == "01520") GlobalEventManager.Instance?.RegisterAura(new MerchantAura { source = ci });
@@ -2200,36 +2199,67 @@ public class NetworkPlayer : NetworkBehaviour
     }
 
     // ── 手牌阶位覆盖 ──────────────────────────────────────────────
-    // 02203 伟大进化等效果修改手牌 tier 后通知服务器记录覆盖值，
-    // CmdPlayCard 放牌时自动检查并应用，保证打出后阶位不丢失。
-    // 注意：被反制/弃牌/手牌满丢弃的卡不会打到场上，其覆盖键将残留。
-    // instanceID 是全局唯一的，不会误作用于其他卡，仅微量内存浪费。
     Dictionary<string, (int tier, int baseTier)> _handTierOverrides = new();
 
-    [Command]
-    public void CmdSetHandCardTier(string instanceID, int currentTier, int baseTier)
-    {
-        _handTierOverrides[instanceID] = (currentTier, baseTier);
-    }
-
-    [Command]
-    public void CmdClearHandTierOverride(string instanceID)
-    {
-        _handTierOverrides.Remove(instanceID);
-    }
+    [Command] public void CmdSetHandCardTier(string iid, int currentTier, int baseTier)
+        => _handTierOverrides[iid] = (currentTier, baseTier);
+    [Command] public void CmdClearHandTierOverride(string iid)
+        => _handTierOverrides.Remove(iid);
 
     bool ConsumeHandTierOverride(string instanceID, out int currentTier, out int baseTier)
     {
-        if (_handTierOverrides.TryGetValue(instanceID, out var value))
+        if (_handTierOverrides.TryGetValue(instanceID, out var v))
+        { _handTierOverrides.Remove(instanceID); currentTier = v.tier; baseTier = v.baseTier; return true; }
+        currentTier = 0; baseTier = 0; return false;
+    }
+
+    // ── 手牌前缀覆盖 ──────────────────────────────────────────────
+    // 02004 皇帝认可等效果对手牌中的卡添加前缀后通知服务器暂存，
+    // CmdPlayCard 放牌时 ConsumeHandPrefixOverride 追加到新 CI 上。
+    Dictionary<string, List<string>> _handPrefixOverrides = new();
+
+    [Command]
+    public void CmdSetHandCardPrefix(string instanceID, string prefix)
+    {
+        if (!_handPrefixOverrides.TryGetValue(instanceID, out var list))
+            _handPrefixOverrides[instanceID] = list = new List<string>();
+        if (!list.Contains(prefix)) list.Add(prefix);
+    }
+
+    void ConsumeHandPrefixOverride(string instanceID, CardInstance ci)
+    {
+        if (!_handPrefixOverrides.TryGetValue(instanceID, out var list)) return;
+        _handPrefixOverrides.Remove(instanceID);
+        foreach (var p in list)
         {
-            _handTierOverrides.Remove(instanceID);
-            currentTier = value.tier;
-            baseTier = value.baseTier;
-            return true;
+            if (ci.prefixes.Contains(p)) continue;
+            ci.prefixes = string.IsNullOrEmpty(ci.prefixes) || ci.prefixes == "无"
+                ? p : ci.prefixes + " " + p;
         }
-        currentTier = 0;
-        baseTier = 0;
-        return false;
+    }
+
+    /// <summary>清理指定 instanceID 的所有暂存覆盖（弃牌/爆牌/反制时调用）。</summary>
+    void ClearAllHandOverrides(string instanceID)
+    {
+        _handTierOverrides.Remove(instanceID);
+        _handPrefixOverrides.Remove(instanceID);
+    }
+
+    /// <summary>客户端→服务器：弃掉手牌中指定 instanceID 的卡牌。</summary>
+    [Command]
+    public void CmdDiscardCard(string instanceID)
+    {
+        ClearAllHandOverrides(instanceID);
+        // 从服务器端手牌追踪中移除
+        for (int i = handCards.Count - 1; i >= 0; i--)
+        {
+            var ci = handCards[i]?.GetComponent<CardInstance>();
+            if (ci != null && ci.instanceID == instanceID)
+            {
+                handCards.RemoveAt(i);
+                break;
+            }
+        }
     }
 
     /// <summary>远程客户端→服务器：01511死亡回手。state 由客户端序列化——服务端的 ci 从未跑过 MindScholarEnterEffect，状态为空。</summary>

@@ -1517,7 +1517,12 @@ public class HandManager : MonoBehaviour
         List<GameObject> toRemove = new List<GameObject>();
         foreach (GameObject card in player.handCards) { if (card != null && !kept.Contains(card)) toRemove.Add(card); }
         int discard = 0;
-        foreach (GameObject card in toRemove) { player.handCards.Remove(card); Destroy(card); discard++; }
+        foreach (GameObject card in toRemove)
+        {
+            var ci = card?.GetComponent<CardInstance>();
+            if (ci != null && NetworkClient.isConnected) NetworkPlayer.Local?.CmdDiscardCard(ci.instanceID);
+            player.handCards.Remove(card); Destroy(card); discard++;
+        }
         foreach (GameObject card in valid) { if (card == null) continue; CardClickHandler h = card.GetComponent<CardClickHandler>(); if (h != null) Destroy(h); }
 
         ConfirmQueueManager.RestoreAllHandCards();
@@ -1616,6 +1621,8 @@ public class HandManager : MonoBehaviour
                 if (data != null && data.baseCost == 5)
                     energyGain++;
             }
+            var ci = card?.GetComponent<CardInstance>();
+            if (ci != null && NetworkClient.isConnected) NetworkPlayer.Local?.CmdDiscardCard(ci.instanceID);
             player.handCards.Remove(card);
             Destroy(card);
         }

@@ -745,11 +745,18 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
 
             Card3DInstance c3d = target.GetComponent<Card3DInstance>();
             c3d?.UpdateValues();
-            CardDisplay2D display2D = target.GetComponent<CardDisplay2D>();
-            display2D?.Refresh();
+            CardDisplay2D d2d = target.GetComponent<CardDisplay2D>();
+            d2d?.Refresh();
 
-            // 前缀修改同步到对方
-            TurnManager.SyncMyBoardToOpponent();
+            // 同步前缀——场上随从走板面同步，手牌走 CmdSetHandCardPrefix
+            if (c3d != null)
+            {
+                TurnManager.SyncMyBoardToOpponent();
+            }
+            else if (d2d != null && NetworkClient.isConnected)
+            {
+                NetworkPlayer.Local?.CmdSetHandCardPrefix(targetCI.instanceID, "渊");
+            }
 
             NetworkPlayer.Local.DrawCard();
         }
