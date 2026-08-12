@@ -72,8 +72,6 @@ jobs:
       - name: Create Release
         if: steps.detect.outputs.TAG_CREATED == 'true'
         uses: softprops/action-gh-release@v1
-        env:
-          NODE_OPTIONS: --use-system-ca
         with:
           tag_name: v${{steps.detect.outputs.VERSION}}
           files: Another-World-Windows.zip
