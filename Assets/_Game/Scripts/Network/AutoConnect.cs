@@ -115,7 +115,8 @@ public class AutoConnect : MonoBehaviour
         {
             if (r.m_eResult != EResult.k_EResultOK) { SetText("创建房间失败"); return; }
             var lid = new CSteamID(r.m_ulSteamIDLobby);
-            SteamMatchmaking.SetLobbyData(lid, "game", "anotherworld");
+            string matchKey = !string.IsNullOrEmpty(LobbyConfig.MatchKey) ? LobbyConfig.MatchKey : "anotherworld";
+            SteamMatchmaking.SetLobbyData(lid, "game", matchKey);
             SteamMatchmaking.SetLobbyData(lid, "host_sid", SteamUser.GetSteamID().m_SteamID.ToString());
             Debug.Log($"[AutoConnect] Lobby {lid}, host SteamID64: {SteamUser.GetSteamID().m_SteamID}");
             SetText("房间已创建\n等待对手加入...");
@@ -152,7 +153,8 @@ public class AutoConnect : MonoBehaviour
     {
         if (NetworkClient.isConnected || NetworkServer.active) { CancelInvoke(nameof(SearchLobbies)); return; }
         if (Time.time - _startTime > 60f) { CancelInvoke(nameof(SearchLobbies)); SetText("搜索超时"); return; }
-        SteamMatchmaking.AddRequestLobbyListStringFilter("game", "anotherworld", ELobbyComparison.k_ELobbyComparisonEqual);
+        string matchKey = !string.IsNullOrEmpty(LobbyConfig.MatchKey) ? LobbyConfig.MatchKey : "anotherworld";
+        SteamMatchmaking.AddRequestLobbyListStringFilter("game", matchKey, ELobbyComparison.k_ELobbyComparisonEqual);
         SteamMatchmaking.RequestLobbyList();
     }
 

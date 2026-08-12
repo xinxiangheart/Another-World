@@ -9,9 +9,11 @@ public static class LobbyConfig
     public static string ServerIP { get; set; } = "";
     public static bool FromLobby { get; set; }
     public static bool IsDirectIP { get; set; }
-    /// <summary>Lobby 场景已有的 Steam 大厅 ID——Game 场景 AutoConnect 直接复用，省去重新创建/搜索。</summary>
+    /// <summary>Lobby 场景已有的 Steam 大厅 ID。</summary>
     public static Steamworks.CSteamID CurrentLobbyID { get; set; }
     public static string HostSteamID { get; set; }
+    /// <summary>唯一匹配 key——基于 Lobby 大厅 ID 生成，防止多组同时进 Game 串线到别人房间。</summary>
+    public static string MatchKey { get; set; }
 }
 
 /// <summary>

@@ -347,8 +347,9 @@ public class QuickMatchPanel : MonoBehaviour
         {
             SetStatus("双方已接受！");
             LobbyConfig.FromLobby = true; LobbyConfig.IsHost = _iAmHost; LobbyConfig.IsDirectIP = false; LobbyConfig.ServerIP = "";
-            // 保留大厅供 Game 场景 AutoConnect 复用——不调 LeaveLobby()
             LobbyConfig.CurrentLobbyID = _lobbyID;
+            // 基于大厅ID生成唯一匹配key——防止多组同时进Game串线到别人房间
+            LobbyConfig.MatchKey = $"aw_{_lobbyID.m_SteamID}";
             if (_iAmHost)
                 LobbyConfig.HostSteamID = SteamUser.GetSteamID().m_SteamID.ToString();
             _lobbyID = default; _state = State.Idle;

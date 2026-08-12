@@ -143,8 +143,8 @@ public class CreateRoomPanel : MonoBehaviour
             {
                 LobbyConfig.FromLobby = true; LobbyConfig.IsHost = false;
                 LobbyConfig.IsDirectIP = false; LobbyConfig.ServerIP = "";
-                // 保留大厅供 Game 场景 AutoConnect 复用
                 LobbyConfig.CurrentLobbyID = _lobbyID;
+                LobbyConfig.MatchKey = $"aw_{_lobbyID.m_SteamID}";
                 string hs = SteamMatchmaking.GetLobbyData(_lobbyID, "host_sid");
                 if (!string.IsNullOrEmpty(hs)) LobbyConfig.HostSteamID = hs;
                 _lobbyID = default;
@@ -229,8 +229,8 @@ public class CreateRoomPanel : MonoBehaviour
         SteamMatchmaking.SetLobbyData(_lobbyID, "host_sid", SteamUser.GetSteamID().m_SteamID.ToString());
         LobbyConfig.FromLobby = true; LobbyConfig.IsHost = _amHost;
         LobbyConfig.IsDirectIP = false; LobbyConfig.ServerIP = "";
-        // 保留大厅供 Game 场景 AutoConnect 复用
         LobbyConfig.CurrentLobbyID = _lobbyID;
+        LobbyConfig.MatchKey = $"aw_{_lobbyID.m_SteamID}";
         LobbyConfig.HostSteamID = SteamUser.GetSteamID().m_SteamID.ToString();
         _lobbyID = default;
         panelRoot.SetActive(false); JoinGamePanel.Instance?.Open();
