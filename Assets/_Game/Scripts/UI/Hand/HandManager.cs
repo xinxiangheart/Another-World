@@ -2420,7 +2420,6 @@ public class HandManager : MonoBehaviour
                 }
 
                 myInst.currentAttack += 1;
-                myInst.baseAttack += 1;
                 mySlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
             }
 
