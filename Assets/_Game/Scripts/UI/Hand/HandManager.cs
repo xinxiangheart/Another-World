@@ -2407,12 +2407,6 @@ public class HandManager : MonoBehaviour
                 if (myInst == null) continue;
 
                 int atk = myInst.currentAttack;
-                if (atk <= 0)
-                {
-                    myInst.currentAttack = Mathf.Max(0, myInst.currentAttack - 1);
-                    mySlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
-                    continue;
-                }
 
                 BoardSlot enemySlot = bm.GetSlot(enemyRowStart + col);
                 if (enemySlot?.currentCard3D != null)
@@ -2425,7 +2419,8 @@ public class HandManager : MonoBehaviour
                     }
                 }
 
-                myInst.currentAttack = Mathf.Max(0, myInst.currentAttack - 1);
+                myInst.currentAttack += 1;
+                myInst.baseAttack += 1;
                 mySlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
             }
 
