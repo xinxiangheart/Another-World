@@ -28,6 +28,7 @@ public class AutoConnect : MonoBehaviour
         if (!LobbyConfig.FromLobby) return;
         if (_turnManager != null) _turnManager.enabled = false;
         _startTime = Time.time;
+        Debug.LogWarning($"[AutoConnect-Timing] Start — 场景加载完成, 网络连接开始 @{Time.time:F2}s");
 
         // Direct IP path — bypass Steam entirely for local/self-test
         if (LobbyConfig.IsDirectIP)
@@ -55,14 +56,16 @@ public class AutoConnect : MonoBehaviour
 
         if (LobbyConfig.IsHost)
         {
-            SetText("正在创建房间...");
+            Debug.LogWarning($"[AutoConnect-Timing] Host → 调用 CreateLobby @{Time.time - _startTime:F2}s");
+            SetText("正在建立连接 (1/3)...");
             SetupFizzy();
             RegisterCallbacks();
             SteamMatchmaking.CreateLobby(ELobbyType.k_ELobbyTypePublic, 2);
         }
         else
         {
-            SetText("正在搜索可用房间...");
+            Debug.LogWarning($"[AutoConnect-Timing] Client → 开始 SearchLobbies @{Time.time - _startTime:F2}s");
+            SetText("正在搜索对手 (1/2)...");
             SetupFizzy();
             RegisterCallbacks();
             InvokeRepeating(nameof(SearchLobbies), 0f, 2f);
@@ -119,15 +122,17 @@ public class AutoConnect : MonoBehaviour
             SteamMatchmaking.SetLobbyData(lid, "game", matchKey);
             SteamMatchmaking.SetLobbyData(lid, "host_sid", SteamUser.GetSteamID().m_SteamID.ToString());
             Debug.Log($"[AutoConnect] Lobby {lid}, host SteamID64: {SteamUser.GetSteamID().m_SteamID}");
-            SetText("房间已创建\n等待对手加入...");
+            Debug.LogWarning($"[AutoConnect-Timing] LobbyCreated 回调 @{Time.time - _startTime:F2}s — StartHost 即将执行");
+            SetText("正在建立连接 (2/3)...");
             _nm.StartHost();
         });
         _llcb = Callback<LobbyMatchList_t>.Create(r =>
         {
             if (r.m_nLobbiesMatching == 0) return;
             CancelInvoke(nameof(SearchLobbies));
+            Debug.LogWarning($"[AutoConnect-Timing] LobbyMatchList 回调 @{Time.time - _startTime:F2}s — 找到房间, 正在 JoinLobby");
+            SetText("找到对手, 正在加入...");
             SteamMatchmaking.JoinLobby(SteamMatchmaking.GetLobbyByIndex(0));
-            SetText("找到房间！\n正在加入...");
         });
         _leb = Callback<LobbyEnter_t>.Create(r =>
         {
@@ -137,8 +142,9 @@ public class AutoConnect : MonoBehaviour
             if (string.IsNullOrEmpty(hostSid))
                 hostSid = SteamMatchmaking.GetLobbyOwner(lid).m_SteamID.ToString();
             Debug.Log($"[AutoConnect] LobbyEnter — host SteamID64={hostSid}");
+            Debug.LogWarning($"[AutoConnect-Timing] LobbyEnter 回调 @{Time.time - _startTime:F2}s — 准备 StartMirrorClient(1.5s延迟)");
             _nm.networkAddress = hostSid;
-            SetText("已进入大厅\n正在连接 Steam P2P ...");
+            SetText("正在连接 Steam P2P (2/2)...");
             Invoke(nameof(StartMirrorClient), 1.5f);
         });
     }
@@ -174,7 +180,10 @@ public class AutoConnect : MonoBehaviour
     void SetText(string m) { var t=_waitingUI?.GetComponentInChildren<TextMeshProUGUI>(); if(t!=null) t.text=m; }
     void HideUI() { if(_waitingUI!=null) _waitingUI.SetActive(false); }
     void ShowUI(string msg) { if(_waitingUI!=null) { _waitingUI.SetActive(true); SetText(msg); } }
-    void OnConnected(){ SetText(NetworkServer.active?"对手已加入！\n即将开始...":"已连接！\n等待房主开始..."); }
+    void OnConnected(){
+        Debug.LogWarning($"[AutoConnect-Timing] OnConnected — 连接建立 @{Time.time - _startTime:F2}s");
+        SetText(NetworkServer.active?"正在建立连接 (3/3)...":"已连接, 等待对手...");
+    }
     void OnDisconnected()
     {
         // Only react if game was in progress, not during lobby/connecting phase
@@ -207,5 +216,11 @@ public class AutoConnect : MonoBehaviour
         SceneManager.LoadScene("Lobby");
     }
     void OnDestroy(){ _lcb?.Dispose(); _llcb?.Dispose(); _leb?.Dispose(); NetworkClient.OnConnectedEvent-=OnConnected; NetworkClient.OnDisconnectedEvent-=OnDisconnected; NetworkServer.OnDisconnectedEvent-=OnServerDisconnected; }
-    void Update(){ if(_waitingUI==null||!_waitingUI.activeSelf)return; if(_turnManager!=null&&_turnManager.enabled&&NetworkTurnSync.Instance!=null&&NetworkTurnSync.Instance.gameStarted)_waitingUI.SetActive(false); }
+    void Update(){
+        if(_waitingUI==null||!_waitingUI.activeSelf)return;
+        if(_turnManager!=null&&_turnManager.enabled&&NetworkTurnSync.Instance!=null&&NetworkTurnSync.Instance.gameStarted){
+            Debug.LogWarning($"[AutoConnect-Timing] 黑幕隐藏 — gameStarted=true @{Time.time - _startTime:F2}s 总耗时");
+            _waitingUI.SetActive(false);
+        }
+    }
 }
