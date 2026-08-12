@@ -49,6 +49,7 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
 
         CardView.IsAnyCardDragging = true;
         SetButtonsInteractable(false);
+        handManager?.MarkBoundsDirty();
     }
 
     public void OnDrag(PointerEventData eventData)

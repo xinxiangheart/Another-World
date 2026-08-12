@@ -35,6 +35,7 @@ public class CardView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
         {
             rectTransform.localPosition = Vector3.Lerp(rectTransform.localPosition, targetPos, Time.deltaTime * 15f);
             rectTransform.localRotation = Quaternion.Slerp(rectTransform.localRotation, targetRotation, Time.deltaTime * 15f);
+            handManager?.MarkBoundsDirty();
         }
     }
 
@@ -45,6 +46,7 @@ public class CardView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
         transform.SetAsLastSibling();
         StopAllCoroutines();
         StartCoroutine(SmoothTo(new Vector3(targetPos.x, targetPos.y + 30, 0), Quaternion.identity, originalScale * 1.15f, 0.12f));
+        handManager?.MarkBoundsDirty();
     }
 
     public void OnPointerExit(PointerEventData e)
@@ -53,6 +55,7 @@ public class CardView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
         transform.SetSiblingIndex(originalSibling);
         StopAllCoroutines();
         StartCoroutine(SmoothTo(targetPos, targetRotation, originalScale, 0.15f));
+        handManager?.MarkBoundsDirty();
     }
 
     System.Collections.IEnumerator SmoothTo(Vector3 pos, Quaternion rot, Vector3 scale, float dur)
@@ -69,11 +72,13 @@ public class CardView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
             rectTransform.localPosition = Vector3.Lerp(sp, pos, p);
             rectTransform.localRotation = Quaternion.Slerp(sr, rot, p);
             rectTransform.localScale = Vector3.Lerp(ss, scale, p);
+            handManager?.MarkBoundsDirty();
             yield return null;
         }
         rectTransform.localPosition = pos;
         rectTransform.localRotation = rot;
         rectTransform.localScale = scale;
+        handManager?.MarkBoundsDirty();
     }
 
     public void OnPointerClick(PointerEventData e)
@@ -83,5 +88,14 @@ public class CardView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
             CardInstance ci = GetComponent<CardInstance>();
             OnCardClicked?.Invoke(ci);
         }
+    }
+
+    /// <summary>返回卡牌在屏幕空间的包围矩形（含缩放/位移/旋转）。</summary>
+    public Rect GetWorldRect()
+    {
+        Vector3[] corners = new Vector3[4];
+        rectTransform.GetWorldCorners(corners);
+        // corners: [0]=左下, [1]=左上, [2]=右上, [3]=右下
+        return Rect.MinMaxRect(corners[0].x, corners[0].y, corners[2].x, corners[2].y);
     }
 }

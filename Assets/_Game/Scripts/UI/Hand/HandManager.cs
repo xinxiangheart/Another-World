@@ -22,13 +22,25 @@ public class HandManager : MonoBehaviour
     private CardView draggingCard;
     private int draggingIndex = -1;
 
-    void Start() { }
+    // 动态射线阻挡
+    private bool _handAreaVisible = true;
+    private bool _boundsDirty = true;
+    private RectTransform _rectTransform;
+    private CanvasGroup _canvasGroup;
+
+    void Awake()
+    {
+        _rectTransform = GetComponent<RectTransform>();
+        _canvasGroup = GetComponent<CanvasGroup>();
+        if (_canvasGroup == null) _canvasGroup = gameObject.AddComponent<CanvasGroup>();
+    }
 
     public void RegisterCard(CardView cv)
     {
         if (!handCards.Contains(cv))
             handCards.Add(cv);
         RefreshLayout(true);
+        MarkBoundsDirty();
     }
 
     public void RemoveCard(CardView cv)
@@ -85,6 +97,7 @@ public class HandManager : MonoBehaviour
         }
 
         RefreshLayout(true);
+        MarkBoundsDirty();
     }
     public void HideOtherCards(GameObject dragging)
     {
@@ -98,6 +111,7 @@ public class HandManager : MonoBehaviour
             if (handCards[i].gameObject != dragging)
                 handCards[i].gameObject.SetActive(false);
         }
+        MarkBoundsDirty();
     }
 
     public void ShowAllCards()
@@ -111,6 +125,7 @@ public class HandManager : MonoBehaviour
             }
             handCards[i].gameObject.SetActive(true);
         }
+        MarkBoundsDirty();
     }
 
     public bool IsPlayArea(Vector2 screenPos)
@@ -122,6 +137,7 @@ public class HandManager : MonoBehaviour
     {
         draggingCard = cv;
         draggingIndex = handCards.IndexOf(cv);
+        MarkBoundsDirty();
     }
 
     public void OnDragUpdate(Vector2 screenPos)
@@ -130,6 +146,7 @@ public class HandManager : MonoBehaviour
             transform as RectTransform, screenPos, null, out Vector2 local);
         draggingIndex = GetInsertIndex(local.x);
         RefreshLayout(false);
+        MarkBoundsDirty();
     }
 
     public void OnDragEnd(Vector2 screenPos)
@@ -156,6 +173,7 @@ public class HandManager : MonoBehaviour
         {
             CanvasGroup cg = GetComponent<CanvasGroup>();
             if (cg != null) cg.interactable = true;
+            MarkBoundsDirty();
             return;
         }
         for (int i = handCards.Count - 1; i >= 0; i--)
@@ -166,11 +184,10 @@ public class HandManager : MonoBehaviour
 
         int count = handCards.Count;
         if (count == 0)
-{
-    CanvasGroup cg = GetComponent<CanvasGroup>();
-    if (cg != null) cg.interactable = true;
-    return;
-}
+        {
+            MarkBoundsDirty();
+            return;
+        }
 
         float overlap = Mathf.Lerp(0f, maxOverlapRatio, (float)(count - 1) / 19f);
         float step = cardWidth * (1f - overlap);
@@ -210,6 +227,8 @@ public class HandManager : MonoBehaviour
 
         for (int i = 0; i < count; i++)
             handCards[i].transform.SetSiblingIndex(i);
+
+        MarkBoundsDirty();
     }
 
     int GetInsertIndex(float localX)
@@ -643,14 +662,92 @@ public class HandManager : MonoBehaviour
     {
         foreach (CardView cv in handCards)
             if (cv != null) cv.gameObject.SetActive(false);
+        MarkBoundsDirty();
     }
 
     public void SetHandAreaRaycast(bool enabled)
     {
-        CanvasGroup cg = GetComponent<CanvasGroup>();
-        if (cg == null) cg = gameObject.AddComponent<CanvasGroup>();
-        cg.interactable = enabled;
-        cg.blocksRaycasts = enabled;
+        _handAreaVisible = enabled;
+        _canvasGroup.interactable = enabled;
+        if (!enabled)
+            _canvasGroup.blocksRaycasts = false;
+        else
+            MarkBoundsDirty();
+    }
+
+    /// <summary>标记包围盒脏，下一帧 LateUpdate 重新计算。</summary>
+    public void MarkBoundsDirty()
+    {
+        _boundsDirty = true;
+    }
+
+    void LateUpdate()
+    {
+        if (_boundsDirty)
+        {
+            _boundsDirty = false;
+            if (_handAreaVisible)
+            {
+                Rect bounds = CalculateCardsBounds();
+                ApplyBoundsToRectTransform(bounds);
+            }
+        }
+    }
+
+    /// <summary>计算所有可见、非拖拽中的手牌在屏幕空间的包围盒。</summary>
+    public Rect CalculateCardsBounds()
+    {
+        if (handCards == null || handCards.Count == 0)
+            return Rect.zero;
+
+        Rect bounds = Rect.zero;
+        bool first = true;
+
+        foreach (var card in handCards)
+        {
+            if (card == null || !card.gameObject.activeSelf) continue;
+            if (card == draggingCard) continue; // 拖拽中的牌已脱离手牌区，不参与
+
+            Rect cardRect = card.GetWorldRect();
+            if (first) { bounds = cardRect; first = false; }
+            else bounds = RectUnion(bounds, cardRect);
+        }
+
+        return bounds;
+    }
+
+    static Rect RectUnion(Rect a, Rect b)
+    {
+        return Rect.MinMaxRect(
+            Mathf.Min(a.xMin, b.xMin),
+            Mathf.Min(a.yMin, b.yMin),
+            Mathf.Max(a.xMax, b.xMax),
+            Mathf.Max(a.yMax, b.yMax)
+        );
+    }
+
+    /// <summary>将屏幕空间包围盒应用到 HandArea 的 RectTransform，动态调整射线阻挡区域。</summary>
+    void ApplyBoundsToRectTransform(Rect bounds)
+    {
+        if (bounds.width <= 0 || bounds.height <= 0)
+        {
+            _canvasGroup.blocksRaycasts = false;
+            return;
+        }
+
+        Canvas canvas = GetComponentInParent<Canvas>();
+        RectTransform parentRT = _rectTransform.parent as RectTransform;
+
+        RectTransformUtility.ScreenPointToLocalPointInRectangle(
+            parentRT, bounds.center, canvas.worldCamera, out Vector2 localCenter);
+
+        _rectTransform.anchorMin = new Vector2(0.5f, 0.5f);
+        _rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+        _rectTransform.pivot = new Vector2(0.5f, 0.5f);
+        _rectTransform.anchoredPosition = localCenter;
+        _rectTransform.sizeDelta = new Vector2(bounds.width, bounds.height);
+
+        _canvasGroup.blocksRaycasts = true;
     }
     private void PlaceIndependentCard(BoardSlot slot, CardInstance sourceInstance, CardData template, GameObject cardObject)
     {
