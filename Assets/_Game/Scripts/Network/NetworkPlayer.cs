@@ -771,36 +771,36 @@ public class NetworkPlayer : NetworkBehaviour
         DrawCard();
     }
 
-    public void DrawCard()
+    public CardView DrawCard(bool animate = true)
     {
-        if (NetworkServer.active && !isLocalPlayer) { CmdRequestDraw(); return; }
+        if (NetworkServer.active && !isLocalPlayer) { CmdRequestDraw(); return null; }
         handCards.RemoveAll(c => c == null);
 
         DrawCardUI drawUI = FindObjectOfType<DrawCardUI>();
         if (drawUI != null && drawUI.GetRemainingDraws() <= 0)
         {
             Debug.Log("[NetworkPlayer] DrawCard: no remaining draws");
-            return;
+            return null;
         }
 
         if (handCards.Count >= maxHandSize)
         {
             Debug.Log("[NetworkPlayer] DrawCard: hand full");
-            return;
+            return null;
         }
 
         CardData data = DeckManager.Instance?.DrawFromMain();
         if (data == null)
         {
             Debug.Log("[NetworkPlayer] DrawCard: deck empty");
-            return;
+            return null;
         }
 
         GameObject prefab = GetCardPrefab(data.cardType);
         if (prefab == null)
         {
             Debug.LogError($"[NetworkPlayer] DrawCard: prefab is null for cardType={data.cardType}");
-            return;
+            return null;
         }
 
         GameObject card = Instantiate(prefab, handArea);
@@ -824,7 +824,17 @@ public class NetworkPlayer : NetworkBehaviour
         if (cv != null)
         {
             cv.handManager = handManager;
-            handManager?.RegisterCard(cv);
+            cv.IsFlying = true; // 飞行中不参与布局；RefreshLayout 延迟到 AnimateCardDraw 内部 50% 时触发
+            cv.SetAlpha(0f); // 收集阶段立即隐藏，防止重叠闪现（飞入协程会重新显示）
+            handManager?.RegisterCard(cv, false); // 只加入列表，不刷新布局
+        }
+
+        // 抽牌入场动画
+        if (cv != null && handManager != null && animate)
+        {
+            cv.SetAlpha(0f);
+            var newCards = new System.Collections.Generic.List<CardView> { cv };
+            handManager.StartCoroutine(handManager.AnimateCardDraw(newCards));
         }
 
         // 中枢(03027)在场时为召唤物附加灵能前缀
@@ -839,6 +849,7 @@ public class NetworkPlayer : NetworkBehaviour
         Debug.Log($"[NetworkPlayer] DrawCard: templateID={data.templateID}, instanceID={data._instanceID}, handCount={handCardCount}");
         // Registry
         RegistrySyncManager.Instance?.UpdateCard(instance, this == Local ? 0 : 1, CardZone.Hand, -1);
+        return cv;
     }
 
     public void DrawCardWithoutLimit()
@@ -886,7 +897,17 @@ public class NetworkPlayer : NetworkBehaviour
         if (cv != null)
         {
             cv.handManager = handManager;
-            handManager?.RegisterCard(cv);
+            cv.IsFlying = true; // 飞行中不参与布局；RefreshLayout 延迟到 AnimateCardDraw 内部 50% 时触发
+            cv.SetAlpha(0f); // 收集阶段立即隐藏，防止重叠闪现（飞入协程会重新显示）
+            handManager?.RegisterCard(cv, false); // 只加入列表，不刷新布局
+        }
+
+        // 抽牌入场动画
+        if (cv != null && handManager != null)
+        {
+            cv.SetAlpha(0f);
+            var newCards = new System.Collections.Generic.List<CardView> { cv };
+            handManager.StartCoroutine(handManager.AnimateCardDraw(newCards));
         }
 
         // 中枢(03027)在场时为召唤物附加灵能前缀
@@ -949,23 +970,23 @@ public class NetworkPlayer : NetworkBehaviour
         return cardType == CardType.Spell ? spellCardPrefab2D : cardPrefab2D;
     }
 
-    public void AddCardToHand(CardData template, string instanceID = null)
+    public CardView AddCardToHand(CardData template, string instanceID = null, bool animate = true)
     {
         if (NetworkServer.active && !isLocalPlayer)
         {
             string iid = instanceID ?? CardZoneManager.GenerateInstanceID(template.templateID);
             TargetReceiveCard(connectionToClient, template.templateID, iid);
             AddServerSideCard(template, iid);
-            return;
+            return null;
         }
         handCards.RemoveAll(c => c == null);
-        if (handCards.Count >= maxHandSize) return;
+        if (handCards.Count >= maxHandSize) return null;
 
         GameObject prefab = GetCardPrefab(template.cardType);
         if (prefab == null)
         {
             Debug.LogError($"[NetworkPlayer] AddCardToHand: prefab is null for cardType={template.cardType}");
-            return;
+            return null;
         }
 
         GameObject card = Instantiate(prefab, handArea);
@@ -987,7 +1008,17 @@ public class NetworkPlayer : NetworkBehaviour
         if (cv != null)
         {
             cv.handManager = handManager;
-            handManager?.RegisterCard(cv);
+            cv.IsFlying = true; // 飞行中不参与布局；RefreshLayout 延迟到 AnimateCardDraw 内部 50% 时触发
+            cv.SetAlpha(0f); // 收集阶段立即隐藏，防止重叠闪现（飞入协程会重新显示）
+            handManager?.RegisterCard(cv, false); // 只加入列表，不刷新布局
+        }
+
+        // 抽牌入场动画
+        if (cv != null && handManager != null && animate)
+        {
+            cv.SetAlpha(0f);
+            var newCards = new System.Collections.Generic.List<CardView> { cv };
+            handManager.StartCoroutine(handManager.AnimateCardDraw(newCards));
         }
 
         // 商户/能量收割者光环——新抽到手牌的召唤物减费
@@ -1006,6 +1037,7 @@ public class NetworkPlayer : NetworkBehaviour
         handCardCount = handCards.Count;
         // Registry
         RegistrySyncManager.Instance?.UpdateCard(inst, this == Local ? 0 : 1, CardZone.Hand, -1);
+        return cv;
     }
 
     public void AddCardToHandFromInstance(CardData template, CardInstance oldInstance, bool isEnemy = false)
@@ -1075,7 +1107,13 @@ public class NetworkPlayer : NetworkBehaviour
             {
                 HandManager hm = FindObjectOfType<HandManager>();
                 cv.handManager = hm;
-                hm?.RegisterCard(cv);
+                cv.IsFlying = true; // 飞行中不参与布局；RefreshLayout 延迟到 AnimateCardDraw 内部 60% 时触发
+                hm?.RegisterCard(cv, false); // 只加入列表，不刷新布局
+
+                // 回手入场动画
+                cv.SetAlpha(0f);
+                var newCards = new System.Collections.Generic.List<CardView> { cv };
+                hm.StartCoroutine(hm.AnimateCardDraw(newCards));
             }
             handCardCount = handCards.Count;
             // Registry
@@ -1192,6 +1230,27 @@ public class NetworkPlayer : NetworkBehaviour
             Local.AddCardToHand(template, instanceID);
             Debug.Log($"[NetworkPlayer] TargetReceiveCard: {templateID} iid={instanceID}");
         }
+    }
+
+    /// <summary>开局批量发牌：三张牌（神选者 + 2 普通）一次 RPC 到达，统一按从左到右顺序飞入。</summary>
+    [TargetRpc]
+    public void TargetReceiveInitialCards(NetworkConnectionToClient target, string[] templateIDs, string[] instanceIDs)
+    {
+        if (templateIDs == null || templateIDs.Length == 0) return;
+
+        var newCards = new List<CardView>();
+        for (int i = 0; i < templateIDs.Length; i++)
+        {
+            CardData template = CardDatabase.Instance?.GetTemplate(templateIDs[i]);
+            if (template == null) continue;
+            string iid = (instanceIDs != null && i < instanceIDs.Length) ? instanceIDs[i] : null;
+            CardView cv = Local.AddCardToHand(template, iid, animate: false);
+            if (cv != null) newCards.Add(cv);
+        }
+
+        HandManager hm = FindObjectOfType<HandManager>();
+        if (hm != null && newCards.Count > 0)
+            hm.StartCoroutine(hm.AnimateCardDraw(newCards));
     }
 
     [TargetRpc]

@@ -28,6 +28,10 @@ public class HandManager : MonoBehaviour
     private RectTransform _rectTransform;
     private CanvasGroup _canvasGroup;
 
+    // 抽牌动画
+    private bool _isDrawAnimating = false;
+    public bool IsDrawAnimating => _isDrawAnimating;
+
     void Awake()
     {
         _rectTransform = GetComponent<RectTransform>();
@@ -35,12 +39,15 @@ public class HandManager : MonoBehaviour
         if (_canvasGroup == null) _canvasGroup = gameObject.AddComponent<CanvasGroup>();
     }
 
-    public void RegisterCard(CardView cv)
+    public void RegisterCard(CardView cv, bool refreshLayout = true)
     {
         if (!handCards.Contains(cv))
             handCards.Add(cv);
-        RefreshLayout(true);
-        MarkBoundsDirty();
+        if (refreshLayout)
+        {
+            RefreshLayout(true);
+            MarkBoundsDirty();
+        }
     }
 
     public void RemoveCard(CardView cv)
@@ -218,7 +225,8 @@ public class HandManager : MonoBehaviour
             cv.targetPos = target;
             cv.targetRotation = targetRot;
 
-            if (instant)
+            // 飞行中的牌只更新目标，不 snap——交给 FlyInFromDeck 动画落位
+            if (instant && !cv.IsFlying)
             {
                 cv.rectTransform.localPosition = target;
                 cv.rectTransform.localRotation = targetRot;
@@ -707,6 +715,7 @@ public class HandManager : MonoBehaviour
         {
             if (card == null || !card.gameObject.activeSelf) continue;
             if (card == draggingCard) continue; // 拖拽中的牌已脱离手牌区，不参与
+            if (card.IsFlying) continue; // 飞行中的牌位置不稳定，不参与
 
             Rect cardRect = card.GetWorldRect();
             if (first) { bounds = cardRect; first = false; }
@@ -735,20 +744,119 @@ public class HandManager : MonoBehaviour
             return;
         }
 
-        Canvas canvas = GetComponentInParent<Canvas>();
-        RectTransform parentRT = _rectTransform.parent as RectTransform;
-
-        RectTransformUtility.ScreenPointToLocalPointInRectangle(
-            parentRT, bounds.center, canvas.worldCamera, out Vector2 localCenter);
-
-        _rectTransform.anchorMin = new Vector2(0.5f, 0.5f);
-        _rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
-        _rectTransform.pivot = new Vector2(0.5f, 0.5f);
-        _rectTransform.anchoredPosition = localCenter;
-        _rectTransform.sizeDelta = new Vector2(bounds.width, bounds.height);
+        // 保持原始 anchor (0.5, 0) 和 anchoredPosition (0, 210)，只修改 sizeDelta。
+        // 否则改变 anchor/pivot 会导致 HandArea 整体偏移，连带所有手牌位置错位。
+        _rectTransform.sizeDelta = new Vector2(
+            Mathf.Max(bounds.width, 200f),
+            Mathf.Max(bounds.height, 100f));
 
         _canvasGroup.blocksRaycasts = true;
     }
+
+    /// <summary>获取抽牌起点世界坐标（屏幕右边界外，完全不可见）。</summary>
+    public Vector3 GetDeckWorldPosition()
+    {
+        Camera cam = GetComponentInParent<Canvas>()?.worldCamera ?? Camera.main;
+        if (cam == null)
+            return transform.position + new Vector3(300, 0, 0);
+
+        // 屏幕右边界外 200 像素 → 世界坐标 X
+        Vector3 rightEdgeWorld = cam.ScreenToWorldPoint(new Vector3(Screen.width + 200, 0, 0));
+        // Y/Z 用 HandArea 中心世界坐标（transform.position 即 RectTransform 中心，pivot 0.5,0.5）
+        Vector3 center = transform.position;
+        return new Vector3(rightEdgeWorld.x, center.y, center.z);
+    }
+
+    /// <summary>抽牌入场动画：收集新增的 CardView，依次从牌库位置飞入，延迟让位。</summary>
+    /// <param name="newCards">本次抽牌新增的卡牌（targetPos 待算，尚未落位，alpha=0）</param>
+    public System.Collections.IEnumerator AnimateCardDraw(List<CardView> newCards)
+    {
+        if (newCards == null || newCards.Count == 0) yield break;
+
+        // 快速连续抽牌：动画进行中时新牌直接落位显示，不播动画
+        if (_isDrawAnimating)
+        {
+            RefreshLayout(false);
+            foreach (var cv in newCards)
+            {
+                if (cv == null) continue;
+                cv.IsFlying = false;
+                cv.rectTransform.localPosition = cv.targetPos;
+                cv.rectTransform.localRotation = cv.targetRotation;
+                cv.SetAlpha(1f);
+            }
+            yield break;
+        }
+
+        AnimationConfig cfg = AnimationConfig.Load();
+        float duration = cfg != null ? cfg.cardDrawDuration : 0.4f;
+        float stagger = cfg != null ? cfg.cardDrawStaggerDelay : 0.12f;
+        float trigger = cfg != null ? cfg.deferredLayoutTrigger : 0.5f;
+        float randomness = cfg != null ? cfg.flyDurationRandomness : 0.1f;
+
+        // 发放顺序：按 handCards 索引升序（索引0在最左）→ 从左到右依次飞入
+        newCards.RemoveAll(c => c == null);
+        newCards.Sort((a, b) => handCards.IndexOf(a).CompareTo(handCards.IndexOf(b)));
+
+        _isDrawAnimating = true;
+        SetHandAreaRaycast(false);
+
+        // 1. 保存现有牌（非新牌）的旧目标位置 —— 让位前它们应保持原地
+        var oldTargets = new List<(CardView cv, Vector3 pos, Quaternion rot)>();
+        foreach (var c in handCards)
+        {
+            if (c == null || newCards.Contains(c) || c.IsFlying) continue;
+            oldTargets.Add((c, c.targetPos, c.targetRotation));
+        }
+
+        // 2. 计算最终布局（拿到新牌 targetPos，现有牌 targetPos 也更新），再恢复现有牌旧目标 → 现有牌原地不动
+        RefreshLayout(false);
+        foreach (var (cv, pos, rot) in oldTargets)
+        {
+            cv.targetPos = pos;
+            cv.targetRotation = rot;
+        }
+
+        Vector3 deckWorldPos = GetDeckWorldPosition();
+        bool layoutTriggered = false;
+        float maxDur = duration;
+
+        for (int i = 0; i < newCards.Count; i++)
+        {
+            CardView cv = newCards[i];
+            if (cv == null) continue;
+
+            // 目标世界坐标 = HandArea 局部坐标 targetPos 转世界（RefreshLayout 已算好 targetPos/targetRotation）
+            Vector3 targetWorldPos = cv.transform.parent.TransformPoint(cv.targetPos);
+            Quaternion targetRot = cv.targetRotation;
+
+            // 多张牌时逐张延迟，形成连续飞出效果
+            if (i > 0)
+                yield return new WaitForSeconds(stagger);
+
+            // 每张牌飞行时长做微小随机化（±randomness），避免机械一致
+            float dur = duration * Random.Range(1f - randomness, 1f + randomness);
+            if (dur > maxDur) maxDur = dur;
+
+            // 启动飞入（不等待，下一张可在当前飞行期间开始延迟计时）。
+            // 飞到 trigger 进度时回调一次 RefreshLayout(false)，让现有手牌开始 lerp 滑动让位。
+            StartCoroutine(cv.FlyInFromDeck(deckWorldPos, targetWorldPos, targetRot, dur, cfg, trigger, () =>
+            {
+                if (!layoutTriggered)
+                {
+                    layoutTriggered = true;
+                    RefreshLayout(false);
+                }
+            }));
+        }
+
+        // 等待最后一张牌飞完（取最长的随机时长）
+        yield return new WaitForSeconds(maxDur);
+
+        _isDrawAnimating = false;
+        SetHandAreaRaycast(true);
+    }
+
     private void PlaceIndependentCard(BoardSlot slot, CardInstance sourceInstance, CardData template, GameObject cardObject)
     {
         Vector3 worldPos = GetSlotWorldPosition(slot.slotID);

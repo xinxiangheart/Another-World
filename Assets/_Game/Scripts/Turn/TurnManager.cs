@@ -55,12 +55,24 @@ public partial class TurnManager : MonoBehaviour
         }
         else if (!NetworkClient.isConnected && NetworkPlayer.Local != null)
         {
-            // 先神选者，再普通牌
+            // 先收集三张牌（神选者 + 2 普通），再统一从左到右依次飞入
+            var newCards = new List<CardView>();
             CardData chosenOne = ChosenOneManager.Instance?.DrawChosenOne();
             if (chosenOne != null)
-                NetworkPlayer.Local.AddCardToHand(chosenOne);
+            {
+                CardView cv = NetworkPlayer.Local.AddCardToHand(chosenOne, animate: false);
+                if (cv != null) newCards.Add(cv);
+            }
             for (int i = 0; i < 2; i++)
-                NetworkPlayer.Local.DrawCard();
+            {
+                CardView cv = NetworkPlayer.Local.DrawCard(animate: false);
+                if (cv != null) newCards.Add(cv);
+            }
+
+            HandManager hm = FindObjectOfType<HandManager>();
+            if (hm != null && newCards.Count > 0)
+                hm.StartCoroutine(hm.AnimateCardDraw(newCards));
+
             yield return StartNewPhase();
         }
     }
@@ -74,40 +86,63 @@ public partial class TurnManager : MonoBehaviour
 
         Debug.Log($"[TurnManager] ServerInitialDraw: Local={local?.netId}, Remote={remote?.netId}, remoteConn={remote?.connectionToClient != null}");
 
-        // Host draws — 先神选者，再普通牌
+        // Host draws — 先收集三张（神选者 + 2 普通），再统一从左到右依次飞入
         if (local != null)
         {
+            var localNewCards = new List<CardView>();
             CardData choLocal = ChosenOneManager.Instance?.DrawChosenOne();
-            if (choLocal != null) local.AddCardToHand(choLocal);
-            for (int i = 0; i < 2; i++)
+            if (choLocal != null)
             {
-                CardData card = DeckManager.Instance?.DrawFromMain();
-                if (card != null) local.AddCardToHand(card);
-            }
-            Debug.Log($"[TurnManager] Host local drawn: {local.handCards.Count} cards");
-        }
-
-        // Remote gets cards via TargetRpc — 先神选者，再普通牌
-        if (remote != null)
-        {
-            Debug.Log($"[TurnManager] Sending 1 chosen + 2 main to Remote netId={remote.netId}");
-            CardData choRemote = ChosenOneManager.Instance?.DrawChosenOne();
-            if (choRemote != null)
-            {
-                string choIid = choRemote._instanceID ?? CardZoneManager.GenerateInstanceID(choRemote.templateID);
-                remote.TargetReceiveCard(remote.connectionToClient, choRemote.templateID, choIid);
-                remote.AddServerSideCard(choRemote, choIid);
+                CardView cv = local.AddCardToHand(choLocal, animate: false);
+                if (cv != null) localNewCards.Add(cv);
             }
             for (int i = 0; i < 2; i++)
             {
                 CardData card = DeckManager.Instance?.DrawFromMain();
                 if (card != null)
                 {
-                    string iid = card._instanceID ?? CardZoneManager.GenerateInstanceID(card.templateID);
-                    remote.TargetReceiveCard(remote.connectionToClient, card.templateID, iid);
-                    remote.AddServerSideCard(card, iid);
+                    CardView cv = local.AddCardToHand(card, animate: false);
+                    if (cv != null) localNewCards.Add(cv);
                 }
             }
+            HandManager hmLocal = FindObjectOfType<HandManager>();
+            if (hmLocal != null && localNewCards.Count > 0)
+                hmLocal.StartCoroutine(hmLocal.AnimateCardDraw(localNewCards));
+            Debug.Log($"[TurnManager] Host local drawn: {local.handCards.Count} cards");
+        }
+
+        // Remote gets cards via TargetRpc — 先收集三张，再一次性批量发送，统一飞入
+        if (remote != null)
+        {
+            Debug.Log($"[TurnManager] Sending 1 chosen + 2 main to Remote netId={remote.netId}");
+            var tids = new List<string>();
+            var iids = new List<string>();
+
+            CardData choRemote = ChosenOneManager.Instance?.DrawChosenOne();
+            if (choRemote != null)
+            {
+                tids.Add(choRemote.templateID);
+                iids.Add(choRemote._instanceID ?? CardZoneManager.GenerateInstanceID(choRemote.templateID));
+            }
+            for (int i = 0; i < 2; i++)
+            {
+                CardData card = DeckManager.Instance?.DrawFromMain();
+                if (card != null)
+                {
+                    tids.Add(card.templateID);
+                    iids.Add(card._instanceID ?? CardZoneManager.GenerateInstanceID(card.templateID));
+                }
+            }
+
+            // 服务端追踪（每张牌都要 AddServerSideCard）
+            for (int i = 0; i < tids.Count; i++)
+            {
+                var td = CardDatabase.Instance?.GetTemplate(tids[i]);
+                if (td != null) remote.AddServerSideCard(td, iids[i]);
+            }
+
+            // 一次性批量 RPC → 远端统一收集 + 统一飞入
+            remote.TargetReceiveInitialCards(remote.connectionToClient, tids.ToArray(), iids.ToArray());
         }
         else
         {

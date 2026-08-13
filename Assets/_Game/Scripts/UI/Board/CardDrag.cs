@@ -33,6 +33,9 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
 
     public void OnBeginDrag(PointerEventData eventData)
     {
+        // 抽牌动画期间禁止拖拽
+        if (handManager != null && handManager.IsDrawAnimating) return;
+
         originalLocalPos = rectTransform.localPosition;
         originalScale = transform.localScale;
         originalParent = transform.parent;

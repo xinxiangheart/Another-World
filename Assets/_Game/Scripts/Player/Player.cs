@@ -114,7 +114,16 @@ public class Player : MonoBehaviour
         if (cv != null)
         {
             cv.handManager = myHandManager;
-            myHandManager?.RegisterCard(cv);
+            cv.IsFlying = true; // 飞行中不参与布局；RefreshLayout 延迟到 AnimateCardDraw 内部 60% 时触发
+            myHandManager?.RegisterCard(cv, false); // 只加入列表，不刷新布局
+        }
+
+        // 抽牌入场动画
+        if (cv != null && myHandManager != null)
+        {
+            cv.SetAlpha(0f);
+            var newCards = new System.Collections.Generic.List<CardView> { cv };
+            myHandManager.StartCoroutine(myHandManager.AnimateCardDraw(newCards));
         }
     }
 
@@ -172,7 +181,13 @@ public class Player : MonoBehaviour
             {
                 HandManager hm = FindObjectOfType<HandManager>();
                 cv.handManager = hm;
-                hm?.RegisterCard(cv);
+                cv.IsFlying = true; // 飞行中不参与布局；RefreshLayout 延迟到 AnimateCardDraw 内部 60% 时触发
+                hm?.RegisterCard(cv, false); // 只加入列表，不刷新布局
+
+                // 回手入场动画
+                cv.SetAlpha(0f);
+                var newCards = new System.Collections.Generic.List<CardView> { cv };
+                hm?.StartCoroutine(hm.AnimateCardDraw(newCards));
             }
         }
     }
@@ -223,8 +238,18 @@ public class Player : MonoBehaviour
         if (cv != null)
         {
             cv.handManager = myHandManager;
-            myHandManager?.RegisterCard(cv);
+            cv.IsFlying = true; // 飞行中不参与布局；RefreshLayout 延迟到 AnimateCardDraw 内部 60% 时触发
+            myHandManager?.RegisterCard(cv, false); // 只加入列表，不刷新布局
         }
+
+        // 抽牌入场动画
+        if (cv != null && myHandManager != null)
+        {
+            cv.SetAlpha(0f);
+            var newCards = new System.Collections.Generic.List<CardView> { cv };
+            myHandManager.StartCoroutine(myHandManager.AnimateCardDraw(newCards));
+        }
+
         if (IsEnergyReaperOnField() && instance != null)
         {
             CardData td = CardDatabase.Instance?.GetTemplate(instance.templateID);
@@ -290,8 +315,18 @@ public class Player : MonoBehaviour
         if (cv != null)
         {
             cv.handManager = myHandManager;
-            myHandManager?.RegisterCard(cv);
+            cv.IsFlying = true; // 飞行中不参与布局；RefreshLayout 延迟到 AnimateCardDraw 内部 60% 时触发
+            myHandManager?.RegisterCard(cv, false); // 只加入列表，不刷新布局
         }
+
+        // 抽牌入场动画
+        if (cv != null && myHandManager != null)
+        {
+            cv.SetAlpha(0f);
+            var newCards = new System.Collections.Generic.List<CardView> { cv };
+            myHandManager.StartCoroutine(myHandManager.AnimateCardDraw(newCards));
+        }
+
         if (IsEnergyReaperOnField() && instance != null)
         {
             CardData td = CardDatabase.Instance?.GetTemplate(instance.templateID);
