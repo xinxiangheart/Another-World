@@ -1132,6 +1132,9 @@ public partial class TurnManager : MonoBehaviour
     /// </summary>
     IEnumerator AutoEndEnemyTurn()
     {
+        // AI 回合开始：先处理 AI 半场的阶段开始触发器（铁匠/执行之剑/忤逆者自动处理）
+        ProcessAIPhaseStartTriggers();
+
         // AI 行动：抽牌 + 出牌（SimpleAI.EvaluateAndPlay 内部会 ServerEndTurn 结束回合）
         if (SimpleAI.Instance != null)
             yield return SimpleAI.Instance.EvaluateAndPlay();
@@ -1213,6 +1216,139 @@ public partial class TurnManager : MonoBehaviour
     public bool IsMyTurn()
     {
         return currentPhase == TurnPhase.MyTurn;
+    }
+
+    /// <summary>
+    /// AI 半场（0-5）的阶段开始触发器。离线 AI 对局中，AI 的铁匠/执行之剑/忤逆者
+    /// 在 AI 回合开始自动处理（无 UI，自动选第一个合法手牌）。
+    /// </summary>
+    public void ProcessAIPhaseStartTriggers()
+    {
+        if (!IsOfflineAI()) return;
+        NetworkPlayer ai = NetworkPlayer.Remote;
+        if (ai == null) return;
+
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return;
+
+        // 01525 铁匠：循环消耗 1/3/5 费召唤物换能量
+        for (int i = 0; i <= 5; i++)
+        {
+            BoardSlot slot = bm.GetSlot(i);
+            if (slot?.currentCard3D == null) continue;
+            CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci == null || ci.templateID != "01525") continue;
+            if (!ci.CanTriggerTrait("阶段开始")) continue;
+            AIIronSmithConsume(ai, ci);
+            break;
+        }
+        // 01535 执行之剑：消耗一个法术
+        for (int i = 0; i <= 5; i++)
+        {
+            BoardSlot slot = bm.GetSlot(i);
+            if (slot?.currentCard3D == null) continue;
+            CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci == null || ci.templateID != "01535") continue;
+            AIExecutionSwordConsume(ai, ci);
+            break;
+        }
+        // 01526 忤逆者：消耗一个召唤物回血
+        for (int i = 0; i <= 5; i++)
+        {
+            BoardSlot slot = bm.GetSlot(i);
+            if (slot?.currentCard3D == null) continue;
+            CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci == null || ci.templateID != "01526") continue;
+            if (!ci.CanTriggerTrait("阶段开始")) continue;
+            AIRebelConsume(ai, ci, slot);
+            break;
+        }
+    }
+
+    /// <summary>AI 铁匠：循环消耗 1/3/5 费召唤物换能量（0/2/4）。</summary>
+    void AIIronSmithConsume(NetworkPlayer ai, CardInstance ironSmith)
+    {
+        bool consumed = true;
+        while (consumed)
+        {
+            consumed = false;
+            GameObject target = null;
+            CardInstance targetCI = null;
+            foreach (GameObject card in ai.handCards)
+            {
+                if (card == null) continue;
+                CardInstance c = card.GetComponent<CardInstance>();
+                if (c == null) continue;
+                CardData td = CardDatabase.Instance?.GetTemplate(c.templateID);
+                if (td == null || td.cardType != CardType.Summon) continue;
+                if (td.baseCost != 1 && td.baseCost != 3 && td.baseCost != 5) continue;
+                target = card;
+                targetCI = c;
+                break;
+            }
+            if (target == null || targetCI == null) break;
+
+            int cost = targetCI.currentCost;
+            int energy = cost switch { 1 => 0, 3 => 2, 5 => 4, _ => 0 };
+            ai.AddEnergy(energy);
+            ai.handCards.Remove(target);
+            Destroy(target);
+            ironSmith.ironSmithTotalConsumedCount++;
+            consumed = true;
+        }
+    }
+
+    /// <summary>AI 执行之剑：消耗一个法术，记录 consumedSpellCost。</summary>
+    void AIExecutionSwordConsume(NetworkPlayer ai, CardInstance sword)
+    {
+        GameObject target = null;
+        CardInstance targetCI = null;
+        foreach (GameObject card in ai.handCards)
+        {
+            if (card == null) continue;
+            CardInstance c = card.GetComponent<CardInstance>();
+            if (c == null) continue;
+            CardData td = CardDatabase.Instance?.GetTemplate(c.templateID);
+            if (td == null || td.cardType != CardType.Spell) continue;
+            target = card;
+            targetCI = c;
+            break;
+        }
+        if (target == null || targetCI == null) { sword.consumedSpellCost = 0; return; }
+
+        CardData sTD = CardDatabase.Instance?.GetTemplate(targetCI.templateID);
+        sword.consumedSpellCost = sTD?.baseCost ?? 0;
+        ai.handCards.Remove(target);
+        Destroy(target);
+    }
+
+    /// <summary>AI 忤逆者：消耗一个召唤物回血（tier + 渊?1:0）。</summary>
+    void AIRebelConsume(NetworkPlayer ai, CardInstance rebel, BoardSlot rebelSlot)
+    {
+        GameObject target = null;
+        CardInstance targetCI = null;
+        foreach (GameObject card in ai.handCards)
+        {
+            if (card == null) continue;
+            CardInstance c = card.GetComponent<CardInstance>();
+            if (c == null) continue;
+            CardData td = CardDatabase.Instance?.GetTemplate(c.templateID);
+            if (td == null || td.cardType != CardType.Summon) continue;
+            target = card;
+            targetCI = c;
+            break;
+        }
+        if (target == null || targetCI == null) return;
+
+        int tier = targetCI.currentTier;
+        bool isYuan = targetCI.prefixes.Contains("渊");
+        int heal = tier + (isYuan ? 1 : 0);
+        ai.Heal(heal);
+        rebel.currentHealth = Mathf.Min(rebel.currentMaxHealth, rebel.currentHealth + heal);
+        rebelSlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+
+        ai.handCards.Remove(target);
+        Destroy(target);
     }
 
     /// <summary>是否离线 AI 对局：Host 模式下 Remote 是 AI（无客户端连接，connectionToClient == null）。</summary>

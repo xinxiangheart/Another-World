@@ -209,8 +209,24 @@ public class SimpleAI : MonoBehaviour
             }
             else if (td2.targetType == TargetType.SingleAlly)
             {
-                for (int i = 0; i <= 5; i++) // AI 的己方 = 服务器 0-5
-                    if (bm.GetSlot(i)?.currentCard3D != null) { target = bm.GetSlot(i); break; }
+                // 「令己方召唤物退场」的法术 → 用退场评分选最优牺牲目标（区分主动/普通退场）
+                if (IsSelfRetreatEffect(td2, out bool isActiveRetreat))
+                {
+                    float best = float.MinValue;
+                    for (int i = 0; i <= 5; i++)
+                    {
+                        var slot = bm.GetSlot(i);
+                        var tci = slot?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                        if (tci == null) continue;
+                        float sc = ScoreRetreatTarget(tci, i, isActiveRetreat);
+                        if (sc > best) { best = sc; target = slot; }
+                    }
+                }
+                else
+                {
+                    for (int i = 0; i <= 5; i++) // AI 的己方 = 服务器 0-5
+                        if (bm.GetSlot(i)?.currentCard3D != null) { target = bm.GetSlot(i); break; }
+                }
             }
         }
         return true;
@@ -286,6 +302,100 @@ public class SimpleAI : MonoBehaviour
         // 12. 负面状态扣分
         if (ci.silencedThisPhase) score -= 5f; // 本阶段白板
         if (ci.poisoned) score -= 4f;          // 受双倍伤害 + 无法上盾
+
+        // 13. 「令己方召唤物退场」的牌：按退场类型判断价值
+        //     主动退场效果（碎片/指挥家等）：场上无「主动退场」召唤物 → 减分（牺牲无补偿）
+        //     普通退场效果（爬!）：场上无「退场亡语」召唤物 → 减分
+        if (IsSelfRetreatEffect(td, out bool isActiveRetreat))
+        {
+            bool hasSacrifice = isActiveRetreat ? HasActiveExitOnBoard() : HasDeathrattleOnBoard();
+            if (hasSacrifice)
+                score += 10f;
+            else
+                score -= 6f;
+        }
+
+        return score;
+    }
+
+    /// <summary>识别「令己方召唤物退场」的牌，并判断退场类型。
+    /// 返回 isActiveRetreat=true（主动退场）或 false（普通退场，如爬!「不视为主动退场」）。</summary>
+    static bool IsSelfRetreatEffect(CardData td, out bool isActiveRetreat)
+    {
+        isActiveRetreat = true;
+        if (td == null) return false;
+        string text = (td.effect ?? "") + "\n" + (td.traits ?? "");
+        if (!(text.Contains("使己方") && text.Contains("退场"))) return false;
+
+        // 「不视为主动退场」→ 普通退场（触发 hasOnDeath 亡语）
+        isActiveRetreat = !text.Contains("不视为主动退场");
+        return true;
+    }
+
+    /// <summary>AI 半场（服务器 0-5）是否存在带「主动退场」的召唤物。</summary>
+    bool HasActiveExitOnBoard()
+    {
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return false;
+        for (int s = 0; s <= 5; s++)
+        {
+            CardInstance ci = bm.GetSlot(s)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci != null && ci.hasActiveExit) return true;
+        }
+        return false;
+    }
+
+    /// <summary>AI 半场（服务器 0-5）是否存在带「退场亡语」的召唤物。</summary>
+    bool HasDeathrattleOnBoard()
+    {
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return false;
+        for (int s = 0; s <= 5; s++)
+        {
+            CardInstance ci = bm.GetSlot(s)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci != null && ci.hasOnDeath) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// 退场目标评分：用于「令己方召唤物退场」的牌选牺牲目标。
+    /// triggerActiveExit=true（主动退场效果）→ 优先选带主动退场；false（普通退场如爬!）→ 优先选带亡语。
+    /// 次选「可牺牲肉盾」（高血低攻、已触发、无后续、对位有持续收益）。返回分数，越高越优先。
+    /// </summary>
+    public static float ScoreRetreatTarget(CardInstance ci, int slotID, bool triggerActiveExit)
+    {
+        if (ci == null) return -999f;
+        float score = 0f;
+
+        // 1. 匹配退场类型的召唤物 → 最高优先（牺牲它触发对应退场额外收益）
+        if (triggerActiveExit)
+        {
+            if (ci.HasActiveExit) score += 100f;
+        }
+        else
+        {
+            if (ci.HasOnDeath) score += 100f;
+        }
+
+        // 2. 可牺牲肉盾：health/attack > 2.5 + 特性已触发(只有进场) + 无后续特性
+        if (ci.currentAttack > 0 && ci.currentHealth > 0)
+        {
+            float ratio = (float)ci.currentHealth / ci.currentAttack;
+            bool isTank = ratio > 2.5f;
+            bool enterOnlyAndTriggered = ci.HasOnEnter && ci._hadEnterEffect;
+            bool noFollowUp = !ci.HasOnDeath && !ci.HasRevenge && !ci.HasActiveExit;
+            if (isTank && enterOnlyAndTriggered && noFollowUp)
+            {
+                score += 30f;
+                // 对位存在光环类/持续收益召唤物 → 肉盾挡在其前面价值低，更值得牺牲
+                BoardManager bm = FindObjectOfType<BoardManager>();
+                int oppSlot = slotID >= 6 ? slotID - 6 : slotID + 6;
+                CardInstance oppCI = bm?.GetSlot(oppSlot)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                if (oppCI != null && AuraCards.Contains(oppCI.templateID))
+                    score += 20f;
+            }
+        }
 
         return score;
     }

@@ -559,22 +559,32 @@ public static class DeathHandlers
         else
         {
             // 主机/离线：直接选择（BeginSelection 使 IsSelecting=true → WaitForSimultaneousWindow 阻塞）
-            bool done = false;
-            SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (target) =>
+            // AI 对局中，触发者是 AI 半场的卡 → AI 自动选择，不弹给玩家
+            bool isAISide = SimpleAI.IsAIMatch && owner == NetworkPlayer.Remote;
+            if (isAISide) SimpleAI.IsAIEvaluating = true;
+            try
             {
-                if (target?.currentCard3D != null)
+                bool done = false;
+                SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (target) =>
                 {
-                    var t3d = target.currentCard3D.GetComponent<Card3DInstance>();
-                    if (t3d?.cardInstance != null)
+                    if (target?.currentCard3D != null)
                     {
-                        BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, 2, null);
-                        t3d.UpdateValues();
+                        var t3d = target.currentCard3D.GetComponent<Card3DInstance>();
+                        if (t3d?.cardInstance != null)
+                        {
+                            BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, 2, null);
+                            t3d.UpdateValues();
+                        }
                     }
-                }
-                BoardSlot.CheckAndHandleDeaths();
-                done = true;
-            });
-            yield return new WaitUntil(() => done);
+                    BoardSlot.CheckAndHandleDeaths();
+                    done = true;
+                });
+                yield return new WaitUntil(() => done);
+            }
+            finally
+            {
+                if (isAISide) SimpleAI.IsAIEvaluating = false;
+            }
         }
 
         NestingContext.Exit();

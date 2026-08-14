@@ -109,9 +109,9 @@ public class CardView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
     }
 
     /// <summary>从屏幕右侧外水平飞入到目标位置的入场动画（全程可见，弹性落位）。</summary>
-    /// <param name="startWorldPos">起点世界坐标（屏幕右边界外；Y/Z 会被目标覆盖以保持严格水平）</param>
-    /// <param name="targetWorldPos">目标世界坐标（RefreshLayout 计算出的 targetPos 转世界）</param>
-    /// <param name="targetRotation">动画结束时的旋转（RefreshLayout 已设的 targetRotation）</param>
+    /// <param name="startWorldPos">起点世界坐标（屏幕右边界外；Y/Z 会被初始目标覆盖以保持严格水平）</param>
+    /// <param name="targetWorldPos">初始目标世界坐标（RefreshLayout 计算出的 targetPos 转世界，飞行中会每帧重新读取最新值）</param>
+    /// <param name="targetRotation">初始目标旋转（飞行中会每帧重新读取最新值）</param>
     /// <param name="duration">动画时长</param>
     /// <param name="cfg">动画配置（弹性/旋转/缩放参数）</param>
     /// <param name="layoutTrigger">延迟让位触发点（0~1），飞行进度到该比例时回调 onLayoutTrigger</param>
@@ -133,7 +133,7 @@ public class CardView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
         gameObject.SetActive(true);
         canvasGroup.alpha = 1f;
 
-        // 起点：X 取屏幕外，Y/Z 锁定为目标值 → 纯水平飞入，无上下跳动、无深度位移
+        // 起点：X 取屏幕外，Y/Z 锁定为初始目标值 → 纯水平飞入，无上下跳动、无深度位移
         Vector3 startPos = new Vector3(startWorldPos.x, targetWorldPos.y, targetWorldPos.z);
 
         transform.position = startPos;
@@ -155,18 +155,20 @@ public class CardView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
                 onLayoutTrigger?.Invoke();
             }
 
-            // X 水平从屏幕外插到目标；Y/Z 恒定目标值（无上下跳动、无深度位移）
-            float x = Mathf.Lerp(startPos.x, targetWorldPos.x, eased);
-            transform.position = new Vector3(x, targetWorldPos.y, targetWorldPos.z);
+            // 每帧重新读取最新 targetPos/targetRotation（RefreshLayout 可能已因新牌加入而更新目标），
+            // 从当前位置向最新目标插值 → 目标变化时无缝转向，不锁定终点、无停顿。
+            Vector3 currentTargetWorld = transform.parent.TransformPoint(targetPos);
 
-            transform.rotation = Quaternion.Slerp(startRotation, targetRotation, eased);
-            transform.localScale = Vector3.Lerp(targetScale * scaleMin, targetScale, eased);
+            transform.position = Vector3.Lerp(transform.position, currentTargetWorld, eased);
+            transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, eased);
+            transform.localScale = Vector3.Lerp(transform.localScale, targetScale, eased);
 
             yield return null;
         }
 
-        // 精确落位
-        transform.position = targetWorldPos;
+        // 精确落位到最终 targetPos（飞行结束，交回 Update 的 lerp 也指向同一目标）
+        Vector3 finalTargetWorld = transform.parent.TransformPoint(targetPos);
+        transform.position = finalTargetWorld;
         transform.rotation = targetRotation;
         transform.localScale = targetScale;
         canvasGroup.alpha = 1f;

@@ -129,6 +129,47 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         // AI 是 Remote，视角与 Host 相反。IsValidTarget 硬编码 Host 视角（0-5=敌，6-11=己），
         // 需镜像 targetType 才能选到 AI 视角的正确半场。
         TargetType aiType = MirrorTargetTypeForAI(currentTargetType);
+
+        // 选 AI 己方召唤物（镜像后 SingleEnemy = AI 己方 0-5）：
+        // 仅当目标是「有牌的召唤物」时用退场评分；若是选空槽（放置位置/囚牢），回退选第一个合法。
+        if (aiType == TargetType.SingleEnemy)
+        {
+            // 先判断是否有「有牌」的合法目标
+            bool hasMinionTarget = false;
+            foreach (var slot in bm.GetAllSlots())
+            {
+                if (slot == null || !slot.IsValidTarget(aiType)) continue;
+                if (slot.currentCard3D != null) { hasMinionTarget = true; break; }
+            }
+
+            if (hasMinionTarget)
+            {
+                // 有牌目标 → 退场评分选最优（带主动退场/可牺牲肉盾）
+                float bestScore = float.MinValue;
+                BoardSlot best = null;
+                foreach (var slot in bm.GetAllSlots())
+                {
+                    if (slot == null || !slot.IsValidTarget(aiType)) continue;
+                    var tci = slot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                    float sc = SimpleAI.ScoreRetreatTarget(tci, slot.slotID, true);
+                    if (sc > bestScore) { bestScore = sc; best = slot; }
+                }
+                if (best != null) onTargetSelected?.Invoke(best);
+            }
+            else
+            {
+                // 空槽目标（囚牢/放置位置）→ 选第一个合法空槽
+                foreach (var slot in bm.GetAllSlots())
+                {
+                    if (slot == null || !slot.IsValidTarget(aiType)) continue;
+                    onTargetSelected?.Invoke(slot);
+                    break;
+                }
+            }
+            yield break;
+        }
+
+        // 其他类型：选第一个合法目标
         foreach (var slot in bm.GetAllSlots())
         {
             if (slot == null) continue;

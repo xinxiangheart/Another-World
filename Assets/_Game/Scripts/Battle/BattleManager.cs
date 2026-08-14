@@ -44,11 +44,25 @@ public class BattleManager : MonoBehaviour
         allSlots = FindObjectOfType<BoardManager>()?.GetAllSlots();
         if (allSlots == null) yield break;
 
+        Debug.LogWarning("[Battle] PhaseStartCoroutine START");
         yield return StartCoroutine(PhaseStartCoroutine());
+        Debug.LogWarning("[Battle] PhaseStartCoroutine END");
+
+        Debug.LogWarning("[Battle] FirstStrikeCoroutine START");
         yield return StartCoroutine(FirstStrikeCoroutine());
+        Debug.LogWarning("[Battle] FirstStrikeCoroutine END");
+
+        Debug.LogWarning("[Battle] MinionAttacksCoroutine START");
         yield return StartCoroutine(MinionAttacksCoroutine());
+        Debug.LogWarning("[Battle] MinionAttacksCoroutine END");
+
+        Debug.LogWarning("[Battle] CompareSurvivors START");
         CompareSurvivors();
+        Debug.LogWarning("[Battle] CompareSurvivors END");
+
+        Debug.LogWarning("[Battle] FinalDamage START");
         FinalDamage();
+        Debug.LogWarning("[Battle] FinalDamage END");
         // StartNewPhase 移至 SafeBattle——确保 BoardSyncManager.MarkDirty()+SyncNow
         // 先于 BroadcastTurnPhase 执行，防止远端在收到恢复后的板面前就上报旧 currentAttack
     }
@@ -221,10 +235,12 @@ public class BattleManager : MonoBehaviour
                 if (i < 6 && !SimpleAI.IsAIMatch) continue;
 
                 int mySlot = i;
-                int row = mySlot < 9 ? 0 : 3;
                 int col = mySlot % 3;
-                int rowStart = row == 0 ? 6 : 9;
-                int otherRowStart = row == 0 ? 9 : 6;
+                // 根据实际半场计算行起始（不能硬编码 6/9——AI 半场是 0-5）
+                int ownHalfStart = mySlot >= 6 ? 6 : 0;
+                int row = (mySlot - ownHalfStart) < 3 ? 0 : 3;
+                int rowStart = ownHalfStart + row;
+                int otherRowStart = ownHalfStart + (row == 0 ? 3 : 0);
 
                 List<int> adjacentSlots = new List<int>();
                 if (col > 0) adjacentSlots.Add(rowStart + col - 1);
@@ -1274,17 +1290,26 @@ public class BattleManager : MonoBehaviour
                     }
                     else
                     {
-                        // 主机玩家 → 直接本地选择
-                        yield return bmInstance.StartCoroutine(bmInstance.WaitForSelection((onDone) =>
+                        // 主机玩家 → 直接本地选择；AI 对局中触发者是 AI 半场 → AI 自动选择
+                        bool isAISide = SimpleAI.IsAIMatch && revOwner == NetworkPlayer.Remote;
+                        if (isAISide) SimpleAI.IsAIEvaluating = true;
+                        try
                         {
-                            SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (ts) =>
+                            yield return bmInstance.StartCoroutine(bmInstance.WaitForSelection((onDone) =>
                             {
-                                if (ts != null && !ts.isBlocked)
-                                { ApplyDeepSeaDebuff(ts); ts.deepSeaMarked = true; ts.SyncVisual(); }
-                                onDone();
-                            });
-                            BoardSlot.isStrengtheningSlot = true;
-                        }));
+                                SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (ts) =>
+                                {
+                                    if (ts != null && !ts.isBlocked)
+                                    { ApplyDeepSeaDebuff(ts); ts.deepSeaMarked = true; ts.SyncVisual(); }
+                                    onDone();
+                                });
+                                BoardSlot.isStrengtheningSlot = true;
+                            }));
+                        }
+                        finally
+                        {
+                            if (isAISide) SimpleAI.IsAIEvaluating = false;
+                        }
                     }
                     BoardSyncManager.MarkDirty();
                     continue;
@@ -1324,34 +1349,43 @@ public class BattleManager : MonoBehaviour
                     }
                     else
                     {
-                        // 主机玩家 → 直接本地选择
-                        BoardManager.GetSideRange(deadSlotID, out int aStart, out int aEnd);
-                        yield return bmInstance.StartCoroutine(bmInstance.WaitForSelection((onDone) =>
+                        // 主机玩家 → 直接本地选择；AI 对局中触发者是 AI 半场 → AI 自动选择
+                        bool isAISide2 = SimpleAI.IsAIMatch && revOwner == NetworkPlayer.Remote;
+                        if (isAISide2) SimpleAI.IsAIEvaluating = true;
+                        try
                         {
-                            BoardManager bm2 = FindObjectOfType<BoardManager>();
-                            bool hasAlly = false;
-                            for (int j = aStart; j <= aEnd; j++)
-                                if (bm2?.GetSlot(j)?.currentCard3D != null) { hasAlly = true; break; }
-                            if (hasAlly)
+                            BoardManager.GetSideRange(deadSlotID, out int aStart, out int aEnd);
+                            yield return bmInstance.StartCoroutine(bmInstance.WaitForSelection((onDone) =>
                             {
-                                SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (targetSlot) =>
+                                BoardManager bm2 = FindObjectOfType<BoardManager>();
+                                bool hasAlly = false;
+                                for (int j = aStart; j <= aEnd; j++)
+                                    if (bm2?.GetSlot(j)?.currentCard3D != null) { hasAlly = true; break; }
+                                if (hasAlly)
                                 {
-                                    if (targetSlot?.currentCard3D != null)
+                                    SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (targetSlot) =>
                                     {
-                                        CardInstance ci = targetSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                                        if (ci != null)
+                                        if (targetSlot?.currentCard3D != null)
                                         {
-                                            if (!ci.cannotHealOrGainMaxHP)
-                                            { ci.currentHealth += 2; ci.currentMaxHealth += 2; }
-                                            ci.currentAttack += 1;
-                                            targetSlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+                                            CardInstance ci = targetSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                                            if (ci != null)
+                                            {
+                                                if (!ci.cannotHealOrGainMaxHP)
+                                                { ci.currentHealth += 2; ci.currentMaxHealth += 2; }
+                                                ci.currentAttack += 1;
+                                                targetSlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+                                            }
                                         }
-                                    }
-                                    onDone();
-                                });
-                            }
-                            else onDone();
-                        }));
+                                        onDone();
+                                    });
+                                }
+                                else onDone();
+                            }));
+                        }
+                        finally
+                        {
+                            if (isAISide2) SimpleAI.IsAIEvaluating = false;
+                        }
                     }
                     if (Mirror.NetworkServer.active) BoardSyncManager.MarkDirty();
                     continue;
