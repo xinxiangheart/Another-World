@@ -465,7 +465,7 @@ public class CounterManager : MonoBehaviour
     {
         // Server myCounters → Remote has it in enemyCounters → tell Remote to remove from "enemy"
         // Server enemyCounters → Remote has it in myCounters → tell Remote to remove from "mine"
-        if (NetworkPlayer.Remote != null)
+        if (NetworkPlayer.Remote != null && NetworkPlayer.Remote.connectionToClient != null)
             NetworkPlayer.Remote.TargetRemoveCounter(NetworkPlayer.Remote.connectionToClient,
                 counter.template.templateID, isMine ? "enemy" : "mine");
     }

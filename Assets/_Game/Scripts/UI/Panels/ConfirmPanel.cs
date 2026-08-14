@@ -37,6 +37,13 @@ public class ConfirmPanel : MonoBehaviour
 
     public void Show(string message, System.Action onYesCallback, System.Action onNoCallback = null)
     {
+        // AI 环境：不弹确认框，自动 onYes
+        if (SimpleAI.IsAIEvaluating)
+        {
+            onYesCallback?.Invoke();
+            return;
+        }
+
         titleText.text = message;
         onYes = onYesCallback;
         onNo = onNoCallback;

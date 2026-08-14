@@ -526,9 +526,10 @@ public static class DeathHandlers
 
         NetworkPlayer owner = BoardManager.GetOwnerPlayer(ctx.sourceSlot.slotID);
 
-        if (owner == NetworkPlayer.Remote && Mirror.NetworkServer.active)
+        if (owner == NetworkPlayer.Remote && Mirror.NetworkServer.active
+            && NetworkPlayer.Remote.connectionToClient != null)
         {
-            // 远端玩家的卡：委托远端选择目标
+            // 远端玩家的卡：委托远端选择目标（AI 无连接走 else 本地选择）
             BoardSlot._honorAttendantExitTarget = -1;
             BoardSlot._honorAttendantExitWaiting = true;
             NetworkPlayer.Remote.TargetHonorAttendantExitSelect(

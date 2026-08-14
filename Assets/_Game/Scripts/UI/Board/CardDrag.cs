@@ -207,8 +207,9 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
             Debug.Log("进入反制牌分支");
             CounterManager.Instance?.PlayCounter(this.gameObject, true);
 
-            // Network sync: tell the other side about this counter
-            if (NetworkServer.active && NetworkPlayer.Remote != null)
+            // Network sync: tell the other side about this counter（AI 无连接跳过）
+            if (NetworkServer.active && NetworkPlayer.Remote != null
+                && NetworkPlayer.Remote.connectionToClient != null)
                 NetworkPlayer.Remote.TargetSpawnCounterCard(NetworkPlayer.Remote.connectionToClient, template.templateID);
             else if (NetworkClient.isConnected)
                 NetworkPlayer.Local?.CmdPlayCounter(template.templateID);

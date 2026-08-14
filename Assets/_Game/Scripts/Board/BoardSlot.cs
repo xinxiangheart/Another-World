@@ -125,14 +125,37 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         yield return null; // 延迟一帧
         BoardManager bm = FindObjectOfType<BoardManager>();
         if (bm == null) yield break;
+
+        // AI 是 Remote，视角与 Host 相反。IsValidTarget 硬编码 Host 视角（0-5=敌，6-11=己），
+        // 需镜像 targetType 才能选到 AI 视角的正确半场。
+        TargetType aiType = MirrorTargetTypeForAI(currentTargetType);
         foreach (var slot in bm.GetAllSlots())
         {
             if (slot == null) continue;
-            if (slot.IsValidTarget(currentTargetType))
+            if (slot.IsValidTarget(aiType))
             {
                 onTargetSelected?.Invoke(slot);
                 yield break;
             }
+        }
+    }
+
+    /// <summary>把 Host 视角的 TargetType 镜像成 AI（Remote）视角。</summary>
+    static TargetType MirrorTargetTypeForAI(TargetType t)
+    {
+        switch (t)
+        {
+            case TargetType.SingleEnemy: return TargetType.SingleAlly;
+            case TargetType.SingleAlly: return TargetType.SingleEnemy;
+            case TargetType.EnemyFrontRow: return TargetType.AllyFrontRow;
+            case TargetType.EnemyBackRow: return TargetType.AllyBackRow;
+            case TargetType.AllyFrontRow: return TargetType.EnemyFrontRow;
+            case TargetType.AllyBackRow: return TargetType.EnemyBackRow;
+            case TargetType.EnemyAnyRow: return TargetType.AllyAnyRow;
+            case TargetType.AllyAnyRow: return TargetType.EnemyAnyRow;
+            case TargetType.AllEnemies: return TargetType.AllAllies;
+            case TargetType.AllAllies: return TargetType.AllEnemies;
+            default: return t; // None / AllMinions 不变
         }
     }
 
@@ -150,6 +173,14 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
         else
         {
+            // AI 无客户端连接 → 本地选择（SelectionManager 的 AI 自动选择分支处理）
+            if (NetworkPlayer.Remote.connectionToClient == null)
+            {
+                bool doneLocal = false;
+                SelectionManager.Instance.BeginSelection(targetType, (s) => { onSelected?.Invoke(s); doneLocal = true; });
+                yield return new WaitUntil(() => doneLocal);
+                yield break;
+            }
             _remoteSelectionResultSlot = -1;
             int expectId = _remoteSelectionId + 1;
             NetworkPlayer.Remote.TargetRequestSelection(
@@ -876,7 +907,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             case TargetType.SingleEnemy:
                 if (isStrengtheningSlot)
                 {
-                    if (slotID >= 0 && slotID <= 5 && !isBlocked) return new int[] { slotID };
+                    // 放置模式：排除所有封锁（普通封锁/囚牢/永久封锁）
+                    if (slotID >= 0 && slotID <= 5 && !isBlocked && !prisonBlocked && !permaBlocked) return new int[] { slotID };
                 }
                 else
                 {
@@ -886,7 +918,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             case TargetType.SingleAlly:
                 if (isStrengtheningSlot)
                 {
-                    if (slotID >= 6 && slotID <= 11 && !isBlocked) return new int[] { slotID };
+                    // 放置模式：排除所有封锁（普通封锁/囚牢/永久封锁）
+                    if (slotID >= 6 && slotID <= 11 && !isBlocked && !prisonBlocked && !permaBlocked) return new int[] { slotID };
                 }
                 else
                 {
@@ -3582,8 +3615,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         CardInstance fairyCI = fairy.GetComponent<Card3DInstance>()?.cardInstance;
         if (fairyCI == null) { BoardSlot.isPlacingCard = false; yield break; }
 
-        // 远程方(0-5)委托所属玩家选择，己方(6-11)主机自选
-        if (NetworkServer.active && oldHostSlotID <= 5 && NetworkPlayer.Remote != null)
+        // 远程方(0-5)委托所属玩家选择，己方(6-11)主机自选（AI 无连接走本地选择）
+        if (NetworkServer.active && oldHostSlotID <= 5 && NetworkPlayer.Remote != null
+            && NetworkPlayer.Remote.connectionToClient != null)
         {
             int remoteLocalOldHost = oldHostSlotID + 6;
             _fairyReattachDone = false;

@@ -141,7 +141,9 @@ public class BattleManager : MonoBehaviour
             if (slot?.currentCard3D == null) continue;
             CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
             if (ci == null || !ci.HasFirstStrike) continue;
-         
+            // AI 对局：AI 半场（0-5）的交互式先手需要 AI 自动选择
+            SimpleAI.IsAIEvaluating = (i < 6 && SimpleAI.IsAIMatch);
+
         // 检查对方是否有合法目标
             if (ci.templateID == "01124")
             {
@@ -200,8 +202,9 @@ public class BattleManager : MonoBehaviour
                     BoardManager.SyncAttachedModels(targetSlot);
 
                 Debug.Log($"舞者换位完成：{mySlotIndex}->{targetSlotIndex}");
-                // 通知双方客户端同步跨半场交换结果
-                if (Mirror.NetworkServer.active && NetworkPlayer.Remote != null)
+                // 通知双方客户端同步跨半场交换结果（AI 无客户端连接时跳过）
+                if (Mirror.NetworkServer.active && NetworkPlayer.Remote != null
+                    && NetworkPlayer.Remote.connectionToClient != null)
                     NetworkPlayer.Remote.TargetSwapCards(NetworkPlayer.Remote.connectionToClient,
                         mySlotIndex >= 6 ? mySlotIndex - 6 : mySlotIndex + 6,
                         targetSlotIndex >= 6 ? targetSlotIndex - 6 : targetSlotIndex + 6);
@@ -214,8 +217,8 @@ public class BattleManager : MonoBehaviour
         // 检查对方是否有合法目标
             if (ci.templateID == "01312")
             {
-                // 先手交互选择只能在拥有者客户端上展示；对方半场(0-5)暂时跳过
-                if (i < 6) continue;
+                // 先手交互选择只能在拥有者客户端上展示；非 AI 对局时对方半场(0-5)跳过，AI 对局时 AI 半场也执行
+                if (i < 6 && !SimpleAI.IsAIMatch) continue;
 
                 int mySlot = i;
                 int row = mySlot < 9 ? 0 : 3;
@@ -267,8 +270,9 @@ public class BattleManager : MonoBehaviour
                     BoardManager.SwapCards(slotA, slotB);
                     ci.hasFirstStrike = false;
 
-                    // 通知远端客户端同步交换结果（服务端 6-11 → 远端视角 0-5）
-                    if (Mirror.NetworkServer.active && NetworkPlayer.Remote != null)
+                    // 通知远端客户端同步交换结果（服务端 6-11 → 远端视角 0-5，AI 无连接跳过）
+                    if (Mirror.NetworkServer.active && NetworkPlayer.Remote != null
+                        && NetworkPlayer.Remote.connectionToClient != null)
                         NetworkPlayer.Remote.TargetSwapCards(NetworkPlayer.Remote.connectionToClient, slotA - 6, slotB - 6);
                 }
 
@@ -276,13 +280,13 @@ public class BattleManager : MonoBehaviour
             }
             if (ci.templateID == "01513")
             {
-                if (i < 6) continue; // 交互先手：UI 只能展示给卡牌拥有者
+                if (i < 6 && !SimpleAI.IsAIMatch) continue; // 非 AI 对局：AI 半场跳过（远程客户端处理）；AI 对局：AI 半场也执行
                 yield return StartCoroutine(MechRearrangementEffect());
                 continue;
             }
             if (ci.templateID == "01516")
             {
-                if (i < 6) continue;
+                if (i < 6 && !SimpleAI.IsAIMatch) continue;
                 yield return StartCoroutine(QuickShadowRearrangeEffect(ci));
                 continue;
             }
@@ -297,11 +301,13 @@ public class BattleManager : MonoBehaviour
             if (slot?.currentCard3D == null) continue;
             CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
             if (ci == null || !ci.HasFirstStrike) continue;
+            // AI 对局：AI 半场（0-5）的交互式先手需要 AI 自动选择
+            SimpleAI.IsAIEvaluating = (i < 6 && SimpleAI.IsAIMatch);
 
         // 检查对方是否有合法目标
             if (ci.templateID == "03012")
             {
-                if (i < 6) continue; // 交互先手：UI 只能展示给卡牌拥有者
+                if (i < 6 && !SimpleAI.IsAIMatch) continue; // 非 AI 对局：AI 半场跳过（远程客户端处理）；AI 对局：AI 半场也执行
                 bool yinYangDone = false;
                 SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (targetSlot) =>
                 {
@@ -379,7 +385,7 @@ public class BattleManager : MonoBehaviour
         // 检查对方是否有合法目标
             if (ci.templateID == "01519")
             {
-                if (i < 6) continue; // 交互先手：UI 只能展示给卡牌拥有者
+                if (i < 6 && !SimpleAI.IsAIMatch) continue; // 非 AI 对局：AI 半场跳过（远程客户端处理）；AI 对局：AI 半场也执行
                 // 判断 GK 所在半场，只给自己的友方上盾
                 bool isOnHostSide = (i >= 6);
                 int sideStart = isOnHostSide ? 6 : 0;
@@ -482,11 +488,13 @@ public class BattleManager : MonoBehaviour
             if (slot?.currentCard3D == null) continue;
             CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
             if (ci == null || !ci.HasFirstStrike) continue;
+            // AI 对局：AI 半场（0-5）的交互式先手需要 AI 自动选择
+            SimpleAI.IsAIEvaluating = (i < 6 && SimpleAI.IsAIMatch);
 
             // 毒巫：清除护盾+中毒
             if (ci.templateID == "03502")
             {
-                if (i < 6) continue; // 交互先手：UI 只能展示给卡牌拥有者
+                if (i < 6 && !SimpleAI.IsAIMatch) continue; // 非 AI 对局：AI 半场跳过（远程客户端处理）；AI 对局：AI 半场也执行
                 int myStart = i >= 6 ? 0 : 6;
                 bool hasEnemy = false;
                 for (int j = myStart; j < myStart + 6; j++) if (allSlots[j]?.currentCard3D != null) { hasEnemy = true; break; }
@@ -519,7 +527,7 @@ public class BattleManager : MonoBehaviour
         // 万象镜面：单次伤害最高为1
             if (ci.templateID == "01318")
             {
-                if (i < 6) continue; // 交互先手：UI 只能展示给卡牌拥有者
+                if (i < 6 && !SimpleAI.IsAIMatch) continue; // 非 AI 对局：AI 半场跳过（远程客户端处理）；AI 对局：AI 半场也执行
                 bool anyTarget = false;
                 for (int j = 0; j < 12; j++)
                 {
@@ -749,6 +757,9 @@ public class BattleManager : MonoBehaviour
         }
         BoardSlot.CheckAndHandleDeaths();
         yield return StartCoroutine(WaitForSimultaneousWindow());
+
+        // 先手阶段结束，复位 AI 选择标志（战斗后续阶段 AI 不处于选择中）
+        SimpleAI.IsAIEvaluating = false;
     }
 
     void FirstStrike()
@@ -1222,7 +1233,9 @@ public class BattleManager : MonoBehaviour
                         CardData data = DeckManager.Instance?.DrawFromMain();
                         if (data != null && opponent != null)
                         {
-                            opponent.TargetReceiveCard(opponent.connectionToClient, data.templateID, data._instanceID ?? "");
+                            // AI 无客户端连接 → 只服务端追踪手牌，不发 RPC
+                            if (opponent.connectionToClient != null)
+                                opponent.TargetReceiveCard(opponent.connectionToClient, data.templateID, data._instanceID ?? "");
                             opponent.AddServerSideCard(data, data._instanceID);
                         }
                     }
@@ -1240,9 +1253,10 @@ public class BattleManager : MonoBehaviour
                 if (effect.Contains("选定一个格子"))
                 {
                     NetworkPlayer revOwner = BoardManager.GetOwnerPlayer(deadSlotID);
-                    if (revOwner == NetworkPlayer.Remote && Mirror.NetworkServer.active)
+                    if (revOwner == NetworkPlayer.Remote && Mirror.NetworkServer.active
+                        && NetworkPlayer.Remote.connectionToClient != null)
                     {
-                        // 远端玩家的卡 → 委托远端选择目标
+                        // 远端玩家的卡 → 委托远端选择目标（AI 无连接走 else 本地选择）
                         BoardSlot._deepSeaRevengeTargetSlot = -1;
                         BoardSlot._deepSeaRevengeWaiting = true;
                         NetworkPlayer.Remote.TargetDeepSeaRevengeSelect(
@@ -1279,9 +1293,10 @@ public class BattleManager : MonoBehaviour
                 if (effect.Contains("为己方一召唤物+2+1"))
                 {
                     NetworkPlayer revOwner = BoardManager.GetOwnerPlayer(deadSlotID);
-                    if (revOwner == NetworkPlayer.Remote && Mirror.NetworkServer.active)
+                    if (revOwner == NetworkPlayer.Remote && Mirror.NetworkServer.active
+                        && NetworkPlayer.Remote.connectionToClient != null)
                     {
-                        // 远端玩家的卡 → 委托远端选择目标
+                        // 远端玩家的卡 → 委托远端选择目标（AI 无连接走 else 本地选择）
                         BoardSlot._allyBuffRevengeTargetSlot = -1;
                         BoardSlot._allyBuffRevengeWaiting = true;
                         NetworkPlayer.Remote.TargetAllyBuffRevengeSelect(
@@ -1776,9 +1791,10 @@ public class BattleManager : MonoBehaviour
     {
         NetworkPlayer owner = BoardManager.GetOwnerPlayer(swordSlot.slotID);
 
-        if (owner == NetworkPlayer.Remote && Mirror.NetworkServer.active)
+        if (owner == NetworkPlayer.Remote && Mirror.NetworkServer.active
+            && NetworkPlayer.Remote.connectionToClient != null)
         {
-            // 远端玩家的卡：委托远端选择目标（参考 01347 荣誉侍者模式）
+            // 远端玩家的卡：委托远端选择目标（AI 无连接走 else 本地选择）
             BoardSlot._executionSwordWaiting = true;
             BoardSlot._executionSwordTargetSlot = -1;
             BoardSlot._executionSwordDamage = damage;
@@ -2045,7 +2061,21 @@ public class BattleManager : MonoBehaviour
             BoardSlot.isPlacingCard = false;
         }
         if (SelectionManager.Instance != null)
+        {
+            // 选择等待：AI 环境（无客户端点击）若卡在选择，自动强制结束，避免永久阻塞
+            if (SimpleAI.Instance != null && NetworkPlayer.Remote != null
+                && NetworkPlayer.Remote.connectionToClient == null)
+            {
+                // 给一帧让 AI 自动选择协程（AIResolveSelectionCoroutine）执行
+                yield return null;
+                if (SelectionManager.Instance.IsSelecting)
+                {
+                    Debug.LogWarning("[WaitForSimultaneousWindow] AI 环境选择未完成，强制结束选择");
+                    SelectionManager.Instance.ForceEndAll();
+                }
+            }
             yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
+        }
         var cqm = ConfirmQueueManager.Instance;
         if (cqm != null) yield return new WaitWhile(() => cqm.IsBusy());
         if (BoardSlot.pendingRevenges.Count > 0)

@@ -163,8 +163,10 @@ public static class DeathPipeline
 
         // ── 5. SetCard(null) ───────────────────────────────────────────
         slot.SetCard(null);
-        // 通知远端客户端销毁此槽位模型——纯客户端不根据 SyncNow 销毁模型
-        if (Mirror.NetworkServer.active && !slot.prisonBlocked && NetworkPlayer.Remote != null)
+        // 通知远端客户端销毁此槽位模型——纯客户端不根据 SyncNow 销毁模型。
+        // AI 对手（connectionToClient == null）无客户端，跳过 RPC。
+        if (Mirror.NetworkServer.active && !slot.prisonBlocked && NetworkPlayer.Remote != null
+            && NetworkPlayer.Remote.connectionToClient != null)
             NetworkPlayer.Remote.TargetDestroyCard(NetworkPlayer.Remote.connectionToClient, slot.slotID);
 
         // ── 6. _rebornSummon → 召唤杂兵(03004) ─────────────────────────

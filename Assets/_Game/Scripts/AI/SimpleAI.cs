@@ -15,8 +15,11 @@ public class SimpleAI : MonoBehaviour
 {
     public static SimpleAI Instance { get; private set; }
 
-    /// <summary>AI 正在评估/出牌期间为 true。选择/确认等 UI 入口检测此标志走自动分支。</summary>
-    public static bool IsAIEvaluating { get; private set; }
+    /// <summary>AI 正在评估/出牌/先手选择期间为 true。选择/确认等 UI 入口检测此标志走自动分支。</summary>
+    public static bool IsAIEvaluating { get; set; }
+
+    /// <summary>是否离线 AI 对局（Remote 是 server-only AI，无客户端连接）。</summary>
+    public static bool IsAIMatch => NetworkPlayer.Remote != null && NetworkPlayer.Remote.connectionToClient == null;
 
     public enum Difficulty { Easy, Normal, Hard }
     public Difficulty difficulty = Difficulty.Normal;
