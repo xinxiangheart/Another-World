@@ -25,7 +25,22 @@ public class AutoConnect : MonoBehaviour
 
     void Start()
     {
-        if (!LobbyConfig.FromLobby) return;
+        if (!LobbyConfig.FromLobby)
+        {
+            // 离线单机模式：启动本地 Host（KCP），让 Mirror 创建 NetworkPlayer.Local。
+            // 不注册 Steam 回调、不碰 FizzySteamworks，纯本地 KCP host。
+            SetupKCP();
+            _startTime = Time.time;
+            Debug.LogWarning($"[AutoConnect-Offline] 离线模式启动本地 Host @{Time.time:F2}s");
+            _nm.StartHost();
+            // 挂载离线 AI 创建器：等 Local 就绪后创建 AI 的 NetworkPlayer 并赋 Remote
+            if (_nm != null && _nm.GetComponent<OfflineAIHost>() == null)
+                _nm.gameObject.AddComponent<OfflineAIHost>();
+            // 挂载 AI 决策组件
+            if (_nm != null && _nm.GetComponent<SimpleAI>() == null)
+                _nm.gameObject.AddComponent<SimpleAI>();
+            return;
+        }
         if (_turnManager != null) _turnManager.enabled = false;
         _startTime = Time.time;
         Debug.LogWarning($"[AutoConnect-Timing] Start — 场景加载完成, 网络连接开始 @{Time.time:F2}s");

@@ -25,6 +25,13 @@ public class ConfirmQueueManager : MonoBehaviour
 
     public void EnqueueConfirm(string message, Action<Action> onYes, Action<Action> onNo = null)
     {
+        // AI 环境：不弹确认框，自动 onYes
+        if (SimpleAI.IsAIEvaluating)
+        {
+            onYes?.Invoke(() => StartCoroutine(DelayedShowNextConfirm()));
+            return;
+        }
+
         Action showAction = () =>
         {
             ConfirmPanel.Instance.Show(message,

@@ -28,6 +28,13 @@ public class ConfirmSelectionButton : MonoBehaviour
 
     public void Show(System.Action onConfirmCallback)
     {
+        // AI 环境：不显示按钮，直接触发确认
+        if (SimpleAI.IsAIEvaluating)
+        {
+            onConfirmCallback?.Invoke();
+            return;
+        }
+
         onConfirm = onConfirmCallback;
         canvasGroup.interactable = true;
         canvasGroup.blocksRaycasts = true;

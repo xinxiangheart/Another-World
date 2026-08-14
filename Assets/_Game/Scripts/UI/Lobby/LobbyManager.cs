@@ -9,6 +9,8 @@ public static class LobbyConfig
     public static string ServerIP { get; set; } = "";
     public static bool FromLobby { get; set; }
     public static bool IsDirectIP { get; set; }
+    /// <summary>AI 对战模式（离线单机）。设 true 且 FromLobby=false，走离线 Host + AI 对手。</summary>
+    public static bool IsAI { get; set; }
     /// <summary>Lobby 场景已有的 Steam 大厅 ID。</summary>
     public static Steamworks.CSteamID CurrentLobbyID { get; set; }
     public static string HostSteamID { get; set; }
@@ -25,6 +27,7 @@ public class LobbyManager : MonoBehaviour
     public Button quickMatchButton;
     public Button createRoomButton;
     public Button joinRoomButton;
+    public Button aiBattleButton;
     public Button viewCardsButton;
     public Button gameIntroButton;
     public Button returnButton;
@@ -50,6 +53,7 @@ public class LobbyManager : MonoBehaviour
         if (quickMatchButton != null) quickMatchButton.onClick.AddListener(() => QuickMatchPanel.Instance?.Open());
         if (createRoomButton != null) createRoomButton.onClick.AddListener(CreateRoom);
         if (joinRoomButton != null) joinRoomButton.onClick.AddListener(JoinRoom);
+        if (aiBattleButton != null) aiBattleButton.onClick.AddListener(StartAIBattle);
         if (viewCardsButton != null) viewCardsButton.onClick.AddListener(() => SetStatus("卡牌浏览功能开发中"));
         if (gameIntroButton != null) gameIntroButton.onClick.AddListener(OpenGameIntro);
         if (returnButton != null) returnButton.onClick.AddListener(ReturnToWelcome);
@@ -68,6 +72,26 @@ public class LobbyManager : MonoBehaviour
     public void JoinRoom()
     {
         JoinRoomPanel.Instance?.Open();
+    }
+
+    /// <summary>
+    /// AI 对战：离线单机模式。设 FromLobby=false（走离线 Host + AI 对手），
+    /// 复用 Preloader 异步加载 Game 场景（无对手头像/倒计时）。
+    /// </summary>
+    public void StartAIBattle()
+    {
+        Debug.Log("[Lobby] StartAIBattle — 进入 AI 对战");
+        LobbyConfig.FromLobby = false; // 离线 Host 模式（AutoConnect 会 StartHost）
+        LobbyConfig.IsAI = true;
+
+        // 确保 Preloader 存在（复用 JoinGamePanel 的预加载优化）
+        if (Preloader.Instance == null)
+        {
+            var go = new GameObject("Preloader");
+            go.AddComponent<Preloader>();
+        }
+        Preloader.Instance.StartPreload();
+        Preloader.Instance.LoadGameScene();
     }
 
     public void ReturnToWelcome()

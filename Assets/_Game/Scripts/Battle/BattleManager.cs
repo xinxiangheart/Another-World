@@ -729,12 +729,20 @@ public class BattleManager : MonoBehaviour
         // 触发远端客户端运行己方的交互式先手（Remote 的 6-11 = 服务器的 0-5）
         if (Mirror.NetworkServer.active && NetworkPlayer.Remote != null)
         {
-            BoardSlot._remoteFirstStrikeDone = false;
-            NetworkPlayer.Remote.TargetRunRemoteFirstStrikes(NetworkPlayer.Remote.connectionToClient);
-            float remoteFsDeadline = Time.time + 30f;
-            yield return new WaitWhile(() => !BoardSlot._remoteFirstStrikeDone && Time.time < remoteFsDeadline);
-            if (!BoardSlot._remoteFirstStrikeDone)
-                Debug.LogError("[BattleManager] 远程先手 RPC 超时（30s），强制继续");
+            // 真实远程玩家 → 发 RPC 让客户端运行先手；AI（connectionToClient==null）跳过
+            if (NetworkPlayer.Remote.connectionToClient != null)
+            {
+                BoardSlot._remoteFirstStrikeDone = false;
+                NetworkPlayer.Remote.TargetRunRemoteFirstStrikes(NetworkPlayer.Remote.connectionToClient);
+                float remoteFsDeadline = Time.time + 30f;
+                yield return new WaitWhile(() => !BoardSlot._remoteFirstStrikeDone && Time.time < remoteFsDeadline);
+                if (!BoardSlot._remoteFirstStrikeDone)
+                    Debug.LogError("[BattleManager] 远程先手 RPC 超时（30s），强制继续");
+            }
+            else
+            {
+                Debug.Log("[BattleManager] AI 无客户端连接，跳过远程先手 RPC");
+            }
             // 远程先手可能产生交换/buff/debuff → 再同一次把最终板面推出去
             BoardSyncManager.MarkDirty();
             yield return null; // 让 LateUpdate 中的 SyncNow 执行

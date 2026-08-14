@@ -8,7 +8,8 @@ using TMPro;
 public class NetworkPlayer : NetworkBehaviour
 {
     public static NetworkPlayer Local { get; private set; }
-    public static NetworkPlayer Remote { get; private set; }
+    // Remote 需 public set：离线 AI 模式由 OfflineAIHost 手动赋 AI player（connectionToClient == null）。
+    public static NetworkPlayer Remote { get; set; }
 
     /// <summary>服务器替远程客户端执行时，临时把 Local 设为对应玩家，同时正确维护 Remote 语义（始终指向施法者的对手）。</summary>
     public void RunAsLocal(System.Action action)
@@ -522,7 +523,18 @@ public class NetworkPlayer : NetworkBehaviour
     [Command]
     public void CmdPlayCard(string templateID, int slotID, int overrideAtk, int overrideHP, int overrideMaxHP, int overrideCost, string instanceID)
     {
-        Debug.Log($"[NetworkPlayer] CmdPlayCard: templateID={templateID}, slotID={slotID}, cost={overrideCost}, netId={netId}, isLocal={this==NetworkPlayer.Local}");
+        // [Command] 入口：委托给 ServerPlayCard。离线 AI（无 connectionToClient）直接调 ServerPlayCard 绕过 Command。
+        ServerPlayCard(templateID, slotID, overrideAtk, overrideHP, overrideMaxHP, overrideCost, instanceID);
+    }
+
+    /// <summary>
+    /// 服务器权威放牌逻辑。CmdPlayCard([Command]) 委托到此；离线 AI（connectionToClient==null）直接调用。
+    /// this 是打牌的玩家（Local 或 Remote）。
+    /// </summary>
+    [Server]
+    public void ServerPlayCard(string templateID, int slotID, int overrideAtk, int overrideHP, int overrideMaxHP, int overrideCost, string instanceID)
+    {
+        Debug.Log($"[NetworkPlayer] ServerPlayCard: templateID={templateID}, slotID={slotID}, cost={overrideCost}, netId={netId}, isLocal={this==NetworkPlayer.Local}");
         // slotID 仅允许 -1（手牌消耗通知）、0-11（板面放置）。其他值为非法输入，拒绝。
         if (slotID < -1 || slotID >= 12) return;
         TurnManager tm = FindObjectOfType<TurnManager>();
@@ -773,7 +785,18 @@ public class NetworkPlayer : NetworkBehaviour
 
     public CardView DrawCard(bool animate = true)
     {
-        if (NetworkServer.active && !isLocalPlayer) { CmdRequestDraw(); return null; }
+        if (NetworkServer.active && !isLocalPlayer)
+        {
+            // AI server-only（无客户端连接）：走服务器本地抽牌（无 UI、无 RPC）
+            if (connectionToClient == null)
+            {
+                CardData d = DeckManager.Instance?.DrawFromMain();
+                if (d != null) AddServerSideCard(d, d._instanceID);
+                return null;
+            }
+            CmdRequestDraw();
+            return null;
+        }
         handCards.RemoveAll(c => c == null);
 
         DrawCardUI drawUI = FindObjectOfType<DrawCardUI>();
@@ -854,7 +877,18 @@ public class NetworkPlayer : NetworkBehaviour
 
     public void DrawCardWithoutLimit()
     {
-        if (NetworkServer.active && !isLocalPlayer) { CmdDrawWithoutLimit(); return; }
+        if (NetworkServer.active && !isLocalPlayer)
+        {
+            // AI server-only（无客户端连接）：走服务器本地抽牌（无 UI、无 RPC）
+            if (connectionToClient == null)
+            {
+                CardData d = DeckManager.Instance?.DrawFromMain();
+                if (d != null) AddServerSideCard(d, d._instanceID);
+                return;
+            }
+            CmdDrawWithoutLimit();
+            return;
+        }
         handCards.RemoveAll(c => c == null);
 
         if (handCards.Count >= maxHandSize)
@@ -975,6 +1009,12 @@ public class NetworkPlayer : NetworkBehaviour
         if (NetworkServer.active && !isLocalPlayer)
         {
             string iid = instanceID ?? CardZoneManager.GenerateInstanceID(template.templateID);
+            // AI server-only（无客户端连接）：只加服务器手牌追踪，无 UI、无 RPC
+            if (connectionToClient == null)
+            {
+                AddServerSideCard(template, iid);
+                return null;
+            }
             TargetReceiveCard(connectionToClient, template.templateID, iid);
             AddServerSideCard(template, iid);
             return null;
@@ -1046,6 +1086,14 @@ public class NetworkPlayer : NetworkBehaviour
         // 必须用 Remote.handArea/maxHandSize 而非 Local 的，否则牌会加到错误的手牌区域
         NetworkPlayer target = isEnemy ? Remote : this;
         if (target == null) return;
+
+        // AI server-only（无客户端连接）：走服务器手牌追踪（无 UI、无 Instantiate、无 handArea）
+        if (NetworkServer.active && target.connectionToClient == null)
+        {
+            string iid = oldInstance?.instanceID ?? CardZoneManager.GenerateInstanceID(template.templateID);
+            AddServerSideCard(template, iid);
+            return;
+        }
 
         int maxSize = target.maxHandSize;
         Transform targetHandArea = target.handArea;

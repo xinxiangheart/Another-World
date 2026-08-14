@@ -96,20 +96,26 @@ public partial class TurnManager
         // Remote disconnected — game is ending, skip broadcast
         if (NetworkPlayer.Remote == null) return;
 
+        // AI 对手（server-only，无客户端连接）时，只广播给 Local，跳过 Remote RPC
+        var remoteConn = NetworkPlayer.Remote.connectionToClient;
+
         if (hostPhase == TurnPhase.BattlePhase || hostPhase == TurnPhase.PhaseStart)
         {
             NetworkPlayer.Local.TargetSetPhase(NetworkPlayer.Local.connectionToClient, (int)hostPhase);
-            NetworkPlayer.Remote.TargetSetPhase(NetworkPlayer.Remote.connectionToClient, (int)hostPhase);
+            if (remoteConn != null)
+                NetworkPlayer.Remote.TargetSetPhase(remoteConn, (int)hostPhase);
         }
         else if (hostPhase == TurnPhase.MyTurn)
         {
             NetworkPlayer.Local.TargetSetPhase(NetworkPlayer.Local.connectionToClient, (int)TurnPhase.MyTurn);
-            NetworkPlayer.Remote.TargetSetPhase(NetworkPlayer.Remote.connectionToClient, (int)TurnPhase.EnemyTurn);
+            if (remoteConn != null)
+                NetworkPlayer.Remote.TargetSetPhase(remoteConn, (int)TurnPhase.EnemyTurn);
         }
         else // EnemyTurn (host perspective) = Remote is active
         {
             NetworkPlayer.Local.TargetSetPhase(NetworkPlayer.Local.connectionToClient, (int)TurnPhase.EnemyTurn);
-            NetworkPlayer.Remote.TargetSetPhase(NetworkPlayer.Remote.connectionToClient, (int)TurnPhase.MyTurn);
+            if (remoteConn != null)
+                NetworkPlayer.Remote.TargetSetPhase(remoteConn, (int)TurnPhase.MyTurn);
         }
     }
 

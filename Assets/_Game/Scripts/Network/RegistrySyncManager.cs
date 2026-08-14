@@ -120,8 +120,9 @@ public class RegistrySyncManager : MonoBehaviour
         SnapshotStats();
         if (NetworkPlayer.Remote == null) return;
 
+        // AI 对手（无客户端连接）跳过 RPC 同步
         string payload = PackDelta(_localReg, _remoteReg);
-        if (!string.IsNullOrEmpty(payload))
+        if (!string.IsNullOrEmpty(payload) && NetworkPlayer.Remote.connectionToClient != null)
             NetworkPlayer.Local.RpcSyncRegistry(NetworkPlayer.Remote.connectionToClient, payload);
 
         _dirty.Clear();

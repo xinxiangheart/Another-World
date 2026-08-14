@@ -67,7 +67,18 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
     public static GameObject cardToPlace = null;
     public static TargetType currentTargetType = TargetType.None;
-    public static Action<BoardSlot> onTargetSelected;
+    static Action<BoardSlot> _onTargetSelected;
+    /// <summary>选择回调。AI 环境下赋值时自动触发 AIResolveSelection（选第一个合法目标）。</summary>
+    public static Action<BoardSlot> onTargetSelected
+    {
+        get => _onTargetSelected;
+        set
+        {
+            _onTargetSelected = value;
+            if (value != null && SimpleAI.IsAIEvaluating)
+                AIResolveSelection();
+        }
+    }
 
     private Vector3 originalScale;
     public Image slotImage;
@@ -97,6 +108,33 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public static int _remoteSelectionResultSlot = -1;
     public static int _remoteSelectionId = 0;
     public static void NotifyRemoteSelectionDone(int selectedSlot) { _remoteSelectionId++; _remoteSelectionResultSlot = selectedSlot; }
+
+    /// <summary>
+    /// AI 自动选择：离线 AI 环境中，扫描第一个合法目标并触发 onTargetSelected。
+    /// 延迟一帧执行，确保 extraTargetFilter 等过滤条件已就位。
+    /// </summary>
+    public static void AIResolveSelection()
+    {
+        if (!SimpleAI.IsAIEvaluating) return;
+        if (SimpleAI.Instance != null)
+            SimpleAI.Instance.StartCoroutine(AIResolveSelectionCoroutine());
+    }
+
+    static System.Collections.IEnumerator AIResolveSelectionCoroutine()
+    {
+        yield return null; // 延迟一帧
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) yield break;
+        foreach (var slot in bm.GetAllSlots())
+        {
+            if (slot == null) continue;
+            if (slot.IsValidTarget(currentTargetType))
+            {
+                onTargetSelected?.Invoke(slot);
+                yield break;
+            }
+        }
+    }
 
     /// <summary>统一的目标选择辅助方法——自动根据目标拥有者决定本地/远程选择UI。</summary>
     public static IEnumerator WaitForPlayerSelection(int targetOwnerSlotID, TargetType targetType, System.Action<BoardSlot> onSelected, string reason = "")
@@ -794,7 +832,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
     }
 
-    bool IsValidTarget(TargetType type)
+    public bool IsValidTarget(TargetType type)
     {
         if (isAttachSelectMode)
         {

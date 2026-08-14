@@ -139,6 +139,31 @@ public class CardDisplayPanel : MonoBehaviour
 
     public void ShowWithCallback(List<CardInstance> list, Func<CardInstance, bool> f, Action ok, string txt = "确认")
     {
+        // AI 环境：不弹面板，自动选第一个合法牌并触发回调
+        if (SimpleAI.IsAIEvaluating)
+        {
+            cards = list;
+            filter = f;
+            selected = null;
+            selectedCards.Clear();
+            if (list != null)
+            {
+                foreach (var ci in list)
+                {
+                    if (ci == null) continue;
+                    if (f == null || f(ci))
+                    {
+                        if (multiSelect) selectedCards.Add(ci);
+                        else selected = ci;
+                        break;
+                    }
+                }
+            }
+            onOk = ok;
+            ok?.Invoke();
+            return;
+        }
+
         Show(list, f, txt);
         onOk = ok;
     }

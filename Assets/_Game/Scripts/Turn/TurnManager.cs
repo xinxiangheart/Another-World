@@ -49,6 +49,18 @@ public partial class TurnManager : MonoBehaviour
 
         if (NetworkServer.active)
         {
+            // 等 Local + Remote 都就绪：在线等真实对手连接，离线等 OfflineAIHost 创建 AI。
+            // autoCreatePlayer(Local) 和 OfflineAIHost(Remote) 都是异步的，直接发牌会踩 null。
+            float deadline = Time.time + 15f;
+            while ((NetworkPlayer.Local == null || NetworkPlayer.Remote == null) && Time.time < deadline)
+                yield return null;
+
+            if (NetworkPlayer.Local == null || NetworkPlayer.Remote == null)
+            {
+                Debug.LogError($"[TurnManager] InitialDraw 超时：Local={NetworkPlayer.Local != null}, Remote={NetworkPlayer.Remote != null}");
+                yield break;
+            }
+
             yield return StartCoroutine(ServerInitialDraw());
             Debug.Log("[TurnManager] Server initial draw complete");
             yield return StartNewPhase();
@@ -141,8 +153,16 @@ public partial class TurnManager : MonoBehaviour
                 if (td != null) remote.AddServerSideCard(td, iids[i]);
             }
 
-            // 一次性批量 RPC → 远端统一收集 + 统一飞入
-            remote.TargetReceiveInitialCards(remote.connectionToClient, tids.ToArray(), iids.ToArray());
+            // 真实远程玩家 → 批量 RPC 让客户端建 UI + 飞入动画。
+            // AI（connectionToClient == null）→ server-only 手牌，无客户端，不发 RPC。
+            if (remote.connectionToClient != null)
+            {
+                remote.TargetReceiveInitialCards(remote.connectionToClient, tids.ToArray(), iids.ToArray());
+            }
+            else
+            {
+                Debug.Log($"[TurnManager] AI 对手无客户端连接，{tids.Count} 张牌仅服务端追踪（无 UI）");
+            }
         }
         else
         {
@@ -518,6 +538,12 @@ public partial class TurnManager : MonoBehaviour
                 currentPhase = TurnPhase.EnemyTurn;
                 SetPlayerActionsEnabled(false);
                 Debug.Log("[TurnManager] Phase start: Remote turn first (EnemyTurn from host view)");
+                // 离线 AI 先手：给 AI 加能量并让其行动（AI 无客户端，需服务器侧补能量）
+                if (IsOfflineAI())
+                {
+                    NetworkPlayer.Remote?.AddEnergy(6);
+                    StartCoroutine(AutoEndEnemyTurn());
+                }
             }
             BroadcastTurnPhase(currentPhase);
             BoardSyncManager.MarkDirty();
@@ -618,8 +644,10 @@ public partial class TurnManager : MonoBehaviour
 
             // First player ended; giving turn to second player.
             TurnPhase newPhase = (currentPhase == TurnPhase.MyTurn) ? TurnPhase.EnemyTurn : TurnPhase.MyTurn;
-            BroadcastTurnPhase(newPhase);
+            // 先更新 currentPhase 再广播：Host 下 BroadcastTurnPhase 同步回调 SetPhaseFromNetwork，
+            // 若 currentPhase 未更新会重入 EnableMyTurnActions → 双重触发回合开始效果/弹窗。
             currentPhase = newPhase;
+            BroadcastTurnPhase(newPhase);
             CounterManager.Instance?.CheckOnEnemyTurnEnd();
             // Host manually sets its own state — TargetRpc is async and may miss the guard
             if (newPhase == TurnPhase.MyTurn)
@@ -633,6 +661,12 @@ public partial class TurnManager : MonoBehaviour
             else
             {
                 SetPlayerActionsEnabled(false);
+                // 离线 AI 对局：给 AI 加能量并让其行动
+                if (IsOfflineAI())
+                {
+                    NetworkPlayer.Remote?.AddEnergy(6);
+                    StartCoroutine(AutoEndEnemyTurn());
+                }
             }
             Debug.Log($"[TurnManager] First player ended → {newPhase}");
         }
@@ -1093,21 +1127,20 @@ public partial class TurnManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Offline only: auto-end the enemy's turn after a short delay.
-    /// In the future this should trigger actual enemy AI.
+    /// AI 回合：让 AI（NetworkPlayer.Remote）行动后结束回合。
+    /// SimpleAI 未就绪时回退到延迟占位（保证回合能推进）。
     /// </summary>
     IEnumerator AutoEndEnemyTurn()
     {
-        yield return new WaitForSeconds(1f);
-        // Energy cleanup before ending (offline enemy turn)
-        if (NetworkPlayer.Local != null)
+        // AI 行动：抽牌 + 出牌（SimpleAI.EvaluateAndPlay 内部会 ServerEndTurn 结束回合）
+        if (SimpleAI.Instance != null)
+            yield return SimpleAI.Instance.EvaluateAndPlay();
+        else
         {
-            NetworkPlayer.Local._energyCanExceedLimit = false;
-            if (NetworkPlayer.Local.currentEnergy > NetworkPlayer.Local.maxEnergy)
-                NetworkPlayer.Local.currentEnergy = NetworkPlayer.Local.maxEnergy;
-            NetworkPlayer.Local.UpdateUI();
+            yield return new WaitForSeconds(1f);
+            if (NetworkPlayer.Remote != null)
+                ServerEndTurn(NetworkPlayer.Remote);
         }
-        EndCurrentTurn(skipEnergyCleanup: true);
     }
 
 
@@ -1180,6 +1213,14 @@ public partial class TurnManager : MonoBehaviour
     public bool IsMyTurn()
     {
         return currentPhase == TurnPhase.MyTurn;
+    }
+
+    /// <summary>是否离线 AI 对局：Host 模式下 Remote 是 AI（无客户端连接，connectionToClient == null）。</summary>
+    bool IsOfflineAI()
+    {
+        return NetworkServer.active
+            && NetworkPlayer.Remote != null
+            && NetworkPlayer.Remote.connectionToClient == null;
     }
 
     void SwapSlots(BoardSlot slot1, BoardSlot slot2)

@@ -45,6 +45,10 @@ public class NetworkTurnSync : NetworkBehaviour
 
     void Update()
     {
+        // 离线 AI 模式（LobbyConfig.FromLobby == false）走 TurnManager.Start 直接发牌，
+        // 不经过 NetworkTurnSync 的"两真实玩家就绪"等待——否则会重复发牌。
+        if (!LobbyConfig.FromLobby) return;
+
         if (NetworkServer.active && !gameStarted && turnManager != null)
         {
             if (NetworkPlayer.Local != null && NetworkPlayer.Remote != null)
