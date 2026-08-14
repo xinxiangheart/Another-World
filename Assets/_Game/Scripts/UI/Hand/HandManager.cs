@@ -773,7 +773,7 @@ public class HandManager : MonoBehaviour
     {
         if (newCards == null || newCards.Count == 0) yield break;
 
-        // 快速连续抽牌：动画进行中时新牌直接落位显示，不播动画
+        // 快速连续抽牌：动画进行中时新牌直接落位显示，不播动画（但仍要播音效）
         if (_isDrawAnimating)
         {
             RefreshLayout(false);
@@ -784,6 +784,8 @@ public class HandManager : MonoBehaviour
                 cv.rectTransform.localPosition = cv.targetPos;
                 cv.rectTransform.localRotation = cv.targetRotation;
                 cv.SetAlpha(1f);
+                // 每张牌都触发一次抽牌音效（即使动画未播完，音效不能被吞掉）
+                AudioManager.Instance?.Play(SoundEffectType.DrawCard);
             }
             yield break;
         }
@@ -837,6 +839,9 @@ public class HandManager : MonoBehaviour
             // 每张牌飞行时长做微小随机化（±randomness），避免机械一致
             float dur = duration * Random.Range(1f - randomness, 1f + randomness);
             if (dur > maxDur) maxDur = dur;
+
+            // 每张牌飞入时播放一次抽牌音效（多张牌时随 stagger 间隔依次播放）
+            AudioManager.Instance?.Play(SoundEffectType.DrawCard);
 
             // 启动飞入（不等待，下一张可在当前飞行期间开始延迟计时）。
             // 飞到 trigger 进度时回调一次 RefreshLayout(false)，让现有手牌开始 lerp 滑动让位。
