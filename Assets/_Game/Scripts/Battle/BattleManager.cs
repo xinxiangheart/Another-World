@@ -770,7 +770,7 @@ public class BattleManager : MonoBehaviour
 
         yield return StartCoroutine(ApplyDamageLoop(damageList, "攻击"));
 
-        // 01345 操控者: 交换对方前后排同列两个随从。检查全部12槽。
+        // 01345 改造人: 攻击后使对位召唤物前后排互换。检查全部12槽。
         for (int i = 0; i < 12; i++)
         {
             BoardSlot mySlot = allSlots[i];
@@ -778,6 +778,7 @@ public class BattleManager : MonoBehaviour
             CardInstance myInst = mySlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
             if (myInst == null) continue;
             if (myInst.templateID != "01345") continue;
+            // 被禁止攻击（缄默神官沉默）或特性被禁（能量骇客对位沉默）→ 不触发换位
             if (GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(myInst)) continue;
 
             int col = i % 3;
@@ -785,16 +786,18 @@ public class BattleManager : MonoBehaviour
             // Row within the card's own half: 0=front, 3=back
             int ownHalfStart = i >= 6 ? 6 : 0;
             int ownRow = (i - ownHalfStart) < 3 ? 0 : 3;
-            // Opposite row in enemy half
+            // 换位另一端（敌方对侧排）
             int enemyRowOffset = ownRow == 0 ? 3 : 0;
             int enemySlotIndex = enemyHalfStart + enemyRowOffset + col;
-            // The other enemy row
+            // 攻击对位（敌方同排）
             int otherEnemyRow = enemyRowOffset == 0 ? 3 : 0;
             int targetEnemySlotIndex = enemyHalfStart + otherEnemyRow + col;
 
-            BoardSlot enemySlot = allSlots[enemySlotIndex];
-            BoardSlot targetEnemySlot = allSlots[targetEnemySlotIndex];
-            if (targetEnemySlot.isBlocked || targetEnemySlot.prisonBlocked) continue;
+            BoardSlot enemySlot = allSlots[enemySlotIndex];               // 换位另一端（敌方对侧排）
+            BoardSlot targetEnemySlot = allSlots[targetEnemySlotIndex];   // 攻击对位（敌方同排）
+            // 攻击对位或换位另一端任一被封锁（囚牢 prisonBlocked / 封锁者 isBlocked+permaBlocked）→ 不换位
+            if (targetEnemySlot.isBlocked || targetEnemySlot.prisonBlocked || targetEnemySlot.permaBlocked) continue;
+            if (enemySlot.isBlocked || enemySlot.prisonBlocked || enemySlot.permaBlocked) continue;
 
             BoardManager.SwapCards(enemySlotIndex, targetEnemySlotIndex);
         }

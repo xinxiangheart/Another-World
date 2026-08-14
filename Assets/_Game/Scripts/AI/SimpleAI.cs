@@ -104,6 +104,16 @@ public class SimpleAI : MonoBehaviour
             int cost = ci.currentCost;
             if (!_ai.UseEnergy(cost)) yield break;
 
+            // 放牌前防御性检查：目标槽必须为空且非封锁（防止状态不同步导致覆盖）
+            BoardManager bmChk = FindObjectOfType<BoardManager>();
+            BoardSlot slotChk = bmChk?.GetSlot(serverSlot);
+            if (slotChk == null || slotChk.hasCard || slotChk.isBlocked || slotChk.prisonBlocked || slotChk.permaBlocked)
+            {
+                Debug.LogWarning($"[SimpleAI] 放牌被拒：slot={serverSlot} hasCard={slotChk?.hasCard} blocked={slotChk?.isBlocked}/{slotChk?.prisonBlocked}/{slotChk?.permaBlocked}");
+                _ai.AddEnergy(cost); // 退费
+                yield break;
+            }
+
             Debug.Log($"[SimpleAI] 出召唤物 {ci.templateID} score={ScoreCard(ci):F1} cost={cost} slot={serverSlot}");
 
             _ai.ServerPlayCard(ci.templateID, serverSlot + 6, // AI 视角 6-11 → 服务器 0-5
@@ -296,7 +306,9 @@ public class SimpleAI : MonoBehaviour
         for (int s = 0; s <= 5; s++) // 遍历 AI 半场（服务器 0-5）
         {
             BoardSlot slot = bm.GetSlot(s);
-            if (slot == null || slot.isBlocked || slot.hasCard) continue;
+            // 放置规则：空槽 + 非封锁（囚牢 prisonBlocked / 封锁者 isBlocked+permaBlocked）+ 非瘟疫
+            if (slot == null || slot.hasCard) continue;
+            if (slot.isBlocked || slot.prisonBlocked || slot.permaBlocked) continue;
 
             BoardSlot enemySlot = bm.GetSlot(s + 6); // 对位人类槽
             bool enemyHasMinion = enemySlot?.currentCard3D != null;
