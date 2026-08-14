@@ -20,6 +20,10 @@ public class BattleManager : MonoBehaviour
     {
         if (Instance != null) { Destroy(gameObject); return; }
         Instance = this;
+
+        // 战斗动画播放器：挂到 BattleManager 同一常驻物体上（无需手动挂场景）
+        if (GetComponent<BattleAnimator>() == null)
+            gameObject.AddComponent<BattleAnimator>();
     }
 
     public void StartBattle()
@@ -786,16 +790,34 @@ public class BattleManager : MonoBehaviour
     {
         Debug.Log("[战斗] 阶段3：召唤物攻击");
 
-        List<(GameObject target, int damage, GameObject source)> damageList = new List<(GameObject, int, GameObject)>();
+        List<AttackEvent> events = new List<AttackEvent>();
 
         for (int col = 0; col < 3; col++)
         {
-            ProcessPair(col, col, damageList);
-            ProcessPair(col + 3, col + 3, damageList);
+            ProcessPair(col, col, events);
+            ProcessPair(col + 3, col + 3, events);
         }
 
+        // 按格子顺序排序播放（第一阶段普通攻击；先手方排序后续接入先手动画时细化）
+        events.Sort((a, b) => a.slotIndex.CompareTo(b.slotIndex));
 
-        yield return StartCoroutine(ApplyDamageLoop(damageList, "攻击"));
+        // 播放攻击动画（onImpact 里扣血 + 弹数字 + 音效）
+        var animator = BattleAnimator.Instance;
+        if (animator != null)
+        {
+            foreach (var evt in events)
+                animator.Play(evt);
+            yield return animator.WaitForAll();
+        }
+        else
+        {
+            // 无动画器兜底：直接触发所有 onImpact（逻辑不变）
+            foreach (var evt in events)
+                evt.onImpact?.Invoke();
+        }
+
+        // 征服者击杀检测（原 ApplyDamageLoop 在扣血后调用，挪到动画后）
+        CheckConquerorTrigger();
 
         // 01345 改造人: 攻击后使对位召唤物前后排互换。检查全部12槽。
         for (int i = 0; i < 12; i++)
@@ -844,7 +866,7 @@ public class BattleManager : MonoBehaviour
             }
         }
     }
-    void ProcessPair(int mySlotIndex, int enemySlotIndex, List<(GameObject, int, GameObject)> damageList)
+    void ProcessPair(int mySlotIndex, int enemySlotIndex, List<AttackEvent> events)
     {
         BoardSlot mySlot = allSlots[mySlotIndex + 6];
         BoardSlot enemySlot = allSlots[enemySlotIndex];
@@ -860,7 +882,7 @@ public class BattleManager : MonoBehaviour
             attackerSlotID: mySlotIndex + 6,
             defenderSlotID: enemySlotIndex,
             defenderHalfStart: 0, defenderHalfEnd: 5,
-            damageList: damageList,
+            events: events,
             pendingDamageToOpponent: ref pendingDamageToEnemy,
             attackerOwner: NetworkPlayer.Local,
             defenderOwner: NetworkPlayer.Remote
@@ -872,7 +894,7 @@ public class BattleManager : MonoBehaviour
             attackerSlotID: enemySlotIndex,
             defenderSlotID: mySlotIndex + 6,
             defenderHalfStart: 6, defenderHalfEnd: 11,
-            damageList: damageList,
+            events: events,
             pendingDamageToOpponent: ref pendingDamageToMe,
             attackerOwner: NetworkPlayer.Remote,
             defenderOwner: NetworkPlayer.Local
@@ -883,7 +905,7 @@ public class BattleManager : MonoBehaviour
         GameObject attackerCard, CardInstance attackerInst, BoardSlot attackerSlot,
         int attackerSlotID, int defenderSlotID,
         int defenderHalfStart, int defenderHalfEnd,
-        List<(GameObject, int, GameObject)> damageList,
+        List<AttackEvent> events,
         ref int pendingDamageToOpponent,
         NetworkPlayer attackerOwner, NetworkPlayer defenderOwner)
     {
@@ -915,7 +937,7 @@ public class BattleManager : MonoBehaviour
                 bool otherSilenced = otherInst != null && GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(otherInst);
                 if (otherCard != null && otherInst != null && !otherInst.silencedThisPhase && !otherSilenced)
                 {
-                    damageList.Add((otherCard, 2, attackerCard));
+                    events.Add(CreateAttackEvent(attackerCard, attackerInst, otherCard, otherInst, 2, attackerSlotID, false));
                 }
             }
         }
@@ -933,7 +955,7 @@ public class BattleManager : MonoBehaviour
                 bool otherSilenced = otherInst != null && GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(otherInst);
                 if (otherCard != null && otherInst != null && !otherInst.silencedThisPhase && !otherSilenced)
                 {
-                    damageList.Add((otherCard, attackerInst.Attack, attackerCard));
+                    events.Add(CreateAttackEvent(attackerCard, attackerInst, otherCard, otherInst, attackerInst.Attack, attackerSlotID, false));
                 }
             }
         }
@@ -949,7 +971,8 @@ public class BattleManager : MonoBehaviour
                 GameObject otherCard = otherSlot?.currentCard3D;
                 if (otherCard != null)
                 {
-                    damageList.Add((otherCard, 1, attackerCard));
+                    var oInst = otherCard.GetComponent<Card3DInstance>()?.cardInstance;
+                    events.Add(CreateAttackEvent(attackerCard, attackerInst, otherCard, oInst, 1, attackerSlotID, false));
                 }
             }
         }
@@ -990,7 +1013,7 @@ public class BattleManager : MonoBehaviour
                 targetInst.GetComponent<Card3DInstance>()?.UpdateValues();
             }
             // 01118/01125 攻击修正已在 DamagePipeline.Stage1_Give 统一处理，此处不重复
-            damageList.Add((targetCard, atk, attackerCard));
+            events.Add(CreateAttackEvent(attackerCard, attackerInst, targetCard, targetInst, atk, attackerSlotID, false));
             // 01327 阴影聚合体：宿主攻击时自伤宿主自己的 HP
             if (IsShadowHost(attackerInst) && targetInst != null)
             {
@@ -1027,6 +1050,7 @@ public class BattleManager : MonoBehaviour
                 if (HasSuppressorOnField(attackerSlotID) && attackerInst.summonType == SummonType.Hero)
                     myTier += 1;
                 pendingDamageToOpponent += myTier;
+                events.Add(CreateAttackEvent(attackerCard, attackerInst, null, null, myTier, attackerSlotID, true));
                 // 01327：空位攻击也自伤宿主自己的 HP
                 attackerInst.currentHealth -= attackerInst.currentAttack;
                 if (attackerInst.currentHealth < 0) attackerInst.currentHealth = 0;
@@ -1034,7 +1058,9 @@ public class BattleManager : MonoBehaviour
             }
             else if (!attackerSilenced && attackerInst.templateID == "01531")
             {
-                pendingDamageToOpponent += attackerInst.currentTier + 2;
+                int outlawTier = attackerInst.currentTier + 2;
+                pendingDamageToOpponent += outlawTier;
+                events.Add(CreateAttackEvent(attackerCard, attackerInst, null, null, outlawTier, attackerSlotID, true));
             }
             else if (attackerInst.templateID == "03014")
             {
@@ -1060,8 +1086,49 @@ public class BattleManager : MonoBehaviour
                 if (HasSuppressorOnField(attackerSlotID) && attackerInst.summonType == SummonType.Hero)
                     myTier += 1;
                 pendingDamageToOpponent += myTier;
+                events.Add(CreateAttackEvent(attackerCard, attackerInst, null, null, myTier, attackerSlotID, true));
             }
         }
+    }
+
+    /// <summary>构造攻击事件。isHeroAttack=true 时只做演出（伤害已累加进 pendingDamageToOpponent），
+    /// false 时 onImpact 里 DamagePipeline.Process 实际扣血。</summary>
+    AttackEvent CreateAttackEvent(GameObject attackerCard, CardInstance attackerInst,
+        GameObject defenderCard, CardInstance defenderInst, int damage, int attackerSlotID, bool isHeroAttack)
+    {
+        var evt = new AttackEvent
+        {
+            attackerModel = attackerCard,
+            defenderModel = defenderCard,
+            damage = damage,
+            isHeroAttack = isHeroAttack,
+            slotIndex = attackerSlotID,
+        };
+
+        if (isHeroAttack)
+        {
+            // 打英雄：只弹数字（tier）+ 打英雄音效。英雄伤害走 FinalDamage 净差，此处不扣血。
+            Vector3 heroPos = attackerCard != null ? attackerCard.transform.position : Vector3.zero;
+            evt.onImpact = () =>
+            {
+                DamageFloater.Show(heroPos, damage, FloaterType.Damage);
+                AudioManager.Instance?.Play(SoundEffectType.AttackHero);
+            };
+        }
+        else
+        {
+            // 打随从：DamagePipeline.Process 扣血 + 弹数字 + 攻击音效
+            evt.onImpact = () =>
+            {
+                if (defenderInst != null)
+                    DamagePipeline.Process(new DamageInput(attackerInst, defenderInst, damage, defenderCard, DamagePhase.Battle));
+                if (defenderCard != null)
+                    DamageFloater.Show(defenderCard.transform.position, damage, FloaterType.Damage);
+                AudioManager.Instance?.Play(SoundEffectType.Attack);
+            };
+        }
+
+        return evt;
     }
 
     bool HasBreakerOnSide(int slotID)
@@ -1081,45 +1148,6 @@ public class BattleManager : MonoBehaviour
         return false;
     }
 
-    IEnumerator ApplyDamageLoop(List<(GameObject target, int damage, GameObject source)> initialDamage, string phase)
-    {
-        List<(GameObject, int, GameObject)> pending = new List<(GameObject, int, GameObject)>(initialDamage);
-
-        while (pending.Count > 0)
-        {
-            foreach (var dmg in pending)
-            {
-                if (dmg.Item1 == null) continue;
-                Card3DInstance inst = dmg.Item1.GetComponent<Card3DInstance>();
-                CardInstance sourceCI = dmg.Item3?.GetComponent<Card3DInstance>()?.cardInstance;
-                if (inst?.cardInstance != null)
-                {
-                        DamagePipeline.Process(new DamageInput(sourceCI, inst.cardInstance, dmg.Item2, dmg.Item3, DamagePhase.Battle));
-                }
-            }
-            pending.Clear();
-
-            CheckConquerorTrigger();
-
-            // ── Step 6: 反击/恐惧之龙等预死亡反应 ──
-            List<GameObject> died = new List<GameObject>();
-            foreach (BoardSlot slot in allSlots)
-            {
-                GameObject card = slot?.currentCard3D;
-                if (card == null) continue;
-                Card3DInstance inst = card.GetComponent<Card3DInstance>();
-                if (inst?.cardInstance != null && inst.cardInstance.currentHealth <= 0)
-                    died.Add(card);
-            }
-
-            // ── 同时窗口：处理死亡 → 退场 → 反击（反伤在新同时窗口执行）──
-            if (died.Count > 0)
-            {
-                BoardSlot.CheckAndHandleDeaths();
-                yield return StartCoroutine(WaitForSimultaneousWindow());
-            }
-        }
-    }
     IEnumerator ResolveRevengeEffect(string effect, GameObject deadCard, List<GameObject> targets)
     {
         Debug.Log($"ResolveRevengeEffect: effect={effect}");

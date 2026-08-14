@@ -6,7 +6,8 @@ public enum SoundEffectType
 {
     DrawCard,          // 抽牌
     PlayCard,          // 打出卡牌
-    Attack,            // 攻击
+    Attack,            // 攻击（打随从）
+    AttackHero,        // 攻击英雄（打空位）
     Death,             // 死亡
     TurnStart,         // 回合开始
     TurnEnd,           // 回合结束
