@@ -34,7 +34,9 @@ public class Board3DSetup
 
         // 定位：棋盘中心对齐卡牌区域中心 (0, ~1)，z 在卡牌(z=-5.5)后方
         board.transform.position = new Vector3(0f, 1f, -4f);
-        board.transform.rotation = Quaternion.identity;
+        // 卡牌 3D 实例化均用 Quaternion.Euler(0,180,0) 让正面朝向摄像机(-Z)。
+        // 棋盘 FBX 正面为 +Z，同样旋转 180° 朝向摄像机。
+        board.transform.rotation = Quaternion.Euler(0f, 180f, 0f);
 
         EditorUtility.SetDirty(board);
         EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
