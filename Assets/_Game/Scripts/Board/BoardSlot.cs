@@ -1056,6 +1056,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         if (template.templateID == "01309") {CleanupAfterPlacement();yield break;}
 
         // ── Step 3: 进场效果分发（新 → EffectRegistry，回退 → 旧 switch）──
+        int enterDepth = NestingContext.Snapshot(); // 记录进入前深度，finally 恢复到该值
         NestingContext.Enter($"Enter_{template.templateID}");
         try
         {
@@ -1097,11 +1098,12 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
         finally
         {
-            // 安全网：若任意异常路径导致 Exit 未执行，强制复位以防 Depth 永久泄漏
-            if (NestingContext.Depth > 0)
+            // 安全网：恢复到进入前深度，而非 ForceClear 归零（归零会破坏外层嵌套计数，导致状态混乱）
+            if (NestingContext.Depth > enterDepth)
             {
-                Debug.LogWarning($"[NestingContext] StartOnEnterEffect 异常退出，强制复位深度 depth={NestingContext.Depth}");
-                NestingContext.ForceClear("StartOnEnterEffect leak");
+                Debug.LogWarning($"[NestingContext] StartOnEnterEffect 异常退出，复位深度 {NestingContext.Depth} → {enterDepth}");
+                while (NestingContext.Depth > enterDepth)
+                    NestingContext.Exit();
             }
         }
     }
@@ -4475,7 +4477,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         string newCopyRecord = null;
         string newCopyType = null;
 
-        if (giver.mindScholarCopyCount < 4 && !giver._mindScholarCopyPrompted)
+        // AI 放心灵学者（AI 半场）→ 跳过复制确认弹窗，避免 WaitUntil 挂起泄漏 NestingContext
+        bool isAIOwner = SimpleAI.IsAIMatch && BoardManager.GetOwnerPlayer(slotID) == NetworkPlayer.Remote;
+        if (giver.mindScholarCopyCount < 4 && !giver._mindScholarCopyPrompted && !isAIOwner)
         {
             giver._mindScholarCopyPrompted = true;
             List<CardInstance> targets = new List<CardInstance>();

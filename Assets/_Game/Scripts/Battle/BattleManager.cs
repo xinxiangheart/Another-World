@@ -805,16 +805,45 @@ public class BattleManager : MonoBehaviour
             ProcessPair(col + 3, col + 3, events);
         }
 
-        // 按格子顺序排序播放（第一阶段普通攻击；先手方排序后续接入先手动画时细化）
-        events.Sort((a, b) => a.slotIndex.CompareTo(b.slotIndex));
+        // 按攻击者半场分成两波，先手方先攻。
+        // 分波攻击避免双方卡牌同时飞行，导致对位目标的实时位置被误读为飞行中位置。
+        List<AttackEvent> enemyEvents = new List<AttackEvent>();  // 对方半场(0-5)
+        List<AttackEvent> allyEvents = new List<AttackEvent>();   // 己方半场(6-11)
+        foreach (var evt in events)
+        {
+            if (evt.slotIndex < 6) enemyEvents.Add(evt);
+            else allyEvents.Add(evt);
+        }
+        enemyEvents.Sort((a, b) => a.slotIndex.CompareTo(b.slotIndex));
+        allyEvents.Sort((a, b) => a.slotIndex.CompareTo(b.slotIndex));
+
+        // 先手动态判断：isMyTurnFirst=true → 己方先攻；false → 对方先攻
+        bool allyFirst = TurnManager.Instance != null && TurnManager.Instance.isMyTurnFirst;
+        List<AttackEvent> firstWave = allyFirst ? allyEvents : enemyEvents;
+        List<AttackEvent> secondWave = allyFirst ? enemyEvents : allyEvents;
 
         // 播放攻击动画（onImpact 里扣血 + 弹数字 + 音效）
         var animator = BattleAnimator.Instance;
         if (animator != null)
         {
-            foreach (var evt in events)
-                animator.Play(evt);
-            yield return animator.WaitForAll();
+            // 第一波：先手方半场全部攻击（含返回）完成
+            if (firstWave.Count > 0)
+            {
+                foreach (var evt in firstWave)
+                    animator.Play(evt);
+                while (animator.IsAnimating) yield return null; // 等含返回的完全结束
+            }
+
+            // 间隔 0.5 秒，再让另一方开始攻击
+            yield return new WaitForSeconds(0.5f);
+
+            // 第二波：后手方半场攻击
+            if (secondWave.Count > 0)
+            {
+                foreach (var evt in secondWave)
+                    animator.Play(evt);
+            }
+            yield return animator.WaitForAll(); // 等第二波结束 + 解锁 UI
         }
         else
         {
