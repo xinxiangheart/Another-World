@@ -32,8 +32,10 @@ public class Board3DSetup
         var rend = board.GetComponentInChildren<MeshRenderer>();
         if (rend != null) rend.sharedMaterial = mat;
 
-        // 定位：棋盘中心对齐卡牌区域中心 (0, ~1)，z 在卡牌(z=-5.5)后方
-        board.transform.position = new Vector3(0f, 1f, -4f);
+        // 定位：棋盘中心对齐卡牌区域中心 (0, ~1)。相机 z=-16.22 看向 +Z，越负越近。
+        // 棋盘厚 1.6，朝相机面(正面转 180° 后朝 -Z)在 z = 中心 - 0.8。
+        // 要让贴图面在卡牌(-6)后面(更远)，贴图面 z=-5.5 → 中心 = -5.5 + 0.8 = -4.7。
+        board.transform.position = new Vector3(0f, 1f, -4.7f);
         // 卡牌 3D 实例化均用 Quaternion.Euler(0,180,0) 让正面朝向摄像机(-Z)。
         // 棋盘 FBX 正面为 +Z，同样旋转 180° 朝向摄像机。
         board.transform.rotation = Quaternion.Euler(0f, 180f, 0f);

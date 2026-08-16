@@ -15,7 +15,7 @@ public class CounterManager : MonoBehaviour
 
     private float baseX = -7.5f;
     private float baseY = 1f;
-    private float baseZ = -5.5f;
+    private float baseZ = -6f;
 
     void Awake()
     {

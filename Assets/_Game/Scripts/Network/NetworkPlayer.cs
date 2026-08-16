@@ -1435,7 +1435,7 @@ public class NetworkPlayer : NetworkBehaviour
         if (cm == null) return;
 
         int count = cm.enemyCounters.Count;
-        Vector3 pos = new Vector3(7.5f + count * 0.5f, 1f, -5.5f - count * 0.1f);
+        Vector3 pos = new Vector3(7.5f + count * 0.5f, 1f, -6f - count * 0.1f);
 
         GameObject model = Instantiate(prefab, pos, Quaternion.Euler(0, 180, 0));
         Player.Scale3DModel(model);

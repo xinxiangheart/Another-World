@@ -75,6 +75,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         set
         {
             _onTargetSelected = value;
+            Debug.LogWarning($"[AIDebug] onTargetSelected setter: value={value != null}, IsAIEvaluating={SimpleAI.IsAIEvaluating}, currentTargetType={currentTargetType}");
             if (value != null && SimpleAI.IsAIEvaluating)
                 AIResolveSelection();
         }
@@ -115,7 +116,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     /// </summary>
     public static void AIResolveSelection()
     {
-        if (!SimpleAI.IsAIEvaluating) return;
+        if (!SimpleAI.IsAIEvaluating) { Debug.LogWarning("[AIDebug] AIResolveSelection 被调用但 IsAIEvaluating=false，跳过"); return; }
+        Debug.LogWarning("[AIDebug] AIResolveSelection 触发自动选择协程");
         if (SimpleAI.Instance != null)
             SimpleAI.Instance.StartCoroutine(AIResolveSelectionCoroutine());
     }
@@ -129,6 +131,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         // AI 是 Remote，视角与 Host 相反。IsValidTarget 硬编码 Host 视角（0-5=敌，6-11=己），
         // 需镜像 targetType 才能选到 AI 视角的正确半场。
         TargetType aiType = MirrorTargetTypeForAI(currentTargetType);
+        Debug.LogWarning($"[AIDebug] AIResolveSelectionCoroutine 执行: currentTargetType={currentTargetType}, aiType={aiType}");
 
         // 选 AI 己方召唤物（镜像后 SingleEnemy = AI 己方 0-5）：
         // 仅当目标是「有牌的召唤物」时用退场评分；若是选空槽（放置位置/囚牢），回退选第一个合法。
@@ -154,7 +157,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     float sc = SimpleAI.ScoreRetreatTarget(tci, slot.slotID, true);
                     if (sc > bestScore) { bestScore = sc; best = slot; }
                 }
-                if (best != null) onTargetSelected?.Invoke(best);
+                if (best != null) { onTargetSelected?.Invoke(best); yield break; }
             }
             else
             {
@@ -163,9 +166,12 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 {
                     if (slot == null || !slot.IsValidTarget(aiType)) continue;
                     onTargetSelected?.Invoke(slot);
-                    break;
+                    yield break;
                 }
             }
+            // 选不到任何合法目标 → 传 null 结束选择，防止选择状态残留（手牌隐藏/高亮残留，错误地让玩家选择）
+            Debug.LogWarning($"[AIDebug] AI 选不到合法目标（aiType={aiType}），传 null 结束选择");
+            onTargetSelected?.Invoke(null);
             yield break;
         }
 
@@ -179,6 +185,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 yield break;
             }
         }
+        // 选不到任何合法目标 → 传 null 结束选择，防止选择状态残留
+        Debug.LogWarning($"[AIDebug] AI 选不到合法目标（aiType={aiType}），传 null 结束选择");
+        onTargetSelected?.Invoke(null);
     }
 
     /// <summary>把 Host 视角的 TargetType 镜像成 AI（Remote）视角。</summary>

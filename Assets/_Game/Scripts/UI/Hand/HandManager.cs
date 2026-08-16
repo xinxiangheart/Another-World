@@ -631,7 +631,7 @@ public class HandManager : MonoBehaviour
 
     public Vector3 GetSlotWorldPosition(int slotID)
     {
-        float x = 0f, y = 0f, z = -5.5f;
+        float x = 0f, y = 0f, z = -5.7f;
         switch (slotID)
         {
             case 0: x = 3f; y = 2.3f; break;
@@ -760,10 +760,14 @@ public class HandManager : MonoBehaviour
         if (cam == null)
             return transform.position + new Vector3(300, 0, 0);
 
-        // 屏幕右边界外 200 像素 → 世界坐标 X
-        Vector3 rightEdgeWorld = cam.ScreenToWorldPoint(new Vector3(Screen.width + 200, 0, 0));
         // Y/Z 用 HandArea 中心世界坐标（transform.position 即 RectTransform 中心，pivot 0.5,0.5）
         Vector3 center = transform.position;
+
+        // 屏幕右边界外 200 像素 → 世界坐标 X。
+        // ScreenToWorldPoint 的 z 参数是「相机前方深度」，正交时无关、透视时必须传正确深度，
+        // 否则透视投影下 X 映射错误（曾导致抽牌从手牌区中央飞出而非屏幕右外）。
+        float depth = Vector3.Dot(center - cam.transform.position, cam.transform.forward);
+        Vector3 rightEdgeWorld = cam.ScreenToWorldPoint(new Vector3(Screen.width + 200, 0, depth));
         return new Vector3(rightEdgeWorld.x, center.y, center.z);
     }
 

@@ -47,28 +47,40 @@ public class BoardManager : MonoBehaviour
 
     private BoardSlot[] allSlots = new BoardSlot[12];
     private Transform slotCanvasTransform;
+    private HandManager handManager;
+    // 槽位 Z 坐标：相机 z=-16.22 看向 +Z，越负越靠近相机。
+    // 由近到远：卡牌 -6（最近）→ 槽位 -5.6 → 棋盘贴图面 -5.5（最远）。
+    private const float SLOT_Z = -5.6f;
     // 附着物列表（不占槽位，用于全局查找）
     public List<GameObject> attachedModels = new List<GameObject>();
     void Start()
     {
-        Canvas parentCanvas = GetComponent<Canvas>();
+        handManager = FindObjectOfType<HandManager>();
 
+        // World Space Canvas：槽位标记贴在棋盘表面（棋盘贴图面 z=-6，槽位略前 z=-5.9）
         GameObject slotCanvasObj = new GameObject("SlotCanvas");
-        slotCanvasObj.transform.SetParent(transform);
-        slotCanvasObj.transform.SetAsFirstSibling(); // 排最前面 = 渲染最底层
+        // 关键：World Space Canvas 必须独立在场景根，绝不能 SetParent 到 Screen Space 主 Canvas，
+        // 否则会继承主 Canvas 的 scale（CanvasScaler 计算的 ~0.003），把槽位缩小约 333 倍。
+        slotCanvasObj.transform.SetParent(null);
 
         RectTransform rt = slotCanvasObj.AddComponent<RectTransform>();
-        rt.anchorMin = Vector2.zero;
-        rt.anchorMax = Vector2.one;
-        rt.sizeDelta = Vector2.zero;
-        rt.localPosition = Vector3.zero;
+        rt.position = new Vector3(0f, 1f, SLOT_Z);
+        // 关键：UI Canvas 必须正面朝向相机（默认 identity 朝向 +Z），不要旋转 180°。
+        // 旋转 180° 会让 Canvas 背对相机，GraphicRaycaster 的射线检测因背面剔除而失败 → 悬停不变色。
+        rt.rotation = Quaternion.identity;
+        rt.sizeDelta = new Vector2(19.2f, 10.8f);      // 世界单位（独立 Canvas，1 UI 单位 = 1 世界单位）
         rt.localScale = Vector3.one;
 
         Canvas slotCanvas = slotCanvasObj.AddComponent<Canvas>();
+        slotCanvas.renderMode = RenderMode.WorldSpace;
+        slotCanvas.worldCamera = Camera.main;
+        // 槽位排序低于主 Canvas(sortingOrder=5)：手牌等主 UI 渲染在槽位上面（不遮挡手牌）。
+        // 原来嵌套 SlotCanvas 就是 sortingOrder=-1，沿用该值保证 raycast 优先级低于主 UI。
         slotCanvas.overrideSorting = true;
-        slotCanvas.sortingOrder = -1;
+        slotCanvas.sortingOrder = 0;
 
         GraphicRaycaster raycaster = slotCanvasObj.AddComponent<GraphicRaycaster>();
+        // eventCamera 是只读属性，自动从 Canvas.worldCamera 解析（上方已设 Camera.main）
 
         slotCanvasTransform = slotCanvasObj.transform;
         GenerateSlots();
@@ -102,7 +114,15 @@ public class BoardManager : MonoBehaviour
     {
         GameObject slotObj = Instantiate(slotPrefab, slotCanvasTransform);
         RectTransform rt = slotObj.GetComponent<RectTransform>();
-        rt.anchoredPosition = pos;
+
+        // 槽位显示尺寸（世界单位）：与未迁移前一致。
+        // 未迁移前 Slot_0.prefab sizeDelta=135×240，在 Screen Space(1080px=10世界单位) 下 = 1.25×2.22 世界单位。
+        rt.sizeDelta = new Vector2(1.25f, 2.22f);
+
+        // 世界坐标定位：与卡牌同用 GetSlotWorldPosition 的 X/Y（保证对齐），Z 贴在棋盘表面
+        Vector3 worldPos = handManager != null ? handManager.GetSlotWorldPosition(slotID) : Vector3.zero;
+        worldPos.z = SLOT_Z;
+        rt.position = worldPos;
 
         BoardSlot slot = slotObj.GetComponent<BoardSlot>();
         slot.slotID = slotID;
