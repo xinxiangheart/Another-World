@@ -486,4 +486,19 @@ public class SimpleAI : MonoBehaviour
         }
         return 0;
     }
+
+    /// <summary>AI 窃取：从候选手牌中选评分最高的一张（窃贼主动退场自动选择用）。</summary>
+    public static CardInstance PickBestStealTarget(List<CardInstance> cards)
+    {
+        if (Instance == null || cards == null || cards.Count == 0) return null;
+        CardInstance best = null;
+        float bestScore = float.MinValue;
+        foreach (var c in cards)
+        {
+            if (c == null) continue;
+            float s = Instance.ScoreCard(c);
+            if (s > bestScore) { bestScore = s; best = c; }
+        }
+        return best;
+    }
 }

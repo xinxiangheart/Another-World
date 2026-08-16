@@ -2903,6 +2903,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public IEnumerator ApprenticeMageEnterEffect(CardInstance giver)
     {
         NestingContext.Enter("Spell_01329");
+        try
+        {
         yield return null;
         NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
 
@@ -2996,8 +2998,12 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             yield return BattleManager.Instance.StartCoroutine(
                 BattleManager.ResolveRevengesFromSnapshot());
 
-        NestingContext.Exit();
         CleanupAfterPlacement();
+        }
+        finally
+        {
+            NestingContext.Exit();
+        }
     }
     public IEnumerator ConductorDoubleDeathEffect(DeathEffectData data)
     {
@@ -3966,6 +3972,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public IEnumerator BrilliantMageEnterEffect(CardInstance giver)
     {
         NestingContext.Enter("Spell_01521");
+        try
+        {
         yield return null;
         NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
 
@@ -4125,8 +4133,13 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         Debug.Log($"[01521] 全部{toPlay.Count}张法术处理完毕");
         CardDisplayPanel.Instance.Hide();
         CardDisplayPanel.Instance.multiSelect = false;
-        NestingContext.Exit();
         CleanupAfterPlacement();
+        }
+        finally
+        {
+            // 无论正常结束还是早退（yield break），都保证 Exit，防止 Depth 泄漏卡死后续 WaitForSimultaneousWindow
+            NestingContext.Exit();
+        }
     }
     void UpdateRebornDisplay(CardInstance ci)
     {
@@ -4196,15 +4209,25 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         if (enemyCards.Count == 0) { yield break; }
 
-        CardDisplayPanel.Instance.multiSelect = false;
-        bool confirmed = false;
+        // AI 放窃贼（AI 半场）→ AI 自动窃取评分最高的一张，不弹 UI 给玩家选
+        bool isAIOwner = SimpleAI.IsAIMatch && owner == NetworkPlayer.Remote;
         CardInstance selected = null;
-        CardDisplayPanel.Instance.ShowWithCallback(enemyCards, ci => true, () =>
+        if (isAIOwner)
         {
-            selected = CardDisplayPanel.Instance.GetSelectedCard();
-            confirmed = true;
-        }, "窃取");
-        yield return new WaitUntil(() => confirmed);
+            selected = SimpleAI.PickBestStealTarget(enemyCards);
+            Debug.Log($"[ThiefActiveExit] AI 自动窃取: {selected?.templateID}");
+        }
+        else
+        {
+            CardDisplayPanel.Instance.multiSelect = false;
+            bool confirmed = false;
+            CardDisplayPanel.Instance.ShowWithCallback(enemyCards, ci => true, () =>
+            {
+                selected = CardDisplayPanel.Instance.GetSelectedCard();
+                confirmed = true;
+            }, "窃取");
+            yield return new WaitUntil(() => confirmed);
+        }
 
         if (selected != null)
         {
@@ -4306,12 +4329,16 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         CardDisplayPanel.Instance.multiSelect = false;
         bool confirmed = false;
-        CardDisplayPanel.Instance.Show(enemyCards, ci => true, "确认");
 
-        ConfirmSelectionButton.Instance?.gameObject.SetActive(true);
-        ConfirmSelectionButton.Instance?.Show(() => { confirmed = true; });
-
-        yield return new WaitUntil(() => confirmed);
+        // AI 放荣誉侍者（AI 半场）→ 跳过 UI 确认，直接弃掉所有邪恶法术
+        bool isAIOwner = SimpleAI.IsAIMatch && owner == NetworkPlayer.Remote;
+        if (!isAIOwner)
+        {
+            CardDisplayPanel.Instance.Show(enemyCards, ci => true, "确认");
+            ConfirmSelectionButton.Instance?.gameObject.SetActive(true);
+            ConfirmSelectionButton.Instance?.Show(() => { confirmed = true; });
+            yield return new WaitUntil(() => confirmed);
+        }
 
         // 遍历 handData 弃掉所有邪恶法术——统一使用 RemoveCardFromLocalHand / TargetRemoveHandCard（与窃贼一致）
         int discarded = 0;
