@@ -85,17 +85,18 @@ public class AudioManager : MonoBehaviour
     /// <summary>播放指定音效（未配置则打警告，不报错）。</summary>
     public void Play(SoundEffectType type)
     {
-        if (_clips != null && _clips.TryGetValue(type, out var clip))
-            _sfxSource.PlayOneShot(clip);
-        else
-            Debug.LogWarning($"[AudioManager] 未配置音效: {type}");
+        Play(type, 1f, 1f);
     }
 
-    /// <summary>播放指定音效（带音量，0~1）。</summary>
-    public void Play(SoundEffectType type, float volume)
+    /// <summary>播放指定音效（带音量 0~1、音调 pitch）。</summary>
+    public void Play(SoundEffectType type, float volume = 1f, float pitch = 1f)
     {
         if (_clips != null && _clips.TryGetValue(type, out var clip))
+        {
+            _sfxSource.pitch = pitch;
             _sfxSource.PlayOneShot(clip, volume);
+            _sfxSource.pitch = 1f; // 播完恢复默认，避免影响后续
+        }
         else
             Debug.LogWarning($"[AudioManager] 未配置音效: {type}");
     }

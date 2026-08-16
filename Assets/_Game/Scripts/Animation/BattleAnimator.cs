@@ -47,6 +47,7 @@ public class BattleAnimator : MonoBehaviour
         IsLockingUI = false;
         var hm = FindObjectOfType<HandManager>();
         if (hm != null) hm.SetHandAreaRaycast(true);
+        FindObjectOfType<CardDrag>()?.SetButtonsInteractable(true);
     }
 
     /// <summary>是否有动画在播（含后台返回）。</summary>
@@ -64,6 +65,7 @@ public class BattleAnimator : MonoBehaviour
         IsLockingUI = true;
         var hm = FindObjectOfType<HandManager>();
         if (hm != null) hm.SetHandAreaRaycast(false);
+        FindObjectOfType<CardDrag>()?.SetButtonsInteractable(false);
 
         // 飞向 + 击中（阻塞到 onImpact）
         yield return evt.Play();

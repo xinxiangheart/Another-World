@@ -1121,7 +1121,7 @@ public class BattleManager : MonoBehaviour
             evt.onImpact = () =>
             {
                 DamageFloater.Show(heroPos, damage, FloaterType.Damage);
-                AudioManager.Instance?.Play(SoundEffectType.AttackHero);
+                AudioManager.Instance?.Play(SoundEffectType.AttackHero, 0.5f, 1.2f);
             };
         }
         else
@@ -1133,7 +1133,7 @@ public class BattleManager : MonoBehaviour
                     DamagePipeline.Process(new DamageInput(attackerInst, defenderInst, damage, defenderCard, DamagePhase.Battle));
                 if (defenderCard != null)
                     DamageFloater.Show(defenderCard.transform.position, damage, FloaterType.Damage);
-                AudioManager.Instance?.Play(SoundEffectType.Attack);
+                AudioManager.Instance?.Play(SoundEffectType.Attack, 0.4f, 1.2f);
             };
         }
 
@@ -2157,7 +2157,9 @@ public class BattleManager : MonoBehaviour
     /// </summary>
     public static IEnumerator WaitForSimultaneousWindow()
     {
+        Debug.LogWarning("[WSW] 进入 WaitForSimultaneousWindow");
         yield return ActionQueueManager.WaitForDrain();
+        Debug.LogWarning("[WSW] ActionQueue 排空完成");
         // 等待嵌套上下文排空，超时 30s 后强制复位（防止协程异常导致 Depth 永久泄漏）
         float deadDepth = Time.time;
         yield return new WaitWhile(() => NestingContext.IsNested && Time.time - deadDepth < 30f);
@@ -2166,6 +2168,7 @@ public class BattleManager : MonoBehaviour
             Debug.LogError($"[WaitForSimultaneousWindow] NestingContext 阻塞超过 30s depth={NestingContext.Depth}，强制复位！");
             NestingContext.ForceClear("WaitForSimultaneousWindow 超时");
         }
+        Debug.LogWarning("[WSW] 嵌套上下文排空完成");
         // 等待 isPlacingCard 复位，超时 30s 后强制清除
         float deadPlace = Time.time;
         yield return new WaitWhile(() => BoardSlot.isPlacingCard && Time.time - deadPlace < 30f);
@@ -2174,6 +2177,7 @@ public class BattleManager : MonoBehaviour
             Debug.LogError("[WaitForSimultaneousWindow] isPlacingCard 阻塞超过 30s，强制复位！");
             BoardSlot.isPlacingCard = false;
         }
+        Debug.LogWarning("[WSW] isPlacingCard 复位完成");
         if (SelectionManager.Instance != null)
         {
             // 选择等待：AI 环境（无客户端点击）若卡在选择，自动强制结束，避免永久阻塞
@@ -2188,11 +2192,32 @@ public class BattleManager : MonoBehaviour
                     SelectionManager.Instance.ForceEndAll();
                 }
             }
-            yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
+            // 兜底：无论 AI 还是在线，选择等待加超时，超过 30s 强制结束（防止死亡/退场选择挂起永久卡死）
+            float deadSel = Time.time;
+            while (SelectionManager.Instance.IsSelecting && Time.time - deadSel < 30f)
+                yield return null;
+            if (SelectionManager.Instance.IsSelecting)
+            {
+                Debug.LogError("[WaitForSimultaneousWindow] 选择等待超过 30s，强制结束选择");
+                SelectionManager.Instance.ForceEndAll();
+            }
         }
+        Debug.LogWarning("[WSW] 选择等待完成");
         var cqm = ConfirmQueueManager.Instance;
-        if (cqm != null) yield return new WaitWhile(() => cqm.IsBusy());
+        if (cqm != null)
+        {
+            float deadCq = Time.time;
+            while (cqm.IsBusy() && Time.time - deadCq < 30f)
+                yield return null;
+            if (cqm.IsBusy())
+                Debug.LogError("[WaitForSimultaneousWindow] ConfirmQueue 阻塞超过 30s");
+        }
+        Debug.LogWarning("[WSW] ConfirmQueue 完成");
         if (BoardSlot.pendingRevenges.Count > 0)
+        {
+            Debug.LogWarning($"[WSW] 结算反击 pendingRevenges={BoardSlot.pendingRevenges.Count}");
             yield return Instance.StartCoroutine(ResolveRevengesFromSnapshot());
+        }
+        Debug.LogWarning("[WSW] WaitForSimultaneousWindow 全部完成");
     }
 }

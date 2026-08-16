@@ -2422,14 +2422,45 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         BoardSlot myPrison = null;
         bool myDone = false;
-        SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (s) =>
+        // AI 对局：囚牢在 AI 半场（0-5）时，AI 自动选己方第一个空槽，避免选择挂起卡死
+        bool isAISide = SimpleAI.IsAIMatch && NetworkPlayer.Remote != null
+            && NetworkPlayer.Remote.connectionToClient == null
+            && GetOwnerSlot(giver) < 6;
+
+        if (isAISide)
         {
-            if (s != null && !s.hasCard && !s.isBlocked && !s.prisonBlocked && s.slotID >= prSideStart && s.slotID <= prSideEnd)
-            { myPrison = s; myDone = true; }
-        });
-        BoardSlot.isStrengtheningSlot = true;
-        yield return new WaitUntil(() => myDone);
-        BoardSlot.isStrengtheningSlot = false;
+            for (int i = prSideStart; i <= prSideEnd; i++)
+            {
+                BoardSlot s = bm.GetSlot(i);
+                if (s != null && !s.hasCard && !s.isBlocked && !s.prisonBlocked)
+                { myPrison = s; break; }
+            }
+            myDone = true;
+        }
+        else
+        {
+            SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (s) =>
+            {
+                if (s != null && !s.hasCard && !s.isBlocked && !s.prisonBlocked && s.slotID >= prSideStart && s.slotID <= prSideEnd)
+                { myPrison = s; myDone = true; }
+            });
+            BoardSlot.isStrengtheningSlot = true;
+            // 超时兜底：30s 后强制选第一个空槽，防止选择挂起泄漏 NestingContext
+            float deadMy = Time.time;
+            while (!myDone && Time.time - deadMy < 30f)
+                yield return null;
+            if (!myDone)
+            {
+                Debug.LogWarning("[PrisonEnterEffect] 己方囚牢选择超时，自动选第一个空槽");
+                for (int i = prSideStart; i <= prSideEnd; i++)
+                {
+                    BoardSlot s = bm.GetSlot(i);
+                    if (s != null && !s.hasCard && !s.isBlocked && !s.prisonBlocked) { myPrison = s; break; }
+                }
+                SelectionManager.Instance.ForceEndAll();
+            }
+            BoardSlot.isStrengtheningSlot = false;
+        }
         if (myPrison == null) { CleanupAfterPlacement(); yield break; }
 
         bool hasEnemyEmpty = false;
@@ -2442,14 +2473,40 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         BoardSlot enemyPrison = null;
         bool enemyDone = false;
-        SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (s) =>
+        if (isAISide)
         {
-            if (s != null && !s.hasCard && !s.isBlocked && !s.prisonBlocked && s.slotID <= 5)
-            { enemyPrison = s; enemyDone = true; }
-        });
-        BoardSlot.isStrengtheningSlot = true;
-        yield return new WaitUntil(() => enemyDone);
-        BoardSlot.isStrengtheningSlot = false;
+            // AI 放囚牢：敌方空槽（0-5）自动选第一个
+            for (int i = 0; i <= 5; i++)
+            {
+                BoardSlot s = bm.GetSlot(i);
+                if (s != null && !s.hasCard && !s.isBlocked && !s.prisonBlocked) { enemyPrison = s; break; }
+            }
+            enemyDone = true;
+        }
+        else
+        {
+            SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (s) =>
+            {
+                if (s != null && !s.hasCard && !s.isBlocked && !s.prisonBlocked && s.slotID <= 5)
+                { enemyPrison = s; enemyDone = true; }
+            });
+            BoardSlot.isStrengtheningSlot = true;
+            // 超时兜底：30s 后强制选第一个空槽
+            float deadEnemy = Time.time;
+            while (!enemyDone && Time.time - deadEnemy < 30f)
+                yield return null;
+            if (!enemyDone)
+            {
+                Debug.LogWarning("[PrisonEnterEffect] 敌方囚牢选择超时，自动选第一个空槽");
+                for (int i = 0; i <= 5; i++)
+                {
+                    BoardSlot s = bm.GetSlot(i);
+                    if (s != null && !s.hasCard && !s.isBlocked && !s.prisonBlocked) { enemyPrison = s; break; }
+                }
+                SelectionManager.Instance.ForceEndAll();
+            }
+            BoardSlot.isStrengtheningSlot = false;
+        }
         if (enemyPrison == null) { CleanupAfterPlacement(); yield break; }
 
         myPrison.prisonBlocked = true;
@@ -2472,6 +2529,16 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             NetworkPlayer.Local.CmdSetPrisonSlots(giver.instanceID, myPrison.slotID, enemyPrison.slotID);
 
         CleanupAfterPlacement();
+    }
+
+    int GetOwnerSlot(CardInstance ci)
+    {
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        for (int i = 0; i < 12; i++)
+        {
+            if (bm?.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance == ci) return i;
+        }
+        return -1;
     }
     public bool CanPlaceCard(CardInstance ci)
     {
@@ -4108,8 +4175,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         NetworkPlayer owner = BoardManager.GetOwnerPlayer(slotID);
         NetworkPlayer oppNp = BoardManager.GetOpponentPlayer(slotID);
 
-        // 联机服务器：向对手请求手牌
-        if (NetworkServer.active && oppNp != null && oppNp != owner)
+        // 联机服务器：向对手请求手牌（仅真实客户端；AI/离线对手手牌本地就有，无需 RPC）
+        if (NetworkServer.active && oppNp != null && oppNp != owner && oppNp.connectionToClient != null)
         {
             NetworkPlayer._handReportDone = false;
             oppNp.TargetRequestHandReport(oppNp.connectionToClient);
@@ -4153,7 +4220,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 string stolenIID = selected.instanceID;
                 handSource.Remove(toRemove);
                 Destroy(toRemove);
-                if (oppNp != null && oppNp != owner)
+                // 仅真实客户端对手发 RPC 同步移除；AI/离线对手 handSource 本地已移除
+                if (oppNp != null && oppNp != owner && oppNp.connectionToClient != null)
                     oppNp.TargetRemoveHandCard(oppNp.connectionToClient, stolenIID);
                 CardData template = CardDatabase.Instance?.GetTemplate(selected.templateID);
                 if (template != null)
@@ -4186,7 +4254,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         // 构建 handData（对手手牌序列化快照）
         List<string> handData = new List<string>();
-        if (NetworkServer.active && oppNp != null && oppNp != owner)
+        if (NetworkServer.active && oppNp != null && oppNp != owner && oppNp.connectionToClient != null)
         {
             NetworkPlayer._handReportDone = false;
             oppNp.TargetRequestHandReport(oppNp.connectionToClient);
@@ -4258,8 +4326,22 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             {
                 if (oppNp == null || oppNp == owner || oppNp == NetworkPlayer.Local)
                     NetworkPlayer.RemoveCardFromLocalHand(iid);
-                else
+                else if (oppNp.connectionToClient != null)
                     oppNp.TargetRemoveHandCard(oppNp.connectionToClient, iid);
+                else
+                {
+                    // 离线 AI 对手：直接本地移除其 server-side 手牌
+                    for (int i = oppNp.handCards.Count - 1; i >= 0; i--)
+                    {
+                        var hci = oppNp.handCards[i]?.GetComponent<CardInstance>();
+                        if (hci != null && hci.instanceID == iid)
+                        {
+                            Destroy(oppNp.handCards[i]);
+                            oppNp.handCards.RemoveAt(i);
+                            break;
+                        }
+                    }
+                }
                 discarded++;
             }
         }

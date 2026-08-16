@@ -26,3 +26,13 @@ MonoBehaviour:
   floatFrequency: 0.5
   breatheMaxScale: 1.01
   breatheDuration: 2
+  windupDuration: 0.15
+  lungeDuration: 0.2
+  impactStay: 0.15
+  returnDuration: 0.3
+  arcHeight: 0.8
+  windupPullback: 0.15
+  targetShakeStrength: 0.08
+  targetShakeDuration: 0.15
+  returnOvershoot: 1.05
+  pitchAngle: 12

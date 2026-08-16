@@ -258,7 +258,10 @@ public class NetworkPlayer : NetworkBehaviour
         if (NetworkServer.active && player != Local)
         {
             string iid = data._instanceID ?? "";
-            player.TargetReceiveCard(player.connectionToClient, data.templateID, iid);
+            // 离线 AI：player 是 server-only Remote（connectionToClient == null），
+            // 不能发 TargetRpc，走 server 本地加牌（AddServerSideCard）
+            if (player.connectionToClient != null)
+                player.TargetReceiveCard(player.connectionToClient, data.templateID, iid);
             player.AddServerSideCard(data, iid);
         }
         else
@@ -3034,9 +3037,13 @@ public class NetworkPlayer : NetworkBehaviour
         }
         else
         {
-            _handReportDone = false;
-            oppNp.TargetRequestHandReport(oppNp.connectionToClient);
-            yield return new WaitWhile(() => !_handReportDone);
+            // 仅真实客户端对手发 RPC 请求上报；AI/离线对手手牌本地就有
+            if (oppNp.connectionToClient != null)
+            {
+                _handReportDone = false;
+                oppNp.TargetRequestHandReport(oppNp.connectionToClient);
+                yield return new WaitWhile(() => !_handReportDone);
+            }
             foreach (var card in oppNp.handCards)
             {
                 if (card == null) continue;
@@ -3046,7 +3053,8 @@ public class NetworkPlayer : NetworkBehaviour
             }
         }
 
-        Local.TargetShowHonorAttendantHand(owner.connectionToClient, handData.ToArray(), slotID);
+        if (owner.connectionToClient != null)
+            Local.TargetShowHonorAttendantHand(owner.connectionToClient, handData.ToArray(), slotID);
 
         BoardSlot._honorAttendantDone = false;
         yield return new WaitWhile(() => !BoardSlot._honorAttendantDone);
@@ -3062,12 +3070,27 @@ public class NetworkPlayer : NetworkBehaviour
             {
                 if (oppNp == Local || oppNp == null)
                     RemoveCardFromLocalHand(iid);
-                else
+                else if (oppNp.connectionToClient != null)
                     oppNp.TargetRemoveHandCard(oppNp.connectionToClient, iid);
+                else
+                {
+                    // 离线 AI 对手：直接本地移除其 server-side 手牌
+                    for (int i = oppNp.handCards.Count - 1; i >= 0; i--)
+                    {
+                        var hci = oppNp.handCards[i]?.GetComponent<CardInstance>();
+                        if (hci != null && hci.instanceID == iid)
+                        {
+                            Destroy(oppNp.handCards[i]);
+                            oppNp.handCards.RemoveAt(i);
+                            break;
+                        }
+                    }
+                }
             }
         }
 
-        owner.TargetHonorAttendantComplete(owner.connectionToClient);
+        if (owner.connectionToClient != null)
+            owner.TargetHonorAttendantComplete(owner.connectionToClient);
         BoardSyncManager.MarkDirty();
     }
 
@@ -3366,10 +3389,13 @@ public class NetworkPlayer : NetworkBehaviour
         }
         else
         {
-            // 对手是远端：请求上报然后读 oppNp.handCards
-            _handReportDone = false;
-            oppNp.TargetRequestHandReport(oppNp.connectionToClient);
-            yield return new WaitWhile(() => !_handReportDone);
+            // 对手是远端：请求上报然后读 oppNp.handCards（AI/离线对手本地就有，无需 RPC）
+            if (oppNp.connectionToClient != null)
+            {
+                _handReportDone = false;
+                oppNp.TargetRequestHandReport(oppNp.connectionToClient);
+                yield return new WaitWhile(() => !_handReportDone);
+            }
             foreach (var card in oppNp.handCards)
             {
                 if (card == null) continue;
@@ -3379,15 +3405,17 @@ public class NetworkPlayer : NetworkBehaviour
             }
         }
 
-        // 发送给窃贼客户端展示
-        Local.TargetShowThiefHand(owner.connectionToClient, handData.ToArray(), slotID);
+        // 发送给窃贼客户端展示（仅真实客户端 owner）
+        if (owner.connectionToClient != null)
+            Local.TargetShowThiefHand(owner.connectionToClient, handData.ToArray(), slotID);
 
         // 等待客户端选完回报 — _thiefDone 在服务器进程被 CmdConfirmThiefSteal 设置
         _thiefDone = false;
         yield return new WaitWhile(() => !_thiefDone);
 
         // 处理后通知客户端结束（解除客户端的 WaitWhile 阻塞）
-        owner.TargetThiefComplete(owner.connectionToClient);
+        if (owner.connectionToClient != null)
+            owner.TargetThiefComplete(owner.connectionToClient);
 
         if (_thiefResult != null && _thiefResult.Length >= 2)
         {
@@ -3397,8 +3425,22 @@ public class NetworkPlayer : NetworkBehaviour
             // 从对手删除手牌
             if (oppNp == Local)
                 RemoveCardFromLocalHand(stolenIID);
-            else
+            else if (oppNp.connectionToClient != null)
                 oppNp.TargetRemoveHandCard(oppNp.connectionToClient, stolenIID);
+            else
+            {
+                // 离线 AI 对手：直接本地移除其 server-side 手牌
+                for (int i = oppNp.handCards.Count - 1; i >= 0; i--)
+                {
+                    var hci = oppNp.handCards[i]?.GetComponent<CardInstance>();
+                    if (hci != null && hci.instanceID == stolenIID)
+                    {
+                        Destroy(oppNp.handCards[i]);
+                        oppNp.handCards.RemoveAt(i);
+                        break;
+                    }
+                }
+            }
 
             CardData template = CardDatabase.Instance?.GetTemplate(stolenTID);
             if (template != null) AddCardToHandForPlayer(owner, template);

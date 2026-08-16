@@ -48,6 +48,28 @@ public class AnimationConfig : ScriptableObject
     [Tooltip("呼吸完整周期时长（秒）")]
     public float breatheDuration = 2f;
 
+    [Header("攻击动画")]
+    [Tooltip("蓄力时长（秒）")]
+    public float windupDuration = 0.15f;
+    [Tooltip("冲刺时长（秒）")]
+    public float lungeDuration = 0.20f;
+    [Tooltip("击中后停留时长（秒）")]
+    public float impactStay = 0.15f;
+    [Tooltip("返回时长（秒）")]
+    public float returnDuration = 0.30f;
+    [Tooltip("冲刺弧线高度（世界单位）")]
+    public float arcHeight = 0.8f;
+    [Tooltip("蓄力后拉/下沉幅度（世界单位）")]
+    public float windupPullback = 0.15f;
+    [Tooltip("目标受击震动强度（世界单位）")]
+    public float targetShakeStrength = 0.08f;
+    [Tooltip("目标受击震动时长（秒）")]
+    public float targetShakeDuration = 0.15f;
+    [Tooltip("返回弹性过冲倍数（1.05=轻微过冲）")]
+    public float returnOvershoot = 1.05f;
+    [Tooltip("攻击俯仰角（度）：蓄力 -pitchAngle 翘起，冲刺 +pitchAngle 下压")]
+    public float pitchAngle = 12f;
+
     public static AnimationConfig Load()
         => Resources.Load<AnimationConfig>("Config/AnimationConfig");
 }
