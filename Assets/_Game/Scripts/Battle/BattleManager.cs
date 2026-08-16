@@ -73,6 +73,7 @@ public class BattleManager : MonoBehaviour
     IEnumerator PhaseStartCoroutine()
     {
         if (allSlots == null) yield break;
+        Debug.LogWarning("[PhaseDebug] 进入 PhaseStartCoroutine");
         foreach (BoardSlot slot in allSlots)
         {
             if (slot?.currentCard3D == null) continue;
@@ -94,7 +95,9 @@ public class BattleManager : MonoBehaviour
             if (ci != null && ci.templateID == "01308")
             {
                 if (!ci.CanTriggerTrait("战斗回合开始")) continue;
+                Debug.LogWarning($"[PhaseDebug] 01308 麻烦制造者 触发，槽位{i}");
                 yield return StartCoroutine(TroubleMakerEffect(ci, i));
+                Debug.LogWarning($"[PhaseDebug] 01308 TroubleMakerEffect 完成");
                 break;
             }
         }
@@ -116,7 +119,9 @@ public class BattleManager : MonoBehaviour
                 if (BoardManager.HasEnemyMinion(i))
                 {
                     int dmg = ci.consumedSpellCost;
+                    Debug.LogWarning($"[PhaseDebug] 01535 处刑剑 触发，槽位{i}");
                     yield return StartCoroutine(ExecutionSwordDamage(ci, dmg, slot));
+                    Debug.LogWarning($"[PhaseDebug] 01535 ExecutionSwordDamage 完成");
                 }
                 ci.consumedSpellCost = 0;
                 break;
@@ -141,7 +146,9 @@ public class BattleManager : MonoBehaviour
             }
             slot.plagueRoundCount++;
         }
+        Debug.LogWarning("[PhaseDebug] 进入 CheckAndHandleDeaths");
         BoardSlot.CheckAndHandleDeaths();
+        Debug.LogWarning("[PhaseDebug] CheckAndHandleDeaths 完成，进入 WaitForSimultaneousWindow");
         yield return StartCoroutine(WaitForSimultaneousWindow());
         Debug.Log("[战斗] 阶段1：战斗回合开始特性");
     }
@@ -937,7 +944,7 @@ public class BattleManager : MonoBehaviour
                 bool otherSilenced = otherInst != null && GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(otherInst);
                 if (otherCard != null && otherInst != null && !otherInst.silencedThisPhase && !otherSilenced)
                 {
-                    events.Add(CreateAttackEvent(attackerCard, attackerInst, otherCard, otherInst, 2, attackerSlotID, false));
+                    events.Add(CreateAttackEvent(attackerCard, attackerInst, otherCard, otherInst, 2, attackerSlotID, false, true));
                 }
             }
         }
@@ -955,7 +962,7 @@ public class BattleManager : MonoBehaviour
                 bool otherSilenced = otherInst != null && GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(otherInst);
                 if (otherCard != null && otherInst != null && !otherInst.silencedThisPhase && !otherSilenced)
                 {
-                    events.Add(CreateAttackEvent(attackerCard, attackerInst, otherCard, otherInst, attackerInst.Attack, attackerSlotID, false));
+                    events.Add(CreateAttackEvent(attackerCard, attackerInst, otherCard, otherInst, attackerInst.Attack, attackerSlotID, false, true));
                 }
             }
         }
@@ -972,7 +979,7 @@ public class BattleManager : MonoBehaviour
                 if (otherCard != null)
                 {
                     var oInst = otherCard.GetComponent<Card3DInstance>()?.cardInstance;
-                    events.Add(CreateAttackEvent(attackerCard, attackerInst, otherCard, oInst, 1, attackerSlotID, false));
+                    events.Add(CreateAttackEvent(attackerCard, attackerInst, otherCard, oInst, 1, attackerSlotID, false, true));
                 }
             }
         }
@@ -1092,9 +1099,10 @@ public class BattleManager : MonoBehaviour
     }
 
     /// <summary>构造攻击事件。isHeroAttack=true 时只做演出（伤害已累加进 pendingDamageToOpponent），
-    /// false 时 onImpact 里 DamagePipeline.Process 实际扣血。</summary>
+    /// false 时 onImpact 里 DamagePipeline.Process 实际扣血。
+    /// skipAnimation=true（溅射/附带伤害）时不飞向动画，直接结算伤害。</summary>
     AttackEvent CreateAttackEvent(GameObject attackerCard, CardInstance attackerInst,
-        GameObject defenderCard, CardInstance defenderInst, int damage, int attackerSlotID, bool isHeroAttack)
+        GameObject defenderCard, CardInstance defenderInst, int damage, int attackerSlotID, bool isHeroAttack, bool skipAnimation = false)
     {
         var evt = new AttackEvent
         {
@@ -1102,6 +1110,7 @@ public class BattleManager : MonoBehaviour
             defenderModel = defenderCard,
             damage = damage,
             isHeroAttack = isHeroAttack,
+            skipAnimation = skipAnimation,
             slotIndex = attackerSlotID,
         };
 
@@ -1702,6 +1711,26 @@ public class BattleManager : MonoBehaviour
             yield break;
         }
 
+        // AI 对局：麻烦制造者在 AI 半场（0-5）时，AI 自动选对方第一个召唤物，避免选择挂起卡死
+        if (SimpleAI.IsAIMatch && mySlotID < 6)
+        {
+            for (int i = enemyStart; i <= enemyEnd; i++)
+            {
+                BoardSlot slot = allSlots[i];
+                if (slot?.currentCard3D == null) continue;
+                CardInstance targetCI = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                if (targetCI != null)
+                {
+                    targetCI.GrantTrait("先手：扣己方玩家1生命值");
+                    targetCI.hasFirstStrike = true;
+                    slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+                    Debug.Log($"麻烦制造者(AI自动)赋予先手特性给槽位{slot.slotID}");
+                }
+                break;
+            }
+            yield break;
+        }
+
         bool done = false;
         SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (targetSlot) =>
         {
@@ -1890,6 +1919,29 @@ public class BattleManager : MonoBehaviour
         }
         else
         {
+            // AI 对局：处刑剑在 AI 半场（0-5）时，AI 自动选对方第一个召唤物，避免选择挂起卡死
+            if (SimpleAI.IsAIMatch && owner == NetworkPlayer.Remote)
+            {
+                BoardManager bm = FindObjectOfType<BoardManager>();
+                for (int i = 6; i <= 11; i++)
+                {
+                    BoardSlot target = bm?.GetSlot(i);
+                    if (target?.currentCard3D == null) continue;
+                    CardInstance aiTargetCI = target.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                    if (aiTargetCI == null) continue;
+
+                    BattleManager.Instance.ApplyDamageToMinionPublic(aiTargetCI, damage, swordSlot.currentCard3D);
+                    BoardSlot.CheckAndHandleDeaths();
+                    yield return ActionQueueManager.WaitForDrain();
+
+                    if (aiTargetCI.currentHealth <= 0)
+                        BoardManager.GetOpponentPlayer(swordSlot.slotID)?.TakeDamage(2);
+                    break;
+                }
+                BoardSyncManager.MarkDirty();
+                yield break;
+            }
+
             bool done = false;
             CardInstance targetCI = null;
 

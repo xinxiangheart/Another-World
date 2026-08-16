@@ -35,9 +35,8 @@ public class AudioManager : MonoBehaviour
     static readonly (SoundEffectType type, string resourcePath)[] _defaultMappings = new[]
     {
         (SoundEffectType.DrawCard, "Audio/SFX/DrawCard"),
-        // 后续新音效在这里加，例如：
-        // (SoundEffectType.PlayCard, "Audio/SFX/PlayCard"),
-        // (SoundEffectType.Attack,   "Audio/SFX/Attack"),
+        (SoundEffectType.Attack,   "Audio/SFX/Attack"),
+        (SoundEffectType.AttackHero, "Audio/SFX/Attack"),   // 打英雄复用攻击音效
     };
 
     /// <summary>场景未挂载时自动创建单例（游戏启动即生效，无需手动拖场景）。</summary>

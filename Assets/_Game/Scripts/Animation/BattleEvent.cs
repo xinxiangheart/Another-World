@@ -43,15 +43,18 @@ public class AttackEvent : BattleEvent
     /// <summary>是否打英雄（打空位）。打英雄伤害走 FinalDamage 净差，此处仅演出。</summary>
     public bool isHeroAttack;
 
+    /// <summary>溅射/附带伤害：跳过飞向动画，直接结算伤害（onImpact）。溅射动画后续单独做。</summary>
+    public bool skipAnimation;
+
     /// <summary>击中回调（扣血 + 弹伤害数字 + 播放音效）。</summary>
     public Action onImpact;
 
     public override IEnumerator Play()
     {
-        var anim = attackerModel != null ? attackerModel.GetComponent<Card3DAttackAnimator>() : null;
+        var anim = !skipAnimation && attackerModel != null ? attackerModel.GetComponent<Card3DAttackAnimator>() : null;
         if (anim == null)
         {
-            // 无动画组件（模型未生成）→ 直接触发 onImpact
+            // 无动画组件（模型未生成）或溅射伤害（skipAnimation）→ 直接触发 onImpact
             onImpact?.Invoke();
             yield break;
         }
@@ -62,7 +65,7 @@ public class AttackEvent : BattleEvent
 
     public override IEnumerator Return()
     {
-        var anim = attackerModel != null ? attackerModel.GetComponent<Card3DAttackAnimator>() : null;
+        var anim = !skipAnimation && attackerModel != null ? attackerModel.GetComponent<Card3DAttackAnimator>() : null;
         if (anim != null)
             yield return anim.ReturnToOriginal();
     }
