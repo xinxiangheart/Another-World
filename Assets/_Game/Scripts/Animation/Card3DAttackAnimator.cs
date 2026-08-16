@@ -42,22 +42,39 @@ public class Card3DAttackAnimator : MonoBehaviour
         float lunge = _cfg != null ? _cfg.lungeDuration : 0.20f;
         float arc = _cfg != null ? _cfg.arcHeight : 0.8f;
         float pullback = _cfg != null ? _cfg.windupPullback : 0.15f;
-        float pitch = _cfg != null ? _cfg.pitchAngle : 4f;
+        float pitch = _cfg != null ? _cfg.pitchAngle : 12f;
         float shakeStr = _cfg != null ? _cfg.targetShakeStrength : 0.08f;
         float shakeDur = _cfg != null ? _cfg.targetShakeDuration : 0.15f;
 
-        // 目标位置：打随从飞向目标；打英雄（target==null）原地，只做小幅动作
+        // 判断攻击者半场：己方卡牌在屏幕下方（y<0，向上攻击），对方在上方（y>0，向下攻击）
+        bool isAlly = _originalPos.y < 0f;
+
+        // 卡牌半高（落点偏移量，让攻击卡牌停在目标边缘、不与目标中心重叠）
+        float cardHalf = 0.8f;
+        var mr = GetComponent<MeshRenderer>();
+        if (mr != null && mr.bounds.size.y > 0.01f)
+            cardHalf = mr.bounds.size.y * 0.5f;
+
         Vector3 targetPos = target != null ? target.transform.position : _originalPos;
 
-        // ── 阶段1：蓄力（后拉+下沉 + 俯仰翘起）──
-        Vector3 windupPos = _originalPos + Vector3.down * pullback;
-        Quaternion windupRot = _originalRot * Quaternion.Euler(-pitch, 0, 0);
-        yield return AnimateTo(windupPos, windupRot, windup);
+        // 落点：己方攻击落在目标下端，对方攻击落在目标上端（不再与目标重叠）
+        Vector3 impactPos = targetPos;
+        if (target != null)
+        {
+            impactPos = isAlly ? targetPos + Vector3.down * cardHalf   // 己方→目标下端
+                              : targetPos + Vector3.up * cardHalf;   // 对方→目标上端
+        }
 
-        // ── 阶段2：冲刺（二次贝塞尔弧线 + 俯仰下压）──
-        Vector3 midPoint = Vector3.Lerp(_originalPos, targetPos, 0.5f) + Vector3.up * arc;
-        Quaternion lungeRot = _originalRot * Quaternion.Euler(pitch, 0, 0);
-        yield return AnimateBezier(_originalPos, midPoint, targetPos, lunge, lungeRot);
+        // ── 阶段1：蓄力（后拉+下沉，不再翘起）──
+        Vector3 windupPos = _originalPos + Vector3.down * pullback;
+        yield return AnimateTo(windupPos, _originalRot, windup);
+
+        // ── 阶段2：冲刺（二次贝塞尔弧线 + 向目标方向倾斜）──
+        Vector3 midPoint = Vector3.Lerp(_originalPos, impactPos, 0.5f) + Vector3.up * arc;
+        // 己方（向上冲）：上半部分（顶部）朝目标翘起；对方（向下冲）：下半部分（底部）朝目标下压
+        float pitchDir = isAlly ? -pitch : pitch;
+        Quaternion lungeRot = _originalRot * Quaternion.Euler(pitchDir, 0, 0);
+        yield return AnimateBezier(_originalPos, midPoint, impactPos, lunge, lungeRot);
 
         // ── 阶段3：击中（单帧：音效 + 飘字 + 伤害应用 + 目标震动）──
         onHit?.Invoke();
