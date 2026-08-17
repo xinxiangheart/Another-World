@@ -823,8 +823,12 @@ public class BattleManager : MonoBehaviour
         List<AttackEvent> secondWave = allyFirst ? enemyEvents : allyEvents;
 
         // 播放攻击动画（onImpact 里扣血 + 弹数字 + 音效）
+        // 守卫：仅在对位攻击阶段（BattlePhase）才播动画；否则直接应用伤害，逻辑不因动画阻塞/丢失。
+        bool inBattlePhase = TurnManager.Instance == null
+            || TurnManager.Instance.currentPhase == TurnManager.TurnPhase.BattlePhase;
+
         var animator = BattleAnimator.Instance;
-        if (animator != null)
+        if (animator != null && inBattlePhase)
         {
             // 第一波：先手方半场全部攻击（含返回）完成
             if (firstWave.Count > 0)
@@ -847,7 +851,9 @@ public class BattleManager : MonoBehaviour
         }
         else
         {
-            // 无动画器兜底：直接触发所有 onImpact（逻辑不变）
+            // 无动画器 / 不在对位攻击阶段：直接触发所有 onImpact（伤害逻辑不变，仅跳过动画）
+            if (!inBattlePhase)
+                Debug.LogWarning($"[Battle] 不在对位攻击阶段（currentPhase={TurnManager.Instance?.currentPhase}），跳过动画直接结算伤害");
             foreach (var evt in events)
                 evt.onImpact?.Invoke();
         }
@@ -2189,12 +2195,12 @@ public class BattleManager : MonoBehaviour
         Debug.LogWarning("[WSW] 进入 WaitForSimultaneousWindow");
         yield return ActionQueueManager.WaitForDrain();
         Debug.LogWarning("[WSW] ActionQueue 排空完成");
-        // 等待嵌套上下文排空，超时 30s 后强制复位（防止协程异常导致 Depth 永久泄漏）
+        // 等待嵌套上下文排空，超时 5s 后强制复位（防止协程异常导致 Depth 永久泄漏）
         float deadDepth = Time.time;
-        yield return new WaitWhile(() => NestingContext.IsNested && Time.time - deadDepth < 30f);
+        yield return new WaitWhile(() => NestingContext.IsNested && Time.time - deadDepth < 5f);
         if (NestingContext.IsNested)
         {
-            Debug.LogError($"[WaitForSimultaneousWindow] NestingContext 阻塞超过 30s depth={NestingContext.Depth}，强制复位！");
+            Debug.LogError($"[WaitForSimultaneousWindow] NestingContext 阻塞超过 5s depth={NestingContext.Depth} leakedTags=[{NestingContext.GetLeakedTags()}]，强制复位！");
             NestingContext.ForceClear("WaitForSimultaneousWindow 超时");
         }
         Debug.LogWarning("[WSW] 嵌套上下文排空完成");
