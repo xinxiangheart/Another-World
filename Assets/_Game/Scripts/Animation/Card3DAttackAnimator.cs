@@ -45,6 +45,7 @@ public class Card3DAttackAnimator : MonoBehaviour
         float pitch = _cfg != null ? _cfg.pitchAngle : 12f;
         float shakeStr = _cfg != null ? _cfg.targetShakeStrength : 0.08f;
         float shakeDur = _cfg != null ? _cfg.targetShakeDuration : 0.15f;
+        float heightOffset = _cfg != null ? _cfg.attackTargetHeightOffset : 0.8f;
 
         // 判断攻击者半场：己方卡牌在屏幕下方（y<0，向上攻击），对方在上方（y>0，向下攻击）
         bool isAlly = _originalPos.y < 0f;
@@ -58,11 +59,18 @@ public class Card3DAttackAnimator : MonoBehaviour
         Vector3 targetPos = target != null ? target.transform.position : _originalPos;
 
         // 落点：己方攻击落在目标下端，对方攻击落在目标上端（不再与目标重叠）
-        Vector3 impactPos = targetPos;
+        Vector3 impactPos;
         if (target != null)
         {
             impactPos = isAlly ? targetPos + Vector3.down * cardHalf   // 己方→目标下端
                               : targetPos + Vector3.up * cardHalf;   // 对方→目标上端
+        }
+        else
+        {
+            // 空打（打英雄，无目标模型）：终点高度偏移用可配置参数，与有目标时的偏移量一致，
+            // 沿攻击方向（己方向上/对方向下）位移，防止俯仰下压时原地穿模。
+            impactPos = isAlly ? _originalPos + Vector3.up * heightOffset
+                              : _originalPos + Vector3.down * heightOffset;
         }
 
         // ── 阶段1：蓄力（后拉+下沉，不再翘起）──

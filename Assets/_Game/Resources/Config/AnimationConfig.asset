@@ -36,3 +36,4 @@ MonoBehaviour:
   targetShakeDuration: 0.15
   returnOvershoot: 1.05
   pitchAngle: 12
+  attackTargetHeightOffset: 0.8

@@ -2210,7 +2210,25 @@ public class HandManager : MonoBehaviour
             confirmed = true;
         }, "召唤");
 
-        yield return new WaitUntil(() => confirmed);
+        // AI 放收集者（AI 半场 0-5）→ 跳过弹窗直接确认，避免 WaitUntil 挂起泄漏 NestingContext
+        bool collectorIsAI = SimpleAI.IsAIMatch;
+        if (collectorIsAI)
+        {
+            collectorIsAI = false;
+            BoardManager cbm = FindObjectOfType<BoardManager>();
+            for (int i = 0; i < 6; i++)
+                if (cbm?.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance == giver)
+                { collectorIsAI = true; break; }
+        }
+        if (collectorIsAI) confirmed = true;
+        float collectorDeadline = Time.time + 30f;
+        while (!confirmed && Time.time < collectorDeadline)
+            yield return null;
+        if (!confirmed)
+        {
+            confirmed = true;
+            Debug.LogWarning("[Effect] 01349 收集者确认超时，AI兜底确认");
+        }
 
         List<CardInstance> selectedList = CardDisplayPanel.Instance.GetSelectedCards();
 

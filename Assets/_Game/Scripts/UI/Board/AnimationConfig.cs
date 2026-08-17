@@ -69,6 +69,8 @@ public class AnimationConfig : ScriptableObject
     public float returnOvershoot = 1.05f;
     [Tooltip("攻击俯仰角（度）：蓄力 -pitchAngle 翘起，冲刺 +pitchAngle 下压")]
     public float pitchAngle = 12f;
+    [Tooltip("空打（打英雄，无目标模型）时的攻击终点高度偏移（世界单位）。与有目标时目标偏移量(cardHalf)一致，防止俯仰下压穿模")]
+    public float attackTargetHeightOffset = 0.8f;
 
     public static AnimationConfig Load()
         => Resources.Load<AnimationConfig>("Config/AnimationConfig");

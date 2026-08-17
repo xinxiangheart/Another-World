@@ -2323,6 +2323,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         BoardSlot firstSlot = null;
         bool confirmed = false;
+        // AI 放海盗（AI 半场 0-5）→ 自动确认，避免 WaitUntil 挂起泄漏 NestingContext
+        bool pirateIsAI = SimpleAI.IsAIMatch && mySlot < 6;
         ConfirmSelectionButton.Instance.Show(() => confirmed = true);
 
         System.Text.StringBuilder swapLog = null;
@@ -2388,7 +2390,15 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             }
         };
 
-        yield return new WaitUntil(() => confirmed);
+        if (pirateIsAI) confirmed = true;
+        float pirateDeadline = Time.time + 30f;
+        while (!confirmed && Time.time < pirateDeadline)
+            yield return null;
+        if (!confirmed)
+        {
+            confirmed = true;
+            Debug.LogWarning("[Effect] 01337 海盗确认超时，AI兜底确认");
+        }
         SelectionManager.Instance.ForceEndAll();
         BoardSlot.isStrengtheningSlot = false;
         BoardSlot.extraTargetFilter = null;
@@ -3411,7 +3421,38 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 BoardSlot.isPlacingCard = false;
                 BoardSlot.isStrengtheningSlot = false;
             };
-            yield return new WaitUntil(() => placed);
+            // AI 放领主（AI 半场 0-5）→ 自动选第一个合法空槽，避免 WaitUntil 挂起泄漏 NestingContext
+            if (SimpleAI.IsAIMatch && slotID < 6)
+            {
+                BoardManager lordBm = FindObjectOfType<BoardManager>();
+                BoardSlot autoSlot = null;
+                for (int si = 6; si <= 11; si++)
+                {
+                    BoardSlot s = lordBm?.GetSlot(si);
+                    if (s != null && !s.isBlocked && !s.hasCard) { autoSlot = s; break; }
+                }
+                if (autoSlot != null)
+                    BoardSlot.onTargetSelected?.Invoke(autoSlot);
+                else
+                {
+                    Debug.LogWarning("[Effect] 01503 领主无空槽可召幽灵，跳过");
+                    SelectionManager.Instance.ForceEndAll();
+                    BoardSlot.isPlacingCard = false;
+                    BoardSlot.isStrengtheningSlot = false;
+                }
+                placed = true;
+            }
+            float lordDeadline = Time.time + 30f;
+            while (!placed && Time.time < lordDeadline)
+                yield return null;
+            if (!placed)
+            {
+                placed = true;
+                Debug.LogWarning("[Effect] 01503 领主选择超时，AI兜底");
+                SelectionManager.Instance.ForceEndAll();
+                BoardSlot.isPlacingCard = false;
+                BoardSlot.isStrengtheningSlot = false;
+            }
         }
 
         CleanupAfterPlacement();
