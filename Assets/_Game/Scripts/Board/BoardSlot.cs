@@ -1073,8 +1073,15 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 int myDepth = NestingContext.Snapshot();
                 CheckAndHandleDeaths();
                 yield return ActionQueueManager.WaitForDrain();
-                // 等待由本层死亡触发的所有子嵌套完成
-                yield return new WaitWhile(() => NestingContext.Depth > myDepth);
+                // 等待由本层死亡触发的所有子嵌套完成。
+                // 带超时兜底：防止其他卡牌的嵌套泄漏（Enter 未 Exit）永久拖住本层，导致自身 Exit 不执行
+                float nestedDeadline = Time.time + 30f;
+                while (NestingContext.Depth > myDepth && Time.time < nestedDeadline)
+                    yield return null;
+                if (NestingContext.Depth > myDepth)
+                {
+                    Debug.LogWarning($"[StartOnEnterEffect] 嵌套深度未降回 {myDepth}（当前 {NestingContext.Depth}，leakedTags=[{NestingContext.GetLeakedTags()}]），30s 超时强制继续");
+                }
                 if (pendingRevenges.Count > 0 && BattleManager.Instance != null)
                     yield return BattleManager.Instance.StartCoroutine(
                         BattleManager.ResolveRevengesFromSnapshot());
@@ -1666,9 +1673,22 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 CleanupReformerUI(spellCards, handSummons);
                 ApplyReformerEffect(targetSlot.currentCard3D);
                 CleanupAfterPlacement();
-                
+
             }
         };
+
+        // AI 放改革者（AI 半场 0-5）→ 自动选第一个己方召唤物转化，无 UI 交互
+        if (SimpleAI.IsAIMatch && slotID < 6)
+        {
+            BoardManager rbm = FindObjectOfType<BoardManager>();
+            BoardSlot autoReform = null;
+            for (int ri = 6; ri <= 11; ri++)
+                if (rbm?.GetSlot(ri)?.currentCard3D != null) { autoReform = rbm.GetSlot(ri); break; }
+            if (autoReform != null)
+                BoardSlot.onTargetSelected?.Invoke(autoReform);
+            else
+                SelectionManager.Instance.ForceEndAll();
+        }
     }
 
     void CleanupReformerUI(List<GameObject> hiddenSpells, List<GameObject> handSummons)
