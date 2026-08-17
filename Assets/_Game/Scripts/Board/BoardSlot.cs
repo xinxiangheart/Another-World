@@ -1892,7 +1892,16 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             CardClickHandler h = card.GetComponent<CardClickHandler>() ?? card.AddComponent<CardClickHandler>();
             h.onClick = () => { selectedCard = card; cardChosen = true; };
         }
-        yield return new WaitUntil(() => cardChosen);
+        // AI 放心弦者 → 自动完成；非 AI 30s 超时
+        if (SimpleAI.IsAIMatch && slotID < 6) cardChosen = true;
+        float heartDeadline = Time.time + 30f;
+        while (!cardChosen && Time.time < heartDeadline)
+            yield return null;
+        if (!cardChosen)
+        {
+            cardChosen = true;
+            Debug.LogWarning("[Effect] 心弦者选牌超时，AI兜底");
+        }
 
         foreach (GameObject card in validCards)
         {
@@ -2250,7 +2259,15 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 }
             }
         });
-        yield return new WaitUntil(() => firstDone);
+        if (SimpleAI.IsAIMatch && slotID < 6) firstDone = true;
+        float remnant1Deadline = Time.time + 30f;
+        while (!firstDone && Time.time < remnant1Deadline)
+            yield return null;
+        if (!firstDone)
+        {
+            firstDone = true;
+            Debug.LogWarning("[Effect] 遗物选首个目标超时，AI兜底");
+        }
         if (firstTarget == null) { CleanupAfterPlacement(); yield break; }
 
                 // 清理重定向标记
@@ -2274,7 +2291,15 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 }
             }
         });
-        yield return new WaitUntil(() => secondDone);
+        if (SimpleAI.IsAIMatch && slotID < 6) secondDone = true;
+        float remnant2Deadline = Time.time + 30f;
+        while (!secondDone && Time.time < remnant2Deadline)
+            yield return null;
+        if (!secondDone)
+        {
+            secondDone = true;
+            Debug.LogWarning("[Effect] 遗物选次目标超时，AI兜底");
+        }
         BoardSlot.extraTargetFilter = null;
         if (secondTarget == null) { CleanupAfterPlacement(); yield break; }
 
@@ -2732,7 +2757,17 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             }
         });
         BoardSlot.isStrengtheningSlot = true;
-        yield return new WaitUntil(() => done);
+        // AI 放封锁者 → 自动完成选择；非 AI 30s 超时
+        if (SimpleAI.IsAIMatch && slotID < 6) done = true;
+        float blockerDeadline = Time.time + 30f;
+        while (!done && Time.time < blockerDeadline)
+            yield return null;
+        if (!done)
+        {
+            done = true;
+            Debug.LogWarning("[Effect] 01305 封锁者选目标超时，AI兜底");
+            SelectionManager.Instance.ForceEndAll();
+        }
         BoardSlot.isStrengtheningSlot = false;
 
         if (target != null)
@@ -2899,7 +2934,16 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             done = true;
         };
 
-        yield return new WaitUntil(() => done);
+        // AI 放猩红圣徒 → 自动完成；非 AI 30s 超时
+        if (SimpleAI.IsAIMatch && slotID < 6) done = true;
+        float saintDeadline = Time.time + 30f;
+        while (!done && Time.time < saintDeadline)
+            yield return null;
+        if (!done)
+        {
+            done = true;
+            Debug.LogWarning("[Effect] 01533 猩红圣徒选牌超时，AI兜底");
+        }
 
         // Cleanup click handlers
         foreach (GameObject card in NetworkPlayer.Local.handCards)
@@ -2919,6 +2963,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         {
         yield return null;
         NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
+
+        // AI 放学徒法师（AI 半场 0-5）→ 自动完成交互，避免 WaitUntil 挂起泄漏 NestingContext
+        bool isAIApprentice = SimpleAI.IsAIMatch && slotID < 6;
 
         List<GameObject> spellCards = new List<GameObject>();
         foreach (GameObject card in NetworkPlayer.Local.handCards)
@@ -2952,7 +2999,23 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             CardClickHandler h = card.GetComponent<CardClickHandler>() ?? card.AddComponent<CardClickHandler>();
             h.onClick = () => { selectedCard = card; done = true; };
         }
-        yield return new WaitUntil(() => done);
+        // AI 环境自动选第一张法术；非 AI 加 30s 超时兜底
+        if (isAIApprentice && validCards.Count > 0)
+        {
+            selectedCard = validCards[0];
+            done = true;
+        }
+        else
+        {
+            float apprenticeDeadline = Time.time + 30f;
+            while (!done && Time.time < apprenticeDeadline)
+                yield return null;
+            if (!done)
+            {
+                done = true;
+                Debug.LogWarning("[Effect] 01329 学徒法师选牌超时，AI兜底");
+            }
+        }
 
         foreach (GameObject card in validCards)
         {
@@ -2991,12 +3054,38 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     NetworkPlayer.Local.handCards.Remove(selectedCard);
                     Destroy(selectedCard);
                     bool targetSelected = false;
-                    SelectionManager.Instance.BeginSelection((TargetType)spellTemplate.targetType, (slot) =>
+                    if (isAIApprentice)
                     {
-                        SpellEffectExecutor.Execute(spellTemplate, slot);
+                        // AI 环境自动选第一个合法目标
+                        BoardManager aiBm = FindObjectOfType<BoardManager>();
+                        TargetType tt = (TargetType)spellTemplate.targetType;
+                        BoardSlot aiTarget = null;
+                        for (int i = 0; i < 12; i++)
+                        {
+                            BoardSlot s = aiBm?.GetSlot(i);
+                            if (s != null && s.IsValidTarget(tt)) { aiTarget = s; break; }
+                        }
+                        if (aiTarget != null)
+                            SpellEffectExecutor.Execute(spellTemplate, aiTarget);
                         targetSelected = true;
-                    });
-                    yield return new WaitUntil(() => targetSelected);
+                    }
+                    else
+                    {
+                        SelectionManager.Instance.BeginSelection((TargetType)spellTemplate.targetType, (slot) =>
+                        {
+                            SpellEffectExecutor.Execute(spellTemplate, slot);
+                            targetSelected = true;
+                        });
+                        float tgtDeadline = Time.time + 30f;
+                        while (!targetSelected && Time.time < tgtDeadline)
+                            yield return null;
+                        if (!targetSelected)
+                        {
+                            targetSelected = true;
+                            Debug.LogWarning("[Effect] 01329 学徒法师选目标超时，AI兜底");
+                            SelectionManager.Instance.ForceEndAll();
+                        }
+                    }
                 }
             }
         }
@@ -3179,7 +3268,17 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             done = true;
         });
 
-        yield return new WaitUntil(() => done);
+        // AI 放碎片 → 自动完成；非 AI 30s 超时
+        if (SimpleAI.IsAIMatch && slotID < 6) done = true;
+        float fragDeadline = Time.time + 30f;
+        while (!done && Time.time < fragDeadline)
+            yield return null;
+        if (!done)
+        {
+            done = true;
+            Debug.LogWarning("[Effect] 01110 碎片选目标超时，AI兜底");
+            SelectionManager.Instance.ForceEndAll();
+        }
 
         if (selectedTarget != null)
         {
@@ -3216,7 +3315,17 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             }
             done = true;
         });
-        yield return new WaitUntil(() => done);
+        // AI 放指挥家 → 自动完成；非 AI 30s 超时
+        if (SimpleAI.IsAIMatch && slotID < 6) done = true;
+        float conductorDeadline = Time.time + 30f;
+        while (!done && Time.time < conductorDeadline)
+            yield return null;
+        if (!done)
+        {
+            done = true;
+            Debug.LogWarning("[Effect] 01311 指挥家选目标超时，AI兜底");
+            SelectionManager.Instance.ForceEndAll();
+        }
         yield return null;
 
         if (targetCI != null)
@@ -3489,7 +3598,38 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     BoardSlot.isPlacingCard = false;
                     BoardSlot.isStrengtheningSlot = false;
                 };
-                yield return new WaitUntil(() => placed);
+                // AI 放增幅结构 → 自动选第一个合法空槽；非 AI 30s 超时
+                if (SimpleAI.IsAIMatch && slotID < 6)
+                {
+                    BoardManager ampBm = FindObjectOfType<BoardManager>();
+                    BoardSlot autoSlot = null;
+                    for (int si = 6; si <= 11; si++)
+                    {
+                        BoardSlot s = ampBm?.GetSlot(si);
+                        if (s != null && !s.isBlocked && !s.hasCard) { autoSlot = s; break; }
+                    }
+                    if (autoSlot != null)
+                        BoardSlot.onTargetSelected?.Invoke(autoSlot);
+                    else
+                    {
+                        Debug.LogWarning("[Effect] 01506 增幅结构无空槽，跳过");
+                        SelectionManager.Instance.ForceEndAll();
+                        BoardSlot.isPlacingCard = false;
+                        BoardSlot.isStrengtheningSlot = false;
+                    }
+                    placed = true;
+                }
+                float ampDeadline = Time.time + 30f;
+                while (!placed && Time.time < ampDeadline)
+                    yield return null;
+                if (!placed)
+                {
+                    placed = true;
+                    Debug.LogWarning("[Effect] 01506 增幅结构放置超时，AI兜底");
+                    SelectionManager.Instance.ForceEndAll();
+                    BoardSlot.isPlacingCard = false;
+                    BoardSlot.isStrengtheningSlot = false;
+                }
             }
         }
 
@@ -3995,7 +4135,16 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             }
         };
 
-        yield return new WaitUntil(() => confirmed);
+        // AI 放雾隐 → 自动确认；非 AI 30s 超时
+        if (SimpleAI.IsAIMatch && slotID < 6) confirmed = true;
+        float mistDeadline = Time.time + 30f;
+        while (!confirmed && Time.time < mistDeadline)
+            yield return null;
+        if (!confirmed)
+        {
+            confirmed = true;
+            Debug.LogWarning("[Effect] 01517 雾隐确认超时，AI兜底");
+        }
         SelectionManager.Instance.ForceEndAll();
         BoardSlot.isStrengtheningSlot = false;
         ConfirmSelectionButton.Instance.Hide();
@@ -4019,6 +4168,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         {
         yield return null;
         NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
+
+        // AI 放辉煌法师（AI 半场 0-5）→ 自动完成选择，避免 WaitUntil 挂起泄漏 NestingContext
+        bool isAI = SimpleAI.IsAIMatch && slotID < 6;
 
         List<CardInstance> spellList = new List<CardInstance>();
         foreach (GameObject card in NetworkPlayer.Local.handCards)
@@ -4047,7 +4199,15 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             confirmed = true;
         }, "打出");
 
-        yield return new WaitUntil(() => confirmed);
+        if (isAI) confirmed = true;
+        float mageDeadline = Time.time + 30f;
+        while (!confirmed && Time.time < mageDeadline)
+            yield return null;
+        if (!confirmed)
+        {
+            confirmed = true;
+            Debug.LogWarning("[Effect] 01521 辉煌法师选牌超时，AI兜底");
+        }
 
         List<CardInstance> selected = CardDisplayPanel.Instance.GetSelectedCards();
 
@@ -4151,7 +4311,17 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     CardDrag.ExecuteSpellEffect(td, slot);
                     targetDone = true;
                 });
-                yield return new WaitUntil(() => targetDone);
+                // AI 放辉煌法师 → 自动完成选目标；非 AI 30s 超时
+                if (isAI) targetDone = true;
+                float mageTgtDeadline = Time.time + 30f;
+                while (!targetDone && Time.time < mageTgtDeadline)
+                    yield return null;
+                if (!targetDone)
+                {
+                    targetDone = true;
+                    Debug.LogWarning("[Effect] 01521 辉煌法师选目标超时，AI兜底");
+                    SelectionManager.Instance.ForceEndAll();
+                }
                 if (CardDrag.SpellPending != null) { yield return CardDrag.SpellPending; CardDrag.SpellPending = null; }
                 yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
                 yield return new WaitForEndOfFrame();
@@ -4464,7 +4634,16 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             done = true;
         });
 
-        yield return new WaitUntil(() => done);
+        // AI 放无畏者 → 自动完成；非 AI 30s 超时
+        if (SimpleAI.IsAIMatch && slotID < 6) done = true;
+        float fearlessDeadline = Time.time + 30f;
+        while (!done && Time.time < fearlessDeadline)
+            yield return null;
+        if (!done)
+        {
+            done = true;
+            Debug.LogWarning("[Effect] 01322 无畏者选牌超时，AI兜底");
+        }
 
         foreach (var go in tempGOs) Destroy(go);
 
