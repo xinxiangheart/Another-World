@@ -47,7 +47,15 @@ public class JoinRoomPanel : MonoBehaviour
         _searching = false;
     }
 
-    void Close() { panelRoot.SetActive(false); }
+    public void Close()
+    {
+        panelRoot.SetActive(false);
+        // 释放搜索/加入回调——否则残留的 LobbyMatchList_t/LobbyEnter_t 回调会
+        // 收到其他面板的 RequestLobbyList/JoinLobby 结果而错误处理
+        _lobbyListCB?.Dispose(); _lobbyListCB = null;
+        _enterCB?.Dispose(); _enterCB = null;
+        _searching = false;
+    }
 
     void OnInputChanged(string value)
     {

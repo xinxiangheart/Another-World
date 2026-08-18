@@ -98,6 +98,9 @@ public class QuickMatchPanel : MonoBehaviour
 
     void OnLobbyList(LobbyMatchList_t cb)
     {
+        // 自建大厅后由后台回调(OnBgLobbyList)处理搜索结果，前台不再响应。
+        // 双保险：即使 _listCB 残留，也不会清 _iAmHost 或误加自己的大厅。
+        if (_iAmHost) return;
         if (_state != State.Searching || cb.m_nLobbiesMatching == 0) return;
         // 找到大厅 → 标为正在加入 + 立即停协程 + 重置 Host 标志
         _joining = true;
@@ -237,6 +240,10 @@ public class QuickMatchPanel : MonoBehaviour
         Debug.Log("[QM-Bg] 启动后台搜索...");
         StopBackgroundSearch();
         _bgListCB?.Dispose();
+        // 停用前台搜索回调——自建后只由后台回调(OnBgLobbyList)处理搜索结果。
+        // 否则每次后台 RequestLobbyList 会同时触发前台 OnLobbyList（无 _iAmHost 守卫），
+        // 把 _iAmHost 清 false 并 JoinLobby(自己的大厅)，导致永远匹配不到对手。
+        _listCB?.Dispose(); _listCB = null;
         _bgListCB = Callback<LobbyMatchList_t>.Create(OnBgLobbyList);
         _bgSearchCoroutine = StartCoroutine(BackgroundSearchRoutine());
     }

@@ -235,7 +235,7 @@ public class CreateRoomPanel : MonoBehaviour
         _lobbyID = default;
         panelRoot.SetActive(false); JoinGamePanel.Instance?.Open();
     }
-    void LeaveRoom()
+    public void LeaveRoom()
     {
         if (_lobbyID.m_SteamID != 0) SteamMatchmaking.LeaveLobby(_lobbyID);
         _lobbyID = default; _lcb?.Dispose(); panelRoot.SetActive(false);

@@ -50,7 +50,14 @@ public class LobbyManager : MonoBehaviour
 
     void Start()
     {
-        if (quickMatchButton != null) quickMatchButton.onClick.AddListener(() => QuickMatchPanel.Instance?.Open());
+        // 面板互斥：打开一个匹配/房间面板时，关闭其他面板并释放其 Steam 回调，
+        // 防止残留的 LobbyMatchList_t 回调收到别的面板的 RequestLobbyList 结果而错误处理。
+        if (quickMatchButton != null) quickMatchButton.onClick.AddListener(() =>
+        {
+            CreateRoomPanel.Instance?.LeaveRoom();
+            JoinRoomPanel.Instance?.Close();
+            QuickMatchPanel.Instance?.Open();
+        });
         if (createRoomButton != null) createRoomButton.onClick.AddListener(CreateRoom);
         if (joinRoomButton != null) joinRoomButton.onClick.AddListener(JoinRoom);
         if (aiBattleButton != null) aiBattleButton.onClick.AddListener(StartAIBattle);
@@ -66,11 +73,13 @@ public class LobbyManager : MonoBehaviour
 
     public void CreateRoom()
     {
+        QuickMatchPanel.Instance?.Close();
         CreateRoomPanel.Instance?.OpenAsHost();
     }
 
     public void JoinRoom()
     {
+        QuickMatchPanel.Instance?.Close();
         JoinRoomPanel.Instance?.Open();
     }
 
