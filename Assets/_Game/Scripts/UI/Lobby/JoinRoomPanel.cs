@@ -68,6 +68,8 @@ public class JoinRoomPanel : MonoBehaviour
         _lobbyListCB?.Dispose();
         _lobbyListCB = Callback<LobbyMatchList_t>.Create(OnLobbyList);
         SteamMatchmaking.AddRequestLobbyListStringFilter("room_code", value, ELobbyComparison.k_ELobbyComparisonEqual);
+        // 显式世界范围——默认只返回同数据中心的大厅，房主在不同数据中心时搜不到
+        SteamMatchmaking.AddRequestLobbyListDistanceFilter(ELobbyDistanceFilter.k_ELobbyDistanceFilterWorldwide);
         SteamMatchmaking.RequestLobbyList();
         StartCoroutine(SearchTimeout());
     }

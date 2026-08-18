@@ -74,6 +74,9 @@ public class QuickMatchPanel : MonoBehaviour
             // 已经找到大厅正在加入中，停止搜索
             if (_joining || _lobbyID.m_SteamID != 0) yield break;
             SteamMatchmaking.AddRequestLobbyListStringFilter("game", "anotherworld_quick", ELobbyComparison.k_ELobbyComparisonEqual);
+            // 显式世界范围——默认(k_ELobbyDistanceFilterDefault)只返回同数据中心的大厅，
+            // 双方连不同数据中心时互相搜不到
+            SteamMatchmaking.AddRequestLobbyListDistanceFilter(ELobbyDistanceFilter.k_ELobbyDistanceFilterWorldwide);
             SteamMatchmaking.AddRequestLobbyListResultCountFilter(1);
             SteamMatchmaking.RequestLobbyList();
         }
@@ -280,6 +283,8 @@ public class QuickMatchPanel : MonoBehaviour
             // 如果已经有人加入自己的大厅，停止后台搜索
             if (members >= 2) { Debug.Log("[QM-Bg] 自己大厅已有客人，停止后台搜索"); yield break; }
             SteamMatchmaking.AddRequestLobbyListStringFilter("game", "anotherworld_quick", ELobbyComparison.k_ELobbyComparisonEqual);
+            // 显式世界范围——同前台搜索
+            SteamMatchmaking.AddRequestLobbyListDistanceFilter(ELobbyDistanceFilter.k_ELobbyDistanceFilterWorldwide);
             SteamMatchmaking.AddRequestLobbyListResultCountFilter(3);
             SteamMatchmaking.RequestLobbyList();
             Debug.Log("[QM-Bg] RequestLobbyList 已发送");
