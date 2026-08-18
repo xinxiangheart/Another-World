@@ -143,11 +143,42 @@ public class AutoConnect : MonoBehaviour
         });
         _llcb = Callback<LobbyMatchList_t>.Create(r =>
         {
-            if (r.m_nLobbiesMatching == 0) return;
+            string matchKey = !string.IsNullOrEmpty(LobbyConfig.MatchKey) ? LobbyConfig.MatchKey : "anotherworld";
+            float elapsed = Time.time - _startTime;
+            Debug.Log($"[AutoConnect-Search] 搜到 {r.m_nLobbiesMatching} 个大厅 (game过滤={matchKey}, 已用时 {elapsed:F1}s)");
+
+            if (r.m_nLobbiesMatching == 0)
+            {
+                // 30 秒仍搜不到 → 错误日志定位（Steam 索引延迟 / 距离过滤 / game 不匹配）
+                if (elapsed > 30f)
+                    Debug.LogError($"[AutoConnect-Search] 30 秒仍搜不到 Host 大厅（过滤 game={matchKey}）——检查 Steam 索引延迟、双方 game 字段是否一致、appid");
+                return;
+            }
+
+            // 打印每个大厅详情，确认 game 字段匹配
+            for (int i = 0; i < (int)r.m_nLobbiesMatching; i++)
+            {
+                CSteamID lid = SteamMatchmaking.GetLobbyByIndex(i);
+                string g = SteamMatchmaking.GetLobbyData(lid, "game") ?? "";
+                int m = SteamMatchmaking.GetNumLobbyMembers(lid);
+                Debug.Log($"[AutoConnect-Search]   大厅[{i}] id={lid.m_SteamID} game={g} members={m}");
+            }
+
+            // 选 game 字段完全匹配的大厅（过滤已匹配，但遍历确认，避免取到非目标）
+            CSteamID target = default;
+            for (int i = 0; i < (int)r.m_nLobbiesMatching; i++)
+            {
+                CSteamID cand = SteamMatchmaking.GetLobbyByIndex(i);
+                if ((SteamMatchmaking.GetLobbyData(cand, "game") ?? "") == matchKey)
+                { target = cand; break; }
+            }
+            if (target.m_SteamID == 0)
+                target = SteamMatchmaking.GetLobbyByIndex(0); // 兜底取第一个
+
             CancelInvoke(nameof(SearchLobbies));
-            Debug.LogWarning($"[AutoConnect-Timing] LobbyMatchList 回调 @{Time.time - _startTime:F2}s — 找到房间, 正在 JoinLobby");
+            Debug.LogWarning($"[AutoConnect-Timing] LobbyMatchList 回调 @{elapsed:F2}s — 找到房间 {target.m_SteamID}, 正在 JoinLobby");
             SetText("找到对手, 正在加入...");
-            SteamMatchmaking.JoinLobby(SteamMatchmaking.GetLobbyByIndex(0));
+            SteamMatchmaking.JoinLobby(target);
         });
         _leb = Callback<LobbyEnter_t>.Create(r =>
         {
@@ -176,6 +207,8 @@ public class AutoConnect : MonoBehaviour
         if (Time.time - _startTime > 60f) { CancelInvoke(nameof(SearchLobbies)); SetText("搜索超时"); return; }
         string matchKey = !string.IsNullOrEmpty(LobbyConfig.MatchKey) ? LobbyConfig.MatchKey : "anotherworld";
         SteamMatchmaking.AddRequestLobbyListStringFilter("game", matchKey, ELobbyComparison.k_ELobbyComparisonEqual);
+        // 显式世界范围——默认只返回同数据中心的大厅，Host 在不同数据中心时 Client 搜不到（与 Lobby 场景同一根因）
+        SteamMatchmaking.AddRequestLobbyListDistanceFilter(ELobbyDistanceFilter.k_ELobbyDistanceFilterWorldwide);
         SteamMatchmaking.RequestLobbyList();
     }
 
