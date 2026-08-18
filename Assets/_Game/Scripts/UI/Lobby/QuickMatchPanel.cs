@@ -289,11 +289,16 @@ public class QuickMatchPanel : MonoBehaviour
     void OnBgLobbyList(LobbyMatchList_t cb)
     {
         if (!_iAmHost || _state != State.Searching || _lobbyID.m_SteamID == 0 || cb.m_nLobbiesMatching == 0) return;
-        Debug.Log($"[QM-Bg] 搜到 {cb.m_nLobbiesMatching} 个大厅");
+        Debug.Log($"[QM-Bg] 搜到 {cb.m_nLobbiesMatching} 个大厅，自己={_lobbyID.m_SteamID}");
 
         for (int i = 0; i < (int)cb.m_nLobbiesMatching; i++)
         {
             CSteamID found = SteamMatchmaking.GetLobbyByIndex(i);
+            // 诊断：打印每个大厅详情，确认对方大厅是否在结果里、game 字段是否匹配
+            string fGame = SteamMatchmaking.GetLobbyData(found, "game") ?? "";
+            int fMembers = SteamMatchmaking.GetNumLobbyMembers(found);
+            string fHostData = SteamMatchmaking.GetLobbyData(found, "host_data") ?? "";
+            Debug.Log($"[QM-Bg] 大厅[{i}] id={found.m_SteamID} game={fGame} members={fMembers} host_data={(string.IsNullOrEmpty(fHostData)?"empty":"SET")} isSelf={found == _lobbyID}");
             if (found == _lobbyID) continue; // 忽略自己的大厅
 
             // 检查对方是否一个人在等（未满员、未开始）
