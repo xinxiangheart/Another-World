@@ -1326,6 +1326,13 @@ public class NetworkPlayer : NetworkBehaviour
     /// Server tells a client to spawn a 3D card model at a board slot.
     /// The card is an enemy/opponent card, so it renders with opposite rotation
     /// and SetEnemyView (no hover interaction, no discard).
+    /// <summary>Host 播攻击动画时广播给 Remote——Client 本地播动画+音效+数字，不扣血。</summary>
+    [TargetRpc]
+    public void TargetPlayAttack(NetworkConnectionToClient target, int attackerSlot, int defenderSlot, int damage, bool isHero)
+    {
+        BattleManager.PlayAttackLocally(attackerSlot, defenderSlot, damage, isHero);
+    }
+
     /// overrideAtk/overrideHP/overrideMaxHP (-1 = use template default) carry
     /// enter-effect stat boosts across the network.
     /// </summary>

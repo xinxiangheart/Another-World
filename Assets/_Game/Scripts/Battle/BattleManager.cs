@@ -834,7 +834,10 @@ public class BattleManager : MonoBehaviour
             if (firstWave.Count > 0)
             {
                 foreach (var evt in firstWave)
+                {
                     animator.Play(evt);
+                    BroadcastAttackToRemote(evt); // 同步给 Client 本地播动画+音效
+                }
                 while (animator.IsAnimating) yield return null; // 等含返回的完全结束
             }
 
@@ -845,7 +848,10 @@ public class BattleManager : MonoBehaviour
             if (secondWave.Count > 0)
             {
                 foreach (var evt in secondWave)
+                {
                     animator.Play(evt);
+                    BroadcastAttackToRemote(evt); // 同步给 Client 本地播动画+音效
+                }
             }
             yield return animator.WaitForAll(); // 等第二波结束 + 解锁 UI
         }
@@ -908,6 +914,51 @@ public class BattleManager : MonoBehaviour
             }
         }
     }
+
+    /// <summary>Host 播攻击动画时，同步给 Remote 客户端本地播动画+音效+数字（不扣血，扣血由 Host 权威完成）。</summary>
+    void BroadcastAttackToRemote(AttackEvent evt)
+    {
+        if (evt == null || evt.skipAnimation) return; // 溅射（skipAnimation）不广播——伤害走血量同步
+        if (NetworkPlayer.Remote?.connectionToClient != null)
+            NetworkPlayer.Remote.TargetPlayAttack(
+                NetworkPlayer.Remote.connectionToClient,
+                evt.slotIndex, evt.defenderSlotIndex, evt.damage, evt.isHeroAttack);
+    }
+
+    /// <summary>Client 端本地播放攻击演出（动画+音效+伤害数字），不扣血。</summary>
+    public static void PlayAttackLocally(int attackerSlot, int defenderSlot, int damage, bool isHero)
+    {
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        GameObject attacker = bm?.GetSlot(attackerSlot)?.currentCard3D;
+        if (attacker == null) return;
+        GameObject defender = isHero ? null : bm?.GetSlot(defenderSlot)?.currentCard3D;
+
+        var evt = new AttackEvent
+        {
+            attackerModel = attacker,
+            defenderModel = defender,
+            damage = damage,
+            isHeroAttack = isHero,
+            slotIndex = attackerSlot,
+            defenderSlotIndex = defenderSlot,
+            onImpact = () =>
+            {
+                // 本地演出：音效 + 伤害数字（不调 DamagePipeline.Process，扣血由服务器权威完成）
+                if (isHero)
+                {
+                    DamageFloater.Show(attacker.transform.position, damage, FloaterType.Damage);
+                    AudioManager.Instance?.Play(SoundEffectType.AttackHero, 0.5f, 1.2f);
+                }
+                else if (defender != null)
+                {
+                    DamageFloater.Show(defender.transform.position, damage, FloaterType.Damage);
+                    AudioManager.Instance?.Play(SoundEffectType.Attack, 0.4f, 1.2f);
+                }
+            }
+        };
+        BattleAnimator.Instance?.Play(evt);
+    }
+
     void ProcessPair(int mySlotIndex, int enemySlotIndex, List<AttackEvent> events)
     {
         BoardSlot mySlot = allSlots[mySlotIndex + 6];
@@ -979,7 +1030,7 @@ public class BattleManager : MonoBehaviour
                 bool otherSilenced = otherInst != null && GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(otherInst);
                 if (otherCard != null && otherInst != null && !otherInst.silencedThisPhase && !otherSilenced)
                 {
-                    events.Add(CreateAttackEvent(attackerCard, attackerInst, otherCard, otherInst, 2, attackerSlotID, false, true));
+                    events.Add(CreateAttackEvent(attackerCard, attackerInst, otherCard, otherInst, 2, attackerSlotID, false, true, i));
                 }
             }
         }
@@ -997,7 +1048,7 @@ public class BattleManager : MonoBehaviour
                 bool otherSilenced = otherInst != null && GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(otherInst);
                 if (otherCard != null && otherInst != null && !otherInst.silencedThisPhase && !otherSilenced)
                 {
-                    events.Add(CreateAttackEvent(attackerCard, attackerInst, otherCard, otherInst, attackerInst.Attack, attackerSlotID, false, true));
+                    events.Add(CreateAttackEvent(attackerCard, attackerInst, otherCard, otherInst, attackerInst.Attack, attackerSlotID, false, true, i));
                 }
             }
         }
@@ -1014,7 +1065,7 @@ public class BattleManager : MonoBehaviour
                 if (otherCard != null)
                 {
                     var oInst = otherCard.GetComponent<Card3DInstance>()?.cardInstance;
-                    events.Add(CreateAttackEvent(attackerCard, attackerInst, otherCard, oInst, 1, attackerSlotID, false, true));
+                    events.Add(CreateAttackEvent(attackerCard, attackerInst, otherCard, oInst, 1, attackerSlotID, false, true, j));
                 }
             }
         }
@@ -1055,7 +1106,7 @@ public class BattleManager : MonoBehaviour
                 targetInst.GetComponent<Card3DInstance>()?.UpdateValues();
             }
             // 01118/01125 攻击修正已在 DamagePipeline.Stage1_Give 统一处理，此处不重复
-            events.Add(CreateAttackEvent(attackerCard, attackerInst, targetCard, targetInst, atk, attackerSlotID, false));
+            events.Add(CreateAttackEvent(attackerCard, attackerInst, targetCard, targetInst, atk, attackerSlotID, false, false, targetDefenderSlotIndex));
             // 01327 阴影聚合体：宿主攻击时自伤宿主自己的 HP
             if (IsShadowHost(attackerInst) && targetInst != null)
             {
@@ -1135,9 +1186,10 @@ public class BattleManager : MonoBehaviour
 
     /// <summary>构造攻击事件。isHeroAttack=true 时只做演出（伤害已累加进 pendingDamageToOpponent），
     /// false 时 onImpact 里 DamagePipeline.Process 实际扣血。
-    /// skipAnimation=true（溅射/附带伤害）时不飞向动画，直接结算伤害。</summary>
+    /// skipAnimation=true（溅射/附带伤害）时不飞向动画，直接结算伤害。
+    /// defenderSlotIndex：被攻击者槽位（-1=打英雄），用于 RPC 广播给 Client 本地播动画。</summary>
     AttackEvent CreateAttackEvent(GameObject attackerCard, CardInstance attackerInst,
-        GameObject defenderCard, CardInstance defenderInst, int damage, int attackerSlotID, bool isHeroAttack, bool skipAnimation = false)
+        GameObject defenderCard, CardInstance defenderInst, int damage, int attackerSlotID, bool isHeroAttack, bool skipAnimation = false, int defenderSlotIndex = -1)
     {
         var evt = new AttackEvent
         {
@@ -1146,6 +1198,7 @@ public class BattleManager : MonoBehaviour
             damage = damage,
             isHeroAttack = isHeroAttack,
             skipAnimation = skipAnimation,
+            defenderSlotIndex = defenderSlotIndex,
             slotIndex = attackerSlotID,
         };
 

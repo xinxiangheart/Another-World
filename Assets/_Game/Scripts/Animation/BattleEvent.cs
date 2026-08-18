@@ -43,6 +43,9 @@ public class AttackEvent : BattleEvent
     /// <summary>是否打英雄（打空位）。打英雄伤害走 FinalDamage 净差，此处仅演出。</summary>
     public bool isHeroAttack;
 
+    /// <summary>被攻击者槽位索引（-1 = 打英雄）。RPC 广播给 Client 定位目标模型。</summary>
+    public int defenderSlotIndex = -1;
+
     /// <summary>溅射/附带伤害：跳过飞向动画，直接结算伤害（onImpact）。溅射动画后续单独做。</summary>
     public bool skipAnimation;
 
