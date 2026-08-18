@@ -131,16 +131,26 @@ public class QuickMatchPanel : MonoBehaviour
         if (_state != State.Searching) return;
         _lobbyID = new CSteamID(cb.m_ulSteamIDLobby);
         _joining = false;
-        // 已进入大厅 → 停止后台搜索（无论是自己还是别人的大厅）
-        StopBackgroundSearch();
         if (_iAmHost)
         {
-            Debug.Log($"[QM-Host] 有人加入我的大厅 lobbyID={_lobbyID}");
-            // Re-write host_data for the new member, then poll guest_data for 3s
-            WriteMyData("host_data");
-            StartCoroutine(PollGuestData());
+            // 创建者 CreateLobby 成功后 Steam 也会触发 LobbyEnter（进入自己的大厅，members==1）。
+            // 此时绝不能停止后台搜索——否则双方各自自建后，兜底搜索被自己的 LobbyEnter 停掉，
+            // 谁也搜不到谁，永远匹配不到。
+            int membersNow = SteamMatchmaking.GetNumLobbyMembers(_lobbyID);
+            if (membersNow >= 2)
+            {
+                // 确实有客人加入 → 停后台搜索 + 轮询客人数据
+                StopBackgroundSearch();
+                Debug.Log($"[QM-Host] 有人加入我的大厅 lobbyID={_lobbyID}");
+                WriteMyData("host_data");
+                StartCoroutine(PollGuestData());
+            }
+            // members==1：刚创建自己的大厅，保持后台搜索。
+            // BackgroundSearchRoutine 自己会在 members>=2（有客人）或找到其他单人厅时停止。
             return;
         }
+        // 已进入别人的大厅 → 停止后台搜索（作为客人不再搜索）
+        StopBackgroundSearch();
         Debug.Log($"[QM-Guest] ★ 进入大厅 lobbyID={_lobbyID}，写SetLobbyMemberData");
         SteamMatchmaking.SetLobbyMemberData(_lobbyID, "player_data", MakeMyJson());
         StartCoroutine(RetryWriteGuestData());
