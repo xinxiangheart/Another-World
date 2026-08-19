@@ -3,25 +3,36 @@ using UnityEngine;
 using Steamworks;
 
 /// <summary>
-/// 阶段轮盘：5 个环按角度环形分布（MaskArea 框定可见 3 个），
-/// 左环=上一阶段、中环=当前阶段、右环=下一阶段、两个隐藏位待命。
+/// 阶段轮盘：5 个环按角度环形分布（MaskArea 框定可见 3 个）。
 ///
-/// 隐藏环更新机制（关键，避免闪烁/占错位）：
-///   - 3 个显示环（左/中/右）：图片绝不允许清除或更改；
-///   - 2 个隐藏环（H1/H2）：唯一允许更改图片的环；
-///   - 旋转前：预置"即将转进显示区"的隐藏环（当前 H2 位）= 下一阶段；
-///   - 旋转动画期间：不更新任何环的图片；
-///   - 旋转后：角色轮转，清空"刚转出显示区"的隐藏环（当前 H1 位）；
-///   - 显示环图片永不更新（只在 Start 首次填充）。
-/// 环内容：PhaseStart/MyTurn=先手头像，EnemyTurn=后手头像，BattlePhase=整环攻击图片，null=空白。
+/// 四阶段内容模型（与 TurnManagerDisplay 同一数据源 tm.currentPhase + tm.isMyTurnFirst）：
+///   - Prev      ：刚过去的阶段（L 位）
+///   - Cur       ：当前阶段（C 位）
+///   - Next      ：下一阶段（R 位）
+///   - NextNext  ：下下阶段（隐藏位预载，旋转后进 R 位显示"切换后的下一阶段"）
+///
+/// 完整循环（严格"预载→旋转→清空→再预载"）：
+///   阶段切换时：
+///     ① 预载：隐藏环(H2) = NextNext（= NextOf(Next)，旋转后进 R 位显示新 Next）
+///     ② 旋转：所有环带图案滚动一位
+///     ③ 结果：原 NextNext → R 位（新 Next）；原 Next → C 位（新 Cur）；
+///               原 Cur → L 位（新 Prev）；原 Prev → H1 位（转出显示区）
+///     ④ 清空：H1（原 Prev）清空图案，为再下一轮准备（下次旋转前作为 H2 被预载）
+///   显示环（L/C/R）图案永不更新——只靠物理环带内容移动。
+///
+/// 先后手交换（关键）：
+///   先手每轮（PhaseStart）互换。预载未来阶段（Next/NextNext）时，
+///   用 CrossesRound 判断该阶段是否跨过 PhaseStart（跨轮→先手已互换，用翻转后的 isMyTurnFirst）。
+///
+/// AI 对战：AI 回合（EnemyTurn）显示空白环；头像不可用（AI 先手/未加载）→ 空白环（绝不 SetAvatar(null) 残留）。
 /// </summary>
 public class PhaseWheel : MonoBehaviour
 {
     public static PhaseWheel Instance { get; private set; }
 
     [Header("引用")]
-    public RectTransform wheelContainer;   // 旋转容器
-    public RingSlot[] slots;               // 5 个环，物理 index [0=Hidden1, 1=Left, 2=Center, 3=Right, 4=Hidden2]（按角度）
+    public RectTransform wheelContainer;   // 旋转容器（本实现不旋转，保持 0）
+    public RingSlot[] slots;               // 5 个环，物理 index [0=Hidden1, 1=Left, 2=Center, 3=Right, 4=Hidden2]
 
     [Header("配置")]
     [Tooltip("旋转动画时长（秒）")]
@@ -30,17 +41,38 @@ public class PhaseWheel : MonoBehaviour
     public Sprite battleIcon;
 
     static readonly TurnManager.TurnPhase[] ORDER = { TurnManager.TurnPhase.PhaseStart, TurnManager.TurnPhase.MyTurn, TurnManager.TurnPhase.EnemyTurn, TurnManager.TurnPhase.BattlePhase };
+    /// <summary>角色 → 世界角度（度）。H1=300(左上), L=240(左下), C=180(正下), R=120(右下), H2=60(右上)。
+    /// Left 在左、Right 在右；next 从右侧(120°)滑入中央(180°)，顺时针视觉。</summary>
+    static readonly float[] ROLE_ANGLE = { 300f, 240f, 180f, 120f, 60f };
 
-    /// <summary>角色 → 物理环 index。[H1, L, C, R, H2]。旋转 -60° 后角色顺时针移动一位。</summary>
+    /// <summary>角色 → 物理环 index。[H1, L, C, R, H2]。</summary>
     int[] _roleSlot = { 0, 1, 2, 3, 4 };
     bool _rotating;
     TurnManager.TurnPhase? _lastPhase;
+    float _radius;
+    /// <summary>物理环 → 内容描述（跟随物理环，旋转时内容不变）。</summary>
+    string[] _slotDesc = new string[5];
+
+    void LogWheel(string tag)
+    {
+        if (slots == null || slots.Length != 5) return;
+        bool mf = TurnManager.Instance != null && TurnManager.Instance.isMyTurnFirst;
+        Debug.Log($"[PhaseWheel] {tag} (myFirst={mf}) → H1={_slotDesc[_roleSlot[0]]}, L={_slotDesc[_roleSlot[1]]}, " +
+                  $"C={_slotDesc[_roleSlot[2]]}, R={_slotDesc[_roleSlot[3]]}, H2={_slotDesc[_roleSlot[4]]}");
+    }
+
+    string AvatarDesc(bool firstMine, Texture2D avatar)
+    {
+        if (avatar == null) return SimpleAI.IsAIMatch ? "AI空白" : "空白";
+        return firstMine ? "玩家1" : "玩家2";
+    }
 
     void Awake()
     {
         Instance = this;
-        if (slots == null || slots.Length != 5)
-            Debug.LogError("[PhaseWheel] 需要 5 个 RingSlot 引用");
+        if (slots == null || slots.Length != 5) { Debug.LogError("[PhaseWheel] 需要 5 个 RingSlot 引用"); return; }
+        var rt0 = slots[0] != null ? slots[0].GetComponent<RectTransform>() : null;
+        _radius = rt0 != null ? rt0.anchoredPosition.magnitude : 125f;
     }
 
     void Start()
@@ -48,35 +80,63 @@ public class PhaseWheel : MonoBehaviour
         var tm = TurnManager.Instance;
         if (tm == null) return;
         _lastPhase = tm.currentPhase;
-        // 首次：填充三个显示位（左/中/右），隐藏位留空。
-        // 此后显示环内容永不更新，只在旋转进出隐藏位时变化。
-        ApplyContent(_roleSlot[1], PrevOf(_lastPhase.Value));
-        ApplyContent(_roleSlot[2], _lastPhase.Value);
-        ApplyContent(_roleSlot[3], NextOf(_lastPhase.Value));
+        bool myFirst = tm.isMyTurnFirst;
+        // 游戏开始第一回合：L（上一阶段）= 空白（尚无上一阶段）；C=当前；R=下一；隐藏位留空。
+        ApplyContent(_roleSlot[1], null, false); // L = 空白
+        ApplyContent(_roleSlot[2], _lastPhase.Value, false);         // C = Cur
+        ApplyContent(_roleSlot[3], NextOfPhase(_lastPhase.Value, myFirst), false); // R = Next
         slots[_roleSlot[0]].SetEmpty();
         slots[_roleSlot[4]].SetEmpty();
+        LogWheel("[Start] 初始五环");
     }
 
     void Update()
     {
         var tm = TurnManager.Instance;
-        if (tm == null || _rotating) return;
+        if (tm == null) return;
         TurnManager.TurnPhase cur = tm.currentPhase;
         if (_lastPhase == null) { _lastPhase = cur; return; }
-        if (_lastPhase.Value != cur)
-        {
-            _lastPhase = cur;
-            RotateToPhase(PrevOf(cur), cur, NextOf(cur));
-        }
+        if (_lastPhase.Value == cur) return;
+
+        LogWheel($"[Update] 阶段变化 {_lastPhase.Value} → {cur}，切换前五环");
+        // 立即记录最新阶段（无论是否旋转中）——防止旋转结束误判阶段又变，触发第二次旋转（连转两次）。
+        _lastPhase = cur;
+        if (_rotating) return; // 旋转动画播放期间忽略新的旋转请求
+        bool myFirst = tm.isMyTurnFirst;
+        RotateToPhase(PrevOfPhase(cur, myFirst), cur, NextOfPhase(cur, myFirst));
     }
 
-    static TurnManager.TurnPhase? PrevOf(TurnManager.TurnPhase p) => ORDER[(System.Array.IndexOf(ORDER, p) + 3) % 4];
-    static TurnManager.TurnPhase? NextOf(TurnManager.TurnPhase p) => ORDER[(System.Array.IndexOf(ORDER, p) + 1) % 4];
+    /// <summary>下一阶段（考虑先手方：MyTurn/EnemyTurn 顺序因先手而异）。
+    /// 玩家先手轮：PhaseStart→MyTurn→EnemyTurn→Battle；AI 先手轮：PhaseStart→EnemyTurn→MyTurn→Battle。</summary>
+    static TurnManager.TurnPhase NextOfPhase(TurnManager.TurnPhase p, bool myFirst)
+    {
+        switch (p)
+        {
+            case TurnManager.TurnPhase.PhaseStart: return myFirst ? TurnManager.TurnPhase.MyTurn : TurnManager.TurnPhase.EnemyTurn;
+            case TurnManager.TurnPhase.MyTurn:     return myFirst ? TurnManager.TurnPhase.EnemyTurn : TurnManager.TurnPhase.BattlePhase;
+            case TurnManager.TurnPhase.EnemyTurn:  return myFirst ? TurnManager.TurnPhase.BattlePhase : TurnManager.TurnPhase.MyTurn;
+            case TurnManager.TurnPhase.BattlePhase: return TurnManager.TurnPhase.PhaseStart;
+        }
+        return TurnManager.TurnPhase.PhaseStart;
+    }
 
-    /// <summary>旋转一个环位：预置即将转进的隐藏环 → 旋转 → 角色轮转 → 清空刚转出的隐藏环。</summary>
+    /// <summary>上一阶段（考虑先手方）。PhaseStart 的上一阶段跨轮（Battle，无头像）。</summary>
+    static TurnManager.TurnPhase PrevOfPhase(TurnManager.TurnPhase p, bool myFirst)
+    {
+        switch (p)
+        {
+            case TurnManager.TurnPhase.PhaseStart:  return TurnManager.TurnPhase.BattlePhase;
+            case TurnManager.TurnPhase.MyTurn:      return myFirst ? TurnManager.TurnPhase.PhaseStart : TurnManager.TurnPhase.EnemyTurn;
+            case TurnManager.TurnPhase.EnemyTurn:   return myFirst ? TurnManager.TurnPhase.MyTurn : TurnManager.TurnPhase.PhaseStart;
+            case TurnManager.TurnPhase.BattlePhase: return myFirst ? TurnManager.TurnPhase.EnemyTurn : TurnManager.TurnPhase.MyTurn;
+        }
+        return TurnManager.TurnPhase.PhaseStart;
+    }
+
+    /// <summary>旋转一个环位：预载 NextNext → 物理环角度动画 → 角色轮转 → 清空刚转出的隐藏环。</summary>
     public void RotateToPhase(TurnManager.TurnPhase? previous, TurnManager.TurnPhase current, TurnManager.TurnPhase? next)
     {
-        if (_rotating || wheelContainer == null) { UpdateWheelContents(previous, current, next); return; }
+        if (_rotating || slots == null || slots.Length != 5) { UpdateWheelContents(previous, current, next); return; }
         StartCoroutine(RotateRoutine(previous, current, next));
     }
 
@@ -84,32 +144,58 @@ public class PhaseWheel : MonoBehaviour
     {
         _rotating = true;
 
-        // 1. 旋转前：只预置"即将转进显示区"的隐藏环（当前 H2 位）= 下一阶段。
-        //    玩家看不到（H2 在遮罩外），旋转进入显示区时已带着正确图片。
-        ApplyContent(_roleSlot[4], next);
+        // ① 预载：隐藏环(H2) = next（切换后的下一阶段 = 切换前的 NextNext 下下阶段）。
+        //    旋转后 next 进 R 位显示"新的下一阶段"。isNext=true → 跨轮翻转先手。
+        //    注意：这里预载的是 next（= 切换前 NextNext），不是 NextOf(next)。
+        ApplyContent(_roleSlot[4], next, true);
+        LogWheel($"[预载] 预载 H2={DescribePhase(next)}，五环");
 
-        // 2. 旋转动画：期间不更新任何环的图片（避免闪烁/占错位）。
-        Quaternion startRot = wheelContainer.localRotation;
-        Quaternion endRot = startRot * Quaternion.Euler(0f, 0f, -60f); // 顺时针 60°：右环(240°)滑入中环(180°)
+        // ② 旋转动画：物理环从当前角色位 → 新角色位（逆时针移一位，带内容移动）。
+        //    显示环（L/C/R）图案在动画期间不变。
+        float[] startA = new float[5], endA = new float[5];
+        for (int role = 0; role < 5; role++)
+        {
+            startA[role] = ROLE_ANGLE[role];
+            endA[role] = ROLE_ANGLE[(role + 4) % 5]; // 逆时针移一位：R→C, C→L, L→H1, H1→H2, H2→R
+        }
+
         float t = 0f;
         while (t < rotateDuration)
         {
             t += Time.deltaTime;
             float p = Mathf.Clamp01(t / rotateDuration);
             float e = 1f - (1f - p) * (1f - p); // ease-out
-            wheelContainer.localRotation = Quaternion.Slerp(startRot, endRot, e);
+            for (int role = 0; role < 5; role++)
+                SetPhysAngle(_roleSlot[role], Mathf.LerpAngle(startA[role], endA[role], e));
             yield return null;
         }
-        wheelContainer.localRotation = startRot;
+        for (int role = 0; role < 5; role++)
+            SetPhysAngle(_roleSlot[role], endA[role]);
 
-        // 3. 旋转后：角色轮转（环带内容转，显示位自然正确）
+        // ③ 角色轮转：H1←L, L←C, C←R, R←H2, H2←H1
         RotateRoles();
 
-        // 4. 旋转后：清空"刚转出显示区"的隐藏环（当前 H1 位 = 原左环）。
-        //    只清空隐藏位环，显示位三个环绝不动。
+        // ④ 清空"刚转出显示区"的隐藏环（当前 H1 位 = 原 Prev 环）。
+        //    显示环（L/C/R）已带正确内容到位，图案永不更新。
         slots[_roleSlot[0]].SetEmpty();
+        _slotDesc[_roleSlot[0]] = "空白";
 
+        LogWheel("[旋转后] 五环");
+        // 下次旋转前，这个空隐藏环作为 H2 位被预载（① 预载已覆盖），循环闭合。
         _rotating = false;
+    }
+
+    static string DescribePhase(TurnManager.TurnPhase? phase)
+    {
+        if (phase == null) return "空白";
+        switch (phase.Value)
+        {
+            case TurnManager.TurnPhase.BattlePhase: return "攻击图标";
+            case TurnManager.TurnPhase.PhaseStart: return "准备阶段";
+            case TurnManager.TurnPhase.MyTurn: return "己方回合";
+            case TurnManager.TurnPhase.EnemyTurn: return "对方回合";
+            default: return "未知";
+        }
     }
 
     /// <summary>角色顺时针移动一位：H1←L, L←C, C←R, R←H2, H2←H1。</summary>
@@ -119,53 +205,91 @@ public class PhaseWheel : MonoBehaviour
         _roleSlot[0] = l; _roleSlot[1] = c; _roleSlot[2] = r; _roleSlot[3] = h2; _roleSlot[4] = h1;
     }
 
-    /// <summary>预置即将转进显示区的隐藏环（当前 H2 位）= 下一阶段。显示环永不在此更新。</summary>
+    /// <summary>兜底预载：H2 = next（isNext=true）。显示环永不在此更新。</summary>
     public void UpdateWheelContents(TurnManager.TurnPhase? previous, TurnManager.TurnPhase current, TurnManager.TurnPhase? next)
     {
         if (slots == null || slots.Length != 5) return;
-        ApplyContent(_roleSlot[4], next); // H2（隐藏）预置下一阶段
+        ApplyContent(_roleSlot[4], next, true);
     }
 
-    void ApplyContent(int physIndex, TurnManager.TurnPhase? phase)
+    void SetPhysAngle(int physIndex, float angle)
     {
         if (physIndex < 0 || physIndex >= slots.Length || slots[physIndex] == null) return;
-        if (phase == null) { slots[physIndex].SetEmpty(); return; }
+        float rad = angle * Mathf.Deg2Rad;
+        slots[physIndex].GetComponent<RectTransform>().anchoredPosition =
+            new Vector2(Mathf.Sin(rad) * _radius, Mathf.Cos(rad) * _radius);
+    }
+
+    /// <summary>填充环内容。isNext=true 表示"未来阶段"（Next/NextNext 预载），需跨轮翻转先手。</summary>
+    void ApplyContent(int physIndex, TurnManager.TurnPhase? phase, bool isNext)
+    {
+        if (physIndex < 0 || physIndex >= slots.Length || slots[physIndex] == null) return;
+        // AI 对战：AI 回合（EnemyTurn）永远空白——入口统一判断，任何路径不得绕过
+        if (SimpleAI.IsAIMatch && phase == TurnManager.TurnPhase.EnemyTurn)
+        {
+            slots[physIndex].SetEmpty();
+            _slotDesc[physIndex] = "AI空白";
+            return;
+        }
+        if (phase == null)
+        {
+            slots[physIndex].SetEmpty();
+            _slotDesc[physIndex] = "空白";
+            return;
+        }
         switch (phase.Value)
         {
             case TurnManager.TurnPhase.BattlePhase:
                 slots[physIndex].SetBattle(battleIcon); // 整个环替换为攻击图片，不显示头像
+                _slotDesc[physIndex] = "攻击图标";
                 break;
             case TurnManager.TurnPhase.PhaseStart:
             case TurnManager.TurnPhase.MyTurn:
-                slots[physIndex].SetAvatar(FirstPlayerAvatar());
+                // 先手头像不可用（AI 先手 → null；对手头像未加载）→ 空白环，绝不 SetAvatar(null) 残留
+                bool fMine = IsFirstMineForPhase(phase.Value, isNext);
+                Texture2D fAvatar = fMine ? MyAvatar() : OppAvatar();
+                if (fAvatar != null) slots[physIndex].SetAvatar(fAvatar);
+                else slots[physIndex].SetEmpty();
+                _slotDesc[physIndex] = AvatarDesc(fMine, fAvatar);
                 break;
             case TurnManager.TurnPhase.EnemyTurn:
-                slots[physIndex].SetAvatar(SecondPlayerAvatar());
+                bool sMine = IsFirstMineForPhase(phase.Value, isNext);
+                Texture2D sAvatar = sMine ? OppAvatar() : MyAvatar();
+                if (sAvatar != null) slots[physIndex].SetAvatar(sAvatar);
+                else slots[physIndex].SetEmpty();
+                _slotDesc[physIndex] = AvatarDesc(!sMine, sAvatar);
                 break;
         }
     }
 
-    // ============ 头像获取 ============
+    // ============ 先手判断（与 TurnManagerDisplay 同一数据源 tm.isMyTurnFirst）============
 
-    /// <summary>先手玩家头像：isMyTurnFirst=true → 己方；false → 对方。</summary>
-    Texture2D FirstPlayerAvatar()
+    /// <summary>该阶段生效时先手是否己方。
+    /// 日志验证：TurnManager.EndCurrentTurn 在设 BattlePhase 前调 SwapFirstPlayer 翻转 isMyTurnFirst，
+    /// 因此"当前 myFirst"已反映下一轮（任何未来阶段）的先手值，预载无需再翻转。
+    /// 若未来切换时机变化导致预载错位，可在此按未来阶段再判断。</summary>
+    bool IsFirstMineForPhase(TurnManager.TurnPhase phase, bool isNext)
     {
-        bool myFirst = TurnManager.Instance != null && TurnManager.Instance.isMyTurnFirst;
-        return myFirst ? MyAvatar() : OppAvatar();
+        var tm = TurnManager.Instance;
+        if (tm == null) return true;
+        return tm.isMyTurnFirst;
     }
+
+    /// <summary>先手玩家头像。</summary>
+    Texture2D FirstAvatar(TurnManager.TurnPhase phase, bool isNext)
+        => IsFirstMineForPhase(phase, isNext) ? MyAvatar() : OppAvatar();
 
     /// <summary>后手玩家头像：与先手相反。</summary>
-    Texture2D SecondPlayerAvatar()
-    {
-        bool myFirst = TurnManager.Instance != null && TurnManager.Instance.isMyTurnFirst;
-        return myFirst ? OppAvatar() : MyAvatar();
-    }
+    Texture2D SecondAvatar(TurnManager.TurnPhase phase, bool isNext)
+        => IsFirstMineForPhase(phase, isNext) ? OppAvatar() : MyAvatar();
 
     Texture2D MyAvatar() => SteamDataManager.Instance != null ? SteamDataManager.Instance.localAvatar : null;
 
     Texture2D OppAvatar()
     {
-        // 对手头像：己方是 Client 时对手=Host（用 HostSteamID）；己方是 Host 时对手无 SteamID → null
+        // AI 对战：AI(Remote, server-only) 无 SteamID，AI 头像为空白
+        if (SimpleAI.IsAIMatch) return null;
+        // 联机：己方是 Client 时对手=Host（用 HostSteamID）；己方是 Host 时对手无 SteamID → null
         if (LobbyConfig.IsHost || string.IsNullOrEmpty(LobbyConfig.HostSteamID)) return null;
         if (!ulong.TryParse(LobbyConfig.HostSteamID, out ulong sid)) return null;
         return RingSlot.LoadAvatarFromSteamID(new CSteamID(sid));

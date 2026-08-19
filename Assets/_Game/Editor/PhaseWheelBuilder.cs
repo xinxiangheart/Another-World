@@ -21,9 +21,9 @@ public class PhaseWheelBuilder
     const string CIRCLE_PATH = "Assets/_Game/Art/Sprites/UI/PhaseWheelCircle.png";
     const string PREFAB_PATH = "Assets/_Game/Prefabs/Board/RingSlot.prefab";
 
-    /// <summary>5 个环的精确角度（度），整体逆时针 90°：Hidden1=60, Left=120, Center=180(正下), Right=240, Hidden2=300。
-    /// 底盘平边朝上（旋转180°）后，中环在圆心正下方，左右环在两侧，隐藏环靠近平边。</summary>
-    static readonly float[] SLOT_ANGLES = { 60f, 120f, 180f, 240f, 300f };
+    /// <summary>5 个环的精确角度（度）：Hidden1=300(左上), Left=240(左下/视觉左), Center=180(正下), Right=120(右下/视觉右), Hidden2=60(右上)。
+    /// 底盘平边朝上（旋转180°）后，中环在圆心正下方；Left 在左、Right 在右；next 从右侧滑入中央（顺时针视觉）。</summary>
+    static readonly float[] SLOT_ANGLES = { 300f, 240f, 180f, 120f, 60f };
 
     [MenuItem("Tools/异界/创建阶段轮盘")]
     public static void Create()
