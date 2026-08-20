@@ -60,6 +60,15 @@ public class QuickMatchPanel : MonoBehaviour
     void StartSearch()
     {
         if (!SteamManager.Initialized) { SetStatus("Steam 未初始化"); return; }
+        // Steam API 已初始化但用户未登录后端（离线模式/无网/被墙）——提前报错，
+        // 否则 RequestLobbyList/CreateLobby 会以 k_EResultNoConnection 静默失败，面板卡死"匹配中"
+        if (!SteamUser.BLoggedOn())
+        {
+            Debug.LogError("[QuickMatch] Steam 未登录/未连接，取消匹配");
+            ResetState();
+            SetStatus("Steam 未登录/未连接\n请检查网络或加速器");
+            return;
+        }
         _state = State.Searching; _iAmHost = false; _lobbyID = default;
         RegisterCallbacks();
         SetStatus("匹配中...");
@@ -119,7 +128,19 @@ public class QuickMatchPanel : MonoBehaviour
         Debug.Log($"[QM-Host] LobbyCreated result={cb.m_eResult}, state={_state}, iAmHost={_iAmHost}");
         // 如果已经加入别人大厅（_iAmHost 被 OnLobbyList 重置），销毁自己建的这个废弃大厅
         if (!_iAmHost) { SteamMatchmaking.LeaveLobby(new CSteamID(cb.m_ulSteamIDLobby)); return; }
-        if (_state != State.Searching || cb.m_eResult != EResult.k_EResultOK) return;
+        if (_state != State.Searching) return;
+        // 创建失败（典型 k_EResultNoConnection = 本机连不上 Steam 后端）——明确报错并复位，
+        // 绝不无限"匹配中"。用户修复网络后重新打开面板即可重试。
+        if (cb.m_eResult != EResult.k_EResultOK)
+        {
+            Debug.LogError($"[QM-Host] 创建大厅失败 result={cb.m_eResult}");
+            if (cb.m_ulSteamIDLobby != 0)
+                SteamMatchmaking.LeaveLobby(new CSteamID(cb.m_ulSteamIDLobby));
+            LeaveLobby();   // 清理回调 + _lobbyID
+            ResetState();
+            SetStatus($"创建大厅失败（{cb.m_eResult}）\n请检查网络/加速器后重试");
+            return;
+        }
         _lobbyID = new CSteamID(cb.m_ulSteamIDLobby);
         SteamMatchmaking.SetLobbyData(_lobbyID, "game", "anotherworld_quick");
         WriteMyData("host_data");

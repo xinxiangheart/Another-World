@@ -38,6 +38,14 @@ public class CreateRoomPanel : MonoBehaviour
     public void OpenAsHost()
     {
         if (!SteamManager.Initialized) return;
+        // Steam 已初始化但未登录后端（离线/无网/被墙）——提前报错，避免 CreateLobby 静默失败
+        if (!SteamUser.BLoggedOn())
+        {
+            Debug.LogError("[CreateRoom] Steam 未登录/未连接，取消建房");
+            panelRoot.SetActive(true);
+            if (roomCodeText) roomCodeText.text = "Steam 未登录/未连接\n请检查网络或加速器";
+            return;
+        }
         _amHost = true; _hasGuest = false;
         _roomCode = Random.Range(100000, 999999).ToString();
 
@@ -53,7 +61,16 @@ public class CreateRoomPanel : MonoBehaviour
         _lcb?.Dispose();
         _lcb = Callback<LobbyCreated_t>.Create(cb =>
         {
-            if (cb.m_eResult != EResult.k_EResultOK) return;
+            // 创建失败（典型 k_EResultNoConnection = 本机连不上 Steam 后端）——明确报错，
+            // 面板上直接显示原因，而不是房间号挂在这里没反应
+            if (cb.m_eResult != EResult.k_EResultOK)
+            {
+                Debug.LogError($"[CreateRoom] 创建房间失败 result={cb.m_eResult}");
+                if (roomCodeText) roomCodeText.text = $"创建房间失败（{cb.m_eResult}）\n请检查网络/加速器";
+                if (cb.m_ulSteamIDLobby != 0)
+                    SteamMatchmaking.LeaveLobby(new CSteamID(cb.m_ulSteamIDLobby));
+                return;
+            }
             _lobbyID = new CSteamID(cb.m_ulSteamIDLobby);
             SteamMatchmaking.SetLobbyData(_lobbyID, "game", "anotherworld_room");
             SteamMatchmaking.SetLobbyData(_lobbyID, "room_code", _roomCode);
