@@ -220,6 +220,8 @@ public class CreateRoomPanel : MonoBehaviour
     {
         var d = JsonUtility.FromJson<RPD>(json);
         if (d == null) return;
+        // 捕获对手 SteamID（Host 读 guest 数据时填 RemoteSteamID；Guest 读 host 数据时即 HostSteamID）
+        if (d.steamID != 0) LobbyConfig.RemoteSteamID = d.steamID.ToString();
         if (name) name.text = d.playerName;
         if (stats) stats.text = $"总场数：{d.totalMatches}  胜率：{d.winRate:F1}%  连胜数：{d.winStreak}";
         if (d.steamID != 0 && avatar) LoadAvatar(avatar, d.steamID);

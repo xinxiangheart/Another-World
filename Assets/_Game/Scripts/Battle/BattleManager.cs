@@ -897,7 +897,15 @@ public class BattleManager : MonoBehaviour
             if (enemySlot.isBlocked || enemySlot.prisonBlocked || enemySlot.permaBlocked) continue;
 
             BoardManager.SwapCards(enemySlotIndex, targetEnemySlotIndex);
+            // 同步交换结果给远端客户端——否则客户端不知交换，随后退场 TargetDestroyCard 会销毁错误模型
+            // （01124/01312 同模式：交换后立即 TargetSwapCards + MarkDirty）
+            if (Mirror.NetworkServer.active && NetworkPlayer.Remote != null
+                && NetworkPlayer.Remote.connectionToClient != null)
+                NetworkPlayer.Remote.TargetSwapCards(NetworkPlayer.Remote.connectionToClient,
+                    enemySlotIndex >= 6 ? enemySlotIndex - 6 : enemySlotIndex + 6,
+                    targetEnemySlotIndex >= 6 ? targetEnemySlotIndex - 6 : targetEnemySlotIndex + 6);
         }
+        BoardSyncManager.MarkDirty();
         BoardSlot.CheckAndHandleDeaths();
         yield return StartCoroutine(WaitForSimultaneousWindow());
         // 检查对方是否有合法目标

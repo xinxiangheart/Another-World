@@ -253,6 +253,8 @@ public class QuickMatchPanel : MonoBehaviour
         if (string.IsNullOrEmpty(oppJson)) return;
         var opp = JsonUtility.FromJson<QMPD>(oppJson);
         if (opp == null || string.IsNullOrEmpty(opp.playerName)) return;
+        // 捕获对手 SteamID（Host 用于加载对方头像；Client 时 opp.steamID=HostSteamID，等效）
+        if (opp.steamID != 0) LobbyConfig.RemoteSteamID = opp.steamID.ToString();
         if (_state == State.Found || _state == State.WaitingOpponent) return;
 
         Debug.Log($"[QM] ★★★ 已找到对手: {opp.playerName} steamID={opp.steamID} matches={opp.totalMatches} ★★★");

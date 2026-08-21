@@ -14,6 +14,13 @@ public static class LobbyConfig
     /// <summary>Lobby 场景已有的 Steam 大厅 ID。</summary>
     public static Steamworks.CSteamID CurrentLobbyID { get; set; }
     public static string HostSteamID { get; set; }
+    /// <summary>对手 SteamID：Host 在读取大厅成员数据时捕获（Set 写入）；Client 读取时返回 HostSteamID；AI 对战为 null。</summary>
+    static string _remoteSteamID;
+    public static string RemoteSteamID
+    {
+        get => IsAI ? null : (IsHost ? _remoteSteamID : HostSteamID);
+        set => _remoteSteamID = value;
+    }
     /// <summary>唯一匹配 key——基于 Lobby 大厅 ID 生成，防止多组同时进 Game 串线到别人房间。</summary>
     public static string MatchKey { get; set; }
 }

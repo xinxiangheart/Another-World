@@ -34,7 +34,10 @@ using Steamworks;
 ///   常在旋转窗口内连跳，但 PhaseStart 被合并不旋转），旋转结束后按最新阶段 + 最新先手
 ///   补转一次，避免五环内容滞后。
 ///
-/// AI 对战：AI 回合（EnemyTurn）显示空白环；头像不可用（AI 先手/未加载）→ 空白环（绝不 SetAvatar(null) 残留）。
+/// 头像显示（行动者视角，AI 对战与联机一致）：
+///   - MyTurn（己方行动）→ 己方头像；EnemyTurn（对方行动）→ 对方头像（AI 无头像 → 空白环）。
+///   - PhaseStart（准备阶段）→ 本回合先手头像（按 isMyTurnFirst）。
+/// 头像不可用（AI 先手/AI 回合/未加载）→ 空白环（绝不 SetAvatar(null) 残留）。
 /// </summary>
 public class PhaseWheel : MonoBehaviour
 {
@@ -293,39 +296,21 @@ public class PhaseWheel : MonoBehaviour
                 }
                 break;
             case TurnManager.TurnPhase.MyTurn:
-                // AI 对战：MyTurn = 己方(玩家)行动回合，显示己方头像（不是先手）
-                if (SimpleAI.IsAIMatch)
+                // 己方行动回合：显示己方头像（行动者视角，AI 对战与联机一致）
                 {
                     Texture2D my = MyAvatar();
                     if (my != null) slots[physIndex].SetAvatar(my);
                     else slots[physIndex].SetEmpty();
-                    _slotDesc[physIndex] = "玩家1";
-                    break;
-                }
-                // 联机：MyTurn 显示先手
-                {
-                    bool fMine = IsFirstMineForPhase(phase.Value, isNext);
-                    Texture2D fAvatar = fMine ? MyAvatar() : OppAvatar();
-                    if (fAvatar != null) slots[physIndex].SetAvatar(fAvatar);
-                    else slots[physIndex].SetEmpty();
-                    _slotDesc[physIndex] = AvatarDesc(fMine, fAvatar);
+                    _slotDesc[physIndex] = AvatarDesc(true, my);
                 }
                 break;
             case TurnManager.TurnPhase.EnemyTurn:
-                // AI 对战：EnemyTurn = AI 行动回合，显示空白环（不显示头像）
-                if (SimpleAI.IsAIMatch)
+                // 对方行动回合：显示对方头像（AI 对战 OppAvatar=null → 空白；联机显示对手头像）
                 {
-                    slots[physIndex].SetEmpty();
-                    _slotDesc[physIndex] = "AI空白";
-                    break;
-                }
-                // 联机：EnemyTurn 显示后手
-                {
-                    bool sMine = IsFirstMineForPhase(phase.Value, isNext);
-                    Texture2D sAvatar = sMine ? OppAvatar() : MyAvatar();
-                    if (sAvatar != null) slots[physIndex].SetAvatar(sAvatar);
+                    Texture2D opp = OppAvatar();
+                    if (opp != null) slots[physIndex].SetAvatar(opp);
                     else slots[physIndex].SetEmpty();
-                    _slotDesc[physIndex] = AvatarDesc(!sMine, sAvatar);
+                    _slotDesc[physIndex] = AvatarDesc(false, opp);
                 }
                 break;
         }
@@ -346,23 +331,16 @@ public class PhaseWheel : MonoBehaviour
         return tm.isMyTurnFirst;
     }
 
-    /// <summary>先手玩家头像。</summary>
-    Texture2D FirstAvatar(TurnManager.TurnPhase phase, bool isNext)
-        => IsFirstMineForPhase(phase, isNext) ? MyAvatar() : OppAvatar();
-
-    /// <summary>后手玩家头像：与先手相反。</summary>
-    Texture2D SecondAvatar(TurnManager.TurnPhase phase, bool isNext)
-        => IsFirstMineForPhase(phase, isNext) ? OppAvatar() : MyAvatar();
-
     Texture2D MyAvatar() => SteamDataManager.Instance != null ? SteamDataManager.Instance.localAvatar : null;
 
     Texture2D OppAvatar()
     {
         // AI 对战：AI(Remote, server-only) 无 SteamID，AI 头像为空白
         if (SimpleAI.IsAIMatch) return null;
-        // 联机：己方是 Client 时对手=Host（用 HostSteamID）；己方是 Host 时对手无 SteamID → null
-        if (LobbyConfig.IsHost || string.IsNullOrEmpty(LobbyConfig.HostSteamID)) return null;
-        if (!ulong.TryParse(LobbyConfig.HostSteamID, out ulong sid)) return null;
+        // 对手 SteamID：Host 用大厅捕获的 RemoteSteamID；Client 用 RemoteSteamID(=HostSteamID)
+        string sidStr = LobbyConfig.RemoteSteamID;
+        if (string.IsNullOrEmpty(sidStr)) return null;
+        if (!ulong.TryParse(sidStr, out ulong sid)) return null;
         return RingSlot.LoadAvatarFromSteamID(new CSteamID(sid));
     }
 }
