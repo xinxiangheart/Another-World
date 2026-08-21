@@ -28,7 +28,7 @@ using Steamworks;
 ///   （Next/NextNext）时 tm.isMyTurnFirst 已反映该阶段所在轮的先后手，直接读取即可
 ///   （见 IsFirstMineForPhase）。
 ///
-/// 第一回合：尚无上一阶段，L 位固定空白环（旋转开始时刻 phaseCount<=1 → 旋转后强制清空 L）。
+/// L 位是显示环（上一阶段）：只在 Start 初始态为空白，之后随旋转自然显示上一阶段，永不清空。
 ///
 /// 旋转校正：旋转动画（0.4s）期间阶段又变化时（回合边界 Battle→PhaseStart→MyTurn/EnemyTurn
 ///   常在旋转窗口内连跳，但 PhaseStart 被合并不旋转），旋转结束后按最新阶段 + 最新先手
@@ -61,8 +61,6 @@ public class PhaseWheel : MonoBehaviour
     /// <summary>角色 → 物理环 index。[H1, L, C, R, H2]。</summary>
     int[] _roleSlot = { 0, 1, 2, 3, 4 };
     bool _rotating;
-    /// <summary>本次旋转是否发生在第一回合（phaseCount<=1）。第一回合尚无上一阶段，旋转后 L 位固定空白。</summary>
-    bool _firstRoundRotation;
     TurnManager.TurnPhase? _lastPhase;
     float _radius;
     /// <summary>物理环 → 内容描述（跟随物理环，旋转时内容不变）。</summary>
@@ -151,11 +149,10 @@ public class PhaseWheel : MonoBehaviour
     }
 
     /// <summary>旋转一个环位：预载 NextNext → 物理环角度动画 → 角色轮转 → 清空刚转出的隐藏环。
-    /// 旋转开始时刻快照 _firstRoundRotation（第一回合 L 位固定空白）。</summary>
+    /// L 位是显示环（上一阶段），永不清空——只在 Start 初始态为空白。</summary>
     public void RotateToPhase(TurnManager.TurnPhase? previous, TurnManager.TurnPhase current, TurnManager.TurnPhase? next)
     {
         if (_rotating || slots == null || slots.Length != 5) { UpdateWheelContents(previous, current, next); return; }
-        _firstRoundRotation = TurnManager.Instance != null && TurnManager.Instance.phaseCount <= 1;
         StartCoroutine(RotateRoutine(previous, current, next));
     }
 
@@ -197,18 +194,9 @@ public class PhaseWheel : MonoBehaviour
         RotateRoles();
 
         // ④ 清空"刚转出显示区"的隐藏环（当前 H1 位 = 原 Prev 环）。
-        //    显示环（L/C/R）已带正确内容到位，图案永不更新。
+        //    显示环（L/C/R）已带正确内容到位，图案永不更新；L 位（上一阶段）永不清空。
         slots[_roleSlot[0]].SetEmpty();
         _slotDesc[_roleSlot[0]] = "空白";
-
-        // 第一回合（phaseCount<=1）：尚无上一阶段，L 位固定空白环（初始 PhaseStart 不进 L）。
-        // 回合边界处 Battle→PhaseStart 时 phaseCount 已 +1，L 随即恢复显示上一阶段。
-        if (_firstRoundRotation)
-        {
-            Debug.Log($"[PhaseWheel] 第一回合清空L（phaseCount={TurnManager.Instance?.phaseCount}, 旋转目标={DescribePhase(current)}）");
-            slots[_roleSlot[1]].SetEmpty();
-            _slotDesc[_roleSlot[1]] = "空白";
-        }
 
         LogWheel("[旋转后] 五环");
         // 下次旋转前，这个空隐藏环作为 H2 位被预载（① 预载已覆盖），循环闭合。
@@ -344,13 +332,16 @@ public class PhaseWheel : MonoBehaviour
         if (!ulong.TryParse(sidStr, out ulong sid)) return null;
         var cid = new CSteamID(sid);
         if (cid.m_SteamID == 0) return null;
+        // 缓存：同 SteamID 复用已加载头像，避免每阶段重复同步拉取导致纹理重建/时好时坏
+        if (_cachedOppSteamID == sid && _cachedOppAvatar != null) return _cachedOppAvatar;
         Texture2D tex = RingSlot.LoadAvatarFromSteamID(cid);
-        if (tex == null)
-        {
-            // 头像尚未就绪（GetLargeFriendAvatar 返回 0）——请求加载，下次阶段预载时自然重试
-            SteamFriends.RequestUserInformation(cid, false);
-            return null;
-        }
-        return tex;
+        if (tex != null) { _cachedOppAvatar = tex; _cachedOppSteamID = sid; return tex; }
+        // 头像尚未就绪（GetLargeFriendAvatar 返回 0）——请求加载，下次阶段预载时自然重试
+        SteamFriends.RequestUserInformation(cid, false);
+        return null;
     }
+
+    /// <summary>对方头像缓存（避免重复同步拉取 + 纹理重建）。</summary>
+    static Texture2D _cachedOppAvatar;
+    static ulong _cachedOppSteamID;
 }

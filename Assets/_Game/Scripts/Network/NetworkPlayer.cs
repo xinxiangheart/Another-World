@@ -150,6 +150,23 @@ public class NetworkPlayer : NetworkBehaviour
         // 上报自己的 SteamID——对方端据此加载头像（不依赖 Steam 大厅缓存，权威可靠）
         if (SteamDataManager.Instance != null && SteamDataManager.Instance.localSteamID.m_SteamID != 0)
             CmdSetMySteamID(SteamDataManager.Instance.localSteamID.m_SteamID);
+        else
+            StartCoroutine(RetryReportSteamID()); // SteamDataManager 未就绪 → 延迟重试
+    }
+
+    /// <summary>SteamDataManager 未就绪时延迟重试上报 SteamID（防发送 0）。</summary>
+    System.Collections.IEnumerator RetryReportSteamID()
+    {
+        for (int i = 0; i < 10; i++)
+        {
+            yield return new WaitForSeconds(0.3f);
+            var sd = SteamDataManager.Instance;
+            if (sd != null && sd.localSteamID.m_SteamID != 0)
+            {
+                CmdSetMySteamID(sd.localSteamID.m_SteamID);
+                yield break;
+            }
+        }
     }
 
     [Command]
