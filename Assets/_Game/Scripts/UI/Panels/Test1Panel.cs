@@ -19,7 +19,18 @@ public class Test1Panel : MonoBehaviour
         Instance = this;
     }
 
-    void Start() => Hide();
+    void Start()
+    {
+        // 悬停信息面板：只显示，不拦截射线——目标选择时让悬停/点击穿透到下方格子
+        // （卡牌 Collider 保持启用，弹窗照常弹出；格子高亮和点击选中同时生效）
+        // 直接设 raycastTarget=false（不新增/查找组件，避免 MissingComponentException）
+        if (panelRoot != null)
+        {
+            foreach (var g in panelRoot.GetComponentsInChildren<UnityEngine.UI.Graphic>(true))
+                g.raycastTarget = false;
+        }
+        Hide();
+    }
 
     /// <summary>如果面板正打开，用最新的 CardInstance 重新渲染</summary>
     public void RefreshIfOpen()

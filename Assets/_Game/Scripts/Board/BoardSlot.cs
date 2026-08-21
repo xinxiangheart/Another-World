@@ -983,7 +983,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         return new int[0];
     }
 
-    void HighlightRow(bool highlight)
+    public void HighlightRow(bool highlight)
     {
         if (currentTargetType == TargetType.SingleAlly || currentTargetType == TargetType.SingleEnemy)
         {

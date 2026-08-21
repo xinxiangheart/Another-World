@@ -9,11 +9,65 @@ public class SelectionManager : MonoBehaviour
 
     private Stack<string> layerStack = new Stack<string>();
     private int idCounter;
+    BoardSlot _lastTargetHover;
 
     void Awake()
     {
         if (Instance != null) { Destroy(gameObject); return; }
         Instance = this;
+    }
+
+    void Update()
+    {
+        // 目标选择模式：3D 射线（Physics.RaycastAll）穿透卡牌，检测鼠标下的槽位 → 驱动高亮 + 点击。
+        // 卡牌 Collider 保持启用（悬停弹窗/抛置正常），槽位 BoxCollider 在卡牌之后被 RaycastAll 命中。
+        if (layerStack.Count == 0 || BoardSlot.currentTargetType == TargetType.None) return;
+        if (Camera.main == null) return;
+
+        Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+        var hits = Physics.RaycastAll(ray, 500f);
+        BoardSlot hovered = FindSlotUnderCursor(hits);
+
+        if (hovered != _lastTargetHover)
+        {
+            if (_lastTargetHover != null) _lastTargetHover.HighlightRow(false);
+            _lastTargetHover = hovered;
+            if (hovered != null) hovered.HighlightRow(true);
+        }
+
+        if (hovered != null && Input.GetMouseButtonDown(0) && !CardView.IsAnyCardDragging)
+        {
+            _lastTargetHover = null;
+            BoardSlot.onTargetSelected?.Invoke(hovered);
+        }
+    }
+
+    /// <summary>从射线命中中找鼠标下的槽位：命中卡牌 → 映射到其所在槽位（穿透高亮卡牌下的格子）。
+    /// 不新增槽位 collider——避免干扰卡牌 OnMouseEnter（悬停弹窗）。空槽位仍由 UI OnPointerEnter 高亮。</summary>
+    BoardSlot FindSlotUnderCursor(RaycastHit[] hits)
+    {
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return null;
+        foreach (var h in hits)
+        {
+            if (h.collider == null) continue;
+            // 直接命中槽位（若未来有槽位 collider）
+            BoardSlot direct = h.collider.GetComponentInParent<BoardSlot>();
+            if (direct != null && direct.IsValidTarget(BoardSlot.currentTargetType)) return direct;
+            // 命中卡牌 → 找它所在槽位
+            Card3DInstance c3d = h.collider.GetComponentInParent<Card3DInstance>();
+            if (c3d != null)
+            {
+                foreach (var s in bm.GetAllSlots())
+                {
+                    if (s != null && s.currentCard3D != null
+                        && s.currentCard3D.GetComponent<Card3DInstance>() == c3d
+                        && s.IsValidTarget(BoardSlot.currentTargetType))
+                        return s;
+                }
+            }
+        }
+        return null;
     }
 
     /// <summary>
@@ -99,6 +153,7 @@ public class SelectionManager : MonoBehaviour
             }
             FindObjectOfType<CardDrag>()?.SetButtonsInteractable(true);
             Card3DHover.allowDiscard = true;
+            if (_lastTargetHover != null) { _lastTargetHover.HighlightRow(false); _lastTargetHover = null; }
         }
     }
     /// <summary>
@@ -128,6 +183,7 @@ public class SelectionManager : MonoBehaviour
         }
         FindObjectOfType<CardDrag>()?.SetButtonsInteractable(true);
         Card3DHover.allowDiscard = true;
+        if (_lastTargetHover != null) { _lastTargetHover.HighlightRow(false); _lastTargetHover = null; }
     }
     public void StartSafeCoroutine(IEnumerator routine)
     {
