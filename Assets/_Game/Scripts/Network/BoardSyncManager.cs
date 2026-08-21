@@ -179,8 +179,8 @@ public class BoardSyncManager : MonoBehaviour
 
         for (int i = 0; i < 6; i++)
         {
-            ApplySlot(i + 6, s[i], bm, hm);     // server 0-5 → client 6-11
-            ApplySlot(i, s[i + 6], bm, hm);     // server 6-11 → client 0-5
+            ApplySlot(i + 6, s[i], bm, hm, syncGen);     // server 0-5 → client 6-11
+            ApplySlot(i, s[i + 6], bm, hm, syncGen);     // server 6-11 → client 0-5
         }
 
         // Server's 6-11 maps to this client's 0-5. If server has MistHider, enemy cards are hidden.
@@ -301,7 +301,7 @@ public class BoardSyncManager : MonoBehaviour
         }
     }
 
-    void ApplySlot(int idx, string raw, BoardManager bm, HandManager hm)
+    void ApplySlot(int idx, string raw, BoardManager bm, HandManager hm, int syncGen)
     {
         BoardSlot slot = bm.GetSlot(idx);
         if (slot == null) return;
@@ -339,18 +339,20 @@ public class BoardSyncManager : MonoBehaviour
         string tid = parts[0];
         if (string.IsNullOrEmpty(tid)) { EnsureEmpty(idx, slot, bm); return; }
 
-        EnsureCard(idx, parts, slot, bm, hm);
+        EnsureCard(idx, parts, slot, bm, hm, syncGen);
     }
 
     void EnsureEmpty(int idx, BoardSlot slot, BoardManager bm)
     {
-        // 纯客户端：模型销毁由 TargetDestroyCard RPC 权威处理——SyncNow 不再销毁模型
-        if (NetworkClient.isConnected && !NetworkServer.active) return;
-
         if (slot.currentCard3D != null)
         {
             var ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+            // 刚放置/换位的卡不销毁（时间窗口，双端一致）——防止过期同步误删刚出的牌
             if (ci != null && Time.time - ci._placedAtTime < PLACE_PROTECT_WINDOW) return;
+            // 纯客户端兜底守卫：从未被服务端同步确认（serverAckGen<0）的牌不销毁——
+            // 可能是刚放置尚未被服务端确认，避免过期同步误删。主销毁路径仍是 TargetDestroyCard RPC。
+            // 此兜底覆盖所有绕过 TargetDestroyCard 的移除路径（直接 Destroy+SetCard(null) 等）。
+            if (NetworkClient.isConnected && !NetworkServer.active && ci != null && ci.serverAckGen < 0) return;
 
             for (int i = bm.attachedModels.Count - 1; i >= 0; i--)
             {
@@ -382,7 +384,7 @@ public class BoardSyncManager : MonoBehaviour
         }
     }
 
-    void EnsureCard(int idx, string[] parts, BoardSlot slot, BoardManager bm, HandManager hm)
+    void EnsureCard(int idx, string[] parts, BoardSlot slot, BoardManager bm, HandManager hm, int syncGen)
     {
         string tid = parts[0];
         var cur = slot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
@@ -430,13 +432,15 @@ public class BoardSyncManager : MonoBehaviour
             {
                 var m = Instantiate(t.prefab3D, hm.GetSlotWorldPosition(idx), Quaternion.Euler(0, 180, 0));
                 var c = m.GetComponent<Card3DInstance>();
-                if (c != null) { var n = m.AddComponent<CardInstance>(); n.InitFromTemplate(t, 0); if (t.templateID == "03007") n.isShadow = true; if (t.templateID == "01502") CardInstance.shadowMasterAlive = true; n._placedAtTime = Time.time; n.placementGeneration = BoardSlot.NextPlacementGeneration(); c.cardInstance = n; c.UpdateValues(); }
+                if (c != null) { var n = m.AddComponent<CardInstance>(); n.InitFromTemplate(t, 0); if (t.templateID == "03007") n.isShadow = true; if (t.templateID == "01502") CardInstance.shadowMasterAlive = true; n._placedAtTime = Time.time; n.placementGeneration = BoardSlot.NextPlacementGeneration(); n.serverAckGen = syncGen; c.cardInstance = n; c.UpdateValues(); }
                 slot.SetCard(m);
                 cur = c?.cardInstance; justCreated = true;
             }
         }
         if (cur != null && cur.templateID == tid && parts.Length >= 15)
         {
+            // 服务端同步包含此卡 → 该卡已被服务端确认（EnsureEmpty 兜底销毁守卫依据）
+            cur.serverAckGen = syncGen;
             var p = parts; int v;
             if (int.TryParse(p[1], out v)) cur.currentHealth = v;
             if (int.TryParse(p[2], out v)) cur.currentAttack = v;

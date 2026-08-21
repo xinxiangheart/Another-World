@@ -94,6 +94,9 @@ public class CardInstance : MonoBehaviour
     [System.NonSerialized] public bool isDead;
     /// <summary>死亡时记录的当前世代。用于判断死亡事件是否已被同步处理。</summary>
     [System.NonSerialized] public int deathGeneration;
+    /// <summary>最近一次被服务端同步确认的世代号（syncGen/attachGen）。-1=从未被服务端同步确认。
+    /// EnsureEmpty 纯客户端兜底销毁守卫：只销毁已确认的残留模型，刚放置未确认的牌受保护。</summary>
+    [System.NonSerialized] public int serverAckGen = -1;
     /// <summary>[Legacy] 进场效果正在执行中——死亡扫描应跳过此卡。后续由 NestingContext.IsNested 替代。</summary>
     [System.NonSerialized] public bool _enterEffectRunning;
     /// <summary>进场效果已运行过（一次性的持久标记，不清除）。用于保护玩家放置的卡不被网络同步覆盖。</summary>
