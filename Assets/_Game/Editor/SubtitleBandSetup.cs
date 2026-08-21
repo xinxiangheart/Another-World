@@ -5,9 +5,9 @@ using UnityEditor.SceneManagement;
 using TMPro;
 
 /// <summary>
-/// 一键生成回合字幕条带结构：
-///   SubtitleCanvas（专用置顶 Canvas，1920×1080 缩放）
-///     └─ SubtitleBand（Image 灰带，全屏 X，Y=中心可调，挂 SubtitleBand 组件）
+/// 一键生成回合字幕条带结构，作为 CardCanvas 的子组件：
+///   CardCanvas（Game 场景现有）
+///     └─ SubtitleBand（Image 灰带，全屏 X，Y/高度可调，挂 SubtitleBand 组件）
 ///          ├─ Mode1Text   （位置 = 公共锚点）
 ///          ├─ Mode2Top    （己方回合）
 ///          └─ Mode2Bottom （第X阶段）
@@ -29,15 +29,20 @@ public static class SubtitleBandSetup
             return;
         }
 
-        _font = FindChineseFont();
+        // 找 CardCanvas（子组件挂到这里）
+        Canvas cardCanvas = FindCardCanvas();
+        if (cardCanvas == null)
+        {
+            Debug.LogError("[SubtitleBand] 当前场景找不到名为 CardCanvas 的 Canvas，无法生成。请打开 Game.unity");
+            return;
+        }
 
-        Canvas canvas = FindOrCreateCanvas();
-        canvas.sortingOrder = 100; // 置顶显示
+        _font = FindChineseFont();
 
         // ── 条带：全屏 X，Y=画布中心（可在 Inspector 调 anchor/height）──
         var bandGO = new GameObject("SubtitleBand", typeof(RectTransform), typeof(Image), typeof(SubtitleBand));
-        bandGO.transform.SetParent(canvas.transform, false);
-        bandGO.transform.SetAsLastSibling();
+        bandGO.transform.SetParent(cardCanvas.transform, false);
+        bandGO.transform.SetAsLastSibling(); // 置于 CardCanvas 子级最上层显示
         var bandRT = bandGO.GetComponent<RectTransform>();
         bandRT.anchorMin = new Vector2(0f, 0.5f);
         bandRT.anchorMax = new Vector2(1f, 0.5f);
@@ -53,23 +58,22 @@ public static class SubtitleBandSetup
 
         Selection.activeGameObject = bandGO;
         EditorSceneManager.MarkSceneDirty(bandGO.scene);
-        Debug.Log("[SubtitleBand] 已生成。请在 Scene 中调整：条带 Y/高度、Mode1Text(=公共锚点)、Mode2 停留位");
+        Debug.Log("[SubtitleBand] 已生成到 CardCanvas 下。请在 Scene 中调整：条带 Y/高度、Mode1Text(=公共锚点)、Mode2 停留位");
     }
 
-    static Canvas FindOrCreateCanvas()
+    /// <summary>在 CardCanvas 下查找名为 CardCanvas 的 Canvas（忽略大小写）。</summary>
+    static Canvas FindCardCanvas()
     {
         foreach (var c in Object.FindObjectsOfType<Canvas>(true))
-            if (c.name == "SubtitleCanvas") return c;
-        var go = new GameObject("SubtitleCanvas", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
-        var canvas = go.GetComponent<Canvas>();
-        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        canvas.sortingOrder = 100;
-        var scaler = go.GetComponent<CanvasScaler>();
-        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        scaler.referenceResolution = new Vector2(1920, 1080);
-        scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
-        scaler.matchWidthOrHeight = 0.5f;
-        return canvas;
+        {
+            if (c.name.Equals("CardCanvas", System.StringComparison.OrdinalIgnoreCase))
+                return c;
+            // 兜底：父物体名为 CardCanvas 的（有的 Canvas 在子物体上）
+            if (c.transform.parent != null &&
+                c.transform.parent.name.Equals("CardCanvas", System.StringComparison.OrdinalIgnoreCase))
+                return c;
+        }
+        return null;
     }
 
     static TextMeshProUGUI CreateText(Transform parent, string name, string content, Vector2 anchoredPos, float fontSize)
