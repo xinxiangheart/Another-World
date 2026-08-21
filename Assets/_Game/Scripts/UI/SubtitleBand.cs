@@ -16,19 +16,23 @@ using TMPro;
 /// 公共锚点 = Mode1Text 的 anchoredPosition。模式一文字中心在此；
 /// 模式二两行文字从该锚点出发，各自移动到停留位置。
 ///
-/// 模式一（对方回合/攻击回合）：单行，淡入 + 微缩(1.05→1.0) → 停留 → 淡出。
-/// 模式二（己方回合）：两行（"己方回合" + "第X阶段"），淡入 + 从锚点平滑移到停留位 → 停留 → 淡出。
+/// 模式一（后手回合/攻击回合）：单行，淡入 + 微缩(1.05→1.0) → 停留 → 淡出。
+/// 模式二（仅先手玩家回合）：两行（"XX回合" + "第X阶段"），淡入 + 从锚点平滑移到停留位 → 停留 → 淡出。
+/// 阶段数只在先手玩家的回合显示；后手玩家回合走模式一（单行回合名）。
 /// 条带淡入淡出与文字完全同频。
 ///
-/// 自动触发（挂在 TurnManager 阶段变化上）：MyTurn→模式二；EnemyTurn/BattlePhase→模式一。
+/// 自动触发（挂在 TurnManager 阶段变化上，先手判断用 tm.isMyTurnFirst）：
+///   先手回合（MyTurn/EnemyTurn）→ 模式二（回合名 + 第X阶段）
+///   后手回合（MyTurn/EnemyTurn）→ 模式一（回合名）
+///   BattlePhase → 模式一（"攻击回合"）
 /// 也可手动调用 PlayMode1 / PlayMode2。
 /// </summary>
 public class SubtitleBand : MonoBehaviour
 {
     [Header("引用（Mode1Text 位置 = 公共锚点）")]
-    public TextMeshProUGUI mode1Text;    // 单行：对方回合 / 攻击回合
-    public TextMeshProUGUI mode2Top;     // 己方回合
-    public TextMeshProUGUI mode2Bottom;  // 第X阶段
+    public TextMeshProUGUI mode1Text;    // 单行：后手回合/攻击回合（模式一）
+    public TextMeshProUGUI mode2Top;     // "XX回合"（先手回合，模式二）
+    public TextMeshProUGUI mode2Bottom;  // 第X阶段（先手回合）
     public Image bandImage;              // 灰色条带（默认取自身组件）
 
     [Header("时长（秒）")]
@@ -86,13 +90,18 @@ public class SubtitleBand : MonoBehaviour
 
     void OnPhaseChanged(TurnManager.TurnPhase phase)
     {
+        var tm = TurnManager.Instance;
+        bool firstMine = tm != null && tm.isMyTurnFirst;
+        int phaseNum = tm != null ? tm.phaseCount : 0;
         switch (phase)
         {
             case TurnManager.TurnPhase.MyTurn:
-                PlayMode2("己方回合", TurnManager.Instance != null ? TurnManager.Instance.phaseCount : 0);
+                if (firstMine) PlayMode2("己方回合", phaseNum); // 先手+己方 → 模式二（己方回合 第X阶段）
+                else PlayMode1("己方回合");                     // 后手+己方 → 模式一（己方回合）
                 break;
             case TurnManager.TurnPhase.EnemyTurn:
-                PlayMode1("对方回合");
+                if (!firstMine) PlayMode2("对方回合", phaseNum); // 先手+对方 → 模式二（对方回合 第X阶段）
+                else PlayMode1("对方回合");                      // 后手+对方 → 模式一（对方回合）
                 break;
             case TurnManager.TurnPhase.BattlePhase:
                 PlayMode1("攻击回合");
@@ -111,13 +120,13 @@ public class SubtitleBand : MonoBehaviour
         PlayRoutine(Mode1Routine());
     }
 
-    /// <summary>模式二：两行。"己方回合" + "第X阶段"。</summary>
+    /// <summary>模式二（仅先手玩家回合）：两行。"XX回合" + "第X阶段"。</summary>
     public void PlayMode2(string topText, int phaseNumber)
     {
         if (mode2Top == null || mode2Bottom == null) return;
         InitPositions();
         mode2Top.text = topText;
-        mode2Bottom.text = $"第{phaseNumber}阶段";
+        mode2Bottom.text = phaseNumber > 0 ? $"第{phaseNumber}阶段" : "";
         PlayRoutine(Mode2Routine());
     }
 
