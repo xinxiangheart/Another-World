@@ -205,6 +205,7 @@ public class PhaseWheel : MonoBehaviour
         // 回合边界处 Battle→PhaseStart 时 phaseCount 已 +1，L 随即恢复显示上一阶段。
         if (_firstRoundRotation)
         {
+            Debug.Log($"[PhaseWheel] 第一回合清空L（phaseCount={TurnManager.Instance?.phaseCount}, 旋转目标={DescribePhase(current)}）");
             slots[_roleSlot[1]].SetEmpty();
             _slotDesc[_roleSlot[1]] = "空白";
         }

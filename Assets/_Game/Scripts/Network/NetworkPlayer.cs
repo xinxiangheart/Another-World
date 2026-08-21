@@ -40,6 +40,10 @@ public class NetworkPlayer : NetworkBehaviour
     [SyncVar(hook = nameof(OnPlayerNameChanged))]
     public string playerName = "";
 
+    /// <summary>本玩家自己的 SteamID（CmdSetMySteamID 上报）。对方端通过 hook 存入 LobbyConfig.RemoteSteamID 加载头像。</summary>
+    [SyncVar(hook = nameof(OnMySteamIDChanged))]
+    public ulong mySteamID;
+
     /// <summary>01534 活化母巢累计受伤——跨退场/回手永久保留，不退场不清零。</summary>
     public int outlawNestTotalDamage;
 
@@ -143,12 +147,29 @@ public class NetworkPlayer : NetworkBehaviour
         // 同步 Steam 名字到服务器
         if (SteamDataManager.Instance != null)
             CmdSetPlayerName(SteamDataManager.Instance.localPlayerName);
+        // 上报自己的 SteamID——对方端据此加载头像（不依赖 Steam 大厅缓存，权威可靠）
+        if (SteamDataManager.Instance != null && SteamDataManager.Instance.localSteamID.m_SteamID != 0)
+            CmdSetMySteamID(SteamDataManager.Instance.localSteamID.m_SteamID);
     }
 
     [Command]
     void CmdSetPlayerName(string name)
     {
         playerName = name;
+    }
+
+    /// <summary>客户端上报自己的 SteamID → 服务端 SyncVar 广播给双方。</summary>
+    [Command]
+    void CmdSetMySteamID(ulong sid)
+    {
+        mySteamID = sid;
+    }
+
+    void OnMySteamIDChanged(ulong oldVal, ulong newVal)
+    {
+        // 对方 SteamID 到了 → 存到 LobbyConfig（PhaseWheel.OppAvatar 用它加载头像）
+        if (!isLocalPlayer && newVal != 0)
+            LobbyConfig.RemoteSteamID = newVal.ToString();
     }
 
     void OnPlayerNameChanged(string oldName, string newName)
