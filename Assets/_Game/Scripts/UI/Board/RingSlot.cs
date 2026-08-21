@@ -61,29 +61,7 @@ public class RingSlot : MonoBehaviour
         else SetEmpty();
     }
 
-    /// <summary>从 SteamID 同步拉取大头像纹理（翻转 Y，与 SteamDataManager 一致）。</summary>
+    /// <summary>从 SteamID 获取头像纹理——统一走 SteamAvatarManager（大→中降级 + 缓存 + Y 翻转）。</summary>
     public static Texture2D LoadAvatarFromSteamID(CSteamID steamID)
-    {
-        int handle = SteamFriends.GetLargeFriendAvatar(steamID);
-        if (handle <= 0) return null;
-        if (!SteamUtils.GetImageSize(handle, out uint w, out uint h)) return null;
-        byte[] px = new byte[w * h * 4];
-        if (!SteamUtils.GetImageRGBA(handle, px, (int)(w * h * 4))) return null;
-
-        var tex = new Texture2D((int)w, (int)h, TextureFormat.RGBA32, false);
-        tex.LoadRawTextureData(px);
-        // Steam 头像上下颠倒，翻转 Y
-        Color[] cols = tex.GetPixels();
-        for (int y = 0; y < h / 2; y++)
-        {
-            for (int x = 0; x < w; x++)
-            {
-                int top = y * (int)w + x, bot = ((int)h - 1 - y) * (int)w + x;
-                (cols[top], cols[bot]) = (cols[bot], cols[top]);
-            }
-        }
-        tex.SetPixels(cols);
-        tex.Apply();
-        return tex;
-    }
+        => SteamAvatarManager.GetAvatarTexture(steamID.m_SteamID);
 }

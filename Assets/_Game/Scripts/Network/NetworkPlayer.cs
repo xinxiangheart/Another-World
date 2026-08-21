@@ -186,7 +186,7 @@ public class NetworkPlayer : NetworkBehaviour
     {
         // 对方 SteamID 到了 → 存到 LobbyConfig（PhaseWheel.OppAvatar 用它加载头像）
         if (!isLocalPlayer && newVal != 0)
-            LobbyConfig.RemoteSteamID = newVal.ToString();
+            LobbyConfig.RemoteSteamID = newVal;
     }
 
     void OnPlayerNameChanged(string oldName, string newName)

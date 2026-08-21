@@ -166,7 +166,7 @@ public class CreateRoomPanel : MonoBehaviour
                 if (!string.IsNullOrEmpty(hs))
                 {
                     LobbyConfig.HostSteamID = hs;
-                    LobbyConfig.RemoteSteamID = hs; // host_sid = Host SteamID = 对手 SteamID
+                    if (ulong.TryParse(hs, out ulong hsid)) LobbyConfig.RemoteSteamID = hsid; // host_sid = Host SteamID = 对手
                 }
                 _lobbyID = default;
                 panelRoot.SetActive(false); JoinGamePanel.Instance?.Open();
@@ -225,7 +225,7 @@ public class CreateRoomPanel : MonoBehaviour
         var d = JsonUtility.FromJson<RPD>(json);
         if (d == null) return;
         // 捕获对手 SteamID（Host 读 guest 数据时填 RemoteSteamID；Guest 读 host 数据时即 HostSteamID）
-        if (d.steamID != 0) LobbyConfig.RemoteSteamID = d.steamID.ToString();
+        if (d.steamID != 0) LobbyConfig.RemoteSteamID = d.steamID;
         if (name) name.text = d.playerName;
         if (stats) stats.text = $"总场数：{d.totalMatches}  胜率：{d.winRate:F1}%  连胜数：{d.winStreak}";
         if (d.steamID != 0 && avatar) LoadAvatar(avatar, d.steamID);
@@ -233,14 +233,9 @@ public class CreateRoomPanel : MonoBehaviour
 
     static void LoadAvatar(RawImage target, ulong sid)
     {
-        int ah = SteamFriends.GetLargeFriendAvatar(new CSteamID(sid));
-        if (ah <= 0 || !SteamUtils.GetImageSize(ah, out uint w, out uint h)) return;
-        byte[] px = new byte[w * h * 4];
-        if (!SteamUtils.GetImageRGBA(ah, px, (int)(w * h * 4))) return;
-        var tex = new Texture2D((int)w, (int)h, TextureFormat.RGBA32, false); tex.LoadRawTextureData(px);
-        var cols = tex.GetPixels();
-        for (int y = 0; y < h / 2; y++) for (int x = 0; x < w; x++) { int top = y * (int)w + x, bot = ((int)h - 1 - y) * (int)w + x; var t = cols[top]; cols[top] = cols[bot]; cols[bot] = t; }
-        tex.SetPixels(cols); tex.Apply(); target.texture = tex;
+        // 统一走 SteamAvatarManager（大→中降级 + 缓存），同时预缓存进轮盘
+        var tex = SteamAvatarManager.GetAvatarTexture(sid);
+        if (tex != null && target != null) target.texture = tex;
     }
 
     // ======== 按钮 ========
@@ -271,7 +266,7 @@ public class CreateRoomPanel : MonoBehaviour
             if (member == SteamUser.GetSteamID()) continue;
             string gj = SteamMatchmaking.GetLobbyMemberData(_lobbyID, member, "player_data");
             var gd = JsonUtility.FromJson<RPD>(gj);
-            if (gd != null && gd.steamID != 0) { LobbyConfig.RemoteSteamID = gd.steamID.ToString(); return; }
+            if (gd != null && gd.steamID != 0) { LobbyConfig.RemoteSteamID = gd.steamID; return; }
         }
     }
     public void LeaveRoom()

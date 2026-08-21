@@ -148,14 +148,9 @@ public class JoinRoomPanel : MonoBehaviour
 
     static void LoadAvatar(RawImage target, ulong steamID)
     {
-        int ah = SteamFriends.GetLargeFriendAvatar(new CSteamID(steamID));
-        if (ah <= 0 || !SteamUtils.GetImageSize(ah, out uint w, out uint h)) return;
-        byte[] px = new byte[w * h * 4];
-        if (!SteamUtils.GetImageRGBA(ah, px, (int)(w * h * 4))) return;
-        var tex = new Texture2D((int)w, (int)h, TextureFormat.RGBA32, false); tex.LoadRawTextureData(px);
-        var cols = tex.GetPixels();
-        for (int y = 0; y < h / 2; y++) for (int x = 0; x < w; x++) { int top = y * (int)w + x, bot = ((int)h - 1 - y) * (int)w + x; var t = cols[top]; cols[top] = cols[bot]; cols[bot] = t; }
-        tex.SetPixels(cols); tex.Apply(); target.texture = tex;
+        // 统一走 SteamAvatarManager（大→中降级 + 缓存），同时预缓存进轮盘
+        var tex = SteamAvatarManager.GetAvatarTexture(steamID);
+        if (tex != null && target != null) target.texture = tex;
     }
 
     void OnDestroy() { _lobbyListCB?.Dispose(); _enterCB?.Dispose(); }

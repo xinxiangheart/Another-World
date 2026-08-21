@@ -254,7 +254,7 @@ public class QuickMatchPanel : MonoBehaviour
         var opp = JsonUtility.FromJson<QMPD>(oppJson);
         if (opp == null || string.IsNullOrEmpty(opp.playerName)) return;
         // 捕获对手 SteamID（Host 用于加载对方头像；Client 时 opp.steamID=HostSteamID，等效）
-        if (opp.steamID != 0) LobbyConfig.RemoteSteamID = opp.steamID.ToString();
+        if (opp.steamID != 0) LobbyConfig.RemoteSteamID = opp.steamID;
         if (_state == State.Found || _state == State.WaitingOpponent) return;
 
         Debug.Log($"[QM] ★★★ 已找到对手: {opp.playerName} steamID={opp.steamID} matches={opp.totalMatches} ★★★");
@@ -282,7 +282,7 @@ public class QuickMatchPanel : MonoBehaviour
                 if (member == SteamUser.GetSteamID()) continue;
                 string gj = SteamMatchmaking.GetLobbyMemberData(_lobbyID, member, "player_data");
                 var gd = JsonUtility.FromJson<QMPD>(gj);
-                if (gd != null && gd.steamID != 0) { LobbyConfig.RemoteSteamID = gd.steamID.ToString(); return; }
+                if (gd != null && gd.steamID != 0) { LobbyConfig.RemoteSteamID = gd.steamID; return; }
             }
         }
         else
@@ -291,7 +291,7 @@ public class QuickMatchPanel : MonoBehaviour
             var hd = JsonUtility.FromJson<QMPD>(hj);
             if (hd != null && hd.steamID != 0)
             {
-                LobbyConfig.RemoteSteamID = hd.steamID.ToString();
+                LobbyConfig.RemoteSteamID = hd.steamID;
                 LobbyConfig.HostSteamID = hd.steamID.ToString();
             }
         }
@@ -482,14 +482,9 @@ public class QuickMatchPanel : MonoBehaviour
 
     static void LoadAvatar(RawImage target, ulong steamID)
     {
-        int ah = SteamFriends.GetLargeFriendAvatar(new CSteamID(steamID));
-        if (ah <= 0 || !SteamUtils.GetImageSize(ah, out uint w, out uint h)) return;
-        byte[] px = new byte[w * h * 4];
-        if (!SteamUtils.GetImageRGBA(ah, px, (int)(w * h * 4))) return;
-        var tex = new Texture2D((int)w, (int)h, TextureFormat.RGBA32, false); tex.LoadRawTextureData(px);
-        var cols = tex.GetPixels();
-        for (int y = 0; y < h / 2; y++) for (int x = 0; x < w; x++) { int top = y * (int)w + x, bot = ((int)h - 1 - y) * (int)w + x; var t = cols[top]; cols[top] = cols[bot]; cols[bot] = t; }
-        tex.SetPixels(cols); tex.Apply(); target.texture = tex;
+        // 统一走 SteamAvatarManager（大→中降级 + 缓存），同时预缓存进轮盘
+        var tex = SteamAvatarManager.GetAvatarTexture(steamID);
+        if (tex != null && target != null) target.texture = tex;
     }
 
     [System.Serializable] class QMPD { public string playerName; public int totalMatches; public double winRate; public int winStreak; public ulong steamID; }

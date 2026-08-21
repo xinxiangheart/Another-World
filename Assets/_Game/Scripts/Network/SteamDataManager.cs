@@ -70,6 +70,8 @@ public class SteamDataManager : MonoBehaviour
 
         localSteamID = SteamUser.GetSteamID();
         localPlayerName = SteamFriends.GetPersonaName();
+        // 常态存储本地 SteamID（PhaseWheel 己方头像 / 对手 SteamID 上报用）
+        LobbyConfig.LocalSteamID = localSteamID.m_SteamID;
 
         // 同步到本地存档
         if (!string.IsNullOrEmpty(localPlayerName))
@@ -106,6 +108,9 @@ public class SteamDataManager : MonoBehaviour
                 }
             }
         }
+
+        // 预缓存本地头像到统一管理器（PhaseWheel 己方头像直接命中缓存）
+        SteamAvatarManager.CacheAvatar(localSteamID.m_SteamID, localAvatar);
 
         Debug.Log($"[SteamData] 加载完成: {localPlayerName}, SteamID={localSteamID}");
     }

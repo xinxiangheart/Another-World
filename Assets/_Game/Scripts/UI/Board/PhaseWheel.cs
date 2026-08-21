@@ -320,28 +320,18 @@ public class PhaseWheel : MonoBehaviour
         return tm.isMyTurnFirst;
     }
 
-    Texture2D MyAvatar() => SteamDataManager.Instance != null ? SteamDataManager.Instance.localAvatar : null;
+    Texture2D MyAvatar()
+    {
+        // 己方头像 = LocalSteamID（统一管理器缓存；兜底 SteamDataManager.localAvatar）
+        Texture2D tex = SteamAvatarManager.GetAvatarTexture(LobbyConfig.LocalSteamID);
+        return tex != null ? tex : (SteamDataManager.Instance != null ? SteamDataManager.Instance.localAvatar : null);
+    }
 
     Texture2D OppAvatar()
     {
         // AI 对战：AI(Remote, server-only) 无 SteamID，AI 头像为空白
         if (SimpleAI.IsAIMatch) return null;
-        // 对手 SteamID：Host 用大厅捕获的 RemoteSteamID；Client 用 RemoteSteamID(=HostSteamID)
-        string sidStr = LobbyConfig.RemoteSteamID;
-        if (string.IsNullOrEmpty(sidStr)) return null;
-        if (!ulong.TryParse(sidStr, out ulong sid)) return null;
-        var cid = new CSteamID(sid);
-        if (cid.m_SteamID == 0) return null;
-        // 缓存：同 SteamID 复用已加载头像，避免每阶段重复同步拉取导致纹理重建/时好时坏
-        if (_cachedOppSteamID == sid && _cachedOppAvatar != null) return _cachedOppAvatar;
-        Texture2D tex = RingSlot.LoadAvatarFromSteamID(cid);
-        if (tex != null) { _cachedOppAvatar = tex; _cachedOppSteamID = sid; return tex; }
-        // 头像尚未就绪（GetLargeFriendAvatar 返回 0）——请求加载，下次阶段预载时自然重试
-        SteamFriends.RequestUserInformation(cid, false);
-        return null;
+        // 对方头像 = RemoteSteamID（大厅捕获 + 网络 SyncVar 双路填充，统一管理器缓存）
+        return SteamAvatarManager.GetAvatarTexture(LobbyConfig.RemoteSteamID);
     }
-
-    /// <summary>对方头像缓存（避免重复同步拉取 + 纹理重建）。</summary>
-    static Texture2D _cachedOppAvatar;
-    static ulong _cachedOppSteamID;
 }
