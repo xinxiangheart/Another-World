@@ -7,7 +7,7 @@ using Steamworks;
 ///
 /// PhaseStart 与随后行动阶段（MyTurn/EnemyTurn）合二为一：PhaseStart 不触发旋转，
 /// 初始直接显示第一行动阶段，每轮只旋转 3 次（首行动→次行动→Battle→下轮首行动）。
-/// 内容模型（与 TurnManagerDisplay 同一数据源 tm.currentPhase + tm.isMyTurnFirst）：
+/// 内容模型（同一数据源 tm.currentPhase + tm.isMyTurnFirst）：
 ///   - Prev      ：刚过去的单元（L 位）
 ///   - Cur       ：当前单元（C 位）
 ///   - Next      ：下一单元（R 位）
@@ -331,7 +331,7 @@ public class PhaseWheel : MonoBehaviour
         }
     }
 
-    // ============ 先手判断（与 TurnManagerDisplay 同一数据源 tm.isMyTurnFirst）============
+    // ============ 先手判断（同一数据源 tm.isMyTurnFirst）============
 
     /// <summary>该阶段生效时先手是否己方。
     /// 已验证翻转时机：TurnManager.EndCurrentTurn 在设 BattlePhase 前调 SwapFirstPlayer()
