@@ -25,6 +25,12 @@ public class Card3DAnimator : MonoBehaviour
         _config = AnimationConfig.Load();
     }
 
+    /// <summary>换位/移动后重捕基准位置——否则漂浮动画每帧把模型拉回原位置，视觉上"没移动"。</summary>
+    public void UpdateBaseLocalPos()
+    {
+        _baseLocalPos = transform.localPosition;
+    }
+
     void Update()
     {
         if (_config == null) return;

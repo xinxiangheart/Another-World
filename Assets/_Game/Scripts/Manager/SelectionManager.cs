@@ -35,11 +35,8 @@ public class SelectionManager : MonoBehaviour
             if (hovered != null) hovered.HighlightRow(true);
         }
 
-        if (hovered != null && Input.GetMouseButtonDown(0) && !CardView.IsAnyCardDragging)
-        {
-            _lastTargetHover = null;
-            BoardSlot.onTargetSelected?.Invoke(hovered);
-        }
+        // 注意：点击选中仍由 UI OnPointerClick 单一路径处理（3D 路径只做高亮）。
+        // 若 3D 路径也触发 onTargetSelected，会与 UI 双触发——对"二次点击换位"类效果会换两次=没换。
     }
 
     /// <summary>从射线命中中找鼠标下的槽位：命中卡牌 → 映射到其所在槽位（穿透高亮卡牌下的格子）。

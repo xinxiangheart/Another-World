@@ -192,12 +192,14 @@ public class BattleManager : MonoBehaviour
                 {
                     if (!mySlot.CanPlaceCard(targetCard.GetComponent<Card3DInstance>()?.cardInstance)) continue;
                     targetCard.transform.position = myPos;
+                    targetCard.GetComponent<Card3DAnimator>()?.UpdateBaseLocalPos();
                     mySlot.SetCard(targetCard);
                 }
                 if (myCard != null)
                 {
                     if (!targetSlot.CanPlaceCard(myCard.GetComponent<Card3DInstance>()?.cardInstance)) continue;
                     myCard.transform.position = targetPos;
+                    myCard.GetComponent<Card3DAnimator>()?.UpdateBaseLocalPos();
                     targetSlot.SetCard(myCard);
                 }
 
@@ -1916,8 +1918,8 @@ public class BattleManager : MonoBehaviour
                 Vector3 p1 = FindObjectOfType<HandManager>().GetSlotWorldPosition(firstSlot.slotID);
                 Vector3 p2 = FindObjectOfType<HandManager>().GetSlotWorldPosition(secondSlot.slotID);
                 firstSlot.SetCard(null); secondSlot.SetCard(null);
-                if (c2 != null) { c2.transform.position = p1; firstSlot.SetCard(c2); }
-                if (c1 != null) { c1.transform.position = p2; secondSlot.SetCard(c1); }
+                if (c2 != null) { c2.transform.position = p1; c2.GetComponent<Card3DAnimator>()?.UpdateBaseLocalPos(); firstSlot.SetCard(c2); }
+                if (c1 != null) { c1.transform.position = p2; c1.GetComponent<Card3DAnimator>()?.UpdateBaseLocalPos(); secondSlot.SetCard(c1); }
 
                 BoardManager bm = FindObjectOfType<BoardManager>();
                 if (bm != null)
@@ -2099,8 +2101,8 @@ public class BattleManager : MonoBehaviour
                 Vector3 p1 = FindObjectOfType<HandManager>().GetSlotWorldPosition(firstSlot.slotID);
                 Vector3 p2 = FindObjectOfType<HandManager>().GetSlotWorldPosition(secondSlot.slotID);
                 firstSlot.SetCard(null); secondSlot.SetCard(null);
-                if (c2 != null) { c2.transform.position = p1; firstSlot.SetCard(c2); }
-                if (c1 != null) { c1.transform.position = p2; secondSlot.SetCard(c1); }
+                if (c2 != null) { c2.transform.position = p1; c2.GetComponent<Card3DAnimator>()?.UpdateBaseLocalPos(); firstSlot.SetCard(c2); }
+                if (c1 != null) { c1.transform.position = p2; c1.GetComponent<Card3DAnimator>()?.UpdateBaseLocalPos(); secondSlot.SetCard(c1); }
                 BoardManager bm = FindObjectOfType<BoardManager>();
                 if (bm != null)
                     foreach (GameObject obj in bm.attachedModels)

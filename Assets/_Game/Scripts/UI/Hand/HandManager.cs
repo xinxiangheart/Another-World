@@ -1904,6 +1904,7 @@ public class HandManager : MonoBehaviour
             // 忽略抛置穿透的点击
             if (selected.slotID == Card3DHover.ignoreSlotID)
             {
+                Debug.Log($"[SwapTwoAllies] 忽略抛置槽位 {selected.slotID}");
                 Card3DHover.ignoreSlotID = -1;
                 return;
             }
@@ -1912,10 +1913,12 @@ public class HandManager : MonoBehaviour
             if (firstSlot == null)
             {
                 firstSlot = selected;
+                Debug.Log($"[SwapTwoAllies] 第一次选择: slot={firstSlot.slotID}, card3D={(firstSlot.currentCard3D != null)}");
             }
             else if (selected != firstSlot)
             {
                 BoardSlot secondSlot = selected;
+                Debug.Log($"[SwapTwoAllies] 第二次选择: slot={secondSlot.slotID}, card3D={(secondSlot.currentCard3D != null)}，执行换位 {firstSlot.slotID}<->{secondSlot.slotID}");
 
                 BoardManager.SwapCards(firstSlot.slotID, secondSlot.slotID);
                 if (NetworkClient.isConnected)

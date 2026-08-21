@@ -2399,12 +2399,14 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 {
                     if (!firstSlot.CanPlaceCard(c2.GetComponent<Card3DInstance>()?.cardInstance)) { firstSlot = null; return; }
                     c2.transform.position = p1;
+                    c2.GetComponent<Card3DAnimator>()?.UpdateBaseLocalPos();
                     firstSlot.SetCard(c2);
                 }
                 if (c1 != null)
                 {
                     if (!secondSlot.CanPlaceCard(c1.GetComponent<Card3DInstance>()?.cardInstance)) { firstSlot = null; return; }
                     c1.transform.position = p2;
+                    c1.GetComponent<Card3DAnimator>()?.UpdateBaseLocalPos();
                     secondSlot.SetCard(c1);
                 }
 
@@ -4129,8 +4131,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 Vector3 p1 = FindObjectOfType<HandManager>().GetSlotWorldPosition(firstSlot.slotID);
                 Vector3 p2 = FindObjectOfType<HandManager>().GetSlotWorldPosition(secondSlot.slotID);
                 firstSlot.SetCard(null); secondSlot.SetCard(null);
-                if (c2 != null) { c2.transform.position = p1; firstSlot.SetCard(c2); }
-                if (c1 != null) { c1.transform.position = p2; secondSlot.SetCard(c1); }
+                if (c2 != null) { c2.transform.position = p1; c2.GetComponent<Card3DAnimator>()?.UpdateBaseLocalPos(); firstSlot.SetCard(c2); }
+                if (c1 != null) { c1.transform.position = p2; c1.GetComponent<Card3DAnimator>()?.UpdateBaseLocalPos(); secondSlot.SetCard(c1); }
                 Debug.Log($"换位前 c1 active={c1?.activeSelf}, c2 active={c2?.activeSelf}");
                 BoardManager bm = FindObjectOfType<BoardManager>();
                 if (bm != null)

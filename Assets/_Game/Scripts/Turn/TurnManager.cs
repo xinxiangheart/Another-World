@@ -1374,12 +1374,14 @@ public partial class TurnManager : MonoBehaviour
         {
             if (!slot1.CanPlaceCard(card2.GetComponent<Card3DInstance>()?.cardInstance)) return;
             card2.transform.position = pos1;
+            card2.GetComponent<Card3DAnimator>()?.UpdateBaseLocalPos();
             slot1.SetCard(card2);
         }
         if (card1 != null)
         {
             if (!slot2.CanPlaceCard(card1.GetComponent<Card3DInstance>()?.cardInstance)) return;
             card1.transform.position = pos2;
+            card1.GetComponent<Card3DAnimator>()?.UpdateBaseLocalPos();
             slot2.SetCard(card1);
         }
 

@@ -257,6 +257,11 @@ public class BoardManager : MonoBehaviour
         Vector3 posA = FindObjectOfType<HandManager>().GetSlotWorldPosition(slotA);
         Vector3 posB = FindObjectOfType<HandManager>().GetSlotWorldPosition(slotB);
 
+        if (cardA == null || cardB == null)
+            Debug.LogWarning($"[SwapCards] {slotA}(card3D={(cardA != null)}) <-> {slotB}(card3D={(cardB != null)}) 有模型为空——可能选了空槽位，模型未移动");
+        else
+            Debug.Log($"[SwapCards] 移动模型: {slotA}->{posB}，{slotB}->{posA}");
+
         // Atomic reference swap — never exposes null to sync/network observers
         slotObjA.currentCard3D = cardB;
         slotObjA.hasCard = cardB != null;
@@ -267,12 +272,15 @@ public class BoardManager : MonoBehaviour
         if (cardA != null)
         {
             cardA.transform.position = posB;
+            // 漂浮动画基准位置重捕——否则动画每帧把模型拉回原槽位，视觉上不移动
+            cardA.GetComponent<Card3DAnimator>()?.UpdateBaseLocalPos();
             var ci = cardA.GetComponent<Card3DInstance>()?.cardInstance;
             if (ci != null) ci._placedAtTime = now;
         }
         if (cardB != null)
         {
             cardB.transform.position = posA;
+            cardB.GetComponent<Card3DAnimator>()?.UpdateBaseLocalPos();
             var ci = cardB.GetComponent<Card3DInstance>()?.cardInstance;
             if (ci != null) ci._placedAtTime = now;
         }
