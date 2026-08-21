@@ -69,6 +69,9 @@ public partial class TurnManager
 
             if (!NetworkServer.active)
             {
+                // 远程客户端：phaseCount 只在主机 StartNewPhase 递增，客户端需在收到 PhaseStart 时同步递增
+                //（与主机 StartNewPhase 的 phaseCount++ 一一对应，用于字幕"第X阶段"/轮盘第一回合判断）
+                phaseCount++;
                 // 远程客户端：处理全部阶段开始效果（影子/铁匠/执行之剑/忤逆者等）
                 if (CardInstance.shadowMasterAlive)
                 {

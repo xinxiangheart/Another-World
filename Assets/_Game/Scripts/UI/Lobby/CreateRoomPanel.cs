@@ -163,7 +163,11 @@ public class CreateRoomPanel : MonoBehaviour
                 LobbyConfig.CurrentLobbyID = _lobbyID;
                 LobbyConfig.MatchKey = $"aw_{_lobbyID.m_SteamID}";
                 string hs = SteamMatchmaking.GetLobbyData(_lobbyID, "host_sid");
-                if (!string.IsNullOrEmpty(hs)) LobbyConfig.HostSteamID = hs;
+                if (!string.IsNullOrEmpty(hs))
+                {
+                    LobbyConfig.HostSteamID = hs;
+                    LobbyConfig.RemoteSteamID = hs; // host_sid = Host SteamID = 对手 SteamID
+                }
                 _lobbyID = default;
                 panelRoot.SetActive(false); JoinGamePanel.Instance?.Open();
             }
@@ -251,8 +255,24 @@ public class CreateRoomPanel : MonoBehaviour
         LobbyConfig.CurrentLobbyID = _lobbyID;
         LobbyConfig.MatchKey = $"aw_{_lobbyID.m_SteamID}";
         LobbyConfig.HostSteamID = SteamUser.GetSteamID().m_SteamID.ToString();
+        CaptureGuestSteamID(); // 进游戏前捕获 guest SteamID（对方头像用）
         _lobbyID = default;
         panelRoot.SetActive(false); JoinGamePanel.Instance?.Open();
+    }
+
+    /// <summary>Host 捕获 guest SteamID 到 RemoteSteamID（进游戏前兜底）。</summary>
+    void CaptureGuestSteamID()
+    {
+        if (_lobbyID.m_SteamID == 0) return;
+        int count = SteamMatchmaking.GetNumLobbyMembers(_lobbyID);
+        for (int i = 0; i < count; i++)
+        {
+            CSteamID member = SteamMatchmaking.GetLobbyMemberByIndex(_lobbyID, i);
+            if (member == SteamUser.GetSteamID()) continue;
+            string gj = SteamMatchmaking.GetLobbyMemberData(_lobbyID, member, "player_data");
+            var gd = JsonUtility.FromJson<RPD>(gj);
+            if (gd != null && gd.steamID != 0) { LobbyConfig.RemoteSteamID = gd.steamID.ToString(); return; }
+        }
     }
     public void LeaveRoom()
     {

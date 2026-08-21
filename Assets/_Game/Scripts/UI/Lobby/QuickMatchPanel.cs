@@ -268,6 +268,35 @@ public class QuickMatchPanel : MonoBehaviour
         if (opp.steamID != 0 && opponentAvatar) LoadAvatar(opponentAvatar, opp.steamID);
     }
 
+    /// <summary>捕获对手 SteamID 到 LobbyConfig.RemoteSteamID（进游戏前最终兜底）。
+    /// Host 从 guest 成员数据读；Guest 从 host_data 读（同时补 HostSteamID 供兼容）。</summary>
+    void CaptureRemoteSteamID()
+    {
+        if (_lobbyID.m_SteamID == 0) return;
+        if (_iAmHost)
+        {
+            int count = SteamMatchmaking.GetNumLobbyMembers(_lobbyID);
+            for (int i = 0; i < count; i++)
+            {
+                CSteamID member = SteamMatchmaking.GetLobbyMemberByIndex(_lobbyID, i);
+                if (member == SteamUser.GetSteamID()) continue;
+                string gj = SteamMatchmaking.GetLobbyMemberData(_lobbyID, member, "player_data");
+                var gd = JsonUtility.FromJson<QMPD>(gj);
+                if (gd != null && gd.steamID != 0) { LobbyConfig.RemoteSteamID = gd.steamID.ToString(); return; }
+            }
+        }
+        else
+        {
+            string hj = SteamMatchmaking.GetLobbyData(_lobbyID, "host_data");
+            var hd = JsonUtility.FromJson<QMPD>(hj);
+            if (hd != null && hd.steamID != 0)
+            {
+                LobbyConfig.RemoteSteamID = hd.steamID.ToString();
+                LobbyConfig.HostSteamID = hd.steamID.ToString();
+            }
+        }
+    }
+
     // ============ 后台搜索 — 自建大厅后持续搜别人 ============
 
     void StartBackgroundSearch()
@@ -370,7 +399,8 @@ public class QuickMatchPanel : MonoBehaviour
         if (doRetry && _lobbyID.m_SteamID != 0)
         {
             SteamMatchmaking.RequestLobbyData(_lobbyID);
-            if (_iAmHost && _state == State.Searching)
+            // Host 读 guest 成员数据；Guest 也读 host_data（用于捕获对手 SteamID + 发现对手）
+            if (_state == State.Searching)
                 RefreshOpponent();
         }
 
@@ -400,6 +430,7 @@ public class QuickMatchPanel : MonoBehaviour
             LobbyConfig.CurrentLobbyID = _lobbyID;
             // 基于大厅ID生成唯一匹配key——防止多组同时进Game串线到别人房间
             LobbyConfig.MatchKey = $"aw_{_lobbyID.m_SteamID}";
+            CaptureRemoteSteamID();   // 进游戏前最终捕获对手 SteamID（Host 读 guest 成员数据 / Guest 读 host_data）
             if (_iAmHost)
                 LobbyConfig.HostSteamID = SteamUser.GetSteamID().m_SteamID.ToString();
             _lobbyID = default; _state = State.Idle;

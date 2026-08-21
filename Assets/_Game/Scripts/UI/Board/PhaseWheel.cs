@@ -341,6 +341,15 @@ public class PhaseWheel : MonoBehaviour
         string sidStr = LobbyConfig.RemoteSteamID;
         if (string.IsNullOrEmpty(sidStr)) return null;
         if (!ulong.TryParse(sidStr, out ulong sid)) return null;
-        return RingSlot.LoadAvatarFromSteamID(new CSteamID(sid));
+        var cid = new CSteamID(sid);
+        if (cid.m_SteamID == 0) return null;
+        Texture2D tex = RingSlot.LoadAvatarFromSteamID(cid);
+        if (tex == null)
+        {
+            // 头像尚未就绪（GetLargeFriendAvatar 返回 0）——请求加载，下次阶段预载时自然重试
+            SteamFriends.RequestUserInformation(cid, false);
+            return null;
+        }
+        return tex;
     }
 }
