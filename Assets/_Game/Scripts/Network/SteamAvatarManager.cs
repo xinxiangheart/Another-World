@@ -33,9 +33,14 @@ public static class SteamAvatarManager
     /// </summary>
     public static Texture2D GetAvatarTexture(ulong steamID)
     {
-        if (steamID == 0) return null;
+        Debug.Log($"[SteamAvatar] GetAvatarTexture 进入: steamID={steamID}");
+        if (steamID == 0) { Debug.Log("[SteamAvatar] GetAvatarTexture: steamID=0，返回 null"); return null; }
         if (_avatarCache.TryGetValue(steamID, out Texture2D cached) && cached != null)
+        {
+            Debug.Log($"[SteamAvatar] GetAvatarTexture: 缓存命中 ({cached.width}x{cached.height})");
             return cached;
+        }
+        Debug.Log("[SteamAvatar] GetAvatarTexture: 缓存未命中");
 
         EnsureCallback();
         var cid = new CSteamID(steamID);
@@ -43,13 +48,16 @@ public static class SteamAvatarManager
         if (tex != null)
         {
             _avatarCache[steamID] = tex;
+            Debug.Log($"[SteamAvatar] GetAvatarTexture: 加载成功并缓存 ({tex.width}x{tex.height})");
             return tex;
         }
+        Debug.Log("[SteamAvatar] GetAvatarTexture: 大+中都返回 0，加载失败");
 
         // 主动轮询（每 SteamID 只启动一次）；不主动 RequestUserInformation——
         // Steam 大厅会自动加载成员头像，RequestUserInformation 反而可能干扰（之前能工作的版本没有它）。
         StartPolling(steamID);
         // 兜底：返回占位头像（不缓存），避免轮盘空白环
+        Debug.Log("[SteamAvatar] GetAvatarTexture: 返回灰色占位头像");
         return DefaultAvatar();
     }
 
@@ -138,17 +146,32 @@ public static class SteamAvatarManager
         int handle = large
             ? SteamFriends.GetLargeFriendAvatar(steamID)
             : SteamFriends.GetMediumFriendAvatar(steamID);
+        Debug.Log($"[SteamAvatar] {(large ? "GetLargeFriendAvatar" : "GetMediumFriendAvatar")}(steamID={steamID.m_SteamID}) 返回句柄={handle}");
         return LoadImageFromHandle(handle);
     }
 
     /// <summary>从 Steam 图像句柄生成 Texture2D（翻转 Y，与 SteamDataManager 一致）。</summary>
     static Texture2D LoadImageFromHandle(int handle)
     {
-        if (handle <= 0) return null;
-        if (!SteamUtils.GetImageSize(handle, out uint w, out uint h) || w == 0 || h == 0) return null;
+        if (handle <= 0)
+        {
+            Debug.Log($"[SteamAvatar] LoadImageFromHandle: handle={handle} <= 0，无图像");
+            return null;
+        }
+        if (!SteamUtils.GetImageSize(handle, out uint w, out uint h) || w == 0 || h == 0)
+        {
+            Debug.LogWarning($"[SteamAvatar] GetImageSize 失败: handle={handle}");
+            return null;
+        }
+        Debug.Log($"[SteamAvatar] GetImageSize 成功: handle={handle}, {w}x{h}");
 
         byte[] px = new byte[w * h * 4];
-        if (!SteamUtils.GetImageRGBA(handle, px, (int)(w * h * 4))) return null;
+        if (!SteamUtils.GetImageRGBA(handle, px, (int)(w * h * 4)))
+        {
+            Debug.LogWarning($"[SteamAvatar] GetImageRGBA 失败: handle={handle}");
+            return null;
+        }
+        Debug.Log($"[SteamAvatar] GetImageRGBA 成功: handle={handle}");
 
         var tex = new Texture2D((int)w, (int)h, TextureFormat.RGBA32, false);
         tex.LoadRawTextureData(px);
