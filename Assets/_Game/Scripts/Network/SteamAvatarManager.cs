@@ -44,7 +44,8 @@ public static class SteamAvatarManager
 
         EnsureCallback();
         var cid = new CSteamID(steamID);
-        Texture2D tex = TryLoadAvatar(cid, large: true) ?? TryLoadAvatar(cid, large: false);
+        // 依次尝试：大(184) → 中(64) → 小(32)
+        Texture2D tex = TryLoadAvatar(cid, 2) ?? TryLoadAvatar(cid, 1) ?? TryLoadAvatar(cid, 0);
         if (tex != null)
         {
             _avatarCache[steamID] = tex;
@@ -113,7 +114,7 @@ public static class SteamAvatarManager
         if (((int)cb.m_nChangeFlags & (int)EPersonaChange.k_EPersonaChangeAvatar) == 0) return;
         ulong sid = cb.m_ulSteamID;
         if (sid == 0) return;
-        Texture2D tex = TryLoadAvatar(new CSteamID(sid), large: true) ?? TryLoadAvatar(new CSteamID(sid), large: false);
+        Texture2D tex = TryLoadAvatar(new CSteamID(sid), 2) ?? TryLoadAvatar(new CSteamID(sid), 1) ?? TryLoadAvatar(new CSteamID(sid), 0);
         if (tex != null)
         {
             _avatarCache[sid] = tex;
@@ -135,7 +136,7 @@ public static class SteamAvatarManager
             yield return new WaitForSeconds(0.5f);
             if (_avatarCache.ContainsKey(steamID)) yield break;
             var cid = new CSteamID(steamID);
-            Texture2D tex = TryLoadAvatar(cid, large: true) ?? TryLoadAvatar(cid, large: false);
+            Texture2D tex = TryLoadAvatar(cid, 2) ?? TryLoadAvatar(cid, 1) ?? TryLoadAvatar(cid, 0);
             if (tex != null)
             {
                 _avatarCache[steamID] = tex;
@@ -145,12 +146,13 @@ public static class SteamAvatarManager
         }
     }
 
-    static Texture2D TryLoadAvatar(CSteamID steamID, bool large)
+    static Texture2D TryLoadAvatar(CSteamID steamID, int size)
     {
-        int handle = large
-            ? SteamFriends.GetLargeFriendAvatar(steamID)
-            : SteamFriends.GetMediumFriendAvatar(steamID);
-        Debug.Log($"[SteamAvatar] {(large ? "GetLargeFriendAvatar" : "GetMediumFriendAvatar")}(steamID={steamID.m_SteamID}) 返回句柄={handle}");
+        int handle = size == 2 ? SteamFriends.GetLargeFriendAvatar(steamID)
+                   : size == 1 ? SteamFriends.GetMediumFriendAvatar(steamID)
+                   : SteamFriends.GetSmallFriendAvatar(steamID);
+        string sizeName = size == 2 ? "Large" : size == 1 ? "Medium" : "Small";
+        Debug.Log($"[SteamAvatar] Get{sizeName}FriendAvatar(steamID={steamID.m_SteamID}) 返回句柄={handle}");
         return LoadImageFromHandle(handle);
     }
 

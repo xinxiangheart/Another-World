@@ -99,13 +99,18 @@ public class NetworkPlayer : NetworkBehaviour
         {
             yield return new WaitForSeconds(1f);
             float now = Time.time;
+            // 先收集超时连接，遍历结束后再断开——Disconnect 会修改 NetworkServer.connections，
+            // 直接在 foreach 里断开会抛"集合被修改"异常
+            var timedOut = new System.Collections.Generic.List<NetworkConnectionToClient>();
             foreach (var kv in NetworkServer.connections)
             {
                 if (s_lastHeartbeat.TryGetValue(kv.Key, out float last) && now - last > HEARTBEAT_TIMEOUT)
-                {
-                    Debug.LogWarning($"[NetworkPlayer] Heartbeat timeout for connId={kv.Key}, disconnecting");
-                    kv.Value.Disconnect();
-                }
+                    timedOut.Add(kv.Value);
+            }
+            foreach (var conn in timedOut)
+            {
+                Debug.LogWarning($"[NetworkPlayer] Heartbeat timeout, disconnecting connId={conn.connectionId}");
+                conn.Disconnect();
             }
         }
     }
