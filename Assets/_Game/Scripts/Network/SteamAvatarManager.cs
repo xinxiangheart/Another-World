@@ -39,6 +39,7 @@ public static class SteamAvatarManager
 
         // 头像尚未就绪——请求 Steam 加载；完成后 AvatarImageLoaded_t 回调会写入缓存
         SteamFriends.RequestUserInformation(cid, false);
+        Debug.Log($"[SteamAvatar] RequestUserInformation 已请求: {steamID}");
         return null;
     }
 
@@ -59,19 +60,33 @@ public static class SteamAvatarManager
     /// <summary>注册头像加载完成回调（SteamManager.Update 里的 SteamAPI.RunCallbacks 派发）。</summary>
     static void EnsureCallback()
     {
-        if (_callbackReady || !SteamManager.Initialized) return;
+        if (_callbackReady) return;
+        if (!SteamManager.Initialized)
+        {
+            Debug.LogWarning("[SteamAvatar] EnsureCallback: Steam 未初始化，回调未注册");
+            return;
+        }
         _callbackReady = true;
         _avatarLoadedCB = Callback<AvatarImageLoaded_t>.Create(OnAvatarLoaded);
+        Debug.Log("[SteamAvatar] AvatarImageLoaded_t 回调已注册");
     }
 
     /// <summary>Steam 头像加载完成：把纹理写入缓存，后续 GetAvatarTexture 直接命中。</summary>
     static void OnAvatarLoaded(AvatarImageLoaded_t cb)
     {
         ulong sid = cb.m_steamID.m_SteamID;
+        Debug.Log($"[SteamAvatar] AvatarImageLoaded 回调触发: steamID={sid}, imageHandle={cb.m_iImage}");
         if (sid == 0 || cb.m_iImage <= 0) return;
         Texture2D tex = LoadImageFromHandle(cb.m_iImage);
         if (tex != null)
+        {
             _avatarCache[sid] = tex;
+            Debug.Log($"[SteamAvatar] 回调已缓存头像: {sid} ({tex.width}x{tex.height})");
+        }
+        else
+        {
+            Debug.LogWarning($"[SteamAvatar] 回调触发但图像加载失败: steamID={sid}, handle={cb.m_iImage}");
+        }
     }
 
     static Texture2D TryLoadAvatar(CSteamID steamID, bool large)
@@ -79,6 +94,8 @@ public static class SteamAvatarManager
         int handle = large
             ? SteamFriends.GetLargeFriendAvatar(steamID)
             : SteamFriends.GetMediumFriendAvatar(steamID);
+        if (handle <= 0)
+            Debug.Log($"[SteamAvatar] {(large ? "GetLargeFriendAvatar" : "GetMediumFriendAvatar")} 返回 0（steamID={steamID.m_SteamID}，头像未就绪）");
         return LoadImageFromHandle(handle);
     }
 
