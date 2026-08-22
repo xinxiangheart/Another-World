@@ -336,7 +336,8 @@ public class PhaseWheel : MonoBehaviour
         // 对方头像 = RemoteSteamID（大厅捕获 + 网络 SyncVar 双路填充，统一管理器缓存）
         ulong sid = LobbyConfig.RemoteSteamID;
         Texture2D tex = SteamAvatarManager.GetAvatarTexture(sid);
-        if (sid != _lastLoggedOppSteamID)
+        // 诊断：SteamID 变化或结果为 null 时都打印——抓 RemoteSteamID 被改成 0 的时刻
+        if (sid != _lastLoggedOppSteamID || tex == null)
         {
             _lastLoggedOppSteamID = sid;
             Debug.Log($"[PhaseWheel] OppAvatar: RemoteSteamID={sid}, 返回={(tex != null ? $"有纹理({tex.width}x{tex.height})" : "null")}");

@@ -46,8 +46,8 @@ public static class SteamAvatarManager
             return tex;
         }
 
-        // 触发异步加载 + 主动轮询（每 SteamID 只启动一次）
-        SteamFriends.RequestUserInformation(cid, false);
+        // 主动轮询（每 SteamID 只启动一次）；不主动 RequestUserInformation——
+        // Steam 大厅会自动加载成员头像，RequestUserInformation 反而可能干扰（之前能工作的版本没有它）。
         StartPolling(steamID);
         // 兜底：返回占位头像（不缓存），避免轮盘空白环
         return DefaultAvatar();
@@ -130,7 +130,6 @@ public static class SteamAvatarManager
                 Debug.Log($"[SteamAvatar] 轮询加载成功: {steamID} ({tex.width}x{tex.height})");
                 yield break;
             }
-            SteamFriends.RequestUserInformation(cid, false);
         }
     }
 
