@@ -17,12 +17,12 @@ public static class LobbyConfig
     /// <summary>本地玩家 SteamID（SteamDataManager.Start 填充）。PhaseWheel 己方头像用。</summary>
     public static ulong LocalSteamID;
     /// <summary>对方玩家 SteamID：Host/Client 在大厅捕获 + NetworkPlayer SyncVar 双路填充；AI 对战为 0。
-    /// PhaseWheel 对方头像用。</summary>
+    /// PhaseWheel 对方头像用。setter 拒绝 0——已设置有效值后不允许被清零（防止联机中对方头像丢失）。</summary>
     static ulong _remoteSteamID;
     public static ulong RemoteSteamID
     {
         get => IsAI ? 0 : _remoteSteamID;
-        set => _remoteSteamID = value;
+        set { if (value != 0) _remoteSteamID = value; }
     }
     /// <summary>唯一匹配 key——基于 Lobby 大厅 ID 生成，防止多组同时进 Game 串线到别人房间。</summary>
     public static string MatchKey { get; set; }
