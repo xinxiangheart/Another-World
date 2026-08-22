@@ -53,8 +53,12 @@ public static class SteamAvatarManager
         }
         Debug.Log("[SteamAvatar] GetAvatarTexture: 大+中都返回 0，加载失败");
 
-        // 主动轮询（每 SteamID 只启动一次）；不主动 RequestUserInformation——
-        // Steam 大厅会自动加载成员头像，RequestUserInformation 反而可能干扰（之前能工作的版本没有它）。
+        // 请求 Steam 加载头像（异步；完成后 AvatarImageLoaded_t/PersonaStateChange_t 回调写缓存）。
+        // 对公开头像应能触发加载；若返回 true 但回调不触发，说明 Steam 端拒绝提供（隐私/未同步）。
+        bool requested = SteamFriends.RequestUserInformation(cid, false);
+        Debug.Log($"[SteamAvatar] RequestUserInformation(steamID={steamID}) 返回 {requested}");
+
+        // 主动轮询（每 SteamID 只启动一次），作为不依赖回调的兜底
         StartPolling(steamID);
         // 兜底：返回占位头像（不缓存），避免轮盘空白环
         Debug.Log("[SteamAvatar] GetAvatarTexture: 返回灰色占位头像");
