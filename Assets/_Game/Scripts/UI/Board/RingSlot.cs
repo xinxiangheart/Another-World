@@ -52,7 +52,8 @@ public class RingSlot : MonoBehaviour
             avatarImage.enabled = true;
             Debug.Log($"[RingSlot] SetAvatar 后: avatarImage.enabled={avatarImage.enabled}, " +
                       $"sprite={(avatarImage.sprite != null ? avatarImage.sprite.texture?.width.ToString() : "null")}, " +
-                      $"rect={avatarImage.rectTransform?.rect}");
+                      $"rect={avatarImage.rectTransform?.rect}, color={avatarImage.color}, " +
+                      $"maskParent={avatarImage.transform.parent?.name}, mask={avatarImage.transform.parent?.GetComponent<Mask>() != null}");
         }
         if (iconImage != null) iconImage.enabled = false;
     }
