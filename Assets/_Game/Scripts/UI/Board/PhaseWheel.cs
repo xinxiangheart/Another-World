@@ -327,11 +327,20 @@ public class PhaseWheel : MonoBehaviour
         return tex != null ? tex : (SteamDataManager.Instance != null ? SteamDataManager.Instance.localAvatar : null);
     }
 
+    static ulong _lastLoggedOppSteamID = ulong.MaxValue; // 诊断：记录上次日志的 SteamID
+
     Texture2D OppAvatar()
     {
         // AI 对战：AI(Remote, server-only) 无 SteamID，AI 头像为空白
         if (SimpleAI.IsAIMatch) return null;
         // 对方头像 = RemoteSteamID（大厅捕获 + 网络 SyncVar 双路填充，统一管理器缓存）
-        return SteamAvatarManager.GetAvatarTexture(LobbyConfig.RemoteSteamID);
+        ulong sid = LobbyConfig.RemoteSteamID;
+        Texture2D tex = SteamAvatarManager.GetAvatarTexture(sid);
+        if (sid != _lastLoggedOppSteamID)
+        {
+            _lastLoggedOppSteamID = sid;
+            Debug.Log($"[PhaseWheel] OppAvatar: RemoteSteamID={sid}, 返回={(tex != null ? $"有纹理({tex.width}x{tex.height})" : "null")}");
+        }
+        return tex;
     }
 }

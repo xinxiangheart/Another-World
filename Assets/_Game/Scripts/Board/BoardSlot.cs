@@ -2455,8 +2455,13 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 if (string.IsNullOrEmpty(pair)) continue;
                 string[] ids = pair.Split(',');
                 if (ids.Length == 2 && int.TryParse(ids[0], out int a) && int.TryParse(ids[1], out int b))
-                    if (!NetworkServer.active && NetworkClient.isConnected) // Host 本地已换位，跳过避免双换位
+                {
+                    // Host 本地已换位，同步到对方客户端；纯客户端上报服务器
+                    if (NetworkServer.active)
+                        NetworkPlayer.SendSwapToRemote(a, b);
+                    else if (NetworkClient.isConnected)
                         NetworkPlayer.Local?.CmdSwapCards(a, b);
+                }
             }
         }
         TurnManager.SyncMyBoardToOpponent();
@@ -4144,13 +4149,13 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     }
                 BoardManager.SyncAttachedModels(firstSlot);
                 BoardManager.SyncAttachedModels(secondSlot);
-                // 01517 swap sync — 纯客户端才上报服务器（Host 本地已换位，上报会双换位撤销）；仍同步板面
+                // 01517 swap sync — Host 本地已换位，同步到对方客户端(TargetSwapCards)；纯客户端上报服务器
+                if (NetworkServer.active)
+                    NetworkPlayer.SendSwapToRemote(firstSlot.slotID, secondSlot.slotID);
+                else if (NetworkClient.isConnected)
+                    NetworkPlayer.Local?.CmdSwapCards(firstSlot.slotID, secondSlot.slotID);
                 if (NetworkClient.isConnected)
-                {
-                    if (!NetworkServer.active)
-                        NetworkPlayer.Local?.CmdSwapCards(firstSlot.slotID, secondSlot.slotID);
                     TurnManager.SyncMyBoardToOpponent();
-                }
                 firstSlot = null;
             }
         };

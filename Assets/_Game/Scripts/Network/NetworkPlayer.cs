@@ -186,7 +186,14 @@ public class NetworkPlayer : NetworkBehaviour
     {
         // 对方 SteamID 到了 → 存到 LobbyConfig（PhaseWheel.OppAvatar 用它加载头像）
         if (!isLocalPlayer && newVal != 0)
+        {
             LobbyConfig.RemoteSteamID = newVal;
+            Debug.Log($"[SteamSync] OnMySteamIDChanged: 收到对方 SteamID={newVal}，isLocalPlayer={isLocalPlayer}，已存 RemoteSteamID");
+        }
+        else
+        {
+            Debug.Log($"[SteamSync] OnMySteamIDChanged: newVal={newVal}，isLocalPlayer={isLocalPlayer}（跳过：己方对象或值为0）");
+        }
     }
 
     void OnPlayerNameChanged(string oldName, string newName)
@@ -3338,6 +3345,17 @@ public class NetworkPlayer : NetworkBehaviour
         BoardManager.SwapCards(slotA, slotB);
     }
 
+    /// <summary>服务端把换位同步到对方客户端（槽位镜像为对方视角；AI 无连接跳过）。
+    /// 联机时同步(EnsureCard)不重新定位 3D 模型，必须靠 TargetSwapCards 让对方客户端本地移动模型。</summary>
+    public static void SendSwapToRemote(int serverSlotA, int serverSlotB)
+    {
+        if (!NetworkServer.active || NetworkPlayer.Remote == null || NetworkPlayer.Remote.connectionToClient == null) return;
+        NetworkPlayer.Remote.TargetSwapCards(
+            NetworkPlayer.Remote.connectionToClient,
+            serverSlotA >= 6 ? serverSlotA - 6 : serverSlotA + 6,
+            serverSlotB >= 6 ? serverSlotB - 6 : serverSlotB + 6);
+    }
+
     /// <summary>客户端上报交换请求——同时支持 ally(6-11) 和 enemy(0-5) 槽位映射。</summary>
     [Command]
     public void CmdSwapCards(int slotA, int slotB)
@@ -3345,6 +3363,9 @@ public class NetworkPlayer : NetworkBehaviour
         int serverA = isLocalPlayer ? slotA : (slotA >= 6 ? slotA - 6 : slotA + 6);
         int serverB = isLocalPlayer ? slotB : (slotB >= 6 ? slotB - 6 : slotB + 6);
         BoardManager.SwapCards(serverA, serverB);
+        // Host 发起的换位：同步到对方客户端视角（纯客户端发起时对方即服务端，本方法已处理）
+        if (isLocalPlayer)
+            SendSwapToRemote(serverA, serverB);
         BoardSyncManager.MarkDirty();
     }
 

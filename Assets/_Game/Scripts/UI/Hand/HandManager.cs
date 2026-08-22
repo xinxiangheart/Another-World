@@ -1728,8 +1728,11 @@ public class HandManager : MonoBehaviour
         }
         RefreshLayout(true);
         CardDrag.CleanupSpellResources();
-        // 发送每次交换到服务器——CmdReportAllSlots 不处理 templateID 变更（Host 本地已换位，跳过避免双换位）
-        if (!NetworkServer.active && NetworkClient.isConnected)
+        // 发送每次交换——Host 本地已换位，改为同步到对方客户端(TargetSwapCards)；纯客户端上报服务器
+        if (NetworkServer.active)
+            foreach (var (a, b) in swapTracker)
+                NetworkPlayer.SendSwapToRemote(a, b);
+        else if (NetworkClient.isConnected)
             foreach (var (a, b) in swapTracker)
                 NetworkPlayer.Local?.CmdSwapCards(a, b);
         TurnManager.SyncMyBoardToOpponent();
