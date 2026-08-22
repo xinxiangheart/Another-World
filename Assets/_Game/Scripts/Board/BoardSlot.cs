@@ -304,11 +304,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
                     int slotA = mySlot;
                     int slotB = ts.slotID;
-                    BoardManager.SwapCards(slotA, slotB);
                     ci.hasFirstStrike = false;
-
-                    // 通知服务端同步交换结果（远端 6-11 → 服务端映射为 0-5）
-                    NetworkPlayer.Local?.CmdSwapCards(slotA, slotB);
+                    // SwapCardsSafe：纯客户端本地移动 + 服务端权威，Host 避免双换位
+                    NetworkPlayer.SwapCardsSafe(slotA, slotB);
                     break;
                 }
                 case "01513":
@@ -326,8 +324,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                         if (first == null) first = s2;
                         else if (s2 != first)
                         {
-                            BoardManager.SwapCards(first.slotID, s2.slotID);
-                            NetworkPlayer.Local?.CmdSwapCards(first.slotID, s2.slotID);
+                            NetworkPlayer.SwapCardsSafe(first.slotID, s2.slotID);
                             first = null;
                         }
                     };
@@ -353,8 +350,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                         if (first == null) first = s2;
                         else if (s2 != first)
                         {
-                            BoardManager.SwapCards(first.slotID, s2.slotID);
-                            NetworkPlayer.Local?.CmdSwapCards(first.slotID, s2.slotID);
+                            NetworkPlayer.SwapCardsSafe(first.slotID, s2.slotID);
                             first = null;
                         }
                     };
@@ -2459,7 +2455,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 if (string.IsNullOrEmpty(pair)) continue;
                 string[] ids = pair.Split(',');
                 if (ids.Length == 2 && int.TryParse(ids[0], out int a) && int.TryParse(ids[1], out int b))
-                    NetworkPlayer.Local?.CmdSwapCards(a, b);
+                    if (!NetworkServer.active && NetworkClient.isConnected) // Host 本地已换位，跳过避免双换位
+                        NetworkPlayer.Local?.CmdSwapCards(a, b);
             }
         }
         TurnManager.SyncMyBoardToOpponent();
@@ -4147,10 +4144,11 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     }
                 BoardManager.SyncAttachedModels(firstSlot);
                 BoardManager.SyncAttachedModels(secondSlot);
-                // 01517 swap sync — 通知服务器交换结果，防止 SyncNow 覆盖本地交换
+                // 01517 swap sync — 纯客户端才上报服务器（Host 本地已换位，上报会双换位撤销）；仍同步板面
                 if (NetworkClient.isConnected)
                 {
-                    NetworkPlayer.Local?.CmdSwapCards(firstSlot.slotID, secondSlot.slotID);
+                    if (!NetworkServer.active)
+                        NetworkPlayer.Local?.CmdSwapCards(firstSlot.slotID, secondSlot.slotID);
                     TurnManager.SyncMyBoardToOpponent();
                 }
                 firstSlot = null;

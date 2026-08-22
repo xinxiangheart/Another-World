@@ -1728,9 +1728,10 @@ public class HandManager : MonoBehaviour
         }
         RefreshLayout(true);
         CardDrag.CleanupSpellResources();
-        // 发送每次交换到服务器——CmdReportAllSlots 不处理 templateID 变更
-        foreach (var (a, b) in swapTracker)
-            NetworkPlayer.Local?.CmdSwapCards(a, b);
+        // 发送每次交换到服务器——CmdReportAllSlots 不处理 templateID 变更（Host 本地已换位，跳过避免双换位）
+        if (!NetworkServer.active && NetworkClient.isConnected)
+            foreach (var (a, b) in swapTracker)
+                NetworkPlayer.Local?.CmdSwapCards(a, b);
         TurnManager.SyncMyBoardToOpponent();
     }
     public IEnumerator HandCleanseEffect()
@@ -1920,9 +1921,8 @@ public class HandManager : MonoBehaviour
                 BoardSlot secondSlot = selected;
                 Debug.Log($"[SwapTwoAllies] 第二次选择: slot={secondSlot.slotID}, card3D={(secondSlot.currentCard3D != null)}，执行换位 {firstSlot.slotID}<->{secondSlot.slotID}");
 
-                BoardManager.SwapCards(firstSlot.slotID, secondSlot.slotID);
-                if (NetworkClient.isConnected)
-                    NetworkPlayer.Local?.CmdSwapCards(firstSlot.slotID, secondSlot.slotID);
+                // SwapCardsSafe：纯客户端本地移动 + 服务端权威；Host 只走 CmdSwapCards，避免双换位撤销
+                NetworkPlayer.SwapCardsSafe(firstSlot.slotID, secondSlot.slotID);
 
                 SelectionManager.Instance.ForceEndAll();
                 TurnManager.SyncMyBoardToOpponent();

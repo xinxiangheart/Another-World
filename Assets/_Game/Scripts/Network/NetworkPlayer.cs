@@ -3348,6 +3348,16 @@ public class NetworkPlayer : NetworkBehaviour
         BoardSyncManager.MarkDirty();
     }
 
+    /// <summary>安全换位（避免 Host 双换位撤销）：纯客户端本地移动模型 + 服务端权威交换。
+    /// Host 上 CmdSwapCards(服务端, isLocalPlayer=true) 与本地 SwapCards 会对同一板面重复执行 → 换两次=没换。</summary>
+    public static void SwapCardsSafe(int a, int b)
+    {
+        if (!NetworkServer.active)
+            BoardManager.SwapCards(a, b);           // 纯客户端/离线：本地移动模型
+        if (NetworkClient.isConnected)
+            NetworkPlayer.Local?.CmdSwapCards(a, b); // 联机：服务端权威 + 同步
+    }
+
     /// <summary>远端客户端完成全部交互式先手后通知服务端。</summary>
     [Command]
     public void CmdRemoteFirstStrikeDone()
