@@ -41,6 +41,8 @@ public class RingSlot : MonoBehaviour
     /// <summary>显示头像（己方直接用 Texture2D，避免重复 Sprite.Create）。环主体恢复空白环。</summary>
     public void SetAvatar(Texture2D tex)
     {
+        Debug.Log($"[RingSlot] SetAvatar: {name}, tex={(tex != null ? $"{tex.width}x{tex.height}" : "null")}, " +
+                  $"avatarImage={(avatarImage != null ? $"(enabled={avatarImage.enabled}, sprite={(avatarImage.sprite != null ? avatarImage.sprite.texture?.width.ToString() : "null")})" : "null")}");
         if (ringBackground != null && _defaultRing != null) ringBackground.sprite = _defaultRing;
         if (avatarImage != null && tex != null)
         {
@@ -48,6 +50,9 @@ public class RingSlot : MonoBehaviour
             if (avatarImage.sprite == null || avatarImage.sprite.texture != tex)
                 avatarImage.sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f), 100f);
             avatarImage.enabled = true;
+            Debug.Log($"[RingSlot] SetAvatar 后: avatarImage.enabled={avatarImage.enabled}, " +
+                      $"sprite={(avatarImage.sprite != null ? avatarImage.sprite.texture?.width.ToString() : "null")}, " +
+                      $"rect={avatarImage.rectTransform?.rect}");
         }
         if (iconImage != null) iconImage.enabled = false;
     }
