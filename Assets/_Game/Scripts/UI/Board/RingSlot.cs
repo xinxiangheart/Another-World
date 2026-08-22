@@ -49,6 +49,10 @@ public class RingSlot : MonoBehaviour
             // 仅在纹理变化时重建 Sprite，避免每帧分配
             if (avatarImage.sprite == null || avatarImage.sprite.texture != tex)
                 avatarImage.sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f), 100f);
+            // 强制不透明——某些状态/初始化可能把 alpha 设为 0，导致头像不可见（空白环）
+            var avatarColor = avatarImage.color;
+            avatarColor.a = 1f;
+            avatarImage.color = avatarColor;
             avatarImage.enabled = true;
             Debug.Log($"[RingSlot] SetAvatar 后: avatarImage.enabled={avatarImage.enabled}, " +
                       $"sprite={(avatarImage.sprite != null ? avatarImage.sprite.texture?.width.ToString() : "null")}, " +
