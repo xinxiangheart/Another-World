@@ -49,6 +49,16 @@ public class CardData : ScriptableObject
     public GameObject prefab3D;
     public GameObject spellPrefab3D;
 
+    [Header("Buff/Debuff 持续状态")]
+    [Tooltip("是否有正面持续增益（护盾不算——护盾有独立图标；仅持续型效果，一次性效果不算）")]
+    public bool hasBuff;
+    [Tooltip("正面增益描述文本（勾选 hasBuff 后显示并填写）")]
+    public string buffText;
+    [Tooltip("是否有负面持续减益（护盾不算；仅持续型效果，一次性效果不算）")]
+    public bool hasDebuff;
+    [Tooltip("负面减益描述文本（勾选 hasDebuff 后显示并填写）")]
+    public string debuffText;
+
     [Header("目标选择")]
     public TargetType targetType = TargetType.None;
 

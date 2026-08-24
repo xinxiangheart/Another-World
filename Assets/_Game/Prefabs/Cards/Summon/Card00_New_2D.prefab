@@ -422,7 +422,7 @@ MonoBehaviour:
     m_Right: 0
     m_Top: 0
     m_Bottom: 0
-  m_ChildAlignment: 3
+  m_ChildAlignment: 4
   m_Spacing: 2
   m_ChildForceExpandWidth: 0
   m_ChildForceExpandHeight: 0
@@ -1407,7 +1407,7 @@ MonoBehaviour:
   statusIconsArea: {fileID: 90010005}
   cardBackImage: {fileID: 2484168069308855737}
   costFrameSprites: []
-  cardBackSprite: {fileID: 0}
+  cardBackSprite: {fileID: 21300000, guid: 468bd93a970628e44b93e60d932bfe6a, type: 3}
   artworkSprite: {fileID: 0}
   energyIconSprite: {fileID: 21300000, guid: f24750ce63a8be0499b101b577faaac9, type: 3}
   attackIconSprite: {fileID: 21300000, guid: fe84e6fcca7e18f4c96546267bf7dc91, type: 3}
@@ -1420,13 +1420,13 @@ MonoBehaviour:
   prefixPsychicSprite: {fileID: 0}
   prefixBloodsongSprite: {fileID: 0}
   prefixScrollSprite: {fileID: 0}
-  traitFirstStrikeSprite: {fileID: 0}
-  traitOnEnterSprite: {fileID: 0}
-  traitDeathrattleSprite: {fileID: 0}
-  traitActiveExitSprite: {fileID: 0}
-  traitRevengeSprite: {fileID: 0}
-  traitDiscardSprite: {fileID: 0}
-  traitAttachSprite: {fileID: 0}
+  traitFirstStrikeSprite: {fileID: 21300000, guid: 01eb0e2922b1a9a4999b650e63082b6d, type: 3}
+  traitOnEnterSprite: {fileID: 21300000, guid: ccba1a1af20788645a515fe87472e25a, type: 3}
+  traitDeathrattleSprite: {fileID: 21300000, guid: cfc4e5ba46548d845aa8f2e92d204017, type: 3}
+  traitActiveExitSprite: {fileID: 21300000, guid: 90bd10253ee47e04cb7e30822756e33d, type: 3}
+  traitRevengeSprite: {fileID: 21300000, guid: 0fd1fcf9ff9a7b044b994255191c6f81, type: 3}
+  traitDiscardSprite: {fileID: 21300000, guid: b7dbc79bddfc9064380b766452522b2e, type: 3}
+  traitAttachSprite: {fileID: 21300000, guid: ccb417c907e616e43a9d4ec7fbbb8357, type: 3}
   traitAttackFrontSprite: {fileID: 0}
   traitAttackBackSprite: {fileID: 0}
   traitAuraSprite: {fileID: 0}
@@ -1646,7 +1646,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: 21300000, guid: 35ef16c49b200a842b642b85325be068, type: 3}
+  m_Sprite: {fileID: 21300000, guid: 3ba02707472431141a1547c80ebf34e2, type: 3}
   m_Type: 0
   m_PreserveAspect: 0
   m_FillCenter: 1

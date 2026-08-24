@@ -158,6 +158,11 @@ public class CardInstance : MonoBehaviour
     public int counterDuration;             // 有效阶段数（-1表示永久直到触发）
     public bool isYinYang; // 阴阳标记，受到伤害-1
     public bool overclocked;
+    // Buff/Debuff 持续状态（从 CardData 模板继承，可被光环等动态赋予）
+    public bool hasBuff;
+    public string buffText;
+    public bool hasDebuff;
+    public string debuffText;
     public System.Action<int> _disasterWalkerHandler;
     // 受沉默控制的特性属性
     public bool HasOnEnter => hasOnEnter && !IsSilenced();
@@ -208,6 +213,42 @@ public class CardInstance : MonoBehaviour
         shieldEndAtBattleStart = false;
         shieldEndAtBattleEnd = false;
     }
+
+    // ================= Buff/Debuff 动态状态（光环/效果等授予） =================
+
+    /// <summary>动态赋予正面持续增益。text 为空则沿用现有描述。</summary>
+    public void GrantBuff(string text = null)
+    {
+        hasBuff = true;
+        if (!string.IsNullOrEmpty(text)) buffText = text;
+        RefreshDisplay();
+    }
+
+    /// <summary>清除正面持续增益，恢复模板默认（无模板则清空）。</summary>
+    public void ClearBuff()
+    {
+        CardData t = CardDatabase.Instance != null ? CardDatabase.Instance.GetTemplate(templateID) : null;
+        if (t != null) { hasBuff = t.hasBuff; buffText = t.buffText; }
+        else { hasBuff = false; buffText = ""; }
+        RefreshDisplay();
+    }
+
+    /// <summary>动态赋予负面持续减益。text 为空则沿用现有描述。</summary>
+    public void GrantDebuff(string text = null)
+    {
+        hasDebuff = true;
+        if (!string.IsNullOrEmpty(text)) debuffText = text;
+        RefreshDisplay();
+    }
+
+    /// <summary>清除负面持续减益，恢复模板默认（无模板则清空）。</summary>
+    public void ClearDebuff()
+    {
+        CardData t = CardDatabase.Instance != null ? CardDatabase.Instance.GetTemplate(templateID) : null;
+        if (t != null) { hasDebuff = t.hasDebuff; debuffText = t.debuffText; }
+        else { hasDebuff = false; debuffText = ""; }
+        RefreshDisplay();
+    }
     /// <summary>使用预生成 instanceID 初始化（从牌库抽取时使用）。</summary>
     public void InitFromTemplate(CardData template, int copyIndex, string overrideInstanceID = null)
     {
@@ -234,6 +275,12 @@ public class CardInstance : MonoBehaviour
         prefixes = template.prefix;
         summonType = template.summonType;
         CopyTraitsFromTemplate(template);
+
+        // 继承模板的 Buff/Debuff 持续状态（可被光环等动态覆盖）
+        hasBuff = template.hasBuff;
+        buffText = template.buffText;
+        hasDebuff = template.hasDebuff;
+        debuffText = template.debuffText;
 
         if (templateID == "01117")
         {
@@ -362,6 +409,10 @@ public class CardInstance : MonoBehaviour
         mindScholarCopiedTraits = src.mindScholarCopiedTraits != null ? new List<string>(src.mindScholarCopiedTraits) : new List<string>();
         mindScholarTriggeredKeys = src.mindScholarTriggeredKeys != null ? new List<string>(src.mindScholarTriggeredKeys) : null;
         // _mindScholarCopyPrompted intentionally NOT copied — fresh placement gets fresh dialog
+        hasBuff = src.hasBuff;
+        buffText = src.buffText;
+        hasDebuff = src.hasDebuff;
+        debuffText = src.debuffText;
     }
     public void CopyTraitsFromTemplate(CardData template)
     {
