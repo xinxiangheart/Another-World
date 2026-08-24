@@ -6,6 +6,7 @@ using TMPro;
 /// <summary>
 /// 一键生成新 2D 手牌卡牌预制体（独立于旧卡牌，不修改任何旧预制体/旧脚本）。
 /// 结构：Card00_New_2D → FrontFace(正) / BackFace(反)。
+/// 正面：CostFrameBase / ArtworkArea / 文字 / 图标 / 三排图标容器（PrefixIconsArea·TraitIconsArea·StatusIconsArea）。
 /// 菜单：Tools → 卡牌 → 生成新2D手牌预制体
 /// 生成后位置在 Scene 中手动摆，代码不写死坐标。
 /// </summary>
@@ -53,18 +54,11 @@ public static class Card2DNewPrefabBuilder
         TMP_Text healthText = CreateText(front, "HealthText", "0", font);
         Image attackIcon  = CreateImage(front, "AttackIcon");
         TMP_Text attackText = CreateText(front, "AttackText", "0", font);
-        Image prefixIcon  = CreateImage(front, "PrefixIcon");
 
-        // 特性图标区：水平排列容器（运行时动态添加子图标）
-        RectTransform traitArea = CreateChild(front, "TraitIconsArea", typeof(HorizontalLayoutGroup));
-        var hlg = traitArea.GetComponent<HorizontalLayoutGroup>();
-        hlg.spacing = 2f;
-        hlg.childAlignment = TextAnchor.MiddleLeft;
-        hlg.childControlWidth = true;
-        hlg.childControlHeight = true;
-        hlg.childForceExpandWidth = false;
-        hlg.childForceExpandHeight = false;
-        traitArea.sizeDelta = new Vector2(120f, 16f);
+        // 三排图标容器（水平排列，运行时动态添加子图标）
+        RectTransform prefixArea = CreateIconRow(front, "PrefixIconsArea");
+        RectTransform traitArea  = CreateIconRow(front, "TraitIconsArea");
+        RectTransform statusArea = CreateIconRow(front, "StatusIconsArea");
 
         // ── 背面元素 ──
         Image cardBack = CreateImage(back, "CardBackImage");
@@ -83,8 +77,9 @@ public static class Card2DNewPrefabBuilder
         display.healthText = healthText as TextMeshProUGUI;
         display.attackIcon = attackIcon;
         display.attackText = attackText as TextMeshProUGUI;
-        display.prefixIcon = prefixIcon;
+        display.prefixIconsArea = prefixArea;
         display.traitIconsArea = traitArea;
+        display.statusIconsArea = statusArea;
         display.cardBackImage = cardBack;
 
         // ── 保存预制体 ──
@@ -99,10 +94,25 @@ public static class Card2DNewPrefabBuilder
         Object.DestroyImmediate(root);
 
         AssetDatabase.SaveAssets();
-        Debug.Log($"[Card2DNew] 预制体已生成: {PrefabPath}（位置请在场景中手动摆）");
+        Debug.Log($"[Card2DNew] 预制体已生成: {PrefabPath}（三排图标位置请在场景中手动摆）");
     }
 
     // ================= 工具 =================
+
+    /// <summary>创建一排水平排列的图标容器（HorizontalLayoutGroup，紧凑左对齐）。</summary>
+    static RectTransform CreateIconRow(RectTransform parent, string name)
+    {
+        RectTransform rt = CreateChild(parent, name, typeof(HorizontalLayoutGroup));
+        var hlg = rt.GetComponent<HorizontalLayoutGroup>();
+        hlg.spacing = 2f;
+        hlg.childAlignment = TextAnchor.MiddleLeft;
+        hlg.childControlWidth = true;
+        hlg.childControlHeight = true;
+        hlg.childForceExpandWidth = false;
+        hlg.childForceExpandHeight = false;
+        rt.sizeDelta = new Vector2(120f, 16f);
+        return rt;
+    }
 
     static RectTransform CreateChild(Transform parent, string name, System.Type extra)
     {
