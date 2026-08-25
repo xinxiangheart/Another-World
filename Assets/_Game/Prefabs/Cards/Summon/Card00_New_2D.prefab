@@ -33,7 +33,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 0, y: -16}
+  m_AnchoredPosition: {x: 0, y: -47.4}
   m_SizeDelta: {x: 120, y: 16}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &90010003
@@ -1304,6 +1304,7 @@ MonoBehaviour:
   _conquerorTargetEnemyCard: {fileID: 0}
   immuneToEnemySpell: 0
   grantedTraitTexts: []
+  grantedTraits: []
   giveableDeathTraits: []
   hasOriginalFirstStrike: 0
   hasOriginalOnEnter: 0
@@ -1334,6 +1335,10 @@ MonoBehaviour:
   counterDuration: 0
   isYinYang: 0
   overclocked: 0
+  hasBuff: 0
+  buffText: 
+  hasDebuff: 0
+  debuffText: 
   prisonMySlot: -1
   prisonEnemySlot: -1
 --- !u!114 &1244939689338274653
@@ -1415,11 +1420,11 @@ MonoBehaviour:
   heroTypeSprite: {fileID: 21300000, guid: 6c7fdd731b5bc7849aaf191d5843d5f7, type: 3}
   chosenOneTypeSprite: {fileID: 21300000, guid: b8f1bb197afabf24f9fb7e6b050e3e44, type: 3}
   specialTypeSprite: {fileID: 21300000, guid: 54ae47f0643fcd04689c3f1b89727f99, type: 3}
-  prefixAbyssSprite: {fileID: 0}
-  prefixMechSprite: {fileID: 0}
-  prefixPsychicSprite: {fileID: 0}
+  prefixAbyssSprite: {fileID: 21300000, guid: 19ebe87251be7314f9a945ef216b46a5, type: 3}
+  prefixMechSprite: {fileID: 21300000, guid: f82b44b3f70ab2342a8d4fa59389dc3e, type: 3}
+  prefixPsychicSprite: {fileID: 21300000, guid: 3c0c99339d754f54ca436fcdb71b678a, type: 3}
   prefixBloodsongSprite: {fileID: 0}
-  prefixScrollSprite: {fileID: 0}
+  prefixScrollSprite: {fileID: 21300000, guid: 834cb5b46ca15d2458d840460e7f4620, type: 3}
   traitFirstStrikeSprite: {fileID: 21300000, guid: 01eb0e2922b1a9a4999b650e63082b6d, type: 3}
   traitOnEnterSprite: {fileID: 21300000, guid: ccba1a1af20788645a515fe87472e25a, type: 3}
   traitDeathrattleSprite: {fileID: 21300000, guid: cfc4e5ba46548d845aa8f2e92d204017, type: 3}
