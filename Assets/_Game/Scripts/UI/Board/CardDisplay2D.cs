@@ -22,7 +22,7 @@ public class CardDisplay2D : MonoBehaviour
     }
 
     // 外部调用：直接注入实例
-    public void RefreshWithInstance(CardInstance inst)
+    public virtual void RefreshWithInstance(CardInstance inst)
     {
         instance = inst;
         if (instance == null)
@@ -33,7 +33,7 @@ public class CardDisplay2D : MonoBehaviour
         Debug.Log($"RefreshWithInstance: templateID={instance.templateID}, atk={instance.currentAttack}, hp={instance.currentHealth}, cost={instance.currentCost}");
         Refresh();
     }
-    public void Refresh()
+    public virtual void Refresh()
     {
         if (instance == null) return;
 

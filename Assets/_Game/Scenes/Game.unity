@@ -2328,7 +2328,7 @@ MonoBehaviour:
   currentEnergy: 0
   handArea: {fileID: 1062876305}
   myHandManager: {fileID: 1062876306}
-  cardPrefab2D: {fileID: 1550741978800441838, guid: f160bef7ac04a49439e53967d006942d, type: 3}
+  cardPrefab2D: {fileID: 7717798482013437283, guid: bb3458fb45764e84987651876c5516ca, type: 3}
   spellCardPrefab2D: {fileID: 1550741978800441838, guid: a31740f54d99f4449b1b820e76fbd889, type: 3}
   handCards: []
   healthText: {fileID: 2049773414}
@@ -3355,7 +3355,7 @@ MonoBehaviour:
   currentHealth: 0
   currentEnergy: 0
   handArea: {fileID: 1640736093}
-  cardPrefab2D: {fileID: 1550741978800441838, guid: f160bef7ac04a49439e53967d006942d, type: 3}
+  cardPrefab2D: {fileID: 7717798482013437283, guid: bb3458fb45764e84987651876c5516ca, type: 3}
   spellCardPrefab2D: {fileID: 1550741978800441838, guid: a31740f54d99f4449b1b820e76fbd889, type: 3}
   handCards: []
   healthText: {fileID: 139857042}

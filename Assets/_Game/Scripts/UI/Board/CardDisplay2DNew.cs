@@ -32,14 +32,14 @@ public class CardDisplay2DNew : MonoBehaviour
     public Image costFrame;        // 费用底图
     public Image prefixArtBG;      // 前缀底图（读取模板前缀 CardData.prefix，非实例）
     public Image cardArt;          // 召唤物原画（按 templateID 加载）
-    public TMP_Text nameText;
+    public TMP_Text cardNameText;
     public Image costIcon;         // 能量图标
-    public TMP_Text costText;
+    public TMP_Text cardCostText;
     public Image typeIcon;         // 类型图标
     public Image healthIcon;
-    public TMP_Text healthText;
+    public TMP_Text cardHealthText;
     public Image attackIcon;
-    public TMP_Text attackText;
+    public TMP_Text cardAttackText;
 
     [Header("三排图标容器（HorizontalLayoutGroup，运行时动态填充）")]
     public RectTransform prefixIconsArea;  // 前缀排
@@ -200,10 +200,10 @@ public class CardDisplay2DNew : MonoBehaviour
         bool isSpell = template != null && template.cardType == CardType.Spell;
 
         // ── 数字文字 ──
-        if (costText != null) costText.text = _inst.currentCost.ToString();
-        if (attackText != null) attackText.text = _inst.Attack.ToString();
-        if (healthText != null) healthText.text = _inst.currentHealth.ToString();
-        if (nameText != null) nameText.text = template != null ? template.cardName : "";
+        if (cardCostText != null) cardCostText.text = _inst.currentCost.ToString();
+        if (cardAttackText != null) cardAttackText.text = _inst.Attack.ToString();
+        if (cardHealthText != null) cardHealthText.text = _inst.currentHealth.ToString();
+        if (cardNameText != null) cardNameText.text = template != null ? template.cardName : "";
 
         // ── 费用底图（0-5 费，直接 Sprite 或路径）──
         if (costFrame != null)
@@ -265,8 +265,8 @@ public class CardDisplay2DNew : MonoBehaviour
 
         // ── 法术隐藏攻击/生命 ──
         bool showCombat = !isSpell;
-        if (attackText != null) attackText.gameObject.SetActive(showCombat);
-        if (healthText != null) healthText.gameObject.SetActive(showCombat);
+        if (cardAttackText != null) cardAttackText.gameObject.SetActive(showCombat);
+        if (cardHealthText != null) cardHealthText.gameObject.SetActive(showCombat);
         if (attackIcon != null) attackIcon.gameObject.SetActive(showCombat);
         if (healthIcon != null) healthIcon.gameObject.SetActive(showCombat);
     }

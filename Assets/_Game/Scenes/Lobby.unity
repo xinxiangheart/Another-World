@@ -13628,7 +13628,7 @@ MonoBehaviour:
   buttonsPerRow: 3
   scrollRect: {fileID: 829617476}
   cardContainer: {fileID: 1865147471}
-  summonCardPrefab: {fileID: 1550741978800441838, guid: f160bef7ac04a49439e53967d006942d, type: 3}
+  summonCardPrefab: {fileID: 7717798482013437283, guid: bb3458fb45764e84987651876c5516ca, type: 3}
   spellCardPrefab: {fileID: 1550741978800441838, guid: a31740f54d99f4449b1b820e76fbd889, type: 3}
   detailFont: {fileID: 11400000, guid: 33c204896c0cca64e8e60641e9e7c64c, type: 3}
   cardsPerRow: 5

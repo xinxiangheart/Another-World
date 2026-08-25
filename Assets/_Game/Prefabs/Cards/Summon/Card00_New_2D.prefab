@@ -1251,6 +1251,7 @@ GameObject:
   - component: {fileID: 2529713741539926085}
   - component: {fileID: 1574538824115931834}
   - component: {fileID: 1825837064265207045}
+  - component: {fileID: 90030001}
   m_Layer: 5
   m_Name: Card00_New_2D
   m_TagString: Untagged
@@ -1512,14 +1513,14 @@ MonoBehaviour:
   costFrame: {fileID: 7095863548989609029}
   prefixArtBG: {fileID: 90020004}
   cardArt: {fileID: 90020008}
-  nameText: {fileID: 7272601978775490455}
+  cardNameText: {fileID: 7272601978775490455}
   costIcon: {fileID: 8691694485147921468}
-  costText: {fileID: 7891502374996309257}
+  cardCostText: {fileID: 7891502374996309257}
   typeIcon: {fileID: 5096615234418551341}
   healthIcon: {fileID: 2136672889722760274}
-  healthText: {fileID: 5259781400018429602}
+  cardHealthText: {fileID: 5259781400018429602}
   attackIcon: {fileID: 1776501849762990560}
-  attackText: {fileID: 1210555705296469457}
+  cardAttackText: {fileID: 1210555705296469457}
   prefixIconsArea: {fileID: 90010002}
   traitIconsArea: {fileID: 639255496532164223}
   statusIconsArea: {fileID: 90010005}
@@ -1780,3 +1781,23 @@ MonoBehaviour:
   m_FillOrigin: 0
   m_UseSpriteMesh: 0
   m_PixelsPerUnitMultiplier: 1
+
+--- !u!114 &90030001
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7717798482013437283}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a1b2c3d4e5f678901234567890abcdef, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  nameText: {fileID: 0}
+  prefixText: {fileID: 0}
+  attackText: {fileID: 0}
+  healthText: {fileID: 0}
+  costText: {fileID: 0}
+  effectText: {fileID: 0}
+  _new: {fileID: 0}
