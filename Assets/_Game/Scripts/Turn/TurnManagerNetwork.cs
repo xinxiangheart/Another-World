@@ -202,8 +202,7 @@ public partial class TurnManager
                     ci.isAttached ? "1" : "0",
                     ci.poisoned ? "1" : "0",
                     ci.prefixes ?? "",
-                    ci.grantedTraitTexts != null && ci.grantedTraitTexts.Count > 0
-                        ? string.Join(";;", ci.grantedTraitTexts) : "",
+                    ci.SerializeGrantedTraits(),
                     ci.totalDamageTaken,
                     ci.hasBuff ? "1" : "0",
                     ci.buffText ?? "",

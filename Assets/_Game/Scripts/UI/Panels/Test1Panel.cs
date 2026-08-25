@@ -129,38 +129,14 @@ public class Test1Panel : MonoBehaviour
 
     string BuildTraitsText(CardInstance ci)
     {
-        Debug.Log($"BuildTraitsText: templateID={ci.templateID}, hasOnDeath={ci.hasOnDeath}, grantedCount={ci.grantedTraitTexts?.Count}, giveableCount={ci.giveableDeathTraits?.Count}");
-        CardData template = CardDatabase.Instance?.GetTemplate(ci.templateID);
-        List<string> traits = new List<string>();
-
-        // 普通卡牌：显示模板特性
-        if (template != null && !string.IsNullOrEmpty(template.traits) && template.traits != "无")
-        {
-            // 01117 的模板特性不显示——用 grantedTraitTexts 替代（可被同步）
-            if (ci.templateID != "01117")
-                traits.Add(template.traits);
-        }
-
-        // 01117 专属：用 grantedTraitTexts 显示剩余可给予特性（已同步，giveableDeathTraits 未同步）
-        if (ci.templateID == "01117")
-        {
-            traits.Add("进场：永久给予对方一召唤物一个自己的退场（自己的退场给予后消失）");
-            traits.Add("退场：回到手牌（该退场无法给予）");
-            foreach (string t in ci.grantedTraitTexts)
-            {
-                traits.Add(t);
-            }
-        }
-        else
-        {
-            // 通用：动态赋予的特性（非 01117 的卡用标准格式）
-            foreach (string granted in ci.grantedTraitTexts)
-            {
-                traits.Add($"(赋予){granted}");
-            }
-        }
-
-        return traits.Count > 0 ? string.Join("\n", traits) : "无";
+        Debug.Log($"BuildTraitsText: templateID={ci.templateID}, grantedCount={ci.grantedTraitTexts?.Count}, visibleCount={ci.GetTraitCount()}");
+        // 特性条目化：固有（跳过"赋予"标记）+ 获得的赋予特性，统一编号排序
+        var entries = ci.GetVisibleTraitEntries();
+        if (entries.Count == 0) return "无";
+        var lines = new List<string>();
+        for (int i = 0; i < entries.Count; i++)
+            lines.Add(CardInstance.FormatTraitEntry(i + 1, entries[i]));
+        return string.Join("\n", lines);
     }
     public void Hide() => panelRoot.SetActive(false);
 }

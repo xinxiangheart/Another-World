@@ -22,7 +22,8 @@ public enum TargetType
     AllyAnyRow,     // 己方任意一排
     AllEnemies,
     AllAllies,
-    AllMinions
+    AllMinions,
+    SingleAny       // 任意目标：敌方或己方的单个召唤物（追加在末尾，保持既有序列化值不变）
 }
 
 public enum CounterTriggerTiming

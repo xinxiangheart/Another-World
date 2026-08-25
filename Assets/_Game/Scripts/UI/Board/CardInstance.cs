@@ -105,6 +105,8 @@ public class CardInstance : MonoBehaviour
     [System.NonSerialized] public bool _hasPendingCoroutine;
     // 动态赋予的特性文本
     public List<string> grantedTraitTexts = new List<string>();
+    /// <summary>结构化赋予特性（text + 属性 + 源模板ID），与 grantedTraitTexts 锁步维护（按 text 对齐）。</summary>
+    public List<GrantedTrait> grantedTraits = new List<GrantedTrait>();
     // 苦难给予者专用
     public List<string> giveableDeathTraits = new List<string>();
     // 模板原始特性记录
@@ -258,6 +260,7 @@ public class CardInstance : MonoBehaviour
 
         // 初始化所有可变集合（同步 diff 需非 null）
         grantedTraitTexts = new List<string>();
+        grantedTraits = new List<GrantedTrait>();
         giveableDeathTraits = new List<string>();
         enemyDamageSourceIDs = new List<string>();
         damageSourceInstanceIDs = new List<string>();
@@ -296,6 +299,9 @@ public class CardInstance : MonoBehaviour
             "退场：己方全体受到一伤害",
             "退场：己方玩家扣一血"
         };
+            grantedTraits = new List<GrantedTrait>();
+            foreach (var t in grantedTraitTexts)
+                grantedTraits.Add(new GrantedTrait { text = t });
         }
         if (templateID == "01319")
             ignoreAllCounters = true;
@@ -362,6 +368,14 @@ public class CardInstance : MonoBehaviour
         shieldEndAtBattleEnd = src.shieldEndAtBattleEnd;
         giveableDeathTraits = src.giveableDeathTraits != null ? new List<string>(src.giveableDeathTraits) : new List<string>();
         grantedTraitTexts = src.grantedTraitTexts != null ? new List<string>(src.grantedTraitTexts) : new List<string>();
+        grantedTraits = src.grantedTraits != null
+            ? src.grantedTraits.ConvertAll(g => new GrantedTrait
+            {
+                text = g?.text,
+                attributes = g?.attributes != null ? new List<string>(g.attributes) : new List<string>(),
+                sourceTemplateID = g?.sourceTemplateID ?? ""
+            })
+            : new List<GrantedTrait>();
         hasOriginalFirstStrike = src.hasOriginalFirstStrike;
         hasOriginalOnEnter = src.hasOriginalOnEnter;
         hasOriginalOnDeath = src.hasOriginalOnDeath;
@@ -494,27 +508,39 @@ public class CardInstance : MonoBehaviour
             case "攻击后排": attacksBackRow = false; break;
         }
     }
-    public void GrantTrait(string fullTraitText)
+    /// <summary>赋予特性（纯文本，兼容旧调用）。</summary>
+    public void GrantTrait(string fullTraitText) => GrantTrait(fullTraitText, null, null);
+
+    /// <summary>赋予特性（结构化：text + 属性 + 源模板ID），同时写 grantedTraitTexts 与 grantedTraits。</summary>
+    public void GrantTrait(string text, List<string> attributes, string sourceTemplateID)
     {
         if (grantedTraitTexts == null) grantedTraitTexts = new List<string>();
-        if (grantedTraitTexts.Contains(fullTraitText)) return;
-        grantedTraitTexts.Add(fullTraitText);
+        if (grantedTraits == null) grantedTraits = new List<GrantedTrait>();
+        if (grantedTraitTexts.Contains(text)) return;
+        grantedTraitTexts.Add(text);
+        grantedTraits.Add(new GrantedTrait
+        {
+            text = text,
+            attributes = attributes != null ? new List<string>(attributes) : new List<string>(),
+            sourceTemplateID = sourceTemplateID ?? ""
+        });
 
-        if (fullTraitText.Contains("先手")) hasFirstStrike = true;
-        if (fullTraitText.Contains("进场")) hasOnEnter = true;
-        if (fullTraitText.Contains("退场")) hasOnDeath = true;
-        if (fullTraitText.Contains("主动退场")) hasActiveExit = true;
-        if (fullTraitText.Contains("反击")) hasRevenge = true;
-        if (fullTraitText.Contains("抛置")) hasDiscard = true;
-        if (fullTraitText.Contains("附着")) canAttach = true;
-        if (fullTraitText.Contains("攻击前排")) { attacksFrontRow = true; attacksBackRow = false; }
-        if (fullTraitText.Contains("攻击后排")) { attacksBackRow = true; attacksFrontRow = false; }
+        if (text.Contains("先手")) hasFirstStrike = true;
+        if (text.Contains("进场")) hasOnEnter = true;
+        if (text.Contains("退场")) hasOnDeath = true;
+        if (text.Contains("主动退场")) hasActiveExit = true;
+        if (text.Contains("反击")) hasRevenge = true;
+        if (text.Contains("抛置")) hasDiscard = true;
+        if (text.Contains("附着")) canAttach = true;
+        if (text.Contains("攻击前排")) { attacksFrontRow = true; attacksBackRow = false; }
+        if (text.Contains("攻击后排")) { attacksBackRow = true; attacksFrontRow = false; }
     }
 
     public void RemoveGrantedTrait(string fullTraitText)
     {
         if (grantedTraitTexts == null) grantedTraitTexts = new List<string>();
         grantedTraitTexts.Remove(fullTraitText);
+        if (grantedTraits != null) grantedTraits.RemoveAll(g => g != null && g.text == fullTraitText);
 
         bool stillHasFirstStrike = grantedTraitTexts.Exists(t => t.Contains("先手"));
         bool stillHasOnEnter = grantedTraitTexts.Exists(t => t.Contains("进场"));
@@ -650,6 +676,188 @@ public class CardInstance : MonoBehaviour
 
         return false;
     }
+
+    // ═══════════════════ 特性条目化（显示用） ═══════════════════
+
+    /// <summary>一条可见特性的显示条目。</summary>
+    public struct TraitEntry
+    {
+        public bool isGranted;      // true=获得的赋予特性（运行时从别的卡获得）
+        public string text;         // 特性文本（无"数字."前缀）
+        public string[] attributes; // 属性列表（进场/先手/反击/…/赋予）
+    }
+
+    /// <summary>结构化赋予特性（复制时从源卡 List&lt;TraitEntry&gt; 读取属性并携带）。</summary>
+    [System.Serializable]
+    public class GrantedTrait
+    {
+        public string text;                    // 特性文本
+        public List<string> attributes;        // 属性标记（从源卡 List<TraitEntry 精确复制）
+        public string sourceTemplateID;        // 源卡模板ID（溯源）
+    }
+
+    /// <summary>构建可见特性列表：固有（跳过"赋予"标记条目）+ 获得的赋予特性。编号在显示时按此顺序生成。</summary>
+    public List<TraitEntry> GetVisibleTraitEntries()
+    {
+        var result = new List<TraitEntry>();
+        CardData template = CardDatabase.Instance != null ? CardDatabase.Instance.GetTemplate(templateID) : null;
+
+        // 固有特性（结构化 traitEntries，加载时自动迁移）——01117 迁移前用旧特殊处理
+        if (templateID != "01117" && template != null)
+        {
+            var traitList = template.GetTraitEntryList();
+            if (traitList != null)
+                foreach (var te in traitList)
+                {
+                    if (te.isGrant) continue; // 赋予型（给予别人）：自身不显示不编号
+                    result.Add(new TraitEntry { isGranted = false, text = te.text, attributes = te.GetAttributes() });
+                }
+        }
+
+        // 01117 苦难给予者：数据迁移前临时保留旧显示（2 条自身特性；给予型在 grantedTraitTexts 由下方显示）
+        if (templateID == "01117")
+        {
+            result.Insert(0, new TraitEntry { isGranted = false, text = "进场：永久给予对方一召唤物一个自己的退场（自己的退场给予后消失）", attributes = new string[0] });
+            result.Insert(1, new TraitEntry { isGranted = false, text = "退场：回到手牌（该退场无法给予）", attributes = new string[0] });
+        }
+
+        // 获得的赋予特性（运行时从别的卡获得）——正常参与编号；属性优先结构化 grantedTraits，旧纯文本回退前缀解析
+        if (grantedTraitTexts != null)
+        {
+            foreach (string g in grantedTraitTexts)
+            {
+                if (string.IsNullOrEmpty(g)) continue;
+                string[] attrs = null;
+                if (grantedTraits != null)
+                {
+                    var gt = grantedTraits.Find(x => x != null && x.text == g);
+                    if (gt != null && gt.attributes != null && gt.attributes.Count > 0)
+                        attrs = gt.attributes.ToArray();
+                }
+                if (attrs == null || attrs.Length == 0)
+                    attrs = CardData.ParseTraitAttributesFromText(g);
+                result.Add(new TraitEntry { isGranted = true, text = g, attributes = attrs });
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>可见特性总数（1 基，跳过"赋予"标记条目）。</summary>
+    public int GetTraitCount() => GetVisibleTraitEntries().Count;
+
+    /// <summary>第 index 条可见特性的文本（1 基）。越界返回 null。</summary>
+    public string GetTraitByIndex(int index)
+    {
+        var entries = GetVisibleTraitEntries();
+        if (index < 1 || index > entries.Count) return null;
+        return entries[index - 1].text;
+    }
+
+    /// <summary>第 index 条可见特性的属性列表（1 基）。越界返回空数组。</summary>
+    public string[] GetTraitProperties(int index)
+    {
+        var entries = GetVisibleTraitEntries();
+        if (index < 1 || index > entries.Count) return new string[0];
+        return entries[index - 1].attributes;
+    }
+
+    /// <summary>格式化一条特性条目为 "N：属性1、属性2：xxx" / "N：xxx" / "N（赋予）（属性）：xxx"。</summary>
+    public static string FormatTraitEntry(int n, TraitEntry e)
+    {
+        // 去重：text 以首个属性+"："开头时剥掉，避免 "先手：先手："
+        string cleaned = e.text;
+        if (e.attributes != null && e.attributes.Length > 0
+            && cleaned.StartsWith(e.attributes[0] + "："))
+            cleaned = cleaned.Substring(e.attributes[0].Length + 1).TrimStart();
+
+        if (e.isGranted)
+        {
+            string attr = e.attributes != null && e.attributes.Length > 0 ? $"（{string.Join("、", e.attributes)}）" : "";
+            return $"{n}（赋予）{attr}：{cleaned}";
+        }
+        string attrPart = e.attributes != null && e.attributes.Length > 0 ? string.Join("、", e.attributes) + "：" : "";
+        return $"{n}：{attrPart}{cleaned}";
+    }
+
+    // ═══════════════════ granted traits 同步序列化 ═══════════════════
+
+    /// <summary>序列化 grantedTraits → ";;" 分隔，每项 "text~属性1、属性2~源templateID"；旧纯文本 grantedTraitTexts 兜底。</summary>
+    public string SerializeGrantedTraits()
+    {
+        if (grantedTraits != null && grantedTraits.Count > 0)
+        {
+            var parts = new List<string>();
+            foreach (var gt in grantedTraits)
+            {
+                if (gt == null) continue;
+                string attrs = gt.attributes != null && gt.attributes.Count > 0 ? string.Join("、", gt.attributes) : "";
+                parts.Add($"{gt.text}~{attrs}~{gt.sourceTemplateID ?? ""}");
+            }
+            return parts.Count > 0 ? string.Join(";;", parts) : "";
+        }
+        // 旧纯文本兜底（grantedTraits 尚未填充）
+        return grantedTraitTexts != null ? string.Join(";;", grantedTraitTexts) : "";
+    }
+
+    /// <summary>解析 ";;" 分隔的序列化 granted traits → (text, attrs, source) 列表。兼容无 "~" 的旧纯文本。</summary>
+    public List<(string text, List<string> attrs, string source)> ParseGrantedTraits(string raw)
+    {
+        var result = new List<(string, List<string>, string)>();
+        if (string.IsNullOrEmpty(raw)) return result;
+        foreach (var entry in raw.Split(new[] { ";;" }, System.StringSplitOptions.None))
+        {
+            if (string.IsNullOrEmpty(entry)) continue;
+            if (entry.Contains("~"))
+            {
+                var p = entry.Split('~');
+                string text = p[0];
+                var attrs = p.Length > 1 && !string.IsNullOrEmpty(p[1])
+                    ? new List<string>(p[1].Split(new[] { '、', ',', '，' }, System.StringSplitOptions.RemoveEmptyEntries))
+                    : new List<string>();
+                string source = p.Length > 2 ? p[2] : "";
+                result.Add((text, attrs, source));
+            }
+            else
+            {
+                result.Add((entry, new List<string>(), ""));
+            }
+        }
+        return result;
+    }
+
+    /// <summary>用同步数据增量更新 grantedTraits/grantedTraitTexts（diff 式，保留 flag 恢复逻辑）。</summary>
+    public void ApplySyncedGrantedTraits(string raw)
+    {
+        var newEntries = ParseGrantedTraits(raw);
+        var newTexts = new List<string>();
+        foreach (var e in newEntries) newTexts.Add(e.Item1);
+
+        if (grantedTraitTexts == null) grantedTraitTexts = new List<string>();
+        if (grantedTraits == null) grantedTraits = new List<GrantedTrait>();
+
+        // 移除旧的不再存在的
+        var oldCopy = new List<string>(grantedTraitTexts);
+        foreach (var t in oldCopy)
+            if (!newTexts.Contains(t)) RemoveGrantedTrait(t);
+
+        // 添加新的 / 更新已有属性
+        foreach (var e in newEntries)
+        {
+            int idx = grantedTraitTexts.IndexOf(e.Item1);
+            if (idx >= 0)
+            {
+                if (idx < grantedTraits.Count)
+                {
+                    if (e.Item2 != null && e.Item2.Count > 0) grantedTraits[idx].attributes = e.Item2;
+                    if (!string.IsNullOrEmpty(e.Item3)) grantedTraits[idx].sourceTemplateID = e.Item3;
+                }
+                continue;
+            }
+            GrantTrait(e.Item1, e.Item2, e.Item3);
+        }
+    }
+
     public int Attack
     {
         get

@@ -452,7 +452,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 case "01318": // 弱化棱晶：目标攻击力→1 → Cmd 委托服务端处理
                 {
                     bool dd = false;
-                    SelectionManager.Instance.BeginSelection(TargetType.AllMinions, (t) =>
+                    SelectionManager.Instance.BeginSelection(TargetType.SingleAny, (t) =>
                     {
                         if (t?.currentCard3D != null)
                             NetworkPlayer.Local?.Cmd01318FirstStrike(t.slotID);
@@ -486,7 +486,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         TurnManager.SyncMyBoardToOpponent();
         // 远端先手完毕后立即清零临时攻击力字段——BattleCoroutine/FinalDamage 不会在远端执行
-        // 01318 可选择任意目标(AllMinions)，需覆盖全部 12 槽（含敌方 0-5）
+        // 01318 可选择任意目标(SingleAny)，需覆盖全部 12 槽（含敌方 0-5）
         var bmRefresh = FindObjectOfType<BoardManager>();
         if (bmRefresh != null)
             for (int ri = 0; ri <= 11; ri++)
@@ -730,7 +730,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
         if (isTargetingMode && !isAttachSelectMode && !isReplaceMode && IsValidTarget(currentTargetType))
         {
-            if (currentTargetType == TargetType.SingleAlly || currentTargetType == TargetType.SingleEnemy || currentTargetType == TargetType.AllMinions)
+            if (currentTargetType == TargetType.SingleAlly || currentTargetType == TargetType.SingleEnemy || currentTargetType == TargetType.AllMinions || currentTargetType == TargetType.SingleAny)
             {
                 transform.localScale = originalScale * 1.15f;
                 slotImage.color = highlightColor;
@@ -786,6 +786,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         lastClickTime = Time.time;
         if (isTargetingMode && IsValidTarget(currentTargetType))
         {
+            Debug.Log($"[TargetClick] slot={slotID}, type={currentTargetType}, onTargetSelected={onTargetSelected != null}");
             onTargetSelected?.Invoke(this);
             return;
         }
@@ -972,6 +973,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     if (slotID >= 6 && slotID <= 11 && hasCard) return new int[] { slotID };
                 }
                 break;
+            case TargetType.SingleAny:
+                // 任意目标：敌方(0-5)或己方(6-11)的召唤物都可选
+                if (hasCard) return new int[] { slotID };
+                break;
             default:
                 Debug.LogWarning($"[BoardSlot] GetRowSlots 未处理的 TargetType: {type}");
                 break;
@@ -981,7 +986,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
     public void HighlightRow(bool highlight)
     {
-        if (currentTargetType == TargetType.SingleAlly || currentTargetType == TargetType.SingleEnemy)
+        if (currentTargetType == TargetType.SingleAlly || currentTargetType == TargetType.SingleEnemy || currentTargetType == TargetType.SingleAny)
         {
             transform.localScale = highlight ? originalScale * 1.15f : originalScale;
             slotImage.color = highlight ? highlightColor : normalColor;
@@ -1568,7 +1573,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         if (chosenTrait == null || giver == null || target == null) return;
         giver.giveableDeathTraits.Remove(chosenTrait);
         giver.RemoveGrantedTrait(chosenTrait);
-        target.GrantTrait(chosenTrait);
+        // chosenTrait 是 giveableDeathTraits 里的完整文本（如"退场：减一能量"）——属性从文本前缀解析
+        target.GrantTrait(chosenTrait, new List<string>(CardData.ParseTraitAttributesFromText(chosenTrait)), giver.templateID);
         RefreshCardDisplay(target);
         // 如果详情面板正打开着，即时刷新显示
         RefreshTest1Panel(giver);
@@ -2150,26 +2156,14 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
     public IEnumerator GreedySnakeCopyProcess(CardInstance giver, CardInstance target)
     {
-        List<(string key, string fullText)> traits = new List<(string, string)>();
-
-        // 反击
-        if (target.hasFirstStrike)
-        {
-            string text = GetTraitFullText(target, "反击");
-            traits.Add(("反击", text));
-        }
-                // 清理重定向标记
-        if (target.hasOnDeath)
-        {
-            string text = GetTraitFullText(target, "先手");
-            traits.Add(("先手", text));
-        }
-                // 清理重定向标记
-        if (target.hasRevenge)
-        {
-            string text = GetTraitFullText(target, "先手");
-            traits.Add(("先手", text));
-        }
+        // 修复 traitKey：hasFirstStrike→先手、hasOnDeath→退场、hasRevenge→反击
+        List<(string key, CardData.TraitEntry entry)> traits = new List<(string, CardData.TraitEntry)>();
+        var revenge = ResolveSourceTrait(target, "反击");
+        if (target.hasRevenge && revenge != null) traits.Add(("反击", revenge));
+        var firstStrike = ResolveSourceTrait(target, "先手");
+        if (target.hasFirstStrike && firstStrike != null) traits.Add(("先手", firstStrike));
+        var death = ResolveSourceTrait(target, "退场");
+        if (target.hasOnDeath && death != null) traits.Add(("退场", death));
 
         if (traits.Count == 0)
         {
@@ -2180,16 +2174,16 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         if (traits.Count == 1)
         {
-            ApplyGreedySnakeCopy(giver, target, traits[0].key);
+            ApplyGreedySnakeCopy(giver, target, traits[0].key, traits[0].entry);
             CleanupAfterPlacement();
             yield break;
         }
 
-        foreach (var (key, fullText) in traits)
+        foreach (var (key, entry) in traits)
         {
             bool chosen = false;
             bool thisDone = false;
-            ConfirmPanel.Instance.Show($"是否复制{fullText}？",
+            ConfirmPanel.Instance.Show($"是否复制{entry.text}？",
                 () => { chosen = true; thisDone = true; },
                 () => { thisDone = true; }
             );
@@ -2197,7 +2191,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
             if (chosen)
             {
-                ApplyGreedySnakeCopy(giver, target, key);
+                ApplyGreedySnakeCopy(giver, target, key, entry);
                 break;
             }
         }
@@ -2205,36 +2199,56 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         CleanupAfterPlacement();
     }
 
-    string GetTraitFullText(CardInstance ci, string traitKey)
+    /// <summary>
+    /// 从源卡 ci 解析"属性为 attr"的特性条目（text + 属性标记）。
+    /// 模板 List&lt;TraitEntry&gt; 精确定位优先（不靠 Contains 猜）→ 次选已获得的赋予特性 → 反击 special。
+    /// 找不到返回 null。
+    /// </summary>
+    CardData.TraitEntry ResolveSourceTrait(CardInstance ci, string attr)
     {
-        // 1. 从赋予的特性中查找
-        foreach (string gt in ci.grantedTraitTexts)
+        if (ci == null) return null;
+
+        // ① 模板 List<TraitEntry> 精确定位（属性匹配）
+        var td = CardDatabase.Instance?.GetTemplate(ci.templateID);
+        if (td != null)
         {
-            if (gt.Contains(traitKey)) return gt;
+            var e = td.FindTraitByAttribute(attr);
+            if (e != null) return e;
         }
 
-        // 2. 反击从 revengeEffect
-        if (traitKey == "反击" && !string.IsNullOrEmpty(ci.revengeEffect))
-            return $"反击：{ci.revengeEffect}";
-
-        // 3. 从模板特性文本中查找对应行
-        CardData td = CardDatabase.Instance?.GetTemplate(ci.templateID);
-        if (td != null && !string.IsNullOrEmpty(td.traits))
-        {
-            string[] lines = td.traits.Split('\n');
-            foreach (string line in lines)
+        // ② 已获得的赋予特性（结构化属性匹配 → 文本前缀兜底）
+        if (ci.grantedTraits != null)
+            foreach (var gt in ci.grantedTraits)
+                if (gt != null && gt.attributes != null && gt.attributes.Contains(attr))
+                {
+                    var e2 = new CardData.TraitEntry { text = gt.text };
+                    foreach (var a in gt.attributes) e2.SetAttribute(a, true);
+                    return e2;
+                }
+        if (ci.grantedTraitTexts != null)
+            foreach (string g in ci.grantedTraitTexts)
             {
-                if (line.Contains(traitKey)) return line.Trim();
+                if (string.IsNullOrEmpty(g)) continue;
+                string[] parsed = CardData.ParseTraitAttributesFromText(g);
+                if (System.Array.IndexOf(parsed, attr) >= 0)
+                {
+                    var e3 = new CardData.TraitEntry { text = g };
+                    foreach (var a in parsed) e3.SetAttribute(a, true);
+                    return e3;
+                }
             }
-        }
 
-        return traitKey;
+        // ③ 反击特殊：revengeEffect
+        if (attr == "反击" && !string.IsNullOrEmpty(ci.revengeEffect))
+            return new CardData.TraitEntry { text = $"反击：{ci.revengeEffect}", isRevenge = true };
+
+        return null;
     }
 
-    void ApplyGreedySnakeCopy(CardInstance giver, CardInstance target, string key)
+    void ApplyGreedySnakeCopy(CardInstance giver, CardInstance target, string key, CardData.TraitEntry entry)
     {
-        string fullText = GetTraitFullText(target, key);
-        giver.GrantTrait(fullText);
+        if (giver == null || target == null || entry == null) return;
+        giver.GrantTrait(entry.text, new List<string>(entry.GetAttributes()), target.templateID);
         giver.greedySnakeEnterCount++;
         Debug.Log($"贪欲之蛇复制了{key}，进场次数={giver.greedySnakeEnterCount}");
     }
@@ -4757,13 +4771,16 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
                         if (chosen != null)
                         {
-                            giver.mindScholarCopyCount++;
-                            string text = GetTraitFullText(selected, chosen);
-                            newCopyRecord = $"{selected.templateID}:{chosen}:{text}";
-                            newCopyType = chosen;
-                            giver.mindScholarCopiedTraits.Add(newCopyRecord);
-                            giver.GrantTrait(text);
-                            if (NetworkClient.isConnected && !NetworkServer.active) TurnManager.SyncMyBoardToOpponent();
+                            CardData.TraitEntry src = ResolveSourceTrait(selected, chosen);
+                            if (src != null)
+                            {
+                                giver.mindScholarCopyCount++;
+                                giver.GrantTrait(src.text, new List<string>(src.GetAttributes()), selected.templateID);
+                                newCopyRecord = $"{selected.templateID}:{chosen}:{src.text}";
+                                newCopyType = chosen;
+                                giver.mindScholarCopiedTraits.Add(newCopyRecord);
+                                if (NetworkClient.isConnected && !NetworkServer.active) TurnManager.SyncMyBoardToOpponent();
+                            }
                         }
                     }
                 }

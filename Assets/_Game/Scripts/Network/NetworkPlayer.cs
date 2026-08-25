@@ -1754,17 +1754,7 @@ public class NetworkPlayer : NetworkBehaviour
                     if (p.Length > 13) ci.poisoned = (p[13] == "1");
                     if (p.Length > 14) ci.prefixes = p[14];
                     if (p.Length > 15)
-                    {
-                        var newList = new System.Collections.Generic.List<string>(
-                            p[15].Split(new[] { ";;" }, System.StringSplitOptions.None));
-                        newList.RemoveAll(t => string.IsNullOrEmpty(t));
-                        if (ci.grantedTraitTexts == null) ci.grantedTraitTexts = new System.Collections.Generic.List<string>();
-                        var oldCopy = new System.Collections.Generic.List<string>(ci.grantedTraitTexts);
-                        foreach (var t in oldCopy)
-                            if (!newList.Contains(t)) ci.RemoveGrantedTrait(t);
-                        foreach (var t in newList)
-                            if (!oldCopy.Contains(t)) ci.GrantTrait(t);
-                    }
+                        ci.ApplySyncedGrantedTraits(p[15]);
                     // totalDamageTaken (17th field) — 01534 活化母巢需要服务端权威值
                     if (p.Length > 16 && int.TryParse(p[16], out int tdt))
                         ci.totalDamageTaken = Mathf.Max(ci.totalDamageTaken, tdt);
@@ -2064,19 +2054,9 @@ public class NetworkPlayer : NetworkBehaviour
                 if (p.Length > 12) ci.isAttached = (p[12] == "1");
                 if (p.Length > 13) ci.poisoned = (p[13] == "1");
                 if (p.Length > 14) ci.prefixes = p[14];
-                // granted trait texts (16th field)
+                // granted trait texts (16th field, ";;" 分隔；结构化 text~attrs~source，兼容旧纯文本)
                 if (p.Length > 15)
-                {
-                    var newList = new System.Collections.Generic.List<string>(
-                        p[15].Split(new[] { ";;" }, System.StringSplitOptions.None));
-                    newList.RemoveAll(t => string.IsNullOrEmpty(t));
-                    if (ci.grantedTraitTexts == null) ci.grantedTraitTexts = new System.Collections.Generic.List<string>();
-                    var oldCopy = new System.Collections.Generic.List<string>(ci.grantedTraitTexts);
-                    foreach (var t in oldCopy)
-                        if (!newList.Contains(t)) ci.RemoveGrantedTrait(t);
-                    foreach (var t in newList)
-                        if (!oldCopy.Contains(t)) ci.GrantTrait(t);
-                }
+                    ci.ApplySyncedGrantedTraits(p[15]);
                 // Buff/Debuff 持续状态（18-21th 字段，向后兼容——旧数据缺省为 false/空）
                 if (p.Length > 17) ci.hasBuff = p[17] == "1";
                 if (p.Length > 18) ci.buffText = p[18];

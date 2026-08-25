@@ -119,8 +119,7 @@ public struct CardStateProto
             isAttached = ci.isAttached,
             poisoned = ci.poisoned,
             prefixes = ci.prefixes ?? "",
-            grantedTraits = ci.grantedTraitTexts != null && ci.grantedTraitTexts.Count > 0
-                ? string.Join(";;", ci.grantedTraitTexts) : "",
+            grantedTraits = ci.SerializeGrantedTraits(),
             totalDamageTaken = ci.totalDamageTaken,
             hasBuff = ci.hasBuff,
             buffText = ci.buffText ?? "",

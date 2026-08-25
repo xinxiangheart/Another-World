@@ -129,6 +129,18 @@ public class CardDisplay2DNew : MonoBehaviour
         Refresh();
     }
 
+    /// <summary>构建编号特性显示文本（固有 + 获得的赋予特性，统一编号），供特性文本元素使用。</summary>
+    public string BuildTraitDisplayText()
+    {
+        if (_inst == null) return "";
+        var entries = _inst.GetVisibleTraitEntries();
+        if (entries.Count == 0) return "";
+        var lines = new List<string>();
+        for (int i = 0; i < entries.Count; i++)
+            lines.Add(CardInstance.FormatTraitEntry(i + 1, entries[i]));
+        return string.Join("\n", lines);
+    }
+
     /// <summary>右键"刷新预览"：编辑器下按 templateID 从模板初始化并刷新显示。</summary>
     [ContextMenu("刷新预览")]
     public void RefreshPreview()

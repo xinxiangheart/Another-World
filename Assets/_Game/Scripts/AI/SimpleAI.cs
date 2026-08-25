@@ -228,6 +228,12 @@ public class SimpleAI : MonoBehaviour
                         if (bm.GetSlot(i)?.currentCard3D != null) { target = bm.GetSlot(i); break; }
                 }
             }
+            else if (td2.targetType == TargetType.SingleAny)
+            {
+                // 任意目标：AI 任选一个召唤物（先扫己方 0-5 再敌方 6-11）
+                for (int i = 0; i <= 11; i++)
+                    if (bm.GetSlot(i)?.currentCard3D != null) { target = bm.GetSlot(i); break; }
+            }
         }
         return true;
     }

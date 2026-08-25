@@ -535,6 +535,7 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
         {
             case TargetType.SingleEnemy: return new int[] { clickedSlot };
             case TargetType.SingleAlly: return new int[] { clickedSlot };
+            case TargetType.SingleAny: return new int[] { clickedSlot };
             case TargetType.EnemyFrontRow: return new int[] { 0, 1, 2 };
             case TargetType.EnemyBackRow: return new int[] { 3, 4, 5 };
             case TargetType.AllyFrontRow: return new int[] { 6, 7, 8 };
@@ -586,6 +587,15 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
                 }
                 return false;
             case TargetType.AllMinions:
+                for (int id = 0; id <= 11; id++)
+                {
+                    BoardSlot slot = bm.GetSlot(id);
+                    if (slot != null && !slot.isBlocked && slot.hasCard)
+                        return true;
+                }
+                return false;
+            case TargetType.SingleAny:
+                // 任意目标：敌方(0-5)或己方(6-11)任一召唤物可施放
                 for (int id = 0; id <= 11; id++)
                 {
                     BoardSlot slot = bm.GetSlot(id);
@@ -699,6 +709,7 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
         }
 
         BoardSlot.currentTargetType = TargetType.SingleAlly;
+        Debug.LogWarning($"[SingleAllyOverride] 02004协程强制 currentTargetType=SingleAlly\n{UnityEngine.StackTraceUtility.ExtractStackTrace()}");
 
         List<GameObject> handSummons = new List<GameObject>();
         foreach (GameObject card in NetworkPlayer.Local.handCards)
@@ -808,6 +819,14 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
                 }
                 return false;
             case TargetType.AllMinions:
+                for (int id = 0; id <= 11; id++)
+                {
+                    BoardSlot slot = bm.GetSlot(id);
+                    if (slot != null && !slot.isBlocked && slot.hasCard) return true;
+                }
+                return false;
+            case TargetType.SingleAny:
+                // 任意目标：敌方(0-5)或己方(6-11)任一召唤物可施放
                 for (int id = 0; id <= 11; id++)
                 {
                     BoardSlot slot = bm.GetSlot(id);

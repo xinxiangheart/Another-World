@@ -72,7 +72,7 @@ public class SelectionManager : MonoBehaviour
     /// </summary>
     public string BeginSelection(TargetType targetType, Action<BoardSlot> onSelected)
     {
-        Debug.Log($"BeginSelection 被调用: targetType={targetType}");
+        Debug.Log($"BeginSelection 被调用: targetType={targetType}\n{UnityEngine.StackTraceUtility.ExtractStackTrace()}");
         BoardSlot.isPlacingCard = false;
         BoardSlot.isAttachSelectMode = false;
         BoardSlot.isReplaceMode = false;
@@ -103,6 +103,7 @@ public class SelectionManager : MonoBehaviour
     /// </summary>
     public string BeginOpenSelection(TargetType targetType, Action<BoardSlot> onSelected)
     {
+        Debug.Log($"BeginOpenSelection 被调用: targetType={targetType}");
         BoardSlot.isPlacingCard = false;
         BoardSlot.isAttachSelectMode = false;
         BoardSlot.isReplaceMode = false;

@@ -565,7 +565,7 @@ public class BattleManager : MonoBehaviour
                 if (!anyTarget) continue;
 
                 bool done = false;
-                SelectionManager.Instance.BeginSelection(TargetType.AllMinions, (targetSlot) =>
+                SelectionManager.Instance.BeginSelection(TargetType.SingleAny, (targetSlot) =>
                 {
                     if (targetSlot?.currentCard3D != null)
                     {

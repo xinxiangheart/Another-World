@@ -142,8 +142,7 @@ public class BoardSyncManager : MonoBehaviour
         //   14=prefixes⛔  15=grantedTraits⛔  16=totalDamageTaken⛔
         //   17=hasBuff⛔  18=buffText⛔  19=hasDebuff⛔  20=debuffText⛔
         //   ✓=允许跨半场  ⛔=仅己方半场
-        string gtt = ci.grantedTraitTexts != null && ci.grantedTraitTexts.Count > 0
-            ? string.Join(";;", ci.grantedTraitTexts) : "";
+        string gtt = ci.SerializeGrantedTraits();
         return $"{ci.templateID}|{ci.currentHealth}|{ci.currentAttack}|{ci.currentMaxHealth}|{ci.baseAttack}|{ci.baseHealth}|{ci.baseMaxHealth}|{ci.currentCost}|{ci.currentTier}|{ci.baseTier}|{(ci.hasShield?(1+(ci.shieldIsPermanent?2:0)+(ci.shieldEndAtBattleStart?4:0)+(ci.shieldEndAtBattleEnd?8:0)):0)}|{(ci.silencedThisPhase?1:0)}|{(ci.isAttached?1:0)}|{(ci.poisoned?1:0)}|{ci.prefixes??""}|{gtt}|{ci.totalDamageTaken}|{(ci.hasBuff?1:0)}|{ci.buffText??""}|{(ci.hasDebuff?1:0)}|{ci.debuffText??""}";
     }
 
@@ -478,19 +477,9 @@ public class BoardSyncManager : MonoBehaviour
             cur.isAttached = (p[12] == "1");
             cur.poisoned = (p[13] == "1");
             cur.prefixes = p[14];
-            // granted trait texts (16th field, ";;" separated)
+            // granted trait texts (16th field, ";;" 分隔；结构化 text~attrs~source，兼容旧纯文本)
             if (p.Length > 15)
-            {
-                var newList = new System.Collections.Generic.List<string>(
-                    p[15].Split(new[] { ";;" }, System.StringSplitOptions.None));
-                newList.RemoveAll(t => string.IsNullOrEmpty(t));
-                if (cur.grantedTraitTexts == null) cur.grantedTraitTexts = new System.Collections.Generic.List<string>();
-                var oldCopy = new System.Collections.Generic.List<string>(cur.grantedTraitTexts);
-                foreach (var t in oldCopy)
-                    if (!newList.Contains(t)) cur.RemoveGrantedTrait(t);
-                foreach (var t in newList)
-                    if (!oldCopy.Contains(t)) cur.GrantTrait(t);
-            }
+                cur.ApplySyncedGrantedTraits(p[15]);
             // totalDamageTaken (17th field, 01534 活化母巢需要)
             if (p.Length > 16 && int.TryParse(p[16], out int tdt))
                 cur.totalDamageTaken = Mathf.Max(cur.totalDamageTaken, tdt);
