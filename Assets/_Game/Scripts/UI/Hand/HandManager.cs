@@ -1347,6 +1347,24 @@ public class HandManager : MonoBehaviour
                 }
             }
         }
+        // 压制者(03501)进场：给己方所有在场英雄阶位+1（retro-buff，退场时在 Handle03501 减回）
+        if (sourceInstance != null && sourceInstance.templateID == "03501")
+        {
+            BoardManager bm = FindObjectOfType<BoardManager>();
+            BoardManager.GetSideRange(slot.slotID, out int supS, out int supE);
+            for (int i = supS; i <= supE; i++)
+            {
+                BoardSlot s = bm?.GetSlot(i);
+                CardInstance ci = s?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                if (ci != null && ci.summonType == SummonType.Hero)
+                {
+                    ci.currentTier += 1;
+                    s.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+                }
+            }
+            if (NetworkClient.isConnected)
+                TurnManager.SyncMyBoardToOpponent();
+        }
         // 中枢：附加灵能前缀
         if (sourceInstance != null && sourceInstance.templateID == "03027")
         {

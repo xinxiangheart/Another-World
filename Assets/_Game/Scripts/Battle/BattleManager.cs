@@ -1150,8 +1150,6 @@ public class BattleManager : MonoBehaviour
             else if (IsShadowHost(attackerInst))
             {
                 int myTier = attackerInst.currentTier;
-                if (HasSuppressorOnField(attackerSlotID) && attackerInst.summonType == SummonType.Hero)
-                    myTier += 1;
                 pendingDamageToOpponent += myTier;
                 events.Add(CreateAttackEvent(attackerCard, attackerInst, null, null, myTier, attackerSlotID, true));
                 // 01327：空位攻击也自伤宿主自己的 HP
@@ -1186,8 +1184,6 @@ public class BattleManager : MonoBehaviour
             else
             {
                 int myTier = attackerInst.currentTier;
-                if (HasSuppressorOnField(attackerSlotID) && attackerInst.summonType == SummonType.Hero)
-                    myTier += 1;
                 pendingDamageToOpponent += myTier;
                 events.Add(CreateAttackEvent(attackerCard, attackerInst, null, null, myTier, attackerSlotID, true));
             }

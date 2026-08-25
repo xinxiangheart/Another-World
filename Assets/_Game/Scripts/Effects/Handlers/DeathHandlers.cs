@@ -110,14 +110,19 @@ public static class DeathHandlers
     {
         // 03503 也走此 handler（两个 ID 都注册），所以只注销自己的光环即可
         GlobalEventManager.Instance?.UnregisterAuraOfSource(ctx.source);
-        // 03501 独有：己方全体 UpdateValues
+        // 03501 独有：神官退场，己方在场英雄阶位-1（还原进场/神官进场时烘焙的+1）+ UpdateValues
         var bm = BM();
         if (bm != null && BoardManager.GetSideRangeOf(ctx.source, out int s03501, out int e03501))
             for (int i = s03501; i <= e03501; i++)
             {
                 var ally = bm.GetSlot(i);
-                if (ally?.currentCard3D != null)
+                var aci = ally?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                if (aci != null)
+                {
+                    if (aci.summonType == SummonType.Hero)
+                        aci.currentTier = Mathf.Max(aci.baseTier, aci.currentTier - 1);
                     ally.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+                }
             }
     }
 

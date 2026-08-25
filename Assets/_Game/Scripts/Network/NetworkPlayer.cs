@@ -1173,6 +1173,11 @@ public class NetworkPlayer : NetworkBehaviour
         inst.currentTier = inst.baseTier;
         inst.tempAttackBoost = 0;
         inst.tempHealthBoost = 0;
+        // 回手清光环标记：英雄离场周期结束，再进场可重新获得智者(03503)/皇帝(01501) buff
+        inst.buffedBySage = false;
+        inst.buffedByEmperor = false;
+        // 护盾 = 场上状态：离场即清除，重掷从干净状态开始
+        inst.RemoveShield();
         inst.handledReturnToHand = false;
 
         // 回手后根据光环状态同步标志——板面 currentCost 始终=baseCost，无需 +1/-1
@@ -1573,7 +1578,7 @@ public class NetworkPlayer : NetworkBehaviour
     // 字段索引对应 SyncNow 管道:
     //   0=templateID 1=HP 2=ATK 3=maxHP 4=baseATK 5=baseHP 6=baseMaxHP
     //   7=cost 8=tier 9=baseTier 10=shield 11=silenced 12=attached 13=poisoned
-    //   14=prefixes 15=grantedTraits 16=totalDamageTaken
+    //   14=prefixes 15=grantedTraits 16=totalDamageTaken 17=hasBuff 18=buffText 19=hasDebuff 20=debuffText
     static readonly HashSet<int> CrossHalfBoolFields = new() { 11 /*silencedThisPhase*/, 13 /*poisoned*/ };
     // 交叉半场属性白名单——仅上报值"更严重"时适用（debuf 攻击力=更低更好）
 
@@ -1763,6 +1768,11 @@ public class NetworkPlayer : NetworkBehaviour
                     // totalDamageTaken (17th field) — 01534 活化母巢需要服务端权威值
                     if (p.Length > 16 && int.TryParse(p[16], out int tdt))
                         ci.totalDamageTaken = Mathf.Max(ci.totalDamageTaken, tdt);
+                    // Buff/Debuff 持续状态（18-21th 字段，向后兼容——旧数据缺省为 false/空）
+                    if (p.Length > 17) ci.hasBuff = p[17] == "1";
+                    if (p.Length > 18) ci.buffText = p[18];
+                    if (p.Length > 19) ci.hasDebuff = p[19] == "1";
+                    if (p.Length > 20) ci.debuffText = p[20];
                     if (parts[0] == "03007") ci.isShadow = true;
                     slot.currentCard3D?.GetComponent<Card3DInstance>()?.UpdateValues();
                 }
@@ -2067,6 +2077,11 @@ public class NetworkPlayer : NetworkBehaviour
                     foreach (var t in newList)
                         if (!oldCopy.Contains(t)) ci.GrantTrait(t);
                 }
+                // Buff/Debuff 持续状态（18-21th 字段，向后兼容——旧数据缺省为 false/空）
+                if (p.Length > 17) ci.hasBuff = p[17] == "1";
+                if (p.Length > 18) ci.buffText = p[18];
+                if (p.Length > 19) ci.hasDebuff = p[19] == "1";
+                if (p.Length > 20) ci.debuffText = p[20];
                 slot.currentCard3D?.GetComponent<Card3DInstance>()?.UpdateValues();
             }
         }
@@ -2844,6 +2859,11 @@ public class NetworkPlayer : NetworkBehaviour
         inst.currentTier = inst.baseTier;
         inst.tempAttackBoost = 0;
         inst.tempHealthBoost = 0;
+        // 回手清光环标记：英雄离场周期结束，再进场可重新获得智者(03503)/皇帝(01501) buff
+        inst.buffedBySage = false;
+        inst.buffedByEmperor = false;
+        // 护盾 = 场上状态：离场即清除，重掷从干净状态开始
+        inst.RemoveShield();
         inst.handledReturnToHand = false;
         CardDisplay2D display = card.GetComponent<CardDisplay2D>();
         if (display != null) display.RefreshWithInstance(inst);

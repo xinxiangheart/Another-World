@@ -151,6 +151,11 @@ public class Player : MonoBehaviour
         inst.currentTier = inst.baseTier;
         inst.tempAttackBoost = 0;
         inst.tempHealthBoost = 0;
+        // 回手清光环标记：英雄离场周期结束，再进场可重新获得智者(03503)/皇帝(01501) buff
+        inst.buffedBySage = false;
+        inst.buffedByEmperor = false;
+        // 护盾 = 场上状态：离场即清除，重掷从干净状态开始
+        inst.RemoveShield();
         inst.handledReturnToHand = false;
 
         if (inst.energyReaperDiscounted && !IsEnergyReaperOnField())
