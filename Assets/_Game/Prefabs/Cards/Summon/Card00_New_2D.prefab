@@ -124,6 +124,156 @@ MonoBehaviour:
   m_ChildScaleWidth: 0
   m_ChildScaleHeight: 0
   m_ReverseArrangement: 0
+--- !u!1 &90020001
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 90020002}
+  - component: {fileID: 90020003}
+  - component: {fileID: 90020004}
+  m_Layer: 0
+  m_Name: PrefixArtBG
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!224 &90020002
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 90020001}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1235344311488439366}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 1, y: 1}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 0, y: 0}
+  m_Pivot: {x: 0.5, y: 0.5}
+--- !u!222 &90020003
+CanvasRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 90020001}
+  m_CullTransparentMesh: 1
+--- !u!114 &90020004
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 90020001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  m_Material: {fileID: 0}
+  m_Color: {r: 1, g: 1, b: 1, a: 1}
+  m_RaycastTarget: 0
+  m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
+  m_Maskable: 1
+  m_OnCullStateChanged:
+    m_PersistentCalls:
+      m_Calls: []
+  m_Sprite: {fileID: 0}
+  m_Type: 0
+  m_PreserveAspect: 0
+  m_FillCenter: 1
+  m_FillMethod: 4
+  m_FillAmount: 1
+  m_FillClockwise: 1
+  m_FillOrigin: 0
+  m_UseSpriteMesh: 0
+  m_PixelsPerUnitMultiplier: 1
+--- !u!1 &90020005
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 90020006}
+  - component: {fileID: 90020007}
+  - component: {fileID: 90020008}
+  m_Layer: 0
+  m_Name: CardArt
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!224 &90020006
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 90020005}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1235344311488439366}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 1, y: 1}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 0, y: 0}
+  m_Pivot: {x: 0.5, y: 0.5}
+--- !u!222 &90020007
+CanvasRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 90020005}
+  m_CullTransparentMesh: 1
+--- !u!114 &90020008
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 90020005}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  m_Material: {fileID: 0}
+  m_Color: {r: 1, g: 1, b: 1, a: 1}
+  m_RaycastTarget: 0
+  m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
+  m_Maskable: 1
+  m_OnCullStateChanged:
+    m_PersistentCalls:
+      m_Calls: []
+  m_Sprite: {fileID: 0}
+  m_Type: 0
+  m_PreserveAspect: 0
+  m_FillCenter: 1
+  m_FillMethod: 4
+  m_FillAmount: 1
+  m_FillClockwise: 1
+  m_FillOrigin: 0
+  m_UseSpriteMesh: 0
+  m_PixelsPerUnitMultiplier: 1
 --- !u!1 &188012318645522975
 GameObject:
   m_ObjectHideFlags: 0
@@ -906,8 +1056,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1235344311488439366}
-  - component: {fileID: 4409945911477227330}
-  - component: {fileID: 4306278915360889265}
   m_Layer: 0
   m_Name: ArtworkArea
   m_TagString: Untagged
@@ -926,7 +1074,9 @@ RectTransform:
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
-  m_Children: []
+  m_Children:
+  - {fileID: 90020002}
+  - {fileID: 90020006}
   m_Father: {fileID: 1830209929101851959}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
@@ -934,44 +1084,6 @@ RectTransform:
   m_AnchoredPosition: {x: 0, y: 1.8}
   m_SizeDelta: {x: 64, y: 84}
   m_Pivot: {x: 0.5, y: 0.5}
---- !u!222 &4409945911477227330
-CanvasRenderer:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 7250396899031766336}
-  m_CullTransparentMesh: 1
---- !u!114 &4306278915360889265
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 7250396899031766336}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  m_Material: {fileID: 0}
-  m_Color: {r: 1, g: 1, b: 1, a: 1}
-  m_RaycastTarget: 1
-  m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
-  m_Maskable: 1
-  m_OnCullStateChanged:
-    m_PersistentCalls:
-      m_Calls: []
-  m_Sprite: {fileID: 0}
-  m_Type: 0
-  m_PreserveAspect: 0
-  m_FillCenter: 1
-  m_FillMethod: 4
-  m_FillAmount: 1
-  m_FillClockwise: 1
-  m_FillOrigin: 0
-  m_UseSpriteMesh: 0
-  m_PixelsPerUnitMultiplier: 1
 --- !u!1 &7266080313878771811
 GameObject:
   m_ObjectHideFlags: 0
@@ -1398,7 +1510,8 @@ MonoBehaviour:
   frontFace: {fileID: 4310938530079941146}
   backFace: {fileID: 188012318645522975}
   costFrame: {fileID: 7095863548989609029}
-  artwork: {fileID: 4306278915360889265}
+  prefixArtBG: {fileID: 90020004}
+  cardArt: {fileID: 90020008}
   nameText: {fileID: 7272601978775490455}
   costIcon: {fileID: 8691694485147921468}
   costText: {fileID: 7891502374996309257}
@@ -1411,36 +1524,40 @@ MonoBehaviour:
   traitIconsArea: {fileID: 639255496532164223}
   statusIconsArea: {fileID: 90010005}
   cardBackImage: {fileID: 2484168069308855737}
-  costFrameSprites: []
+  costFrameSprites:
+  - {fileID: 21300000, guid: 2f4ae534a9bfdec429531c0c71738b9f, type: 3}
+  - {fileID: 21300000, guid: e582ccf8be31df542b430cad2c043967, type: 3}
+  - {fileID: 21300000, guid: bc2f07a28a828c0499f0202cb16d73b2, type: 3}
+  - {fileID: 21300000, guid: 1f61c1d0330130143936ff7a9a606a34, type: 3}
+  - {fileID: 21300000, guid: 3ba02707472431141a1547c80ebf34e2, type: 3}
+  - {fileID: 21300000, guid: 35ef16c49b200a842b642b85325be068, type: 3}
   cardBackSprite: {fileID: 21300000, guid: 468bd93a970628e44b93e60d932bfe6a, type: 3}
-  artworkSprite: {fileID: 0}
+  defaultPrefixArtSprite: {fileID: 0}
+  prefixArtSprites: []
   energyIconSprite: {fileID: 21300000, guid: f24750ce63a8be0499b101b577faaac9, type: 3}
   attackIconSprite: {fileID: 21300000, guid: fe84e6fcca7e18f4c96546267bf7dc91, type: 3}
   healthIconSprite: {fileID: 21300000, guid: 8f2d4558d10bdce41a89397266251698, type: 3}
+  cardArtFallbackSprite: {fileID: 0}
   heroTypeSprite: {fileID: 21300000, guid: 6c7fdd731b5bc7849aaf191d5843d5f7, type: 3}
   chosenOneTypeSprite: {fileID: 21300000, guid: b8f1bb197afabf24f9fb7e6b050e3e44, type: 3}
   specialTypeSprite: {fileID: 21300000, guid: 54ae47f0643fcd04689c3f1b89727f99, type: 3}
+  prefixPsychicSprite: {fileID: 21300000, guid: 3c0c99339d754f54ca436fcdb71b678a, type: 3}
   prefixAbyssSprite: {fileID: 21300000, guid: 19ebe87251be7314f9a945ef216b46a5, type: 3}
   prefixMechSprite: {fileID: 21300000, guid: f82b44b3f70ab2342a8d4fa59389dc3e, type: 3}
-  prefixPsychicSprite: {fileID: 21300000, guid: 3c0c99339d754f54ca436fcdb71b678a, type: 3}
   prefixBloodsongSprite: {fileID: 0}
   prefixScrollSprite: {fileID: 21300000, guid: 834cb5b46ca15d2458d840460e7f4620, type: 3}
   traitFirstStrikeSprite: {fileID: 21300000, guid: 01eb0e2922b1a9a4999b650e63082b6d, type: 3}
   traitOnEnterSprite: {fileID: 21300000, guid: ccba1a1af20788645a515fe87472e25a, type: 3}
+  traitRevengeSprite: {fileID: 21300000, guid: 0fd1fcf9ff9a7b044b994255191c6f81, type: 3}
   traitDeathrattleSprite: {fileID: 21300000, guid: cfc4e5ba46548d845aa8f2e92d204017, type: 3}
   traitActiveExitSprite: {fileID: 21300000, guid: 90bd10253ee47e04cb7e30822756e33d, type: 3}
-  traitRevengeSprite: {fileID: 21300000, guid: 0fd1fcf9ff9a7b044b994255191c6f81, type: 3}
   traitDiscardSprite: {fileID: 21300000, guid: b7dbc79bddfc9064380b766452522b2e, type: 3}
   traitAttachSprite: {fileID: 21300000, guid: ccb417c907e616e43a9d4ec7fbbb8357, type: 3}
-  traitAttackFrontSprite: {fileID: 0}
-  traitAttackBackSprite: {fileID: 0}
-  traitAuraSprite: {fileID: 0}
-  statusPoisonSprite: {fileID: 0}
-  statusShieldSprite: {fileID: 0}
-  statusSilenceSprite: {fileID: 0}
-  statusBuffSprite: {fileID: 0}
-  statusDebuffSprite: {fileID: 0}
+  statusShieldSprite: {fileID: 21300000, guid: 15142b79750331747ac3783ecf765ef8, type: 3}
+  statusBuffSprite: {fileID: 21300000, guid: d04d481d15eed7240b32fa9dfbbcc433, type: 3}
+  statusDebuffSprite: {fileID: 21300000, guid: 9c12197ccb97c4d4c8d6afe8bcc0d179, type: 3}
   costFramePath: Cards/SummonCard_{0}
+  prefixArtBGPath: Icons/Prefixes/prefixbg_{0}
   artworkPath: Cards/{0}_Front
   cardBackPath: Cards/Back
   energyIconPath: UI/Energy

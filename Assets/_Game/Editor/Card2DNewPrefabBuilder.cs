@@ -45,7 +45,10 @@ public static class Card2DNewPrefabBuilder
 
         // ── 正面元素（Image 用 null sprite，运行时由 CardDisplay2DNew 填充/占位）──
         Image costFrame   = CreateImage(front, "CostFrameBase");
-        Image artwork     = CreateImage(front, "ArtworkArea");
+        // ArtworkArea 为容器：下层 PrefixArtBG（前缀底图）+ 上层 CardArt（原画）
+        RectTransform artwork = CreateChild(front, "ArtworkArea", null);
+        Image prefixArtBG = CreateImage(artwork, "PrefixArtBG");
+        Image cardArt = CreateImage(artwork, "CardArt");
         TMP_Text nameText = CreateText(front, "NameText", "卡名", font);
         Image costIcon    = CreateImage(front, "CostIcon");
         TMP_Text costText = CreateText(front, "CostText", "0", font);
@@ -68,7 +71,8 @@ public static class Card2DNewPrefabBuilder
         display.frontFace = front.gameObject;
         display.backFace = back.gameObject;
         display.costFrame = costFrame;
-        display.artwork = artwork;
+        display.prefixArtBG = prefixArtBG;
+        display.cardArt = cardArt;
         display.nameText = nameText as TextMeshProUGUI;
         display.costIcon = costIcon;
         display.costText = costText as TextMeshProUGUI;

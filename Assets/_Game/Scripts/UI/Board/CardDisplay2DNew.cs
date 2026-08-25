@@ -30,7 +30,8 @@ public class CardDisplay2DNew : MonoBehaviour
 
     [Header("正面元素（Image 组件引用，从预制体拖入）")]
     public Image costFrame;        // 费用底图
-    public Image artwork;          // 卡面插画区
+    public Image prefixArtBG;      // 前缀底图（读取模板前缀 CardData.prefix，非实例）
+    public Image cardArt;          // 召唤物原画（按 templateID 加载）
     public TMP_Text nameText;
     public Image costIcon;         // 能量图标
     public TMP_Text costText;
@@ -56,38 +57,65 @@ public class CardDisplay2DNew : MonoBehaviour
     public Sprite[] costFrameSprites;
     [Tooltip("卡背图")]
     public Sprite cardBackSprite;
-    [Tooltip("通用卡面插画（为空则按 templateID 路径加载）")]
-    public Sprite artworkSprite;
-    [Tooltip("能量/攻击/生命图标")]
+
+    [Header("前缀底图（ArtworkArea 下层）")]
+    [Tooltip("通用底图（无前缀/其他前缀）")]
+    public Sprite defaultPrefixArtSprite;
+    [Tooltip("五前缀底图（index: 0=灵能,1=渊,2=机械,3=血歌,4=神灵画卷）")]
+    public Sprite[] prefixArtSprites;
+
+    [Header("静态图标")]
+    [Tooltip("能量图标")]
     public Sprite energyIconSprite;
+    [Tooltip("攻击力图标")]
     public Sprite attackIconSprite;
+    [Tooltip("生命值图标")]
     public Sprite healthIconSprite;
-    [Tooltip("类型图标（召唤物类别）：英雄/神选者/特殊，Inspector 直接拖入")]
+    [Tooltip("原画占位图（可选，没有则纯灰）")]
+    public Sprite cardArtFallbackSprite;
+
+    [Header("类型图标（召唤物类别）")]
+    [Tooltip("英雄")]
     public Sprite heroTypeSprite;
+    [Tooltip("神选者")]
     public Sprite chosenOneTypeSprite;
+    [Tooltip("特殊")]
     public Sprite specialTypeSprite;
-    [Tooltip("前缀图标：渊/机械/灵能/血歌/神灵画卷（未拖入走路径，再兜底占位）")]
-    public Sprite prefixAbyssSprite;
-    public Sprite prefixMechSprite;
+
+    [Header("前缀图标")]
+    [Tooltip("灵能")]
     public Sprite prefixPsychicSprite;
+    [Tooltip("渊")]
+    public Sprite prefixAbyssSprite;
+    [Tooltip("机械")]
+    public Sprite prefixMechSprite;
+    [Tooltip("血歌")]
     public Sprite prefixBloodsongSprite;
+    [Tooltip("神灵画卷")]
     public Sprite prefixScrollSprite;
-    [Tooltip("特性图标：先手/进场/亡语/主动退场/反击/抛置/附着/攻击前排/攻击后排/光环")]
+
+    [Header("特性图标")]
+    [Tooltip("先手")]
     public Sprite traitFirstStrikeSprite;
+    [Tooltip("进场")]
     public Sprite traitOnEnterSprite;
-    public Sprite traitDeathrattleSprite;
-    public Sprite traitActiveExitSprite;
+    [Tooltip("反击")]
     public Sprite traitRevengeSprite;
+    [Tooltip("退场（亡语）")]
+    public Sprite traitDeathrattleSprite;
+    [Tooltip("主动退场")]
+    public Sprite traitActiveExitSprite;
+    [Tooltip("抛置")]
     public Sprite traitDiscardSprite;
+    [Tooltip("附着")]
     public Sprite traitAttachSprite;
-    public Sprite traitAttackFrontSprite;
-    public Sprite traitAttackBackSprite;
-    public Sprite traitAuraSprite;
-    [Tooltip("状态图标：中毒/护盾/沉默/增益/减益")]
-    public Sprite statusPoisonSprite;
+
+    [Header("状态图标")]
+    [Tooltip("护盾")]
     public Sprite statusShieldSprite;
-    public Sprite statusSilenceSprite;
+    [Tooltip("正向增益")]
     public Sprite statusBuffSprite;
+    [Tooltip("负面减益（中毒/沉默/其他减益统一一个图标）")]
     public Sprite statusDebuffSprite;
 
     // ============================================================
@@ -96,6 +124,8 @@ public class CardDisplay2DNew : MonoBehaviour
     [Header("资源路径（相对 Art/Sprites/）")]
     [Tooltip("费用底图路径模板，{0}=费用(0-5)")]
     public string costFramePath = "Cards/SummonCard_{0}";
+    [Tooltip("前缀底图路径模板，{0}=前缀名")]
+    public string prefixArtBGPath = "Icons/Prefixes/prefixbg_{0}";
     [Tooltip("卡面插画路径模板，{0}=templateID")]
     public string artworkPath = "Cards/{0}_Front";
     [Tooltip("卡背图路径")]
@@ -184,11 +214,22 @@ public class CardDisplay2DNew : MonoBehaviour
             costFrame.enabled = true;
         }
 
-        // ── 卡面插画（直接 Sprite 或按 templateID 路径）──
-        if (artwork != null)
+        // ── 前缀底图（读取模板前缀，非实例前缀；后续赋予的前缀不影响）──
+        if (prefixArtBG != null)
         {
-            artwork.sprite = PickSprite(artworkSprite, string.Format(artworkPath, _inst.templateID));
-            artwork.enabled = true;
+            string tplPrefix = template != null ? template.prefix : "";
+            prefixArtBG.sprite = GetPrefixArtBGSprite(tplPrefix);
+            prefixArtBG.enabled = true;
+        }
+
+        // ── 召唤物原画（按 templateID 加载；缺失用占位图或纯灰）──
+        if (cardArt != null)
+        {
+            Sprite art = LoadSprite(string.Format(artworkPath, _inst.templateID));
+            if (art == GetPlaceholder() && cardArtFallbackSprite != null)
+                art = cardArtFallbackSprite;
+            cardArt.sprite = art;
+            cardArt.enabled = true;
         }
 
         // ── 静态图标 ──
@@ -288,19 +329,7 @@ public class CardDisplay2DNew : MonoBehaviour
         if (inst.hasRevenge)      AddRowIcon(traitIconsArea, "trait_revenge", traitRevengeSprite, traitIconPath + "trait_revenge", traitIconSize);
         if (inst.hasDiscard)      AddRowIcon(traitIconsArea, "trait_discard", traitDiscardSprite, traitIconPath + "trait_discard", traitIconSize);
         if (inst.canAttach)       AddRowIcon(traitIconsArea, "trait_attach", traitAttachSprite, traitIconPath + "trait_attach", traitIconSize);
-        if (inst.attacksFrontRow) AddRowIcon(traitIconsArea, "trait_attackfront", traitAttackFrontSprite, traitIconPath + "trait_attackfront", traitIconSize);
-        if (inst.attacksBackRow)  AddRowIcon(traitIconsArea, "trait_attackback", traitAttackBackSprite, traitIconPath + "trait_attackback", traitIconSize);
-        if (HasTraitKeyword(inst, template, "光环")) AddRowIcon(traitIconsArea, "trait_aura", traitAuraSprite, traitIconPath + "trait_aura", traitIconSize);
-    }
-
-    static bool HasTraitKeyword(CardInstance inst, CardData template, string keyword)
-    {
-        if (template != null && !string.IsNullOrEmpty(template.traits) && template.traits.Contains(keyword))
-            return true;
-        if (inst.grantedTraitTexts != null)
-            foreach (var t in inst.grantedTraitTexts)
-                if (!string.IsNullOrEmpty(t) && t.Contains(keyword)) return true;
-        return false;
+        // 攻击前后排是目标选择逻辑（非图标）、光环是状态（非特性）——均不显示特性图标
     }
 
     // ================= 状态排 =================
@@ -312,11 +341,11 @@ public class CardDisplay2DNew : MonoBehaviour
         ClearChildren(statusIconsArea);
         if (inst == null) return;
 
-        if (inst.poisoned)     AddRowIcon(statusIconsArea, "status_poison", statusPoisonSprite, statusIconPath + "status_poison", statusIconSize);
         if (inst.hasShield)    AddRowIcon(statusIconsArea, "status_shield", statusShieldSprite, statusIconPath + "status_shield", statusIconSize);
-        if (IsFullySilenced(inst)) AddRowIcon(statusIconsArea, "status_silence", statusSilenceSprite, statusIconPath + "status_silence", statusIconSize);
         if (IsBuffed(inst))    AddRowIcon(statusIconsArea, "status_buff", statusBuffSprite, statusIconPath + "status_buff", statusIconSize);
-        if (IsDebuffed(inst))  AddRowIcon(statusIconsArea, "status_debuff", statusDebuffSprite, statusIconPath + "status_debuff", statusIconSize);
+        // 中毒/沉默/其他减益 → 统一一个负面减益图标
+        if (inst.poisoned || IsFullySilenced(inst) || IsDebuffed(inst))
+            AddRowIcon(statusIconsArea, "status_debuff", statusDebuffSprite, statusIconPath + "status_debuff", statusIconSize);
     }
 
     /// <summary>增益：贤者/皇帝 buff，或临时攻击/生命为正。</summary>
@@ -333,6 +362,47 @@ public class CardDisplay2DNew : MonoBehaviour
         if (inst == null) return false;
         if (inst.silencedThisPhase) return true;
         return GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(inst);
+    }
+
+    // ================= 前缀底图（ArtworkArea 下层） =================
+
+    /// <summary>按【模板前缀】取前缀底图：拖入数组 → 路径 → 通用底图 → 占位。</summary>
+    Sprite GetPrefixArtBGSprite(string prefix)
+    {
+        int idx = PrefixToIndex(prefix);
+        Sprite direct = null;
+        string path = null;
+        if (idx >= 0)
+        {
+            // 已知前缀 → 数组底图；未拖入走路径
+            if (prefixArtSprites != null && idx < prefixArtSprites.Length)
+                direct = prefixArtSprites[idx];
+            path = string.Format(prefixArtBGPath, prefix);
+        }
+        else
+        {
+            // 无/其他前缀 → 通用底图
+            direct = defaultPrefixArtSprite;
+        }
+        if (direct != null) return direct;
+        Sprite s = !string.IsNullOrEmpty(path) ? LoadSprite(path) : null;
+        if (s == null) s = GetPlaceholder();
+        if (s == GetPlaceholder() && defaultPrefixArtSprite != null) s = defaultPrefixArtSprite;
+        return s;
+    }
+
+    /// <summary>前缀 → 底图数组 index（0=灵能,1=渊,2=机械,3=血歌,4=神灵画卷）。未知/无 → -1。</summary>
+    int PrefixToIndex(string prefix)
+    {
+        switch (prefix)
+        {
+            case "灵能": return 0;
+            case "渊": return 1;
+            case "机械": return 2;
+            case "血歌": return 3;
+            case "神灵画卷": return 4;
+            default: return -1;
+        }
     }
 
     // ================= 前缀图标映射 =================
