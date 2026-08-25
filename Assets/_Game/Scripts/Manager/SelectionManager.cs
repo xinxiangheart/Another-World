@@ -35,8 +35,13 @@ public class SelectionManager : MonoBehaviour
             if (hovered != null) hovered.HighlightRow(true);
         }
 
-        // 注意：点击选中仍由 UI OnPointerClick 单一路径处理（3D 路径只做高亮）。
-        // 若 3D 路径也触发 onTargetSelected，会与 UI 双触发——对"二次点击换位"类效果会换两次=没换。
+        // 选择模式：左键点击 → 穿透 3D 卡牌选中下方格子（Physics.RaycastAll 已穿透卡牌定位槽位，
+        // 弥补 UI 射线被 3D 卡牌遮挡时槽位 OnPointerClick 收不到的问题）。lastTargetClickTime 防与 UI 双触发。
+        if (Input.GetMouseButtonUp(0) && hovered != null && hovered.IsValidTarget(BoardSlot.currentTargetType))
+        {
+            BoardSlot.lastTargetClickTime = Time.time;
+            BoardSlot.onTargetSelected?.Invoke(hovered);
+        }
     }
 
     /// <summary>从射线命中中找鼠标下的槽位：命中卡牌 → 映射到其所在槽位（穿透高亮卡牌下的格子）。

@@ -66,7 +66,20 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     }
 
     public static GameObject cardToPlace = null;
-    public static TargetType currentTargetType = TargetType.None;
+    static TargetType _currentTargetType = TargetType.None;
+    /// <summary>当前目标选择类型（静态，被多个选择系统读写）。临时加拦截日志定位 SingleAlly 覆盖来源。</summary>
+    public static TargetType currentTargetType
+    {
+        get => _currentTargetType;
+        set
+        {
+            if (value == TargetType.SingleAlly && _currentTargetType != TargetType.SingleAlly)
+                Debug.LogWarning($"[currentTargetType→SingleAlly]\n{UnityEngine.StackTraceUtility.ExtractStackTrace()}");
+            _currentTargetType = value;
+        }
+    }
+    /// <summary>选择模式最近一次目标点击时间（3D 射线与 UI OnPointerClick 双路径防重触发）。</summary>
+    public static float lastTargetClickTime = -1f;
     static Action<BoardSlot> _onTargetSelected;
     /// <summary>选择回调。AI 环境下赋值时自动触发 AIResolveSelection（选第一个合法目标）。</summary>
     public static Action<BoardSlot> onTargetSelected
@@ -83,6 +96,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
     private Vector3 originalScale;
     public Image slotImage;
+    Color _origCardColor = Color.white;  // 高亮时卡牌材质原色（恢复用）
+    bool _cardColorStored;
     public Color normalColor;
     public Color highlightColor = Color.yellow;
 
@@ -786,6 +801,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         lastClickTime = Time.time;
         if (isTargetingMode && IsValidTarget(currentTargetType))
         {
+            // 3D 射线路径已处理本次点击（穿透卡牌选格子）→ 跳过避免双触发
+            if (Time.time - lastTargetClickTime < 0.05f) return;
+            lastTargetClickTime = Time.time;
             Debug.Log($"[TargetClick] slot={slotID}, type={currentTargetType}, onTargetSelected={onTargetSelected != null}");
             onTargetSelected?.Invoke(this);
             return;
@@ -990,6 +1008,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         {
             transform.localScale = highlight ? originalScale * 1.15f : originalScale;
             slotImage.color = highlight ? highlightColor : normalColor;
+            // 3D 卡牌在槽位上方（z=-5.7 vs 槽位 -5.9）——同步高亮卡牌材质，否则被卡牌遮挡不可见
+            SetCardHighlight(highlight);
             return;
         }
         int[] rowSlots = GetRowSlots(currentTargetType);
@@ -1001,7 +1021,30 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             {
                 slot.transform.localScale = highlight ? originalScale * 1.15f : originalScale;
                 slot.slotImage.color = highlight ? highlightColor : normalColor;
+                slot.SetCardHighlight(highlight);
             }
+        }
+    }
+
+    /// <summary>高亮槽上 3D 卡牌材质（卡牌在格子上方，仅变 slotImage 被卡牌遮挡）。恢复原色。</summary>
+    void SetCardHighlight(bool highlight)
+    {
+        if (currentCard3D == null) return;
+        var mr = currentCard3D.GetComponent<MeshRenderer>();
+        if (mr == null) return;
+        if (highlight)
+        {
+            if (!_cardColorStored)
+            {
+                _origCardColor = mr.material.color;
+                _cardColorStored = true;
+            }
+            mr.material.color = highlightColor;
+        }
+        else if (_cardColorStored)
+        {
+            mr.material.color = _origCardColor;
+            _cardColorStored = false;
         }
     }
 
@@ -1603,6 +1646,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 // 使用 SyncVisual 的优先级链复原颜色，而非粗暴写死 normalColor——
                 // 否则 deepSeaMarked/prisonBlocked/hasPlague 的视觉状态被 EndSelection 抹除
                 slot.SyncVisual();
+                // 恢复槽上 3D 卡牌的高亮 tint（选择结束不留色）
+                slot.SetCardHighlight(false);
             }
         }
     }
@@ -1798,6 +1843,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         {
             // 同一个 GameObject 重复设入同一槽位 → 跳过，避免 slotTempAttackBoost / deepSeaAttackDebuff 重复加减
             if (_currentCard == value) return;
+            // 卡牌更换 → 高亮原色记录作废（避免把旧卡原色恢复到新卡上）
+            _cardColorStored = false;
 
             if (_currentCard != null)
             {
