@@ -41,6 +41,18 @@ MonoBehaviour:
   attacksBackRow: 0
   revengeEffect: 
   traits: "1.\u975E\u653B\u51FB\u56DE\u5408\u5F53\u5BF9\u65B9\u6253\u51FA\u4E00\u5F20\u724C\u540E\uFF0C\u6548\u679C\u7ED3\u7B97\u5B8C\u6210\u540E\uFF0C\u5BF9\u5BF9\u65B9\u4E00\u53EC\u5524\u7269\u9020\u62101\u4F24\u5BB3\u3002\uFF08\u82E5\u4E3A\u53CD\u5236\u724C\uFF0C\u6253\u51FA\u540E\u5C31\u9020\u6210\u4F24\u5BB3\uFF09"
+  traitProperties: 
+  traitEntries:
+  - text: "\u975E\u653B\u51FB\u56DE\u5408\u5F53\u5BF9\u65B9\u6253\u51FA\u4E00\u5F20\u724C\u540E\uFF0C\u6548\u679C\u7ED3\u7B97\u5B8C\u6210\u540E\uFF0C\u5BF9\u5BF9\u65B9\u4E00\u53EC\u5524\u7269\u9020\u62101\u4F24\u5BB3\u3002\uFF08\u82E5\u4E3A\u53CD\u5236\u724C\uFF0C\u6253\u51FA\u540E\u5C31\u9020\u6210\u4F24\u5BB3\uFF09"
+    isEnter: 0
+    isFirstStrike: 0
+    isRevenge: 0
+    isDeath: 0
+    isActiveExit: 0
+    isDiscard: 0
+    isAttach: 0
+    isGrant: 0
+  traitsMigrated: 1
   spellType: 0
   effect: 
   cardSprite2D: {fileID: 21300000, guid: 5b304bc03b4e1b24bb939969d960fee4, type: 3}
@@ -48,4 +60,8 @@ MonoBehaviour:
   summonCardBackSprite2D: {fileID: 21300000, guid: dedb5407eb25af146b5304d6186e765c, type: 3}
   prefab3D: {fileID: 1451899876978532017, guid: 433df7af0d0b28b45948cbdf892cd669, type: 3}
   spellPrefab3D: {fileID: 1451899876978532017, guid: 433df7af0d0b28b45948cbdf892cd669, type: 3}
+  hasBuff: 0
+  buffText: 
+  hasDebuff: 0
+  debuffText: 
   targetType: 0

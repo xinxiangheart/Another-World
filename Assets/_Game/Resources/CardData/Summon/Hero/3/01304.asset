@@ -41,9 +41,27 @@ MonoBehaviour:
   attacksBackRow: 0
   revengeEffect: 
   traits: "1.\u5C06\u653B\u51FB\u524D\u6392\u5BF9\u4F4D"
+  traitProperties: 
+  traitEntries:
+  - text: "\u5C06\u653B\u51FB\u524D\u6392\u5BF9\u4F4D"
+    isEnter: 0
+    isFirstStrike: 0
+    isRevenge: 0
+    isDeath: 0
+    isActiveExit: 0
+    isDiscard: 0
+    isAttach: 0
+    isGrant: 0
+  traitsMigrated: 1
   spellType: 0
   effect: 
   cardSprite2D: {fileID: 21300000, guid: 5b304bc03b4e1b24bb939969d960fee4, type: 3}
+  spellCardBackSprite2D: {fileID: 0}
+  summonCardBackSprite2D: {fileID: 0}
   prefab3D: {fileID: 1451899876978532017, guid: 433df7af0d0b28b45948cbdf892cd669, type: 3}
   spellPrefab3D: {fileID: 0}
+  hasBuff: 0
+  buffText: 
+  hasDebuff: 0
+  debuffText: 
   targetType: 0

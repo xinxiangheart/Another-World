@@ -41,9 +41,54 @@ MonoBehaviour:
   attacksBackRow: 0
   revengeEffect: 
   traits: "1.\u751F\u547D\u503C\u7B49\u4E8E\u5BF9\u65B9\u573A\u4E0A\u53EC\u5524\u7269\u6700\u9AD8\n2.\u653B\u51FB\u529B\u7B49\u4E8E\u5BF9\u65B9\u573A\u4E0A\u53EC\u5524\u7269\u6700\u4F4E\n3.\u4E3B\u52A8\u9000\u573A\uFF1A\u4F7F\u5BF9\u65B9\u751F\u547D\u503C\u6700\u9AD8\u7684\u53EC\u5524\u7269\u9000\u573A\n4.\u9634\u4E0E\u9633\u540C\u65F6\u51FA\u573A\u4E00\u65B9\uFF0C\u5728\u540E\u51FA\u573A\u7684\u4F4D\u7F6E\u5408\u6210\u4E3A\u9634\u9633(\u4E0D\u89C6\u4E3A\u9000\u573A\uFF09\r\n"
+  traitProperties: 
+  traitEntries:
+  - text: "\u751F\u547D\u503C\u7B49\u4E8E\u5BF9\u65B9\u573A\u4E0A\u53EC\u5524\u7269\u6700\u9AD8"
+    isEnter: 0
+    isFirstStrike: 0
+    isRevenge: 0
+    isDeath: 0
+    isActiveExit: 0
+    isDiscard: 0
+    isAttach: 0
+    isGrant: 0
+  - text: "\u653B\u51FB\u529B\u7B49\u4E8E\u5BF9\u65B9\u573A\u4E0A\u53EC\u5524\u7269\u6700\u4F4E"
+    isEnter: 0
+    isFirstStrike: 0
+    isRevenge: 0
+    isDeath: 0
+    isActiveExit: 0
+    isDiscard: 0
+    isAttach: 0
+    isGrant: 0
+  - text: "\u4F7F\u5BF9\u65B9\u751F\u547D\u503C\u6700\u9AD8\u7684\u53EC\u5524\u7269\u9000\u573A"
+    isEnter: 0
+    isFirstStrike: 0
+    isRevenge: 0
+    isDeath: 0
+    isActiveExit: 1
+    isDiscard: 0
+    isAttach: 0
+    isGrant: 0
+  - text: "\u9634\u4E0E\u9633\u540C\u65F6\u51FA\u573A\u4E00\u65B9\uFF0C\u5728\u540E\u51FA\u573A\u7684\u4F4D\u7F6E\u5408\u6210\u4E3A\u9634\u9633(\u4E0D\u89C6\u4E3A\u9000\u573A\uFF09"
+    isEnter: 0
+    isFirstStrike: 0
+    isRevenge: 0
+    isDeath: 0
+    isActiveExit: 0
+    isDiscard: 0
+    isAttach: 0
+    isGrant: 0
+  traitsMigrated: 1
   spellType: 0
   effect: 
   cardSprite2D: {fileID: 21300000, guid: 5b304bc03b4e1b24bb939969d960fee4, type: 3}
+  spellCardBackSprite2D: {fileID: 0}
+  summonCardBackSprite2D: {fileID: 0}
   prefab3D: {fileID: 1451899876978532017, guid: 433df7af0d0b28b45948cbdf892cd669, type: 3}
   spellPrefab3D: {fileID: 0}
+  hasBuff: 0
+  buffText: 
+  hasDebuff: 0
+  debuffText: 
   targetType: 0

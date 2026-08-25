@@ -16,6 +16,7 @@ MonoBehaviour:
   cardName: "\u65AD\u7F6A\u8005"
   cardType: 0
   copyCount: 1
+  addToMainDeck: 1
   summonType: 1
   baseCost: 5
   baseTier: 3
@@ -33,11 +34,43 @@ MonoBehaviour:
   counterTriggerCondition: 
   counterEffect: 
   counterDuration: 0
+  isXValue: 0
+  xHealthReadsHighest: 0
+  xAttackReadsHighest: 0
+  attacksFrontRow: 0
+  attacksBackRow: 0
   revengeEffect: 
   traits: "1.\u9000\u573A\uFF1A\u5BF9\u5BF9\u65B9\u5168\u4F53\u9020\u62101\u4F24\u5BB3\n2.\u5148\u624B\uFF1A\u5BF9\u5BF9\u65B9\u524D\u6392\u4E2D\u3001\u540E\u6392\u5DE6\u3001\u540E\u6392\u53F3\u9020\u62102\u4F24\u5BB3"
+  traitProperties: 
+  traitEntries:
+  - text: "\u5BF9\u5BF9\u65B9\u5168\u4F53\u9020\u62101\u4F24\u5BB3"
+    isEnter: 0
+    isFirstStrike: 0
+    isRevenge: 0
+    isDeath: 1
+    isActiveExit: 0
+    isDiscard: 0
+    isAttach: 0
+    isGrant: 0
+  - text: "\u5BF9\u5BF9\u65B9\u524D\u6392\u4E2D\u3001\u540E\u6392\u5DE6\u3001\u540E\u6392\u53F3\u9020\u62102\u4F24\u5BB3"
+    isEnter: 0
+    isFirstStrike: 1
+    isRevenge: 0
+    isDeath: 0
+    isActiveExit: 0
+    isDiscard: 0
+    isAttach: 0
+    isGrant: 0
+  traitsMigrated: 1
   spellType: 0
   effect: 
   cardSprite2D: {fileID: 21300000, guid: 5b304bc03b4e1b24bb939969d960fee4, type: 3}
+  spellCardBackSprite2D: {fileID: 0}
+  summonCardBackSprite2D: {fileID: 0}
   prefab3D: {fileID: 1451899876978532017, guid: 433df7af0d0b28b45948cbdf892cd669, type: 3}
   spellPrefab3D: {fileID: 0}
+  hasBuff: 0
+  buffText: 
+  hasDebuff: 0
+  debuffText: 
   targetType: 0

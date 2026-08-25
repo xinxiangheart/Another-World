@@ -41,6 +41,54 @@ MonoBehaviour:
   attacksBackRow: 0
   revengeEffect: 
   traits: "1.\u5C06\u653B\u51FB\u524D\u6392\u5BF9\u4F4D\n2.\u653B\u51FB\u4F1A\u5BF9\u76EE\u6807\u6392\u5176\u4ED6\u53EC\u5524\u7269\u9020\u62101\u4F24\u5BB3\n3\uFF0C\u9644\u7740\uFF1A\u4E3A\u9644\u7740\u8005\u9644\u52A0\u7279\u6027\uFF08\u5148\u624B\uFF1A\u5BF9\u5BF9\u65B9\u524D\u6392\u53EC\u5524\u7269\u9020\u62101\u4F24\u5BB3\uFF09\uFF0C\u82E5\u9644\u7740\u7269\u5E26\u6709\u7075\u80FD\u524D\u7F00\uFF0C\u5219\u6539\u4E3A\u9644\u52A0\u7279\u6027\uFF08\u5148\u624B\uFF1A\u5BF9\u5BF9\u65B9\u524D\u6392\u53EC\u5524\u7269\u9020\u62102\u4F24\u5BB3\uFF0C\u5BF9\u540E\u6392\u9020\u62101\u4F24\u5BB3\uFF09"
+  traitProperties: 
+  traitEntries:
+  - text: "\u5C06\u653B\u51FB\u524D\u6392\u5BF9\u4F4D"
+    isEnter: 0
+    isFirstStrike: 0
+    isRevenge: 0
+    isDeath: 0
+    isActiveExit: 0
+    isDiscard: 0
+    isAttach: 0
+    isGrant: 0
+  - text: "\u653B\u51FB\u4F1A\u5BF9\u76EE\u6807\u6392\u5176\u4ED6\u53EC\u5524\u7269\u9020\u62101\u4F24\u5BB3"
+    isEnter: 0
+    isFirstStrike: 0
+    isRevenge: 0
+    isDeath: 0
+    isActiveExit: 0
+    isDiscard: 0
+    isAttach: 0
+    isGrant: 0
+  - text: "\u9644\u7740\uFF1A\u4E3A\u9644\u7740\u8005\u9644\u52A0\u7279\u6027\uFF08\u5148\u624B\uFF1A\u5BF9\u5BF9\u65B9\u524D\u6392\u53EC\u5524\u7269\u9020\u62101\u4F24\u5BB3\uFF09\uFF0C\u82E5\u9644\u7740\u7269\u5E26\u6709\u7075\u80FD\u524D\u7F00\uFF0C\u5219\u6539\u4E3A\u9644\u52A0\u7279\u6027\uFF08\u5148\u624B\uFF1A\u5BF9\u5BF9\u65B9\u524D\u6392\u53EC\u5524\u7269\u9020\u62102\u4F24\u5BB3\uFF0C\u5BF9\u540E\u6392\u9020\u62101\u4F24\u5BB3\uFF09"
+    isEnter: 0
+    isFirstStrike: 0
+    isRevenge: 0
+    isDeath: 0
+    isActiveExit: 0
+    isDiscard: 0
+    isAttach: 1
+    isGrant: 0
+  - text: "\u5BF9\u5BF9\u65B9\u524D\u6392\u53EC\u5524\u7269\u9020\u62101\u4F24\u5BB3"
+    isEnter: 0
+    isFirstStrike: 1
+    isRevenge: 0
+    isDeath: 0
+    isActiveExit: 0
+    isDiscard: 0
+    isAttach: 0
+    isGrant: 1
+  - text: "\u5BF9\u5BF9\u65B9\u524D\u6392\u53EC\u5524\u7269\u9020\u62102\u4F24\u5BB3\uFF0C\u5BF9\u540E\u6392\u9020\u62101\u4F24\u5BB3"
+    isEnter: 0
+    isFirstStrike: 1
+    isRevenge: 0
+    isDeath: 0
+    isActiveExit: 0
+    isDiscard: 0
+    isAttach: 0
+    isGrant: 1
+  traitsMigrated: 1
   spellType: 0
   effect: 
   cardSprite2D: {fileID: 21300000, guid: 5b304bc03b4e1b24bb939969d960fee4, type: 3}
@@ -48,4 +96,8 @@ MonoBehaviour:
   summonCardBackSprite2D: {fileID: 21300000, guid: dedb5407eb25af146b5304d6186e765c, type: 3}
   prefab3D: {fileID: 1451899876978532017, guid: 433df7af0d0b28b45948cbdf892cd669, type: 3}
   spellPrefab3D: {fileID: 1451899876978532017, guid: 433df7af0d0b28b45948cbdf892cd669, type: 3}
+  hasBuff: 0
+  buffText: 
+  hasDebuff: 0
+  debuffText: 
   targetType: 0

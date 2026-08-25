@@ -1533,7 +1533,9 @@ MonoBehaviour:
   - {fileID: 21300000, guid: 35ef16c49b200a842b642b85325be068, type: 3}
   cardBackSprite: {fileID: 21300000, guid: 468bd93a970628e44b93e60d932bfe6a, type: 3}
   defaultPrefixArtSprite: {fileID: 0}
-  prefixArtSprites: []
+  prefixArtSprites:
+  - {fileID: 0}
+  - {fileID: 21300000, guid: 708745a8649994c4c98dacca3ee11d73, type: 3}
   energyIconSprite: {fileID: 21300000, guid: f24750ce63a8be0499b101b577faaac9, type: 3}
   attackIconSprite: {fileID: 21300000, guid: fe84e6fcca7e18f4c96546267bf7dc91, type: 3}
   healthIconSprite: {fileID: 21300000, guid: 8f2d4558d10bdce41a89397266251698, type: 3}
