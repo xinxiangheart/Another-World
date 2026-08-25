@@ -733,6 +733,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             {
                 transform.localScale = originalScale * 1.15f;
                 slotImage.color = highlightColor;
+                SetCardHighlight(true); // 替换模式选有卡格子 → 卡牌在格子上方，同步高亮
             }
         }
         if (isAttachSelectMode && slotID >= 6)
@@ -741,6 +742,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             {
                 transform.localScale = originalScale * 1.15f;
                 slotImage.color = highlightColor;
+                if (hasCard) SetCardHighlight(true); // 附着选宿主（有卡）
             }
         }
         if (isTargetingMode && !isAttachSelectMode && !isReplaceMode && IsValidTarget(currentTargetType))
@@ -749,6 +751,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             {
                 transform.localScale = originalScale * 1.15f;
                 slotImage.color = highlightColor;
+                SetCardHighlight(true);
             }
             else
             {
@@ -785,6 +788,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         if (isTargetingMode && IsValidTarget(currentTargetType))
             HighlightRow(false);
 
+        // 任何模式下退出槽位都恢复卡牌高亮 tint（放置替换/附着/目标选择）
+        SetCardHighlight(false);
         transform.localScale = originalScale;
         if (isBlocked) slotImage.color = Color.gray;
         else if (prisonBlocked) slotImage.color = new Color(0.6f, 0.2f, 0.8f);

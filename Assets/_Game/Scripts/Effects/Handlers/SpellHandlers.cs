@@ -267,10 +267,10 @@ public static class SpellHandlers
             if (ci != null)
             {
                 int oldAtk = ci.currentAttack, oldHp = ci.currentHealth;
-                int oldBaseAtk = ci.baseAttack, oldBaseHp = ci.baseHealth, oldBaseMaxHp = ci.baseMaxHealth;
-                ci.currentAttack = oldHp;   ci.baseAttack = oldBaseHp;
-                ci.currentMaxHealth = oldAtk; ci.baseMaxHealth = oldBaseAtk;
-                ci.currentHealth = oldAtk;  ci.baseHealth = oldBaseAtk;
+                // 只互换当前值，不改基础值（baseAttack/baseHealth/baseMaxHealth 保持原样）
+                ci.currentAttack = oldHp;
+                ci.currentHealth = oldAtk;
+                ci.currentMaxHealth = oldAtk; // 上限同步为互换后的当前生命
                 t3d.UpdateValues();
                 if (ci.currentHealth <= 0) BoardSlot.CheckAndHandleDeaths();
             }
