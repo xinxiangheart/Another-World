@@ -110,8 +110,9 @@ public static class Card2DNewPrefabBuilder
         var hlg = rt.GetComponent<HorizontalLayoutGroup>();
         hlg.spacing = 2f;
         hlg.childAlignment = TextAnchor.MiddleLeft;
-        hlg.childControlWidth = true;
-        hlg.childControlHeight = true;
+        // 关闭 Child Control/Force Expand：图标用自身 sizeDelta，不拉伸不铺满
+        hlg.childControlWidth = false;
+        hlg.childControlHeight = false;
         hlg.childForceExpandWidth = false;
         hlg.childForceExpandHeight = false;
         rt.sizeDelta = new Vector2(120f, 16f);

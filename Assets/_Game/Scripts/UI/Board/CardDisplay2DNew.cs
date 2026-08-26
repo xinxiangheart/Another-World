@@ -71,7 +71,7 @@ public class CardDisplay2DNew : MonoBehaviour
     public Sprite attackIconSprite;
     [Tooltip("生命值图标")]
     public Sprite healthIconSprite;
-    [Tooltip("原画占位图（可选，没有则纯灰）")]
+    [Tooltip("（已停用）找不到原画时隐藏 CardArt 层，不再用占位图兜底")]
     public Sprite cardArtFallbackSprite;
 
     [Header("类型图标（召唤物类别）")]
@@ -148,6 +148,14 @@ public class CardDisplay2DNew : MonoBehaviour
     public Vector2 traitIconSize = new Vector2(16f, 16f);
     public Vector2 statusIconSize = new Vector2(16f, 16f);
 
+    [Header("测试参考图（仅尺寸参考，不参与显示/刷新）")]
+    [Tooltip("前缀排参考图：有值时前缀图标 sizeDelta 按其原始尺寸/比例")]
+    public Sprite prefixTestSprite;
+    [Tooltip("特性排参考图：有值时特性图标 sizeDelta 按其原始尺寸/比例")]
+    public Sprite traitTestSprite;
+    [Tooltip("状态排参考图：有值时状态图标 sizeDelta 按其原始尺寸/比例")]
+    public Sprite statusTestSprite;
+
     CardInstance _inst;
     static Sprite _placeholder;
 
@@ -219,17 +227,25 @@ public class CardDisplay2DNew : MonoBehaviour
         {
             string tplPrefix = template != null ? template.prefix : "";
             prefixArtBG.sprite = GetPrefixArtBGSprite(tplPrefix);
+            // 尺寸随前缀比例：渊/灵能 66×88，其余 64×84（位置不变，只改 sizeDelta）
+            prefixArtBG.rectTransform.sizeDelta = GetPrefixArtBGSize(tplPrefix);
             prefixArtBG.enabled = true;
         }
 
-        // ── 召唤物原画（按 templateID 加载；缺失用占位图或纯灰）──
+        // ── 召唤物原画（按 templateID 加载；找不到 → 隐藏 CardArt，露出下层 PrefixArtBG 前缀底图）──
         if (cardArt != null)
         {
             Sprite art = LoadSprite(string.Format(artworkPath, _inst.templateID));
-            if (art == GetPlaceholder() && cardArtFallbackSprite != null)
-                art = cardArtFallbackSprite;
-            cardArt.sprite = art;
-            cardArt.enabled = true;
+            if (art == GetPlaceholder())
+            {
+                cardArt.gameObject.SetActive(false); // 无原画：隐藏，不显示灰色占位
+            }
+            else
+            {
+                cardArt.gameObject.SetActive(true);
+                cardArt.sprite = art;
+                cardArt.enabled = true;
+            }
         }
 
         // ── 静态图标 ──
@@ -299,6 +315,7 @@ public class CardDisplay2DNew : MonoBehaviour
         ClearChildren(prefixIconsArea);
         if (inst == null || string.IsNullOrEmpty(inst.prefixes)) return;
 
+        Vector2 size = GetIconRowSize(prefixTestSprite, prefixIconSize);
         var parts = inst.prefixes.Split(' ');
         var seen = new HashSet<string>();
         foreach (var p in parts)
@@ -307,7 +324,7 @@ public class CardDisplay2DNew : MonoBehaviour
             if (string.IsNullOrEmpty(prefix) || prefix == "无") continue;
             if (!seen.Add(prefix)) continue;
             AddRowIcon(prefixIconsArea, "prefix_" + prefix, GetPrefixSprite(prefix),
-                string.Format(prefixIconPath, prefix), prefixIconSize);
+                string.Format(prefixIconPath, prefix), size);
         }
     }
 
@@ -319,16 +336,17 @@ public class CardDisplay2DNew : MonoBehaviour
         ClearChildren(traitIconsArea);
         if (inst == null) return;
 
+        Vector2 size = GetIconRowSize(traitTestSprite, traitIconSize);
         // 完全沉默 → 特性全部失效，统一隐藏（沉默图标由状态排显示）
         if (IsFullySilenced(inst)) return;
 
-        if (inst.hasFirstStrike)  AddRowIcon(traitIconsArea, "trait_firststrike", traitFirstStrikeSprite, traitIconPath + "trait_firststrike", traitIconSize);
-        if (inst.hasOnEnter)      AddRowIcon(traitIconsArea, "trait_onenter", traitOnEnterSprite, traitIconPath + "trait_onenter", traitIconSize);
-        if (inst.hasOnDeath)      AddRowIcon(traitIconsArea, "trait_deathrattle", traitDeathrattleSprite, traitIconPath + "trait_deathrattle", traitIconSize);
-        if (inst.hasActiveExit)   AddRowIcon(traitIconsArea, "trait_activeexit", traitActiveExitSprite, traitIconPath + "trait_activeexit", traitIconSize);
-        if (inst.hasRevenge)      AddRowIcon(traitIconsArea, "trait_revenge", traitRevengeSprite, traitIconPath + "trait_revenge", traitIconSize);
-        if (inst.hasDiscard)      AddRowIcon(traitIconsArea, "trait_discard", traitDiscardSprite, traitIconPath + "trait_discard", traitIconSize);
-        if (inst.canAttach)       AddRowIcon(traitIconsArea, "trait_attach", traitAttachSprite, traitIconPath + "trait_attach", traitIconSize);
+        if (inst.hasFirstStrike)  AddRowIcon(traitIconsArea, "trait_firststrike", traitFirstStrikeSprite, traitIconPath + "trait_firststrike", size);
+        if (inst.hasOnEnter)      AddRowIcon(traitIconsArea, "trait_onenter", traitOnEnterSprite, traitIconPath + "trait_onenter", size);
+        if (inst.hasOnDeath)      AddRowIcon(traitIconsArea, "trait_deathrattle", traitDeathrattleSprite, traitIconPath + "trait_deathrattle", size);
+        if (inst.hasActiveExit)   AddRowIcon(traitIconsArea, "trait_activeexit", traitActiveExitSprite, traitIconPath + "trait_activeexit", size);
+        if (inst.hasRevenge)      AddRowIcon(traitIconsArea, "trait_revenge", traitRevengeSprite, traitIconPath + "trait_revenge", size);
+        if (inst.hasDiscard)      AddRowIcon(traitIconsArea, "trait_discard", traitDiscardSprite, traitIconPath + "trait_discard", size);
+        if (inst.canAttach)       AddRowIcon(traitIconsArea, "trait_attach", traitAttachSprite, traitIconPath + "trait_attach", size);
         // 攻击前后排是目标选择逻辑（非图标）、光环是状态（非特性）——均不显示特性图标
     }
 
@@ -341,11 +359,12 @@ public class CardDisplay2DNew : MonoBehaviour
         ClearChildren(statusIconsArea);
         if (inst == null) return;
 
-        if (inst.hasShield)    AddRowIcon(statusIconsArea, "status_shield", statusShieldSprite, statusIconPath + "status_shield", statusIconSize);
-        if (IsBuffed(inst))    AddRowIcon(statusIconsArea, "status_buff", statusBuffSprite, statusIconPath + "status_buff", statusIconSize);
+        Vector2 size = GetIconRowSize(statusTestSprite, statusIconSize);
+        if (inst.hasShield)    AddRowIcon(statusIconsArea, "status_shield", statusShieldSprite, statusIconPath + "status_shield", size);
+        if (IsBuffed(inst))    AddRowIcon(statusIconsArea, "status_buff", statusBuffSprite, statusIconPath + "status_buff", size);
         // 中毒/沉默/其他减益 → 统一一个负面减益图标
         if (inst.poisoned || IsFullySilenced(inst) || IsDebuffed(inst))
-            AddRowIcon(statusIconsArea, "status_debuff", statusDebuffSprite, statusIconPath + "status_debuff", statusIconSize);
+            AddRowIcon(statusIconsArea, "status_debuff", statusDebuffSprite, statusIconPath + "status_debuff", size);
     }
 
     /// <summary>增益：贤者/皇帝 buff，或临时攻击/生命为正。</summary>
@@ -365,6 +384,14 @@ public class CardDisplay2DNew : MonoBehaviour
     }
 
     // ================= 前缀底图（ArtworkArea 下层） =================
+
+    /// <summary>按【模板前缀】取 PrefixArtBG 尺寸：渊/灵能 66×88，其余（机械/血歌/神灵画卷/无）64×84。</summary>
+    Vector2 GetPrefixArtBGSize(string prefix)
+    {
+        if (prefix == "渊" || prefix == "灵能")
+            return new Vector2(66f, 88f);
+        return new Vector2(64f, 84f);
+    }
 
     /// <summary>按【模板前缀】取前缀底图：拖入数组 → 路径 → 通用底图 → 占位。</summary>
     Sprite GetPrefixArtBGSprite(string prefix)
@@ -429,12 +456,63 @@ public class CardDisplay2DNew : MonoBehaviour
             DestroyImmediate(area.GetChild(i).gameObject);
     }
 
-    /// <summary>在指定排容器内创建一个图标（直接 Sprite → 路径 → 占位）。</summary>
+    /// <summary>
+    /// 取一排图标的尺寸：有测试参考图 → 按其原始尺寸（像素 ÷ pixelsPerUnit，保持宽高比）；
+    /// 无参考图 → 默认尺寸。参考图不参与显示/刷新，仅作尺寸参考。
+    /// </summary>
+    Vector2 GetIconRowSize(Sprite testSprite, Vector2 defaultSize)
+    {
+        if (testSprite != null)
+        {
+            float w = testSprite.textureRect.width / testSprite.pixelsPerUnit;
+            float h = testSprite.textureRect.height / testSprite.pixelsPerUnit;
+            if (w > 0 && h > 0) return new Vector2(w, h);
+        }
+        return defaultSize;
+    }
+
+#if UNITY_EDITOR
+    /// <summary>编辑期：拖入/修改测试参考图时，自动在对应排生成预览图标（用测试图填充，展示尺寸/比例）。
+    /// DontSave 标志 → 不序列化进预制体，不污染运行时；运行时由 Refresh 清空重建正式图标。</summary>
+    void OnValidate()
+    {
+        if (Application.isPlaying) return;
+        PopulatePreviewRow(prefixIconsArea, prefixTestSprite, prefixIconSize);
+        PopulatePreviewRow(traitIconsArea, traitTestSprite, traitIconSize);
+        PopulatePreviewRow(statusIconsArea, statusTestSprite, statusIconSize);
+    }
+
+    void PopulatePreviewRow(RectTransform area, Sprite testSprite, Vector2 defaultSize)
+    {
+        if (area == null) return;
+        for (int i = area.childCount - 1; i >= 0; i--)
+            DestroyImmediate(area.GetChild(i).gameObject);
+        if (testSprite == null) return;
+        Vector2 size = GetIconRowSize(testSprite, defaultSize);
+        // 3 个预览图标示意尺寸/比例（DontSave：仅编辑期可见，不入预制体）
+        for (int i = 0; i < 3; i++)
+        {
+            var go = new GameObject("preview_" + i, typeof(RectTransform), typeof(Image));
+            go.hideFlags = HideFlags.DontSave;
+            go.transform.SetParent(area, false);
+            go.GetComponent<RectTransform>().sizeDelta = size;
+            var img = go.GetComponent<Image>();
+            img.sprite = testSprite;
+            img.enabled = true;
+        }
+    }
+#endif
+
+    /// <summary>在指定排容器内创建一个图标（直接 Sprite → 路径 → 占位）。固定尺寸，不随数量拉伸。</summary>
     void AddRowIcon(RectTransform area, string key, Sprite direct, string path, Vector2 size)
     {
-        var go = new GameObject(key, typeof(RectTransform), typeof(Image));
+        var go = new GameObject(key, typeof(RectTransform), typeof(Image), typeof(LayoutElement));
         go.transform.SetParent(area, false);
         go.GetComponent<RectTransform>().sizeDelta = size;
+        // 固定尺寸：LayoutElement preferred = 图标尺寸 → HLG 即使 ChildControl 开启也用固定尺寸，不拉伸
+        var le = go.GetComponent<LayoutElement>();
+        le.preferredWidth = size.x;
+        le.preferredHeight = size.y;
         SetImageSprite(go.GetComponent<Image>(), direct, path);
     }
 
