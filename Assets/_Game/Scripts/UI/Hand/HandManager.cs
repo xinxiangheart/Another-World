@@ -17,6 +17,8 @@ public class HandManager : MonoBehaviour
     public float hoverScale = 1.15f;
     public float pushRatio = 0.7f;
     public float animationSpeed = 15f;
+    [Tooltip("悬停卡牌时相邻卡牌的额外水平让位偏移（0=关闭）")]
+    public float hoverSpacingOffset = 12f;
 
     private List<CardView> handCards = new List<CardView>();
     private CardView draggingCard;
@@ -196,6 +198,8 @@ public class HandManager : MonoBehaviour
             return;
         }
 
+        int hovIdx = GetHoveredIndex();
+
         float overlap = Mathf.Lerp(0f, maxOverlapRatio, (float)(count - 1) / 19f);
         float step = cardWidth * (1f - overlap);
         float totalW = step * (count - 1) + cardWidth;
@@ -216,6 +220,14 @@ public class HandManager : MonoBehaviour
             if (draggingCard != null && draggingIndex >= 0 && i >= draggingIndex && cv != draggingCard)
                 x += step * pushRatio;
 
+            // 悬停让位：相邻卡牌向外偏移，给放大卡牌腾空间（越近偏移越大，d=1 全量、d=2 减半）
+            if (hovIdx >= 0 && hovIdx != i)
+            {
+                int d = Mathf.Abs(i - hovIdx);
+                float falloff = Mathf.Max(0f, 1f - (d - 1) * 0.5f);
+                x += hoverSpacingOffset * falloff * (i < hovIdx ? -1f : 1f);
+            }
+
             float normalizedX = x / (maxWidth / 2f);
             float arcY = -Mathf.Abs(normalizedX) * radius * 0.02f;
             Vector3 target = new Vector3(x, arcY, 0);
@@ -235,8 +247,21 @@ public class HandManager : MonoBehaviour
 
         for (int i = 0; i < count; i++)
             handCards[i].transform.SetSiblingIndex(i);
+        // 悬停卡牌置顶（不被兄弟排序拉下去）
+        if (hovIdx >= 0) handCards[hovIdx].transform.SetAsLastSibling();
 
         MarkBoundsDirty();
+    }
+
+    /// <summary>返回当前悬停的卡牌索引（-1=无悬停）。</summary>
+    int GetHoveredIndex()
+    {
+        for (int i = 0; i < handCards.Count; i++)
+        {
+            var cv = handCards[i]?.GetComponent<CardView>();
+            if (cv != null && cv.IsHovered) return i;
+        }
+        return -1;
     }
 
     int GetInsertIndex(float localX)

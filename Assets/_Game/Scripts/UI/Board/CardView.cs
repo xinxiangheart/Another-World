@@ -20,6 +20,8 @@ public class CardView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
     const float HOVER_RAISE = 30f;
     const float HOVER_SCALE = 1.15f;
     bool _hovered;
+    /// <summary>当前是否被悬停（HandManager 布局让位用）。</summary>
+    public bool IsHovered => _hovered;
 
     /// <summary>抽牌入场动画进行中（飞行中的牌不参与 RefreshLayout 的 snap，也不被 Update 的 lerp 覆盖）。</summary>
     [HideInInspector] public bool IsFlying = false;
@@ -58,6 +60,7 @@ public class CardView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
         transform.SetAsLastSibling();
         StopAllCoroutines();
         StartCoroutine(SmoothTo(new Vector3(targetPos.x, targetPos.y + HOVER_RAISE, 0), Quaternion.identity, originalScale * HOVER_SCALE, 0.12f));
+        handManager?.RefreshLayout(false); // 触发相邻卡牌让位
         handManager?.MarkBoundsDirty();
     }
 
@@ -68,6 +71,7 @@ public class CardView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
         transform.SetSiblingIndex(originalSibling);
         StopAllCoroutines();
         StartCoroutine(SmoothTo(targetPos, targetRotation, originalScale, 0.15f));
+        handManager?.RefreshLayout(false); // 触发相邻卡牌归位
         handManager?.MarkBoundsDirty();
     }
 
