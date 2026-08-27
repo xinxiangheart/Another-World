@@ -100,6 +100,11 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     bool _cardColorStored;
     public Color normalColor;
     public Color highlightColor = Color.yellow;
+    [Tooltip("抛置悬停时格子绿色高亮色")]
+    public Color discardHighlightColor = new Color(0.2f, 0.9f, 0.2f, 0.7f);
+    /// <summary>抛置悬停绿色高亮激活中。防止 OnPointerExit/SyncVisual 等路径把颜色误清除——卡牌碰撞体与格子UI矩形不完全重合，
+    /// 鼠标在碰撞体内移动跨出格子矩形时触发格子 OnPointerExit 会清色，而 OnMouseEnter 只在碰撞体进入时触发一次不会重画。</summary>
+    bool _discardHighlighted;
 
     public static bool attachCanBeIndependent = false;
     public int slotTempAttackBoost;
@@ -791,7 +796,13 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         // 任何模式下退出槽位都恢复卡牌高亮 tint（放置替换/附着/目标选择）
         SetCardHighlight(false);
         transform.localScale = originalScale;
-        if (isBlocked) slotImage.color = Color.gray;
+        if (_discardHighlighted)
+        {
+            // 抛置悬停绿优先——鼠标在卡牌碰撞体内跨出格子矩形时，格子 OnPointerExit 不清除高亮（含 1.15x 缩放）
+            transform.localScale = originalScale * 1.15f;
+            slotImage.color = discardHighlightColor;
+        }
+        else if (isBlocked) slotImage.color = Color.gray;
         else if (prisonBlocked) slotImage.color = new Color(0.6f, 0.2f, 0.8f);
         else if (hasPlague) slotImage.color = Color.green;
         else if (deepSeaMarked) slotImage.color = Color.blue;
@@ -1234,9 +1245,31 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
     }
 
+    /// <summary>抛置悬停：格子绿色高亮。复用黄色选择高亮（HighlightRow/OnPointerEnter 目标分支）的
+    /// 1.15x 尺寸/缩放逻辑——格子放大超出卡牌占地，绿色边缘从卡牌四周露出来；只把颜色改成绿色。
+    /// 取消时恢复优先级链颜色（SyncVisual）和原始缩放。不影响目标选择高亮。</summary>
+    public void SetDiscardHighlight(bool highlight)
+    {
+        _discardHighlighted = highlight;
+        if (highlight)
+        {
+            // 与黄色选择高亮同尺寸：1.15x 放大。卡牌在格子上方（z=-5.7 vs -5.9）且不是格子子物体，
+            // 不缩放卡牌，放大后的格子环形绿色边缘能越过卡牌四周露出来（不放大则被卡牌完全挡住）。
+            transform.localScale = originalScale * 1.15f;
+            slotImage.color = discardHighlightColor;
+        }
+        else
+        {
+            transform.localScale = originalScale;
+            SyncVisual();
+        }
+    }
+
     /// <summary>Force-refresh slot visual after syncing flags from server.</summary>
     public void SyncVisual()
     {
+        // 抛置悬停激活中 → 保持绿色。同步/EndSelection 触发的 SyncVisual 不能把悬停高亮清掉。
+        if (_discardHighlighted) { slotImage.color = discardHighlightColor; return; }
         if (permaBlocked) slotImage.color = Color.black;
         else if (isBlocked) slotImage.color = Color.gray;
         else if (prisonBlocked) slotImage.color = new Color(0.6f, 0.2f, 0.8f);
@@ -1360,6 +1393,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         if (dyingCard == null) return;
         Card3DInstance c3d = dyingCard.GetComponent<Card3DInstance>();
         if (c3d == null || c3d.cardInstance == null) return;
+        // 卡牌销毁/移除前强制清除抛置悬停绿色高亮——碰撞体消失后 OnMouseExit 不触发，高亮会残留
+        SetDiscardHighlight(false);
         // Registry: 板面退场 → 墓地
         RegistrySyncManager.Instance?.UpdateCard(c3d.cardInstance, slotID >= 6 ? 0 : 1, CardZone.Graveyard, slotID);
         lastHandleDeathTime = Time.time;
@@ -1850,6 +1885,14 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             if (_currentCard == value) return;
             // 卡牌更换 → 高亮原色记录作废（避免把旧卡原色恢复到新卡上）
             _cardColorStored = false;
+            // 卡牌更换/销毁 → 抛置悬停高亮作废并立即复位颜色/缩放。
+            // DeathPipeline 只调 SetCard(null) 不重画 slotImage，若只清标志颜色仍会残留绿色、缩放仍停在 1.15x。
+            if (_discardHighlighted)
+            {
+                _discardHighlighted = false;
+                transform.localScale = originalScale;
+                SyncVisual();
+            }
 
             if (_currentCard != null)
             {

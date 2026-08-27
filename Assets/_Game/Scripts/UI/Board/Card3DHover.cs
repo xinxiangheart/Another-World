@@ -10,6 +10,8 @@ public class Card3DHover : MonoBehaviour
     private Color originalColor;
     public static bool allowDiscard = true;
     public static int ignoreSlotID = -1;
+    bool _discardHovered; // 当前是否处于"可抛置"悬停（格子绿色高亮标志）
+    BoardSlot _discardSlot; // 悬停中缓存的高亮槽位（OnMouseOver 每帧重申时避免 FindObjectOfType）
     void Start()
     {
         Card3DInstance c3d = GetComponent<Card3DInstance>();
@@ -26,6 +28,8 @@ public class Card3DHover : MonoBehaviour
     void OnMouseEnter()
     {
         Debug.Log($"OnMouseEnter 被调用：hasDiscard={cardInstance?.hasDiscard}, isMyTurn={FindObjectOfType<TurnManager>()?.IsMyTurn()}, isPlacingCard={BoardSlot.isPlacingCard}, isTargetingMode={BoardSlot.isTargetingMode}, isAttachSelectMode={BoardSlot.isAttachSelectMode}");
+        _discardHovered = false;
+        _discardSlot = null;
         if (CanDiscard())
         {
         // 1. 恢复 HandArea 的射线阻挡
@@ -37,11 +41,25 @@ public class Card3DHover : MonoBehaviour
             if (renderer != null)
                 renderer.material.color = Color.yellow;
             transform.localScale = originalScale * 1.05f;
+
+        // 3. 所在格子绿色高亮（抛置提示）
+            _discardHovered = true;
+            _discardSlot = GetMySlot();
+            if (_discardSlot != null) _discardSlot.SetDiscardHighlight(true);
         }
 
         // 抛置后强制恢复交互
         if (Test1Panel.Instance != null && cardInstance != null)
             Test1Panel.Instance.Show(cardInstance);
+    }
+
+    void OnMouseOver()
+    {
+        // 每帧重申抛置绿色高亮：OnMouseEnter 只在碰撞体进入时触发一次，
+        // 一旦绿色被格子 OnPointerExit/SyncVisual 等路径覆盖就不会自动重画，
+        // 这里保证悬停期间高亮一直存在、可重复触发。
+        if (!_discardHovered) return;
+        if (_discardSlot != null) _discardSlot.SetDiscardHighlight(true);
     }
 
     void OnMouseExit()
@@ -56,6 +74,22 @@ public class Card3DHover : MonoBehaviour
             renderer.material.color = Color.white;
         transform.localScale = originalScale;
 
+        // 3. 抛置绿色高亮消失（仅当本次悬停是可抛置时恢复）
+        if (_discardHovered)
+        {
+            _discardHovered = false;
+            if (_discardSlot != null)
+            {
+                _discardSlot.SetDiscardHighlight(false);
+                _discardSlot = null;
+            }
+            else
+            {
+                BoardSlot mySlot = GetMySlot();
+                if (mySlot != null) mySlot.SetDiscardHighlight(false);
+            }
+        }
+
         Test1Panel.Instance?.Hide();
     }
 
@@ -66,6 +100,12 @@ public class Card3DHover : MonoBehaviour
         BoardSlot slot = GetMySlot();
         if (slot == null) return;
         int savedSlotID = slot.slotID;
+
+        // 抛置执行前强制清除绿色高亮——HandleDeath 会销毁卡牌，碰撞体消失后 OnMouseExit 不会触发，
+        // 若不在此清除，绿色会一直残留在格子上。
+        _discardHovered = false;
+        _discardSlot = null;
+        slot.SetDiscardHighlight(false);
 
         cardInstance.isActiveExit = false;
         cardInstance.hasRevenge = false;
