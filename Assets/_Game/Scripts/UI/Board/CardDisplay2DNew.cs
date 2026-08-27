@@ -8,13 +8,16 @@ using TMPro;
 /// 精灵来源两种：① 直接拖 Sprite 到下方字段（优先）；② 按 Art 分支路径加载。
 /// 路径分支（Assets/_Game/Art/Sprites/）：
 ///   - 费用底图   Cards/SummonCard_{0}（0-5费）
-///   - 卡面插画   Cards/{templateID}_Front
+///   - 卡面插画   优先取模板 cardSprite2D 字段；其次按镜像 Resources/CardData 目录加载：
+///                召唤物  Cards/Summon/{SummonType}/{tier}/SummonCard_{templateID}
+///                        （Hero→Hero/{tier}；ChosenOne→ChosenOne；Special→Special）
+///                法术    Cards/Spell/{Normal|Special}/{cost}/SpellCard_{templateID}（Normal/Special 均尝试）
 ///   - 卡背       Cards/Back
 ///   - 能量/攻击/生命 UI/Energy、UI/Attack、UI/Health
 ///   - 前缀图标   Icons/Prefixes/prefix_{前缀}
 ///   - 特性图标   Icons/Buffs/trait_*
 ///   - 状态图标   Icons/Buffs/status_*
-/// 加载：先 Resources.Load；编辑器下直接读 Art 资产；缺失 → 纯色占位，不报错。
+/// 加载：先 Resources.Load；编辑器下直接读 Art 资产；卡面缺失 → 隐藏 CardArt 层，用前缀底图兜底，不报错。
 /// 翻面：ShowFront()/ShowBack() 切换 FrontFace/BackFace。
 /// 三排图标（各自独立动态生成/移除/重排）：
 ///   - PrefixIconsArea 前缀排：prefixes 为空格分隔的多前缀串（如"渊 机械"），逐前缀生成图标
@@ -126,8 +129,6 @@ public class CardDisplay2DNew : MonoBehaviour
     public string costFramePath = "Cards/SummonCard_{0}";
     [Tooltip("前缀底图路径模板，{0}=前缀名")]
     public string prefixArtBGPath = "Icons/Prefixes/prefixbg_{0}";
-    [Tooltip("卡面插画路径模板，{0}=templateID")]
-    public string artworkPath = "Cards/{0}_Front";
     [Tooltip("卡背图路径")]
     public string cardBackPath = "Cards/Back";
     [Tooltip("能量图标路径")]
@@ -196,15 +197,32 @@ public class CardDisplay2DNew : MonoBehaviour
     {
         CardData t = CardDatabase.Instance != null ? CardDatabase.Instance.GetTemplate(tid) : null;
         if (t != null) return t;
-        var all = Resources.LoadAll<CardData>("CardData");
-        foreach (var c in all) if (c.templateID == tid) return c;
+        // CardDatabase 未命中 → 资源级兜底（神选者数据在独立目录，一并查）
+        foreach (string folder in new[] { "CardData", "ChosenOneData" })
+        {
+            var all = Resources.LoadAll<CardData>(folder);
+            foreach (var c in all) if (c.templateID == tid) return c;
+        }
         return null;
+    }
+
+    void Start()
+    {
+        // 任何创建路径（抽牌/回手/调试面板直接按 templateID 生成）都能自动加载卡图——
+        // 不依赖外部是否调用了 RefreshWithInstance（旧代码 GetComponent<CardDisplay2D>() 对新预制体
+        // 若未挂 CardDisplay2DCompat 就拿不到显示组件，Refresh 会被绕过；这里在 Start 兜底刷新一次）。
+        Refresh();
     }
 
     public void Refresh()
     {
+        // 兼容未走 RefreshWithInstance 的创建路径：从组件兜底取实例
+        if (_inst == null) _inst = GetComponent<CardInstance>();
         if (_inst == null) return;
         CardData template = CardDatabase.Instance?.GetTemplate(_inst.templateID);
+        // CardDatabase 未命中 → 资源级兜底，保证任何已注册 templateID 都能解析到模板（进而按模板加载卡图）
+        if (template == null && !string.IsNullOrEmpty(_inst.templateID))
+            template = FindTemplate(_inst.templateID);
         bool isSpell = template != null && template.cardType == CardType.Spell;
 
         // ── 数字文字 ──
@@ -232,11 +250,11 @@ public class CardDisplay2DNew : MonoBehaviour
             prefixArtBG.enabled = true;
         }
 
-        // ── 召唤物原画（按 templateID 加载；找不到 → 隐藏 CardArt，露出下层 PrefixArtBG 前缀底图）──
+        // ── 召唤物原画（优先模板 cardSprite2D，其次镜像 Cards/ 目录加载；找不到 → 隐藏 CardArt，露出下层 PrefixArtBG 前缀底图）──
         if (cardArt != null)
         {
-            Sprite art = LoadSprite(string.Format(artworkPath, _inst.templateID));
-            if (art == GetPlaceholder())
+            Sprite art = GetCardArtSprite(template);
+            if (art == null)
             {
                 cardArt.gameObject.SetActive(false); // 无原画：隐藏，不显示灰色占位
             }
@@ -473,13 +491,33 @@ public class CardDisplay2DNew : MonoBehaviour
 
 #if UNITY_EDITOR
     /// <summary>编辑期：拖入/修改测试参考图时，自动在对应排生成预览图标（用测试图填充，展示尺寸/比例）。
-    /// DontSave 标志 → 不序列化进预制体，不污染运行时；运行时由 Refresh 清空重建正式图标。</summary>
+    /// DontSave 标志 → 不序列化进预制体，不污染运行时；运行时由 Refresh 清空重建正式图标。
+    /// OnValidate 回调内禁止改层级（预制体资产报 "Setting parent ... Prefab Asset is disabled"/"Destroying assets"，
+    /// 场景实例报 "Destroying GameObjects immediately is not permitted during OnValidate"）——
+    /// 因此只标记脏，用 EditorApplication.delayCall 延迟到编辑器循环里重建。</summary>
     void OnValidate()
     {
         if (Application.isPlaying) return;
-        PopulatePreviewRow(prefixIconsArea, prefixTestSprite, prefixIconSize);
-        PopulatePreviewRow(traitIconsArea, traitTestSprite, traitIconSize);
-        PopulatePreviewRow(statusIconsArea, statusTestSprite, statusIconSize);
+        // 预制体资产上的组件不允许改层级，直接跳过（场景实例/PrefabStage 由 delayCall 重建）
+        if (UnityEditor.PrefabUtility.IsPartOfPrefabAsset(gameObject)) return;
+        SchedulePreviewRebuild();
+    }
+
+    bool _previewRebuildScheduled;
+
+    /// <summary>延迟一帧重建三排预览行（避免在 OnValidate 回调里 DestroyImmediate/SetParent）。</summary>
+    void SchedulePreviewRebuild()
+    {
+        if (_previewRebuildScheduled) return;
+        _previewRebuildScheduled = true;
+        UnityEditor.EditorApplication.delayCall += () =>
+        {
+            _previewRebuildScheduled = false;
+            if (this == null || Application.isPlaying) return;
+            PopulatePreviewRow(prefixIconsArea, prefixTestSprite, prefixIconSize);
+            PopulatePreviewRow(traitIconsArea, traitTestSprite, traitIconSize);
+            PopulatePreviewRow(statusIconsArea, statusTestSprite, statusIconSize);
+        };
     }
 
     void PopulatePreviewRow(RectTransform area, Sprite testSprite, Vector2 defaultSize)
@@ -530,6 +568,69 @@ public class CardDisplay2DNew : MonoBehaviour
         if (img == null) return;
         img.sprite = PickSprite(direct, path);
         img.enabled = true;
+    }
+
+    // ================= 卡面插画（新路径：优先模板 cardSprite2D，其次镜像 Cards/ 目录） =================
+
+    /// <summary>
+    /// 卡面 Sprite 解析顺序：
+    ///   ① 模板 cardSprite2D（项目新加载方式，拖入即用）——仍指向旧占位图(Card000_Front/CardSpell000_Front)视为未分配；
+    ///   ② 新路径加载（镜像 Resources/CardData 目录结构）：
+    ///      召唤物 Cards/Summon/{SummonType}/{tier}/SummonCard_{templateID}（Hero→Hero/{tier}；ChosenOne；Special）
+    ///      法术   Cards/Spell/{Normal|Special}/{cost}/SpellCard_{templateID}
+    ///      （Normal/Special 无法从模板字段判定，两个子目录都试；文件名兼容花括号与无花括号命名）
+    ///   ③ 都失败 → 返回 null → 调用方隐藏 CardArt 层，露出下层 PrefixArtBG 前缀底图兜底。
+    /// </summary>
+    Sprite GetCardArtSprite(CardData template)
+    {
+        if (template == null || string.IsNullOrEmpty(template.templateID)) return null;
+
+        // ① 模板已拖入真实卡面 → 直接使用（新加载方式）
+        if (template.cardSprite2D != null && !IsLegacyPlaceholder(template.cardSprite2D))
+            return template.cardSprite2D;
+
+        // ② 新路径加载
+        string tid = template.templateID;
+        var candidates = new List<string>();
+        if (template.cardType == CardType.Spell)
+        {
+            int cost = Mathf.Clamp(template.baseCost, 0, 5);
+            // Normal/Special 无法从模板字段判定（同属 Evil 的法术分别存在两个目录）——两个子目录都试
+            AddArtCandidates(candidates, "Spell/Normal/" + cost, "SpellCard", tid);
+            AddArtCandidates(candidates, "Spell/Special/" + cost, "SpellCard", tid);
+        }
+        else
+        {
+            string sub;
+            switch (template.summonType)
+            {
+                case SummonType.Hero:      sub = "Hero/" + template.baseTier; break;
+                case SummonType.ChosenOne: sub = "ChosenOne"; break;
+                default:                   sub = "Special"; break;
+            }
+            AddArtCandidates(candidates, "Summon/" + sub, "SummonCard", tid);
+        }
+
+        foreach (string p in candidates)
+        {
+            Sprite s = LoadSprite(p);
+            if (s != null && s != GetPlaceholder()) return s;
+        }
+        return null;
+    }
+
+    /// <summary>生成卡面候选相对路径：Cards/{sub}/{prefix}_{{templateID}} 与 Cards/{sub}/{prefix}_{templateID}（兼容花括号/无花括号命名）。</summary>
+    static void AddArtCandidates(List<string> list, string sub, string prefix, string tid)
+    {
+        list.Add("Cards/" + sub + "/" + prefix + "_{" + tid + "}");
+        list.Add("Cards/" + sub + "/" + prefix + "_" + tid);
+    }
+
+    /// <summary>旧占位卡面（Card000_Front / CardSpell000_Front）——全卡共用，视为未分配真实卡面，跳过走路径加载。</summary>
+    static bool IsLegacyPlaceholder(Sprite s)
+    {
+        if (s == null) return false;
+        return s.name == "Card000_Front" || s.name == "CardSpell000_Front";
     }
 
     Sprite LoadSprite(string artRelativePath)

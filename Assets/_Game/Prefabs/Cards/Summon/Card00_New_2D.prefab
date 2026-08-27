@@ -1564,7 +1564,6 @@ MonoBehaviour:
   statusDebuffSprite: {fileID: 21300000, guid: 9c12197ccb97c4d4c8d6afe8bcc0d179, type: 3}
   costFramePath: Cards/SummonCard_{0}
   prefixArtBGPath: Icons/Prefixes/prefixbg_{0}
-  artworkPath: Cards/{0}_Front
   cardBackPath: Cards/Back
   energyIconPath: UI/Energy
   attackIconPath: UI/Attack
