@@ -16,6 +16,11 @@ public class CardView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
     private Vector3 originalScale;
     private int originalSibling;
 
+    /// <summary>悬停上浮高度 / 放大倍率（悬停期间保持，不缩回）。</summary>
+    const float HOVER_RAISE = 30f;
+    const float HOVER_SCALE = 1.15f;
+    bool _hovered;
+
     /// <summary>抽牌入场动画进行中（飞行中的牌不参与 RefreshLayout 的 snap，也不被 Update 的 lerp 覆盖）。</summary>
     [HideInInspector] public bool IsFlying = false;
 
@@ -36,8 +41,11 @@ public class CardView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
     {
         if (!IsAnyCardDragging && !IsFlying)
         {
-            rectTransform.localPosition = Vector3.Lerp(rectTransform.localPosition, targetPos, Time.deltaTime * 15f);
-            rectTransform.localRotation = Quaternion.Slerp(rectTransform.localRotation, targetRotation, Time.deltaTime * 15f);
+            // 悬停时保持"放大+上浮"状态（不向基础位置回拉）；移开后回到 targetPos/targetRotation
+            Vector3 desiredPos = _hovered ? new Vector3(targetPos.x, targetPos.y + HOVER_RAISE, 0) : targetPos;
+            Quaternion desiredRot = _hovered ? Quaternion.identity : targetRotation;
+            rectTransform.localPosition = Vector3.Lerp(rectTransform.localPosition, desiredPos, Time.deltaTime * 15f);
+            rectTransform.localRotation = Quaternion.Slerp(rectTransform.localRotation, desiredRot, Time.deltaTime * 15f);
             handManager?.MarkBoundsDirty();
         }
     }
@@ -45,16 +53,18 @@ public class CardView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
     public void OnPointerEnter(PointerEventData e)
     {
         if (IsAnyCardDragging) return;
+        _hovered = true;
         originalSibling = transform.GetSiblingIndex();
         transform.SetAsLastSibling();
         StopAllCoroutines();
-        StartCoroutine(SmoothTo(new Vector3(targetPos.x, targetPos.y + 30, 0), Quaternion.identity, originalScale * 1.15f, 0.12f));
+        StartCoroutine(SmoothTo(new Vector3(targetPos.x, targetPos.y + HOVER_RAISE, 0), Quaternion.identity, originalScale * HOVER_SCALE, 0.12f));
         handManager?.MarkBoundsDirty();
     }
 
     public void OnPointerExit(PointerEventData e)
     {
         if (IsAnyCardDragging) return;
+        _hovered = false;
         transform.SetSiblingIndex(originalSibling);
         StopAllCoroutines();
         StartCoroutine(SmoothTo(targetPos, targetRotation, originalScale, 0.15f));
