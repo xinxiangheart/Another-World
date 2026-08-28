@@ -34,15 +34,107 @@ public class CardDisplay3D : MonoBehaviour
         mr.SetPropertyBlock(_mpb);
     }
 
-    /// <summary>根据卡牌数据和实例自动选择三张贴图并应用。</summary>
+    /// <summary>
+    /// 根据卡牌数据和实例自动选择三张贴图并应用（对齐新 2D 卡 Card00_New_2D 的图片加载）：
+    ///   _BgTex    = 费用卡框  Cards/SummonCard_{cost}（0-5费）
+    ///   _BorderTex = 前缀底图 Cards/PrefixArtBG/{Abyss|Blood|Mech|Psychic|Scroll|Common}
+    ///   _ArtTex   = 卡面原画  cardSprite2D → Cards/{templateID}_Front → 镜像 Cards/Summon 目录 → 白
+    /// 路径加载失败回退 CardArtConfig；再失败留白（露出底层）。
+    /// </summary>
     public void ApplyArtFromCard(CardInstance instance)
     {
         if (instance == null) return;
         CardData template = CardDatabase.Instance?.GetTemplate(instance.templateID);
         if (template == null) return;
 
-        var (bg, border, art) = CardArtConfig.Get3DTextures(template, instance);
+        // ① 费用卡框 Cards/SummonCard_{cost}（对齐新2D CostFrameBase）
+        int cost = Mathf.Clamp(template.baseCost, 0, 5);
+        Sprite bgSpr = LoadSprite("Cards/SummonCard_" + cost);
+        Texture2D bg = bgSpr != null ? bgSpr.texture : null;
+        if (bg == null && CardArtConfig.Instance != null)
+            bg = CardArtConfig.Get2DBackground(template, instance)?.texture;
+
+        // ② 前缀底图 Cards/PrefixArtBG/{English}（对齐新2D PrefixArtBG）
+        Sprite borderSpr = LoadSprite("Cards/PrefixArtBG/" + PrefixEnglish(instance.prefixes));
+        Texture2D border = borderSpr != null ? borderSpr.texture : null;
+        if (border == null && CardArtConfig.Instance != null)
+            border = CardArtConfig.Get2DBorder(instance)?.texture;
+
+        // ③ 卡面原画：cardSprite2D → {templateID}_Front → 镜像 Cards/Summon 目录 → 白
+        Texture2D art = ResolveArtTexture(template);
+
         SetCompositeTextures(bg, border, art);
+    }
+
+    /// <summary>卡面原画解析：真实 cardSprite2D → {tid}_Front → 镜像 Cards/Summon 目录（含法术 Normal/Special）→ 白。</summary>
+    Texture2D ResolveArtTexture(CardData template)
+    {
+        if (template != null && template.cardSprite2D != null && !IsLegacyPlaceholder(template.cardSprite2D))
+            return template.cardSprite2D.texture;
+        if (template == null || string.IsNullOrEmpty(template.templateID))
+            return Texture2D.whiteTexture;
+
+        string tid = template.templateID;
+        // 旧平铺命名 Cards/{tid}_Front
+        Sprite s = LoadSprite("Cards/" + tid + "_Front");
+        if (s != null) return s.texture;
+
+        // 镜像目录（真实新卡面，兼容花括号/无花括号）
+        if (template.cardType == CardType.Spell)
+        {
+            int scost = Mathf.Clamp(template.baseCost, 0, 5);
+            s = LoadSprite("Cards/Spell/Normal/" + scost + "/SpellCard_{" + tid + "}")
+             ?? LoadSprite("Cards/Spell/Special/" + scost + "/SpellCard_{" + tid + "}")
+             ?? LoadSprite("Cards/Spell/Normal/" + scost + "/SpellCard_" + tid)
+             ?? LoadSprite("Cards/Spell/Special/" + scost + "/SpellCard_" + tid);
+        }
+        else
+        {
+            string sub;
+            switch (template.summonType)
+            {
+                case SummonType.Hero:      sub = "Hero/" + template.baseCost; break;
+                case SummonType.ChosenOne: sub = "ChosenOne"; break;
+                default:                   sub = "Special"; break;
+            }
+            s = LoadSprite("Cards/Summon/" + sub + "/SummonCard_{" + tid + "}")
+             ?? LoadSprite("Cards/Summon/" + sub + "/SummonCard_" + tid);
+        }
+        return s != null ? s.texture : Texture2D.whiteTexture;
+    }
+
+    /// <summary>前缀 → 前缀底图文件名（Abyss/Blood/Mech/Psychic/Scroll/Common）。</summary>
+    static string PrefixEnglish(string prefixes)
+    {
+        if (string.IsNullOrEmpty(prefixes) || prefixes == "无") return "Common";
+        if (prefixes.Contains("渊"))       return "Abyss";
+        if (prefixes.Contains("机械"))     return "Mech";
+        if (prefixes.Contains("灵能"))     return "Psychic";
+        if (prefixes.Contains("血歌"))     return "Blood";
+        if (prefixes.Contains("神灵画卷")) return "Scroll";
+        return "Common";
+    }
+
+    /// <summary>旧占位卡面（Card000_Front / CardSpell000_Front）——视为未分配真实卡面。</summary>
+    static bool IsLegacyPlaceholder(Sprite s)
+    {
+        if (s == null) return false;
+        return s.name == "Card000_Front" || s.name == "CardSpell000_Front";
+    }
+
+    /// <summary>从 Art/Sprites/ 相对路径加载 Sprite：先 Resources，编辑器回退 AssetDatabase。</summary>
+    Sprite LoadSprite(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return null;
+        Sprite s = Resources.Load<Sprite>(path);
+        if (s != null) return s;
+#if UNITY_EDITOR
+        string full = "Assets/_Game/Art/Sprites/" + path + ".png";
+        s = UnityEditor.AssetDatabase.LoadAssetAtPath<Sprite>(full);
+        if (s != null) return s;
+        s = UnityEditor.AssetDatabase.LoadAssetAtPath<Sprite>(full.Replace(".png", ".jpg"));
+#endif
+        return s;
     }
 
     public void Refresh()

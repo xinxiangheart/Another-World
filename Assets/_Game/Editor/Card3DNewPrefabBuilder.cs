@@ -5,8 +5,10 @@ using TMPro;
 /// <summary>
 /// 一键生成新 3D 手牌卡牌预制体（独立于旧 3D 卡 Card00_3D，不修改任何旧资产）。
 /// 模型：Assets/_Game/Art/Models/Summon/Card00_New.fbx（0.9×1.6×0.03 薄盒，卡面 +Z / 卡背+侧面 -Z）。
-/// 卡面材质：CardComposite 三层合成（_BgTex/_BorderTex/_ArtTex，由 CardDisplay3D.ApplyArtFromCard 每卡设置）。
-/// 背面材质：复用 cardback.mat。
+/// 卡面材质：CardComposite 三层合成，由 CardDisplay3D.ApplyArtFromCard 按 Cards/ 目录路径加载：
+///   _BgTex = 费用卡框 Cards/SummonCard_{cost}；_BorderTex = 前缀底图 Cards/PrefixArtBG/{English}；
+///   _ArtTex = cardSprite2D → Cards/{tid}_Front → 镜像 Cards/Summon 目录。
+/// 背面材质：新 card_new_back.mat（CardCutout + Cards/Back.png）。
 /// 布局：以新 2D 预制体 Card00_New_2D 为基准（0.9×1.6 卡 ×0.0108/0.01093 换算），
 ///   卡面 = 网格(CostFrameBase/ArtworkArea)，文字 + 图标 + 三排图标对齐 2D：
 ///   - NameText 卡名(顶部横幅) / CostIcon+CostText 左上(部分超边) / TypeIcon 顶部中央
@@ -21,7 +23,7 @@ public static class Card3DNewPrefabBuilder
 {
     const string FBXPath = "Assets/_Game/Art/Models/Summon/Card00_New.fbx";
     const string FrontMatPath = "Assets/_Game/Art/Materials/card_new_front.mat";
-    const string BackMatPath = "Assets/_Game/Art/Materials/cardback.mat";
+    const string BackMatPath = "Assets/_Game/Art/Materials/card_new_back.mat";
     const string FontPath = "Assets/_Game/Fonts/NotoSerifCJKsc-Black SDF.asset";
     const string PrefabPath = "Assets/_Game/Prefabs/Cards/Summon/Card00_New_3D.prefab";
 
@@ -59,7 +61,16 @@ public static class Card3DNewPrefabBuilder
             AssetDatabase.CreateAsset(frontMat, FrontMatPath);
         }
         Material backMat = AssetDatabase.LoadAssetAtPath<Material>(BackMatPath);
-        if (backMat == null) { Debug.LogError($"[Card3DNew] 找不到背面材质: {BackMatPath}"); return; }
+        if (backMat == null)
+        {
+            // 新背面材质：CardCutout + Cards/Back.png（不动共享的 cardback.mat）
+            Shader cutout = AssetDatabase.LoadAssetAtPath<Shader>("Assets/_Game/Art/Shaders/CardCutout.shader");
+            if (cutout == null) { Debug.LogError("[Card3DNew] 找不到 shader: AnotherWorld/CardCutout"); return; }
+            backMat = new Material(cutout) { name = "card_new_back" };
+            Texture2D backTex = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/_Game/Art/Sprites/Cards/Back.png");
+            if (backTex != null) backMat.SetTexture("_MainTex", backTex);
+            AssetDatabase.CreateAsset(backMat, BackMatPath);
+        }
 
         // ── 实例化模型 ──
         GameObject root = (GameObject)PrefabUtility.InstantiatePrefab(fbx);
