@@ -54,7 +54,10 @@ public class CardArtConfig : ScriptableObject
         var cfg = Instance;
         Texture2D bg    = cfg != null ? GetBackground(cfg, template, instance).texture : Texture2D.whiteTexture;
         Texture2D border = cfg != null ? GetBorder(cfg, instance).texture : Texture2D.whiteTexture;
-        Texture2D art   = template.cardSprite2D != null ? template.cardSprite2D.texture : Texture2D.whiteTexture;
+        // 卡面：cardSprite2D 仍指向旧占位图(Card000_Front/CardSpell000_Front)时视为未分配 → 白色（露出底图/边框），
+        // 与 CardDisplay2DNew 隐藏卡面层的行为对齐
+        Texture2D art = (template.cardSprite2D != null && !IsLegacyPlaceholder(template.cardSprite2D))
+            ? template.cardSprite2D.texture : Texture2D.whiteTexture;
         return (bg, border, art);
     }
 
@@ -93,6 +96,13 @@ public class CardArtConfig : ScriptableObject
             return cfg.bgSummon3Cost;
         if (cfg.bgSummon5Cost != null) return cfg.bgSummon5Cost;
         return cfg.bgSpecial; // fallback
+    }
+
+    /// <summary>旧占位卡面（Card000_Front / CardSpell000_Front）——全卡共用，视为未分配真实卡面。</summary>
+    static bool IsLegacyPlaceholder(Sprite s)
+    {
+        if (s == null) return false;
+        return s.name == "Card000_Front" || s.name == "CardSpell000_Front";
     }
 
     static Sprite GetBorder(CardArtConfig cfg, CardInstance instance)

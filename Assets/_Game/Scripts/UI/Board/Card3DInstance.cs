@@ -18,5 +18,8 @@ public class Card3DInstance : MonoBehaviour
     {
         CardDisplay3D display = GetComponent<CardDisplay3D>();
         if (display != null) display.Refresh();
+        // 新 3D 卡图标（费用/类型/攻/血 + 三排）随同一触发点刷新；旧卡无此组件则跳过
+        CardIcons3D icons = GetComponent<CardIcons3D>();
+        if (icons != null) icons.Refresh();
     }
 }
