@@ -41,11 +41,27 @@ MonoBehaviour:
   attacksBackRow: 0
   revengeEffect: 
   traits: "1.\u5148\u624B\uFF1A\u4F7F\u4EFB\u610F\u4E00\u53EC\u5524\u7269\u672C\u6B21\u653B\u51FB\u56DE\u5408\u653B\u51FB\u529B\u4E34\u65F6\u53D8\u4E3A1"
+  traitProperties: 
+  traitEntries:
+  - text: "\u4F7F\u4EFB\u610F\u4E00\u53EC\u5524\u7269\u672C\u6B21\u653B\u51FB\u56DE\u5408\u653B\u51FB\u529B\u4E34\u65F6\u53D8\u4E3A1"
+    isEnter: 0
+    isFirstStrike: 1
+    isRevenge: 0
+    isDeath: 0
+    isActiveExit: 0
+    isDiscard: 0
+    isAttach: 0
+    isGrant: 0
+  traitsMigrated: 1
   spellType: 0
   effect: 
   cardSprite2D: {fileID: 21300000, guid: 5b304bc03b4e1b24bb939969d960fee4, type: 3}
   spellCardBackSprite2D: {fileID: 0}
   summonCardBackSprite2D: {fileID: 21300000, guid: dedb5407eb25af146b5304d6186e765c, type: 3}
-  prefab3D: {fileID: 3073981545973084812, guid: e09968ed5c12f8f4c91568ea8122934f, type: 3}
-  spellPrefab3D: {fileID: 3073981545973084812, guid: e09968ed5c12f8f4c91568ea8122934f, type: 3}
+  prefab3D: {fileID: 2651563214768550210, guid: e09968ed5c12f8f4c91568ea8122934f, type: 3}
+  spellPrefab3D: {fileID: 7452367849593910369, guid: e09968ed5c12f8f4c91568ea8122934f, type: 3}
+  hasBuff: 0
+  buffText: 
+  hasDebuff: 0
+  debuffText: 
   targetType: 12

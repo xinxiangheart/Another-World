@@ -27,21 +27,21 @@ public static class Card3DNewPrefabBuilder
     const string FontPath = "Assets/_Game/Fonts/NotoSerifCJKsc-Black SDF.asset";
     const string PrefabPath = "Assets/_Game/Prefabs/Cards/Summon/Card00_New_3D.prefab";
 
-    // 旧 3D 卡文字显示参数（保证在 0.9×1.6 卡上渲染一致）
-    static readonly Vector3 TextScale = new Vector3(1.4814816f, 1f, 0.8333331f);
+    // 文字局部 scale 均匀（根 scale 已均匀 1.5，不再需要非均匀补偿；避免字形拉伸）
+    static readonly Vector3 TextScale = Vector3.one;
     const float TextZ = 0.1f;      // 文字 z
     const float IconZ = 0.06f;     // 图标 z（文字下层）
     const float RowZ  = 0.06f;     // 三排 z
 
-    // 2D 布局换算（×0.0108 / ×0.01093），角标按"部分超出卡边"外延调整
-    static readonly Vector2 NamePos   = new Vector2(0f,     0.64f);   // NameText 顶部横幅
-    static readonly Vector2 CostPos   = new Vector2(-0.40f, 0.74f);   // 左上，左超边
-    static readonly Vector2 TypePos   = new Vector2(0f,     0.72f);   // 顶部中央
-    static readonly Vector2 HealthPos = new Vector2(-0.40f, -0.63f);  // 左下，左超边
-    static readonly Vector2 AttackPos = new Vector2(0.40f,  -0.63f);  // 右下，右超边
-    static readonly Vector2 PrefixRowPos = new Vector2(0f, 0.52f);    // 前缀排
-    static readonly Vector2 TraitRowPos  = new Vector2(0f, -0.54f);   // 特性排
-    static readonly Vector2 StatusRowPos = new Vector2(0f, -0.76f);   // 状态排
+    // 2D 布局换算 + 外延。本地坐标空间 = 0.9×1.6 FBX 网格（±0.45×±0.8），根 scale 均匀 1.5 → 世界 1.35×2.4
+    static readonly Vector2 NamePos   = new Vector2(0f,     0.64f);    // NameText 顶部横幅
+    static readonly Vector2 CostPos   = new Vector2(-0.40f, 0.74f);    // 左上，左超边
+    static readonly Vector2 TypePos   = new Vector2(0f,     0.72f);    // 顶部中央
+    static readonly Vector2 HealthPos = new Vector2(-0.40f, -0.63f);   // 左下，左超边
+    static readonly Vector2 AttackPos = new Vector2(0.40f,  -0.63f);   // 右下，右超边
+    static readonly Vector2 PrefixRowPos = new Vector2(0f,  0.52f);    // 前缀排
+    static readonly Vector2 TraitRowPos  = new Vector2(0f, -0.54f);    // 特性排
+    static readonly Vector2 StatusRowPos = new Vector2(0f, -0.76f);    // 状态排
 
     [MenuItem("Tools/卡牌/生成新3D手牌预制体")]
     public static void CreatePrefab()
@@ -75,15 +75,16 @@ public static class Card3DNewPrefabBuilder
         // ── 实例化模型 ──
         GameObject root = (GameObject)PrefabUtility.InstantiatePrefab(fbx);
         root.name = "Card00_New_3D";
-        root.transform.localScale = Vector3.one;
+        // 根 scale 均匀 1.5 → 0.9×1.6 网格 × 1.5 = 1.35×2.4 世界（均匀缩放不拉伸文字/图标）
+        root.transform.localScale = new Vector3(1.5f, 1.5f, 1f);
         root.transform.localRotation = Quaternion.identity;
 
-        // ── 材质槽：slot0=卡面(CardComposite)  slot1=卡背 ──
+        // ── 材质槽：FBX 卡面在 mat0 → MeshRenderer materials[0]=卡面(合成)，背面/侧面 mat1 → materials[1]=卡背 ──
         MeshRenderer mr = root.GetComponentInChildren<MeshRenderer>();
         if (mr == null) { Debug.LogError("[Card3DNew] 模型无 MeshRenderer"); Object.DestroyImmediate(root); return; }
         Material[] mats = new Material[Mathf.Max(2, mr.sharedMaterials.Length)];
-        mats[0] = frontMat;
-        for (int i = 1; i < mats.Length; i++) mats[i] = backMat;
+        mats[0] = frontMat;  // FBX mat0（卡面）→ materials[0]
+        for (int i = 1; i < mats.Length; i++) mats[i] = backMat; // FBX mat1（背面/侧面）→ materials[1]
         mr.sharedMaterials = mats;
 
         // ── 脚本（与旧 3D 卡一致 + 图标显示；Animator 由 Card3DInstance.Awake 运行时补）──
@@ -93,29 +94,43 @@ public static class Card3DNewPrefabBuilder
         root.AddComponent<Card3DHover>();
         root.AddComponent<DamageSourceMarker>();
 
-        // ── BoxCollider（比卡面略大便于点击，可调）──
+        // ── BoxCollider（局部 0.9×1.6 × 根 scale 1.5 → 世界 1.35×2.4，与卡面一致；厚度略厚便于点选）──
         BoxCollider bc = root.GetComponent<BoxCollider>();
         if (bc == null) bc = root.AddComponent<BoxCollider>();
-        bc.size = new Vector3(1.1f, 1.9f, 0.03f);
+        bc.size = new Vector3(0.9f, 1.6f, 0.06f);
         bc.center = Vector3.zero;
+
+        // ── 正反面容器（对齐 2D 新卡 Card00_New_2D 层级）──
+        Transform frontFace = CreateStructuralNode(root, "FrontFace");
+        Transform backFace  = CreateStructuralNode(root, "BackFace");
+
+        // ── FrontFace / CostFrameBase（费用卡框结构节点，实际渲染在合成网格）──
+        CreateStructuralNode(frontFace.gameObject, "CostFrameBase");
+        // ── ArtworkArea → PrefixArtBG（下层）+ CardArt（上层）──
+        Transform artwork = CreateStructuralNode(frontFace.gameObject, "ArtworkArea");
+        CreateStructuralNode(artwork.gameObject, "PrefixArtBG");
+        CreateStructuralNode(artwork.gameObject, "CardArt");
 
         // ── 文字（identity 朝向，按 2D 布局定位）──
         // 字号比例对齐 2D（名 8.2 < 费 10 ≈ 血 9.8 < 攻 10.55）：名字最小、攻最大
-        TextMeshPro nameT = CreateTextChild(root, "NameText", font, "卡名", 0.55f, 0.75f, NamePos);
-        TextMeshPro costT = CreateTextChild(root, "CostText", font, "0", 0.72f, 0.92f, CostPos);
-        TextMeshPro atkT  = CreateTextChild(root, "AttackText", font, "0", 0.75f, 0.95f, AttackPos);
-        TextMeshPro hpT   = CreateTextChild(root, "HealthText", font, "0", 0.70f, 0.90f, HealthPos);
+        TextMeshPro nameT = CreateTextChild(frontFace.gameObject, "NameText", font, "卡名", 0.55f, 0.75f, NamePos);
+        TextMeshPro costT = CreateTextChild(frontFace.gameObject, "CostText", font, "0", 0.72f, 0.92f, CostPos);
+        TextMeshPro atkT  = CreateTextChild(frontFace.gameObject, "AttackText", font, "0", 0.75f, 0.95f, AttackPos);
+        TextMeshPro hpT   = CreateTextChild(frontFace.gameObject, "HealthText", font, "0", 0.70f, 0.90f, HealthPos);
 
         // ── 角标图标 SpriteRenderer（identity 朝向，运行时由 CardIcons3D 填 sprite）──
-        SpriteRenderer costIcon   = CreateIconChild(root, "CostIcon",   CostPos);
-        SpriteRenderer typeIcon   = CreateIconChild(root, "TypeIcon",   TypePos);
-        SpriteRenderer healthIcon = CreateIconChild(root, "HealthIcon", HealthPos);
-        SpriteRenderer attackIcon = CreateIconChild(root, "AttackIcon", AttackPos);
+        SpriteRenderer costIcon   = CreateIconChild(frontFace.gameObject, "CostIcon",   CostPos);
+        SpriteRenderer typeIcon   = CreateIconChild(frontFace.gameObject, "TypeIcon",   TypePos);
+        SpriteRenderer healthIcon = CreateIconChild(frontFace.gameObject, "HealthIcon", HealthPos);
+        SpriteRenderer attackIcon = CreateIconChild(frontFace.gameObject, "AttackIcon", AttackPos);
 
         // ── 三排容器（运行时动态生成子图标）──
-        Transform prefixRow = CreateRowChild(root, "PrefixIconsArea", PrefixRowPos);
-        Transform traitRow  = CreateRowChild(root, "TraitIconsArea",  TraitRowPos);
-        Transform statusRow = CreateRowChild(root, "StatusIconsArea", StatusRowPos);
+        Transform prefixRow = CreateRowChild(frontFace.gameObject, "PrefixIconsArea", PrefixRowPos);
+        Transform traitRow  = CreateRowChild(frontFace.gameObject, "TraitIconsArea",  TraitRowPos);
+        Transform statusRow = CreateRowChild(frontFace.gameObject, "StatusIconsArea", StatusRowPos);
+
+        // ── BackFace / CardBackImage（卡背结构节点，实际渲染在背面网格）──
+        CreateStructuralNode(backFace.gameObject, "CardBackImage");
 
         // ── 接线显示脚本 ──
         display.nameText = nameT;
@@ -140,11 +155,89 @@ public static class Card3DNewPrefabBuilder
             string folder = System.IO.Path.GetFileName(dir);
             AssetDatabase.CreateFolder(parent, folder);
         }
+
+        // 从 2D 预制体 Card00_New_2D 复制已拖入的 Sprite 到 3D 显示组件（同名自动绑定）
+        BindSpritesFrom2D(root);
+
         PrefabUtility.SaveAsPrefabAsset(root, PrefabPath);
         Object.DestroyImmediate(root);
 
+        // 生成后自动把全部召唤物 CardData 的 prefab3D 引用指向新预制体根（重新生成时 fileID 会变，必须回写）
+        SyncAllSummonPrefab3D();
         AssetDatabase.SaveAssets();
         Debug.Log($"[Card3DNew] 预制体已生成: {PrefabPath}（CardComposite 卡面 + 文字/图标按 2D 布局，三排图标运行时填充）");
+    }
+
+    /// <summary>把全部召唤物 CardData 的 prefab3D 引用指向新预制体根（含 Card3DInstance 的物体）。
+    /// 用 SerializedObject 写入对象引用，Unity 自动序列化正确的 (fileID, guid)，重新生成后引用保持有效。</summary>
+    static void SyncAllSummonPrefab3D()
+    {
+        GameObject prefabAsset = AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath);
+        if (prefabAsset == null) { Debug.LogWarning("[Card3DNew] 找不到生成的预制体，跳过引用同步"); return; }
+        Card3DInstance holder = prefabAsset.GetComponentInChildren<Card3DInstance>();
+        if (holder == null) { Debug.LogWarning("[Card3DNew] 预制体无 Card3DInstance，跳过引用同步"); return; }
+
+        int updated = 0;
+        foreach (string folder in new[] { "CardData", "ChosenOneData" })
+        {
+            foreach (CardData data in Resources.LoadAll<CardData>(folder))
+            {
+                if (data.cardType != CardType.Summon) continue; // 只改召唤物，法术不动
+                var so = new SerializedObject(data);
+                var prop = so.FindProperty("prefab3D");
+                if (prop.objectReferenceValue != holder.gameObject)
+                {
+                    prop.objectReferenceValue = holder.gameObject;
+                    so.ApplyModifiedPropertiesWithoutUndo();
+                    updated++;
+                }
+            }
+        }
+        Debug.Log($"[Card3DNew] 已同步 {updated} 个召唤物 prefab3D 引用 → {PrefabPath}");
+    }
+
+    /// <summary>从 2D 预制体 Card00_New_2D 的 CardDisplay2DNew 复制所有已拖入的 Sprite 字段到 3D 的
+    /// CardDisplay3D / CardIcons3D（字段名与 2D 完全一致，反射按名复制；拖入即用，路径兜底）。</summary>
+    static void BindSpritesFrom2D(GameObject root)
+    {
+        const string path2D = "Assets/_Game/Prefabs/Cards/Summon/Card00_New_2D.prefab";
+        var src = AssetDatabase.LoadAssetAtPath<GameObject>(path2D);
+        if (src == null) { Debug.LogWarning($"[Card3DNew] 找不到 2D 预制体: {path2D}"); return; }
+        var srcDisplay = src.GetComponent<CardDisplay2DNew>();
+        if (srcDisplay == null) { Debug.LogWarning("[Card3DNew] 2D 预制体无 CardDisplay2DNew，跳过绑定"); return; }
+
+        var dstDisplay = root.GetComponent<CardDisplay3D>();
+        var dstIcons = root.GetComponent<CardIcons3D>();
+        if (dstDisplay == null && dstIcons == null) return;
+
+        var flags = System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance;
+        int copied = 0;
+        foreach (var f in typeof(CardDisplay2DNew).GetFields(flags))
+        {
+            if (f.FieldType != typeof(Sprite) && f.FieldType != typeof(Sprite[])) continue;
+            var val = f.GetValue(srcDisplay);
+            if (val == null) continue;
+            var dst = dstDisplay != null ? dstDisplay.GetType().GetField(f.Name) : null;
+            if (dst != null) { dst.SetValue(dstDisplay, val); copied++; continue; }
+            if (dstIcons != null)
+            {
+                dst = dstIcons.GetType().GetField(f.Name);
+                if (dst != null) { dst.SetValue(dstIcons, val); copied++; }
+            }
+        }
+        Debug.Log($"[Card3DNew] 已从 2D 预制体复制 {copied} 个 Sprite 字段绑定");
+    }
+
+    /// <summary>创建空结构容器（FrontFace/BackFace/CostFrameBase/ArtworkArea/PrefixArtBG/CardArt/CardBackImage）——
+    /// 纯层级节点，实际渲染由合成网格/背面网格承担，编辑时便于对照 2D 新卡结构。</summary>
+    static Transform CreateStructuralNode(GameObject parent, string name)
+    {
+        var go = new GameObject(name, typeof(Transform));
+        go.transform.SetParent(parent.transform, false);
+        go.transform.localPosition = Vector3.zero;
+        go.transform.localRotation = Quaternion.identity;
+        go.transform.localScale = Vector3.one;
+        return go.transform;
     }
 
     /// <summary>创建 TMP 3D 文字子物体：identity 朝向（卡根 Y180 后正面朝相机），位置按 2D 换算。</summary>

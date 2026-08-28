@@ -36,6 +36,7 @@ public class CardDatabase : MonoBehaviour
     // 通过模板ID获取模板数据
     public CardData GetTemplate(string templateID)
     {
+        if (string.IsNullOrEmpty(templateID)) return null; // 空 key 直接返回，避免 Dictionary.TryGetValue(null) 抛异常
         templateDict.TryGetValue(templateID, out CardData data);
         if (data == null)
             Debug.LogWarning($"CardDatabase：未找到模板 {templateID}");

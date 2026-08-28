@@ -11,6 +11,18 @@ public class CardDisplay3D : MonoBehaviour
     public TextMeshPro prefixText;
     public TextMeshPro effectText;
 
+    [Header("直接拖入 Sprite（优先于路径，对齐 2D 新卡 CardDisplay2DNew）")]
+    [Tooltip("费用卡框 0-5（index=费用）")]
+    public Sprite[] costFrameSprites;
+    [Tooltip("卡背图")]
+    public Sprite cardBackSprite;
+    [Tooltip("通用前缀底图（无前缀/其他前缀）")]
+    public Sprite defaultPrefixArtSprite;
+    [Tooltip("五前缀底图（index: 0=灵能,1=渊,2=机械,3=血歌,4=神灵画卷）")]
+    public Sprite[] prefixArtSprites;
+    [Tooltip("原画占位（找不到卡面时兜底）")]
+    public Sprite cardArtFallbackSprite;
+
     MaterialPropertyBlock _mpb;
     bool _artInitialized;
 
@@ -39,7 +51,7 @@ public class CardDisplay3D : MonoBehaviour
     ///   _BgTex    = 费用卡框  Cards/SummonCard_{cost}（0-5费）
     ///   _BorderTex = 前缀底图 Cards/PrefixArtBG/{Abyss|Blood|Mech|Psychic|Scroll|Common}
     ///   _ArtTex   = 卡面原画  cardSprite2D → Cards/{templateID}_Front → 镜像 Cards/Summon 目录 → 白
-    /// 路径加载失败回退 CardArtConfig；再失败留白（露出底层）。
+    /// 拖入 Sprite 字段优先 → 路径加载 → CardArtConfig → 白（与 2D CardDisplay2DNew 一致）。
     /// </summary>
     public void ApplyArtFromCard(CardInstance instance)
     {
@@ -47,23 +59,60 @@ public class CardDisplay3D : MonoBehaviour
         CardData template = CardDatabase.Instance?.GetTemplate(instance.templateID);
         if (template == null) return;
 
-        // ① 费用卡框 Cards/SummonCard_{cost}（对齐新2D CostFrameBase）
+        // ① 费用卡框：拖入 costFrameSprites[cost] → 路径 Cards/SummonCard_{cost} → CardArtConfig 底图 → 白
         int cost = Mathf.Clamp(template.baseCost, 0, 5);
-        Sprite bgSpr = LoadSprite("Cards/SummonCard_" + cost);
+        Sprite bgSpr = (costFrameSprites != null && cost < costFrameSprites.Length) ? costFrameSprites[cost] : null;
+        if (bgSpr == null) bgSpr = LoadSprite("Cards/SummonCard_" + cost);
         Texture2D bg = bgSpr != null ? bgSpr.texture : null;
         if (bg == null && CardArtConfig.Instance != null)
             bg = CardArtConfig.Get2DBackground(template, instance)?.texture;
 
-        // ② 前缀底图 Cards/PrefixArtBG/{English}（对齐新2D PrefixArtBG）
-        Sprite borderSpr = LoadSprite("Cards/PrefixArtBG/" + PrefixEnglish(instance.prefixes));
+        // ② 前缀底图：拖入 prefixArtSprites[idx]/defaultPrefixArtSprite → 路径 Cards/PrefixArtBG/{English} → CardArtConfig 边框 → 白
+        Sprite borderSpr = GetPrefixArtBGSprite(instance.prefixes);
+        if (borderSpr == null) borderSpr = LoadSprite("Cards/PrefixArtBG/" + PrefixEnglish(instance.prefixes));
         Texture2D border = borderSpr != null ? borderSpr.texture : null;
         if (border == null && CardArtConfig.Instance != null)
             border = CardArtConfig.Get2DBorder(instance)?.texture;
 
-        // ③ 卡面原画：cardSprite2D → {templateID}_Front → 镜像 Cards/Summon 目录 → 白
+        // ③ 卡面原画：cardSprite2D → {templateID}_Front → 镜像 Cards/Summon 目录 → cardArtFallbackSprite → 白
         Texture2D art = ResolveArtTexture(template);
 
         SetCompositeTextures(bg, border, art);
+
+        // ④ 卡背：拖入 cardBackSprite 则用其纹理覆盖背面 _MainTex
+        ApplyCardBack(cardBackSprite);
+    }
+
+    /// <summary>前缀底图：拖入 prefixArtSprites[index]（五前缀）或 defaultPrefixArtSprite（通用）优先。</summary>
+    Sprite GetPrefixArtBGSprite(string prefixes)
+    {
+        int idx = PrefixIndex(prefixes);
+        if (idx >= 0 && prefixArtSprites != null && idx < prefixArtSprites.Length)
+            return prefixArtSprites[idx];
+        return defaultPrefixArtSprite;
+    }
+
+    /// <summary>前缀 → 底图数组 index（0=灵能,1=渊,2=机械,3=血歌,4=神灵画卷）。无/其他 → -1。</summary>
+    static int PrefixIndex(string prefixes)
+    {
+        if (string.IsNullOrEmpty(prefixes) || prefixes == "无") return -1;
+        if (prefixes.Contains("灵能"))   return 0;
+        if (prefixes.Contains("渊"))     return 1;
+        if (prefixes.Contains("机械"))   return 2;
+        if (prefixes.Contains("血歌"))   return 3;
+        if (prefixes.Contains("神灵画卷")) return 4;
+        return -1;
+    }
+
+    /// <summary>拖入的 cardBackSprite 覆盖背面材质 _MainTex（卡背用 CardCutout，MPB 设 _MainTex 只影响背槽）。</summary>
+    void ApplyCardBack(Sprite backSprite)
+    {
+        if (backSprite == null) return;
+        var mr = GetComponent<MeshRenderer>();
+        if (mr == null || _mpb == null) return;
+        mr.GetPropertyBlock(_mpb);
+        _mpb.SetTexture("_MainTex", backSprite.texture);
+        mr.SetPropertyBlock(_mpb);
     }
 
     /// <summary>卡面原画解析：真实 cardSprite2D → {tid}_Front → 镜像 Cards/Summon 目录（含法术 Normal/Special）→ 白。</summary>
@@ -72,7 +121,7 @@ public class CardDisplay3D : MonoBehaviour
         if (template != null && template.cardSprite2D != null && !IsLegacyPlaceholder(template.cardSprite2D))
             return template.cardSprite2D.texture;
         if (template == null || string.IsNullOrEmpty(template.templateID))
-            return Texture2D.whiteTexture;
+            return FallbackArtTexture();
 
         string tid = template.templateID;
         // 旧平铺命名 Cards/{tid}_Front
@@ -100,8 +149,12 @@ public class CardDisplay3D : MonoBehaviour
             s = LoadSprite("Cards/Summon/" + sub + "/SummonCard_{" + tid + "}")
              ?? LoadSprite("Cards/Summon/" + sub + "/SummonCard_" + tid);
         }
-        return s != null ? s.texture : Texture2D.whiteTexture;
+        return s != null ? s.texture : FallbackArtTexture();
     }
+
+    /// <summary>卡面兜底：拖入 cardArtFallbackSprite 用其纹理，否则白（透明，露出底图/边框）。</summary>
+    Texture2D FallbackArtTexture()
+        => cardArtFallbackSprite != null ? cardArtFallbackSprite.texture : Texture2D.whiteTexture;
 
     /// <summary>前缀 → 前缀底图文件名（Abyss/Blood/Mech/Psychic/Scroll/Common）。</summary>
     static string PrefixEnglish(string prefixes)

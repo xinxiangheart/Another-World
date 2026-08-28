@@ -76,8 +76,8 @@ MonoBehaviour:
   cardSprite2D: {fileID: 21300000, guid: 5b304bc03b4e1b24bb939969d960fee4, type: 3}
   spellCardBackSprite2D: {fileID: 0}
   summonCardBackSprite2D: {fileID: 21300000, guid: dedb5407eb25af146b5304d6186e765c, type: 3}
-  prefab3D: {fileID: 3073981545973084812, guid: e09968ed5c12f8f4c91568ea8122934f, type: 3}
-  spellPrefab3D: {fileID: 3073981545973084812, guid: e09968ed5c12f8f4c91568ea8122934f, type: 3}
+  prefab3D: {fileID: 2651563214768550210, guid: e09968ed5c12f8f4c91568ea8122934f, type: 3}
+  spellPrefab3D: {fileID: 7452367849593910369, guid: e09968ed5c12f8f4c91568ea8122934f, type: 3}
   hasBuff: 0
   buffText: 
   hasDebuff: 0

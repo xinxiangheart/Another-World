@@ -43,13 +43,13 @@ public class CardIcons3D : MonoBehaviour
     public string traitIconPath = "Icons/Buffs/";
     public string statusIconPath = "Icons/Buffs/";
 
-    [Header("尺寸（世界单位）")]
+    [Header("尺寸（世界单位，按 1.35×2.4 卡面缩放）")]
     [Tooltip("角标图标边长（费用/类型/攻/血）")]
-    public float cornerIconSize = 0.16f;
+    public float cornerIconSize = 0.24f;
     [Tooltip("三排单图标边长")]
-    public float rowIconSize = 0.12f;
+    public float rowIconSize = 0.18f;
     [Tooltip("三排图标水平间距")]
-    public float rowSpacing = 0.15f;
+    public float rowSpacing = 0.22f;
 
     CardInstance _inst;
     static Sprite _placeholder;
@@ -65,7 +65,7 @@ public class CardIcons3D : MonoBehaviour
 
         // ── 角标图标（费用恒显示；类型/攻/血法术隐藏）──
         SetCornerIcon(costIcon,   PickSprite(energyIconSprite, energyIconPath), true);
-        SetCornerIcon(typeIcon,   GetTypeSprite(_inst.summonType), !isSpell);
+        SetCornerIcon(typeIcon,   PickSprite(GetTypeSprite(_inst.summonType), TypeIconPath(_inst.summonType)), !isSpell);
         SetCornerIcon(healthIcon, PickSprite(healthIconSprite, healthIconPath), !isSpell);
         SetCornerIcon(attackIcon, PickSprite(attackIconSprite, attackIconPath), !isSpell);
 
@@ -172,6 +172,17 @@ public class CardIcons3D : MonoBehaviour
             case SummonType.Hero:      return heroTypeSprite;
             case SummonType.ChosenOne: return chosenOneTypeSprite;
             default:                   return specialTypeSprite;
+        }
+    }
+
+    /// <summary>类型图标路径回退（Icons/Type/Hero 等，未来有文件即生效；当前无类型图标资源 → 占位）。</summary>
+    static string TypeIconPath(SummonType t)
+    {
+        switch (t)
+        {
+            case SummonType.Hero:      return "Icons/Type/Hero";
+            case SummonType.ChosenOne: return "Icons/Type/ChosenOne";
+            default:                   return "Icons/Type/Special";
         }
     }
 
