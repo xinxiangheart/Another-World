@@ -9,8 +9,8 @@ using TMPro;
 /// 路径分支（Assets/_Game/Art/Sprites/）：
 ///   - 费用底图   Cards/SummonCard_{0}（0-5费）
 ///   - 卡面插画   优先取模板 cardSprite2D 字段；其次按镜像 Resources/CardData 目录加载：
-///                召唤物  Cards/Summon/{SummonType}/{tier}/SummonCard_{templateID}
-///                        （Hero→Hero/{tier}；ChosenOne→ChosenOne；Special→Special）
+///                召唤物  Cards/Summon/{SummonType}/{cost}/SummonCard_{templateID}
+///                        （Hero→Hero/{baseCost}，目录按费用分 1/3/5；ChosenOne→ChosenOne；Special→Special）
 ///                法术    Cards/Spell/{Normal|Special}/{cost}/SpellCard_{templateID}（Normal/Special 均尝试）
 ///   - 卡背       Cards/Back
 ///   - 能量/攻击/生命 UI/Energy、UI/Attack、UI/Health
@@ -576,7 +576,7 @@ public class CardDisplay2DNew : MonoBehaviour
     /// 卡面 Sprite 解析顺序：
     ///   ① 模板 cardSprite2D（项目新加载方式，拖入即用）——仍指向旧占位图(Card000_Front/CardSpell000_Front)视为未分配；
     ///   ② 新路径加载（镜像 Resources/CardData 目录结构）：
-    ///      召唤物 Cards/Summon/{SummonType}/{tier}/SummonCard_{templateID}（Hero→Hero/{tier}；ChosenOne；Special）
+    ///      召唤物 Cards/Summon/{SummonType}/{cost}/SummonCard_{templateID}（Hero→Hero/{baseCost}；ChosenOne；Special）
     ///      法术   Cards/Spell/{Normal|Special}/{cost}/SpellCard_{templateID}
     ///      （Normal/Special 无法从模板字段判定，两个子目录都试；文件名兼容花括号与无花括号命名）
     ///   ③ 都失败 → 返回 null → 调用方隐藏 CardArt 层，露出下层 PrefixArtBG 前缀底图兜底。
@@ -604,7 +604,8 @@ public class CardDisplay2DNew : MonoBehaviour
             string sub;
             switch (template.summonType)
             {
-                case SummonType.Hero:      sub = "Hero/" + template.baseTier; break;
+                // 目录按费用分（Hero/1、Hero/3、Hero/5），非阶位——3费卡 baseTier=2 但卡图在 Hero/3
+                case SummonType.Hero:      sub = "Hero/" + template.baseCost; break;
                 case SummonType.ChosenOne: sub = "ChosenOne"; break;
                 default:                   sub = "Special"; break;
             }
