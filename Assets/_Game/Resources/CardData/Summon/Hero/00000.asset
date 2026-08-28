@@ -44,6 +44,6 @@ MonoBehaviour:
   spellType: 0
   effect: 
   cardSprite2D: {fileID: 0}
-  prefab3D: {fileID: 1451899876978532017, guid: 433df7af0d0b28b45948cbdf892cd669, type: 3}
+  prefab3D: {fileID: 3073981545973084812, guid: e09968ed5c12f8f4c91568ea8122934f, type: 3}
   spellPrefab3D: {fileID: 0}
   targetType: 0
