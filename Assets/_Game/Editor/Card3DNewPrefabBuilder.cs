@@ -172,6 +172,29 @@ public static class Card3DNewPrefabBuilder
         icons.traitIconsRow = traitRow;
         icons.statusIconsRow = statusRow;
 
+        // ── 填入图标 Sprite（对齐 2D Card00_New_2D 拖入字段；均有路径兜底，填上保证精确一致）──
+        icons.energyIconSprite        = LoadEditorSprite("UI/Cost");
+        icons.attackIconSprite        = LoadEditorSprite("UI/Attack");
+        icons.healthIconSprite        = LoadEditorSprite("UI/Health");
+        icons.heroTypeSprite          = LoadEditorSprite("UI/Hero");
+        icons.chosenOneTypeSprite     = LoadEditorSprite("UI/Chosen");
+        icons.specialTypeSprite       = LoadEditorSprite("UI/Special");
+        icons.prefixPsychicSprite     = LoadEditorSprite("Icons/Prefixes/Psychic");
+        icons.prefixAbyssSprite       = LoadEditorSprite("Icons/Prefixes/Abyss");
+        icons.prefixMechSprite        = LoadEditorSprite("Icons/Prefixes/Mech");
+        icons.prefixBloodsongSprite   = LoadEditorSprite("Icons/Prefixes/Blood");
+        icons.prefixScrollSprite      = LoadEditorSprite("Icons/Prefixes/Scroll");
+        icons.traitFirstStrikeSprite  = LoadEditorSprite("UI/First");
+        icons.traitOnEnterSprite      = LoadEditorSprite("UI/Enter");
+        icons.traitRevengeSprite      = LoadEditorSprite("UI/Reverge");
+        icons.traitDeathrattleSprite  = LoadEditorSprite("UI/Leave");
+        icons.traitActiveExitSprite   = LoadEditorSprite("UI/Exit");
+        icons.traitDiscardSprite      = LoadEditorSprite("UI/Discard");
+        icons.traitAttachSprite       = LoadEditorSprite("UI/Attach");
+        icons.statusShieldSprite      = LoadEditorSprite("Icons/Buffs/Shield");
+        icons.statusBuffSprite        = LoadEditorSprite("Icons/Buffs/Buff");
+        icons.statusDebuffSprite      = LoadEditorSprite("Icons/Buffs/DeBuff");
+
         // ── 接线卡面三层（预览字段由 CardDisplay3D.OnValidate 在预制体里直接拖入显示）──
         display.frameSR = frameSR;
         display.prefixBgSR = prefixSR;
@@ -191,6 +214,10 @@ public static class Card3DNewPrefabBuilder
         AssetDatabase.SaveAssets();
         Debug.Log($"[Card3DNew] 预制体已生成: {PrefabPath}（卡框/前缀背景/卡图三层 SpriteRenderer 可手调比例 + 文字/图标按 2D 布局，三排图标运行时填充）");
     }
+
+    /// <summary>编辑器下从 Art/Sprites/ 相对路径加载 Sprite（供图标/预览字段填充）。</summary>
+    static Sprite LoadEditorSprite(string relativePath)
+        => AssetDatabase.LoadAssetAtPath<Sprite>("Assets/_Game/Art/Sprites/" + relativePath + ".png");
 
     /// <summary>创建卡面 SpriteRenderer（identity 朝向，居中，z 定，比例用传入值——预制体里可手调，运行时不重算）。</summary>
     static SpriteRenderer CreateFaceSR(GameObject parent, string name, float z, Vector3 scale)
