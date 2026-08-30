@@ -46,6 +46,8 @@ public class CardDisplay3D : MonoBehaviour
         // 使用 MaterialPropertyBlock 替代每卡独立 Material 实例
         // —— 避免 new Material() 的 GPU 端资源分配，所有卡共享同一材质
         _mpb = new MaterialPropertyBlock();
+        // 默认正面：隐藏模型盒（己方卡放置不调 SetHidden(false)，在此确保；对手卡随后 SetHidden(true) 会翻回背面）
+        ShowFront();
     }
 
     /// <summary>设置三层合成贴图（通过 MaterialPropertyBlock，避免每卡独立材质）。</summary>

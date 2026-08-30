@@ -584,8 +584,8 @@ MonoBehaviour:
   prefixBgSR: {fileID: 1824677045783243858}
   cardArtSR: {fileID: 1991539272577326468}
   previewFrameSprite: {fileID: 0}
-  previewArtSprite: {fileID: 21300000, guid: dd0846a45b74e64418a66b24c9d041de, type: 3}
-  previewPrefixBgSprite: {fileID: 21300000, guid: 708745a8649994c4c98dacca3ee11d73, type: 3}
+  previewArtSprite: {fileID: 0}
+  previewPrefixBgSprite: {fileID: 0}
   costFrameSprites:
   - {fileID: 21300000, guid: 2f4ae534a9bfdec429531c0c71738b9f, type: 3}
   - {fileID: 21300000, guid: e582ccf8be31df542b430cad2c043967, type: 3}
@@ -654,15 +654,9 @@ MonoBehaviour:
   prefixRowSpacing: 0
   traitRowSpacing: 0
   statusRowSpacing: 0
-  previewPrefixIcons:
-  - {fileID: 21300000, guid: 3c0c99339d754f54ca436fcdb71b678a, type: 3}
-  - {fileID: 21300000, guid: 834cb5b46ca15d2458d840460e7f4620, type: 3}
-  previewTraitIcons:
-  - {fileID: 21300000, guid: b7dbc79bddfc9064380b766452522b2e, type: 3}
-  - {fileID: 21300000, guid: ccba1a1af20788645a515fe87472e25a, type: 3}
-  previewStatusIcons:
-  - {fileID: 21300000, guid: 9c12197ccb97c4d4c8d6afe8bcc0d179, type: 3}
-  - {fileID: 21300000, guid: 15142b79750331747ac3783ecf765ef8, type: 3}
+  previewPrefixIcons: []
+  previewTraitIcons: []
+  previewStatusIcons: []
 --- !u!114 &2182794185463531216
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1485,7 +1479,7 @@ SpriteRenderer:
   m_SortingLayerID: 0
   m_SortingLayer: 0
   m_SortingOrder: 0
-  m_Sprite: {fileID: 21300000, guid: dd0846a45b74e64418a66b24c9d041de, type: 3}
+  m_Sprite: {fileID: 0}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_FlipX: 0
   m_FlipY: 0
@@ -1493,7 +1487,7 @@ SpriteRenderer:
   m_Size: {x: 18, y: 24}
   m_AdaptiveModeThreshold: 0.5
   m_SpriteTileMode: 0
-  m_WasSpriteAssigned: 1
+  m_WasSpriteAssigned: 0
   m_MaskInteraction: 0
   m_SpriteSortPoint: 0
 --- !u!1 &8594156224782410427
