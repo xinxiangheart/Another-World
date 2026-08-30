@@ -35,6 +35,14 @@ public static class Card3DNewPrefabBuilder
     const float IconZ = 0.06f;     // 图标 z（文字下层）
     const float RowZ  = 0.06f;     // 三排 z
 
+    // 卡面三层 SpriteRenderer z（前->后：卡图 > 前缀背景 > 卡框；均低于图标/三排 0.06）
+    const float FaceArtZ    = 0.05f;   // 卡图 z（最前）
+    const float FacePrefixZ = 0.03f;   // 前缀背景 z
+    const float FaceFrameZ  = 0.02f;   // 卡框 z（最下）
+    // 默认铺满尺寸（生成器按贴图 bounds 反算 localScale；生成后可手调，运行时不重算）
+    static readonly Vector2 FrameSize   = new Vector2(0.9f, 1.6f);   // 卡框铺满卡面
+    static readonly Vector2 ArtAreaSize = new Vector2(0.69f, 0.92f); // 前缀背景/卡图（ArtworkArea 比例）
+
     // 2D 布局换算（×0.0108 / ×0.01093），角标按"部分超出卡边"外延调整
     static readonly Vector2 NamePos   = new Vector2(0f,     0.64f);   // NameText 顶部横幅
     static readonly Vector2 CostPos   = new Vector2(-0.40f, 0.74f);   // 左上，左超边
@@ -140,6 +148,15 @@ public static class Card3DNewPrefabBuilder
         Transform traitRow  = CreateRowChild(uiRoot, "TraitIconsArea",  TraitRowPos);
         Transform statusRow = CreateRowChild(uiRoot, "StatusIconsArea", StatusRowPos);
 
+        // ── 卡面三层 SpriteRenderer（卡框/前缀背景/卡图）。
+        //    默认比例按实际贴图 bounds 反算（编辑器加载）；生成后可手调，运行时不重算/不覆盖/不缩放。──
+        SpriteRenderer frameSR  = CreateFaceSR(uiRoot, "CardFrame", FaceFrameZ,
+            FitScale(AssetDatabase.LoadAssetAtPath<Sprite>("Assets/_Game/Art/Sprites/Cards/SummonCard_0.png"), FrameSize.x, FrameSize.y));
+        SpriteRenderer prefixSR = CreateFaceSR(uiRoot, "PrefixBg", FacePrefixZ,
+            FitScale(AssetDatabase.LoadAssetAtPath<Sprite>("Assets/_Game/Art/Sprites/Cards/PrefixArtBG/Abyss.png"), ArtAreaSize.x, ArtAreaSize.y));
+        SpriteRenderer artSR    = CreateFaceSR(uiRoot, "CardArt", FaceArtZ,
+            FitScale(AssetDatabase.LoadAssetAtPath<Sprite>("Assets/_Game/Art/Sprites/Cards/Summon/Hero/1/SummonCard_{01103}.png"), ArtAreaSize.x, ArtAreaSize.y));
+
         // ── 接线显示脚本 ──
         display.nameText = nameT;
         display.costText = costT;
@@ -155,6 +172,11 @@ public static class Card3DNewPrefabBuilder
         icons.traitIconsRow = traitRow;
         icons.statusIconsRow = statusRow;
 
+        // ── 接线卡面三层（预览字段由 CardDisplay3D.OnValidate 在预制体里直接拖入显示）──
+        display.frameSR = frameSR;
+        display.prefixBgSR = prefixSR;
+        display.cardArtSR = artSR;
+
         // ── 保存预制体 ──
         string dir = System.IO.Path.GetDirectoryName(PrefabPath);
         if (!AssetDatabase.IsValidFolder(dir))
@@ -167,7 +189,26 @@ public static class Card3DNewPrefabBuilder
         Object.DestroyImmediate(cardRoot);
 
         AssetDatabase.SaveAssets();
-        Debug.Log($"[Card3DNew] 预制体已生成: {PrefabPath}（CardComposite 卡面 + 文字/图标按 2D 布局，三排图标运行时填充）");
+        Debug.Log($"[Card3DNew] 预制体已生成: {PrefabPath}（卡框/前缀背景/卡图三层 SpriteRenderer 可手调比例 + 文字/图标按 2D 布局，三排图标运行时填充）");
+    }
+
+    /// <summary>创建卡面 SpriteRenderer（identity 朝向，居中，z 定，比例用传入值——预制体里可手调，运行时不重算）。</summary>
+    static SpriteRenderer CreateFaceSR(GameObject parent, string name, float z, Vector3 scale)
+    {
+        var go = new GameObject(name, typeof(SpriteRenderer));
+        go.transform.SetParent(parent.transform, false);
+        go.transform.localPosition = new Vector3(0f, 0f, z);
+        go.transform.localRotation = Quaternion.identity;
+        go.transform.localScale = scale;
+        return go.GetComponent<SpriteRenderer>();
+    }
+
+    /// <summary>按目标世界尺寸反算 SpriteRenderer localScale（拉伸铺满目标矩形；找不到贴图回退 scale=1 自然尺寸，用户再手调）。</summary>
+    static Vector3 FitScale(Sprite s, float targetW, float targetH)
+    {
+        if (s == null) return Vector3.one;
+        return new Vector3(targetW / Mathf.Max(0.001f, s.bounds.size.x),
+                           targetH / Mathf.Max(0.001f, s.bounds.size.y), 1f);
     }
 
     /// <summary>创建 TMP 3D 文字子物体：identity 朝向（卡根 Y180 后正面朝相机），位置按 2D 换算。</summary>

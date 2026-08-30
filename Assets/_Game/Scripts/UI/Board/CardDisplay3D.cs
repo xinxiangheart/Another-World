@@ -11,6 +11,19 @@ public class CardDisplay3D : MonoBehaviour
     public TextMeshPro prefixText;
     public TextMeshPro effectText;
 
+    [Header("卡面三层 SpriteRenderer（比例在预制体里手动调，运行时不重算/不覆盖/不缩放）")]
+    public SpriteRenderer frameSR;      // 卡框（费用卡框）
+    public SpriteRenderer prefixBgSR;   // 前缀背景（按前缀类型切换 sprite，比例用预制体手调值）
+    public SpriteRenderer cardArtSR;    // 卡图（无对应卡图时隐藏，露出前缀背景兜底）
+
+    [Header("预览 Sprite（拖入即显示；运行时优先使用，未拖入走路径加载，对齐 2D 拖入字段）")]
+    [Tooltip("卡框预览")]
+    public Sprite previewFrameSprite;
+    [Tooltip("卡图预览")]
+    public Sprite previewArtSprite;
+    [Tooltip("前缀背景预览")]
+    public Sprite previewPrefixBgSprite;
+
     MaterialPropertyBlock _mpb;
     bool _artInitialized;
 
@@ -47,23 +60,80 @@ public class CardDisplay3D : MonoBehaviour
         CardData template = CardDatabase.Instance?.GetTemplate(instance.templateID);
         if (template == null) return;
 
-        // ① 费用卡框 Cards/SummonCard_{cost}（对齐新2D CostFrameBase）
-        int cost = Mathf.Clamp(template.baseCost, 0, 5);
-        Sprite bgSpr = LoadSprite("Cards/SummonCard_" + cost);
-        Texture2D bg = bgSpr != null ? bgSpr.texture : null;
-        if (bg == null && CardArtConfig.Instance != null)
-            bg = CardArtConfig.Get2DBackground(template, instance)?.texture;
+        // ── 卡框：预览优先 → 路径 Cards/SummonCard_{cost}；比例用预制体手调值，不重算 ──
+        if (frameSR != null)
+        {
+            Sprite frame = previewFrameSprite != null
+                ? previewFrameSprite
+                : LoadSprite("Cards/SummonCard_" + Mathf.Clamp(template.baseCost, 0, 5));
+            if (frame != null) { frameSR.sprite = frame; frameSR.enabled = true; }
+        }
 
-        // ② 前缀底图 Cards/PrefixArtBG/{English}（对齐新2D PrefixArtBG）
-        Sprite borderSpr = LoadSprite("Cards/PrefixArtBG/" + PrefixEnglish(instance.prefixes));
-        Texture2D border = borderSpr != null ? borderSpr.texture : null;
-        if (border == null && CardArtConfig.Instance != null)
-            border = CardArtConfig.Get2DBorder(instance)?.texture;
+        // ── 前缀背景：预览优先 → 路径 Cards/PrefixArtBG/{English}（按前缀切换，比例用预制体手调值）──
+        if (prefixBgSR != null)
+        {
+            Sprite prefix = previewPrefixBgSprite != null
+                ? previewPrefixBgSprite
+                : LoadSprite("Cards/PrefixArtBG/" + PrefixEnglish(instance.prefixes));
+            if (prefix != null) { prefixBgSR.sprite = prefix; prefixBgSR.enabled = true; }
+        }
 
-        // ③ 卡面原画：cardSprite2D → {templateID}_Front → 镜像 Cards/Summon 目录 → 白
-        Texture2D art = ResolveArtTexture(template);
+        // ── 卡图：预览优先 → cardSprite2D → 路径；无卡图 → 隐藏 CardArt，露出前缀背景兜底 ──
+        if (cardArtSR != null)
+        {
+            Sprite art = previewArtSprite != null ? previewArtSprite : ResolveArtSprite(template);
+            if (art != null) { cardArtSR.sprite = art; cardArtSR.gameObject.SetActive(true); }
+            else { cardArtSR.gameObject.SetActive(false); }
+        }
+    }
 
-        SetCompositeTextures(bg, border, art);
+    /// <summary>编辑期预览：拖入预览 Sprite 立即显示到对应层（对齐 2D 拖入字段；仅设属性不改层级）。
+    /// 运行时 Refresh 会按"预览优先→路径"重新填 sprite，预制体里手调的比例不被覆盖。</summary>
+    void OnValidate()
+    {
+        if (Application.isPlaying) return;
+        bool changed = false;
+        if (frameSR != null && previewFrameSprite != null) { frameSR.sprite = previewFrameSprite; frameSR.enabled = true; changed = true; }
+        if (prefixBgSR != null && previewPrefixBgSprite != null) { prefixBgSR.sprite = previewPrefixBgSprite; prefixBgSR.enabled = true; changed = true; }
+        if (cardArtSR != null && previewArtSprite != null) { cardArtSR.sprite = previewArtSprite; cardArtSR.gameObject.SetActive(true); changed = true; }
+#if UNITY_EDITOR
+        if (changed) UnityEditor.EditorUtility.SetDirty(this);
+#endif
+    }
+
+    /// <summary>卡面 Sprite：真实 cardSprite2D → {tid}_Front → 镜像 Cards/Summon 目录（含法术 Normal/Special）→ null（调用方隐藏 CardArt 露出前缀背景）。</summary>
+    Sprite ResolveArtSprite(CardData template)
+    {
+        if (template != null && template.cardSprite2D != null && !IsLegacyPlaceholder(template.cardSprite2D))
+            return template.cardSprite2D;
+        if (template == null || string.IsNullOrEmpty(template.templateID))
+            return null;
+
+        string tid = template.templateID;
+        Sprite s = LoadSprite("Cards/" + tid + "_Front");
+        if (s != null) return s;
+
+        if (template.cardType == CardType.Spell)
+        {
+            int scost = Mathf.Clamp(template.baseCost, 0, 5);
+            s = LoadSprite("Cards/Spell/Normal/" + scost + "/SpellCard_{" + tid + "}")
+             ?? LoadSprite("Cards/Spell/Special/" + scost + "/SpellCard_{" + tid + "}")
+             ?? LoadSprite("Cards/Spell/Normal/" + scost + "/SpellCard_" + tid)
+             ?? LoadSprite("Cards/Spell/Special/" + scost + "/SpellCard_" + tid);
+        }
+        else
+        {
+            string sub;
+            switch (template.summonType)
+            {
+                case SummonType.Hero:      sub = "Hero/" + template.baseCost; break;
+                case SummonType.ChosenOne: sub = "ChosenOne"; break;
+                default:                   sub = "Special"; break;
+            }
+            s = LoadSprite("Cards/Summon/" + sub + "/SummonCard_{" + tid + "}")
+             ?? LoadSprite("Cards/Summon/" + sub + "/SummonCard_" + tid);
+        }
+        return s;
     }
 
     /// <summary>卡面原画解析：真实 cardSprite2D → {tid}_Front → 镜像 Cards/Summon 目录（含法术 Normal/Special）→ 白。</summary>
