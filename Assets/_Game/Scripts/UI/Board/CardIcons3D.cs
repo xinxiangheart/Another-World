@@ -51,6 +51,14 @@ public class CardIcons3D : MonoBehaviour
     [Tooltip("三排图标水平间距")]
     public float rowSpacing = 0.15f;
 
+    [Header("三排预览图标（拖入即显示；运行时优先，未拖入走动态路径）")]
+    [Tooltip("前缀排预览图标（任意数量，各自保持大小、固定间距，不拉伸/不占满）")]
+    public Sprite[] previewPrefixIcons;
+    [Tooltip("特性排预览图标（任意数量，各自保持大小、固定间距，不拉伸/不占满）")]
+    public Sprite[] previewTraitIcons;
+    [Tooltip("状态排预览图标（任意数量，各自保持大小、固定间距，不拉伸/不占满）")]
+    public Sprite[] previewStatusIcons;
+
     CardInstance _inst;
     static Sprite _placeholder;
 
@@ -69,10 +77,10 @@ public class CardIcons3D : MonoBehaviour
         SetCornerIcon(healthIcon, PickSprite(healthIconSprite, healthIconPath), !isSpell);
         SetCornerIcon(attackIcon, PickSprite(attackIconSprite, attackIconPath), !isSpell);
 
-        // ── 三排图标（各自清除重建）──
-        PopulateRow(prefixIconsRow, BuildPrefixEntries(_inst));
-        PopulateRow(traitIconsRow,  BuildTraitEntries(_inst));
-        PopulateRow(statusIconsRow, BuildStatusEntries(_inst));
+        // ── 三排图标（各自清除重建；预览数组优先，未拖入走动态路径加载）──
+        PopulateRow(prefixIconsRow, previewPrefixIcons, BuildPrefixEntries(_inst));
+        PopulateRow(traitIconsRow,  previewTraitIcons,  BuildTraitEntries(_inst));
+        PopulateRow(statusIconsRow, previewStatusIcons, BuildStatusEntries(_inst));
     }
 
     // ================= 角标图标 =================
@@ -88,11 +96,31 @@ public class CardIcons3D : MonoBehaviour
 
     // ================= 三排图标 =================
 
-    void PopulateRow(Transform row, List<(string key, Sprite direct, string path)> entries)
+    /// <summary>填充一排图标：预览数组优先（各自保持比例、固定间距，不拉伸/不占满——对齐 2D HLG 关闭 Child Force Expand）；
+    /// 无预览则按动态条目（直接 sprite → 路径）加载。</summary>
+    void PopulateRow(Transform row, Sprite[] preview, List<(string key, Sprite direct, string path)> entries)
     {
         if (row == null) return;
         ClearChildren(row);
         float x = 0f;
+        int n = preview != null ? preview.Length : 0;
+        if (n > 0)
+        {
+            for (int i = 0; i < n; i++)
+            {
+                Sprite s = preview[i];
+                if (s == null) continue;
+                var go = new GameObject("icon_preview_" + i, typeof(SpriteRenderer));
+                go.transform.SetParent(row, false);
+                go.transform.localRotation = Quaternion.identity; // 卡根 Y180 → 世界法线朝相机
+                go.transform.localPosition = new Vector3(x, 0, 0);
+                var sr = go.GetComponent<SpriteRenderer>();
+                sr.sprite = s;
+                SetFixedSize(sr, rowIconSize); // 保持各自比例、统一边长，不拉伸
+                x += rowSpacing;
+            }
+            return;
+        }
         foreach (var e in entries)
         {
             var go = new GameObject("icon_" + e.key, typeof(SpriteRenderer));
@@ -120,6 +148,59 @@ public class CardIcons3D : MonoBehaviour
         for (int i = t.childCount - 1; i >= 0; i--)
             Destroy(t.GetChild(i).gameObject);
     }
+
+#if UNITY_EDITOR
+    // ================= 编辑期预览（对齐 2D PopulatePreviewRow） =================
+
+    /// <summary>拖入/修改预览图标时立即重建三排预览。OnValidate 内禁止改层级，
+    /// 用 delayCall 延迟到编辑器循环执行；DontSave 仅编辑期可见，不入预制体。</summary>
+    void OnValidate()
+    {
+        if (Application.isPlaying) return;
+        // 预制体资产上的组件不允许改层级，直接跳过（PrefabStage/场景实例由 delayCall 重建）
+        if (UnityEditor.PrefabUtility.IsPartOfPrefabAsset(gameObject)) return;
+        SchedulePreviewRebuild();
+    }
+
+    bool _previewRebuildScheduled;
+
+    void SchedulePreviewRebuild()
+    {
+        if (_previewRebuildScheduled) return;
+        _previewRebuildScheduled = true;
+        UnityEditor.EditorApplication.delayCall += () =>
+        {
+            _previewRebuildScheduled = false;
+            if (this == null || Application.isPlaying) return;
+            PopulatePreviewRow(prefixIconsRow, previewPrefixIcons);
+            PopulatePreviewRow(traitIconsRow,  previewTraitIcons);
+            PopulatePreviewRow(statusIconsRow, previewStatusIcons);
+        };
+    }
+
+    /// <summary>预览排：按拖入顺序生成 SpriteRenderer（DontSave 不入预制体），各自保持比例、固定间距。</summary>
+    void PopulatePreviewRow(Transform row, Sprite[] preview)
+    {
+        if (row == null) return;
+        for (int i = row.childCount - 1; i >= 0; i--)
+            DestroyImmediate(row.GetChild(i).gameObject);
+        if (preview == null) return;
+        float x = 0f;
+        foreach (Sprite s in preview)
+        {
+            if (s == null) continue;
+            var go = new GameObject("icon_preview", typeof(SpriteRenderer));
+            go.hideFlags = HideFlags.DontSave; // 仅编辑期预览，不序列化进预制体
+            go.transform.SetParent(row, false);
+            go.transform.localRotation = Quaternion.identity;
+            go.transform.localPosition = new Vector3(x, 0, 0);
+            var sr = go.GetComponent<SpriteRenderer>();
+            sr.sprite = s;
+            SetFixedSize(sr, rowIconSize);
+            x += rowSpacing;
+        }
+    }
+#endif
 
     // ================= 条目构建（镜像 CardDisplay2DNew） =================
 

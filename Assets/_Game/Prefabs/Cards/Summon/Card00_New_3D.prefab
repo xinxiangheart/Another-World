@@ -541,7 +541,7 @@ Transform:
   m_GameObject: {fileID: 1094747110808969126}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalPosition: {x: 0.004, y: 0.002, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -584,8 +584,8 @@ MonoBehaviour:
   prefixBgSR: {fileID: 1824677045783243858}
   cardArtSR: {fileID: 1991539272577326468}
   previewFrameSprite: {fileID: 0}
-  previewArtSprite: {fileID: 0}
-  previewPrefixBgSprite: {fileID: 0}
+  previewArtSprite: {fileID: 21300000, guid: dd0846a45b74e64418a66b24c9d041de, type: 3}
+  previewPrefixBgSprite: {fileID: 21300000, guid: 708745a8649994c4c98dacca3ee11d73, type: 3}
   costFrameSprites:
   - {fileID: 21300000, guid: 2f4ae534a9bfdec429531c0c71738b9f, type: 3}
   - {fileID: 21300000, guid: e582ccf8be31df542b430cad2c043967, type: 3}
@@ -601,6 +601,7 @@ MonoBehaviour:
   - {fileID: 21300000, guid: 833d5a95703bd754685dbed99d980ecf, type: 3}
   - {fileID: 21300000, guid: 145199175b8ee374fbcd65030f622c35, type: 3}
   cardBackSprite: {fileID: 21300000, guid: 468bd93a970628e44b93e60d932bfe6a, type: 3}
+  frontFace: {fileID: 0}
 --- !u!114 &6452137251970351647
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -650,6 +651,11 @@ MonoBehaviour:
   cornerIconSize: 0.16
   rowIconSize: 0.12
   rowSpacing: 0.15
+  previewPrefixIcons: []
+  previewTraitIcons:
+  - {fileID: 21300000, guid: ccba1a1af20788645a515fe87472e25a, type: 3}
+  previewStatusIcons:
+  - {fileID: 21300000, guid: 15142b79750331747ac3783ecf765ef8, type: 3}
 --- !u!114 &2182794185463531216
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -770,7 +776,7 @@ SpriteRenderer:
   m_SortingLayerID: 0
   m_SortingLayer: 0
   m_SortingOrder: 0
-  m_Sprite: {fileID: 21300000, guid: 2f4ae534a9bfdec429531c0c71738b9f, type: 3}
+  m_Sprite: {fileID: 21300000, guid: 1f61c1d0330130143936ff7a9a606a34, type: 3}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_FlipX: 0
   m_FlipY: 0
@@ -1232,7 +1238,7 @@ Transform:
   m_GameObject: {fileID: 3356882016818085627}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: -0.76, z: 0.15}
+  m_LocalPosition: {x: 0, y: -0.663, z: 0.15}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -1587,7 +1593,7 @@ SpriteRenderer:
   m_SortingLayerID: 0
   m_SortingLayer: 0
   m_SortingOrder: 0
-  m_Sprite: {fileID: 21300000, guid: 833d5a95703bd754685dbed99d980ecf, type: 3}
+  m_Sprite: {fileID: 21300000, guid: 708745a8649994c4c98dacca3ee11d73, type: 3}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_FlipX: 0
   m_FlipY: 0

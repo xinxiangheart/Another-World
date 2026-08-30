@@ -210,14 +210,17 @@ public class Card3DHover : MonoBehaviour
         // 1. Rotation — hidden faces away (0°), visible faces toward viewer (180°)
         model.transform.rotation = hidden ? Quaternion.Euler(0, 0, 0) : Quaternion.Euler(0, 180, 0);
 
-        // 2. Text — hidden hides all; unhiding shows except for attachments
+        // 2. 正反面：隐藏(背面) → ShowBack 隐藏全部正面组件(卡框/前缀底图/卡图/文字/图标/三排)；
+        //              附件 → 保持正面卡面但隐藏文字；显示(正面) → ShowFront
         CardDisplay3D display = model.GetComponent<CardDisplay3D>();
         if (display != null)
         {
-            if (hidden || isAttachment)
+            if (hidden)
+                display.ShowBack();
+            else if (isAttachment)
                 display.HideAllInfo();
             else
-                display.ShowAllInfo();
+                display.ShowFront();
         }
 
         // 3. Hover panel / discard — disabled when hidden

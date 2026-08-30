@@ -34,6 +34,10 @@ public class CardDisplay3D : MonoBehaviour
     [Tooltip("卡背图（拖入则覆盖网格背槽 _MainTex，MPB 不污染共享材质）")]
     public Sprite cardBackSprite;
 
+    [Header("正反面（对应 2D FrontFace/BackFace）")]
+    [Tooltip("正面容器（UIComponents：卡框/前缀底图/卡图/文字/图标/三排）。运行时为空则按名字找")]
+    public GameObject frontFace;
+
     MaterialPropertyBlock _mpb;
     bool _artInitialized;
 
@@ -311,29 +315,50 @@ public class CardDisplay3D : MonoBehaviour
         }
         return false;
     }
-    /// <summary>
-     /// 隐藏所有3D文字和信息（对方视角用）
-     /// </summary>
-    public void HideAllInfo()
+    /// <summary>正面容器（UIComponents：卡框/前缀底图/卡图/文字/图标/三排）；未指定则按名字找。</summary>
+    GameObject GetFrontFace()
     {
-        if (nameText != null) nameText.gameObject.SetActive(false);
-        if (attackText != null) attackText.gameObject.SetActive(false);
-        if (healthText != null) healthText.gameObject.SetActive(false);
-        if (costText != null) costText.gameObject.SetActive(false);
-        if (prefixText != null) prefixText.gameObject.SetActive(false);
-        if (effectText != null) effectText.gameObject.SetActive(false);
+        if (frontFace != null) return frontFace;
+        Transform t = transform.Find("UIComponents");
+        if (t != null) frontFace = t.gameObject;
+        return frontFace;
     }
 
-    /// <summary>
-    /// 显示所有3D文字和信息（己方视角用）
-    /// </summary>
+    /// <summary>正面状态（默认）：显示正面全部组件（卡框/前缀底图/卡图/文字/图标/三排）；卡背随朝向隐藏。不改变比例/位置。</summary>
+    public void ShowFront()
+    {
+        GameObject f = GetFrontFace();
+        if (f != null) f.SetActive(true);
+    }
+
+    /// <summary>背面状态：隐藏正面全部组件，显示卡背（配合 SetHidden 旋转 0° 使卡背朝相机）。不改变比例/位置。</summary>
+    public void ShowBack()
+    {
+        GameObject f = GetFrontFace();
+        if (f != null) f.SetActive(false);
+    }
+
+    /// <summary>隐藏所有3D文字和信息（对方视角/附件用）：保持正面卡面，仅隐藏文字。</summary>
+    public void HideAllInfo()
+    {
+        ShowFront(); // 附件/对手视角仍显示正面卡面，仅隐藏文字
+        SetInfoVisible(false);
+    }
+
+    /// <summary>显示所有3D文字和信息（己方视角用）。</summary>
     public void ShowAllInfo()
     {
-        if (nameText != null) nameText.gameObject.SetActive(true);
-        if (attackText != null) attackText.gameObject.SetActive(true);
-        if (healthText != null) healthText.gameObject.SetActive(true);
-        if (costText != null) costText.gameObject.SetActive(true);
-        if (prefixText != null) prefixText.gameObject.SetActive(true);
-        if (effectText != null) effectText.gameObject.SetActive(true);
+        ShowFront();
+        SetInfoVisible(true);
+    }
+
+    void SetInfoVisible(bool v)
+    {
+        if (nameText != null) nameText.gameObject.SetActive(v);
+        if (attackText != null) attackText.gameObject.SetActive(v);
+        if (healthText != null) healthText.gameObject.SetActive(v);
+        if (costText != null) costText.gameObject.SetActive(v);
+        if (prefixText != null) prefixText.gameObject.SetActive(v);
+        if (effectText != null) effectText.gameObject.SetActive(v);
     }
 }
