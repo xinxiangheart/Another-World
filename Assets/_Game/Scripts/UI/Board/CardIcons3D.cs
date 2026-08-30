@@ -48,8 +48,16 @@ public class CardIcons3D : MonoBehaviour
     public float cornerIconSize = 0.16f;
     [Tooltip("三排单图标边长")]
     public float rowIconSize = 0.12f;
-    [Tooltip("三排图标水平间距")]
+    [Tooltip("三排图标中心间距（默认值；各排可单独覆盖）")]
     public float rowSpacing = 0.15f;
+    [Tooltip("前缀排图标中心间距（0 则用 rowSpacing）")]
+    public float prefixRowSpacing;
+    [Tooltip("特性排图标中心间距（0 则用 rowSpacing）")]
+    public float traitRowSpacing;
+    [Tooltip("状态排图标中心间距（0 则用 rowSpacing）")]
+    public float statusRowSpacing;
+
+    float GetRowSpacing(float rowOverride) => rowOverride > 0f ? rowOverride : rowSpacing;
 
     [Header("三排预览图标（拖入即显示；运行时优先，未拖入走动态路径）")]
     [Tooltip("前缀排预览图标（任意数量，各自保持大小、固定间距，不拉伸/不占满）")]
@@ -77,10 +85,10 @@ public class CardIcons3D : MonoBehaviour
         SetCornerIcon(healthIcon, PickSprite(healthIconSprite, healthIconPath), !isSpell);
         SetCornerIcon(attackIcon, PickSprite(attackIconSprite, attackIconPath), !isSpell);
 
-        // ── 三排图标（各自清除重建；预览数组优先，未拖入走动态路径加载）──
-        PopulateRow(prefixIconsRow, previewPrefixIcons, BuildPrefixEntries(_inst));
-        PopulateRow(traitIconsRow,  previewTraitIcons,  BuildTraitEntries(_inst));
-        PopulateRow(statusIconsRow, previewStatusIcons, BuildStatusEntries(_inst));
+        // ── 三排图标（各自清除重建；预览数组优先，未拖入走动态路径加载；居中排列，间距可调）──
+        PopulateRow(prefixIconsRow, previewPrefixIcons, BuildPrefixEntries(_inst), GetRowSpacing(prefixRowSpacing));
+        PopulateRow(traitIconsRow,  previewTraitIcons,  BuildTraitEntries(_inst),  GetRowSpacing(traitRowSpacing));
+        PopulateRow(statusIconsRow, previewStatusIcons, BuildStatusEntries(_inst), GetRowSpacing(statusRowSpacing));
     }
 
     // ================= 角标图标 =================
@@ -96,43 +104,55 @@ public class CardIcons3D : MonoBehaviour
 
     // ================= 三排图标 =================
 
-    /// <summary>填充一排图标：预览数组优先（各自保持比例、固定间距，不拉伸/不占满——对齐 2D HLG 关闭 Child Force Expand）；
-    /// 无预览则按动态条目（直接 sprite → 路径）加载。</summary>
-    void PopulateRow(Transform row, Sprite[] preview, List<(string key, Sprite direct, string path)> entries)
+    /// <summary>填充一排图标（对齐 2D HLG 关闭 Child Force Expand：不拉伸、不占满）：
+    /// 预览数组优先 → 无则动态条目（直接 sprite → 路径）。
+    /// 以中心为原点向两边居中，相邻图标中心间距 = spacing（可调）。</summary>
+    void PopulateRow(Transform row, Sprite[] preview, List<(string key, Sprite direct, string path)> entries, float spacing)
     {
         if (row == null) return;
         ClearChildren(row);
-        float x = 0f;
         int n = preview != null ? preview.Length : 0;
         if (n > 0)
         {
+            int valid = CountNonNull(preview);
+            if (valid == 0) return;
+            float x = -(valid - 1) * spacing * 0.5f; // 居中起点：向两边展开
             for (int i = 0; i < n; i++)
             {
-                Sprite s = preview[i];
-                if (s == null) continue;
-                var go = new GameObject("icon_preview_" + i, typeof(SpriteRenderer));
-                go.transform.SetParent(row, false);
-                go.transform.localRotation = Quaternion.identity; // 卡根 Y180 → 世界法线朝相机
-                go.transform.localPosition = new Vector3(x, 0, 0);
-                var sr = go.GetComponent<SpriteRenderer>();
-                sr.sprite = s;
-                SetFixedSize(sr, rowIconSize); // 保持各自比例、统一边长，不拉伸
-                x += rowSpacing;
+                if (preview[i] == null) continue;
+                x = PlaceIcon(row, "icon_preview_" + i, preview[i], x, spacing);
             }
             return;
         }
+        int en = entries.Count;
+        if (en == 0) return;
+        float dx = -(en - 1) * spacing * 0.5f; // 居中起点
         foreach (var e in entries)
         {
-            var go = new GameObject("icon_" + e.key, typeof(SpriteRenderer));
-            go.transform.SetParent(row, false);
-            go.transform.localRotation = Quaternion.identity; // 卡根 Y180 → 世界法线朝相机
-            go.transform.localPosition = new Vector3(x, 0, 0);
-            var sr = go.GetComponent<SpriteRenderer>();
             Sprite s = e.direct != null ? e.direct : LoadSprite(e.path);
-            sr.sprite = s != null ? s : GetPlaceholder();
-            SetFixedSize(sr, rowIconSize);
-            x += rowSpacing;
+            dx = PlaceIcon(row, "icon_" + e.key, s != null ? s : GetPlaceholder(), dx, spacing);
         }
+    }
+
+    /// <summary>统计非空 sprite 数量（用于居中按有效图标数计算）。</summary>
+    static int CountNonNull(Sprite[] arr)
+    {
+        int c = 0;
+        for (int i = 0; i < arr.Length; i++) if (arr[i] != null) c++;
+        return c;
+    }
+
+    /// <summary>在 x 处放置一个图标（identity 朝向，卡根 Y180 后世界法线朝相机），返回下一个 x（间距 spacing）。</summary>
+    float PlaceIcon(Transform row, string name, Sprite s, float x, float spacing)
+    {
+        var go = new GameObject(name, typeof(SpriteRenderer));
+        go.transform.SetParent(row, false);
+        go.transform.localRotation = Quaternion.identity;
+        go.transform.localPosition = new Vector3(x, 0, 0);
+        var sr = go.GetComponent<SpriteRenderer>();
+        sr.sprite = s;
+        SetFixedSize(sr, rowIconSize); // 保持各自比例、统一边长，不拉伸
+        return x + spacing;
     }
 
     /// <summary>按 Sprite 原始宽高比缩放到固定世界尺寸（用 bounds.x 缩放，保持比例）。</summary>
@@ -172,20 +192,22 @@ public class CardIcons3D : MonoBehaviour
         {
             _previewRebuildScheduled = false;
             if (this == null || Application.isPlaying) return;
-            PopulatePreviewRow(prefixIconsRow, previewPrefixIcons);
-            PopulatePreviewRow(traitIconsRow,  previewTraitIcons);
-            PopulatePreviewRow(statusIconsRow, previewStatusIcons);
+            PopulatePreviewRow(prefixIconsRow, previewPrefixIcons, GetRowSpacing(prefixRowSpacing));
+            PopulatePreviewRow(traitIconsRow,  previewTraitIcons,  GetRowSpacing(traitRowSpacing));
+            PopulatePreviewRow(statusIconsRow, previewStatusIcons, GetRowSpacing(statusRowSpacing));
         };
     }
 
-    /// <summary>预览排：按拖入顺序生成 SpriteRenderer（DontSave 不入预制体），各自保持比例、固定间距。</summary>
-    void PopulatePreviewRow(Transform row, Sprite[] preview)
+    /// <summary>预览排（DontSave 不入预制体）：以中心为原点向两边居中，各自保持比例、间距可调。</summary>
+    void PopulatePreviewRow(Transform row, Sprite[] preview, float spacing)
     {
         if (row == null) return;
         for (int i = row.childCount - 1; i >= 0; i--)
             DestroyImmediate(row.GetChild(i).gameObject);
         if (preview == null) return;
-        float x = 0f;
+        int valid = CountNonNull(preview);
+        if (valid == 0) return;
+        float x = -(valid - 1) * spacing * 0.5f; // 居中起点
         foreach (Sprite s in preview)
         {
             if (s == null) continue;
@@ -197,7 +219,7 @@ public class CardIcons3D : MonoBehaviour
             var sr = go.GetComponent<SpriteRenderer>();
             sr.sprite = s;
             SetFixedSize(sr, rowIconSize);
-            x += rowSpacing;
+            x += spacing;
         }
     }
 #endif
