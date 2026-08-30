@@ -197,6 +197,22 @@ public static class Card3DNewPrefabBuilder
         icons.statusBuffSprite        = LoadEditorSprite("Icons/Buffs/Buff");
         icons.statusDebuffSprite      = LoadEditorSprite("Icons/Buffs/DeBuff");
 
+        // ── 拖入 Sprite 数组（对齐 2D Card00_New_2D：卡框按费用 6 张、前缀底图按前缀 5 张 + 通用 + 卡背）──
+        display.costFrameSprites = new Sprite[]
+        {
+            LoadEditorSprite("Cards/SummonCard_0"), LoadEditorSprite("Cards/SummonCard_1"),
+            LoadEditorSprite("Cards/SummonCard_2"), LoadEditorSprite("Cards/SummonCard_3"),
+            LoadEditorSprite("Cards/SummonCard_4"), LoadEditorSprite("Cards/SummonCard_5"),
+        };
+        display.prefixArtSprites = new Sprite[]
+        {
+            LoadEditorSprite("Cards/PrefixArtBG/Psychic"), LoadEditorSprite("Cards/PrefixArtBG/Abyss"),
+            LoadEditorSprite("Cards/PrefixArtBG/Mech"),    LoadEditorSprite("Cards/PrefixArtBG/Blood"),
+            LoadEditorSprite("Cards/PrefixArtBG/Scroll"),
+        };
+        display.defaultPrefixArtSprite = LoadEditorSprite("Cards/PrefixArtBG/Common");
+        display.cardBackSprite = LoadEditorSprite("Cards/Back");
+
         // ── 接线卡面三层（预览字段由 CardDisplay3D.OnValidate 在预制体里直接拖入显示）──
         display.frameSR = frameSR;
         display.prefixBgSR = prefixSR;

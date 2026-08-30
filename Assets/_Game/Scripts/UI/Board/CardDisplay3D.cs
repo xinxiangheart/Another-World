@@ -24,6 +24,16 @@ public class CardDisplay3D : MonoBehaviour
     [Tooltip("前缀背景预览")]
     public Sprite previewPrefixBgSprite;
 
+    [Header("拖入 Sprite（对齐 2D Card00_New_2D：数组按费用/前缀；运行时优先于路径，预览字段最优先）")]
+    [Tooltip("费用卡框 0-5（6 张，index=费用，运行时按费用取）")]
+    public Sprite[] costFrameSprites;
+    [Tooltip("通用前缀底图（无前缀/其他前缀）")]
+    public Sprite defaultPrefixArtSprite;
+    [Tooltip("五前缀底图（index: 0=灵能,1=渊,2=机械,3=血歌,4=神灵画卷）")]
+    public Sprite[] prefixArtSprites;
+    [Tooltip("卡背图（拖入则覆盖网格背槽 _MainTex，MPB 不污染共享材质）")]
+    public Sprite cardBackSprite;
+
     MaterialPropertyBlock _mpb;
     bool _artInitialized;
 
@@ -60,21 +70,23 @@ public class CardDisplay3D : MonoBehaviour
         CardData template = CardDatabase.Instance?.GetTemplate(instance.templateID);
         if (template == null) return;
 
-        // ── 卡框：预览优先 → 路径 Cards/SummonCard_{cost}；比例用预制体手调值，不重算 ──
+        // ── 卡框：预览 → costFrameSprites[费用] → 路径 Cards/SummonCard_{cost}；比例用预制体手调值，不重算 ──
         if (frameSR != null)
         {
+            int cost = Mathf.Clamp(template.baseCost, 0, 5);
             Sprite frame = previewFrameSprite != null
                 ? previewFrameSprite
-                : LoadSprite("Cards/SummonCard_" + Mathf.Clamp(template.baseCost, 0, 5));
+                : (costFrameSprites != null && cost < costFrameSprites.Length ? costFrameSprites[cost] : null)
+                  ?? LoadSprite("Cards/SummonCard_" + cost);
             if (frame != null) { frameSR.sprite = frame; frameSR.enabled = true; }
         }
 
-        // ── 前缀背景：预览优先 → 路径 Cards/PrefixArtBG/{English}（按前缀切换，比例用预制体手调值）──
+        // ── 前缀背景：预览 → prefixArtSprites[前缀]/defaultPrefixArtSprite → 路径（按模板前缀，对齐 2D）──
         if (prefixBgSR != null)
         {
             Sprite prefix = previewPrefixBgSprite != null
                 ? previewPrefixBgSprite
-                : LoadSprite("Cards/PrefixArtBG/" + PrefixEnglish(instance.prefixes));
+                : ResolvePrefixBgSprite(template.prefix);
             if (prefix != null) { prefixBgSR.sprite = prefix; prefixBgSR.enabled = true; }
         }
 
@@ -84,6 +96,45 @@ public class CardDisplay3D : MonoBehaviour
             Sprite art = previewArtSprite != null ? previewArtSprite : ResolveArtSprite(template);
             if (art != null) { cardArtSR.sprite = art; cardArtSR.gameObject.SetActive(true); }
             else { cardArtSR.gameObject.SetActive(false); }
+        }
+
+        // ── 卡背：拖入 cardBackSprite 则覆盖网格背槽 _MainTex（MPB，仅当前卡，不污染共享材质）──
+        if (cardBackSprite != null)
+        {
+            var mr = GetComponentInChildren<MeshRenderer>();
+            if (mr != null && _mpb != null)
+            {
+                mr.GetPropertyBlock(_mpb);
+                _mpb.SetTexture("_MainTex", cardBackSprite.texture);
+                mr.SetPropertyBlock(_mpb);
+            }
+        }
+    }
+
+    /// <summary>前缀底图：拖入 prefixArtSprites[idx]（五前缀）或 defaultPrefixArtSprite（通用）→ 路径 Cards/PrefixArtBG/{English}。对齐 2D GetPrefixArtBGSprite。</summary>
+    Sprite ResolvePrefixBgSprite(string prefix)
+    {
+        int idx = PrefixToIndex(prefix);
+        if (idx >= 0)
+        {
+            if (prefixArtSprites != null && idx < prefixArtSprites.Length && prefixArtSprites[idx] != null)
+                return prefixArtSprites[idx];
+            return LoadSprite("Cards/PrefixArtBG/" + PrefixEnglish(prefix)) ?? defaultPrefixArtSprite;
+        }
+        return defaultPrefixArtSprite != null ? defaultPrefixArtSprite : LoadSprite("Cards/PrefixArtBG/Common");
+    }
+
+    /// <summary>前缀 → 底图数组 index（0=灵能,1=渊,2=机械,3=血歌,4=神灵画卷）。未知/无 → -1。</summary>
+    static int PrefixToIndex(string prefix)
+    {
+        switch (prefix)
+        {
+            case "灵能": return 0;
+            case "渊": return 1;
+            case "机械": return 2;
+            case "血歌": return 3;
+            case "神灵画卷": return 4;
+            default: return -1;
         }
     }
 
