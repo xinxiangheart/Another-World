@@ -17,6 +17,8 @@ using TMPro;
 /// 朝向：卡根运行时 Euler(0,180,0)，所有正面元素 localRotation = identity（世界法线 -Z 朝相机）。
 ///   文字用 identity（区别于旧卡 localY180——那在双面 TMP 下是镜像显示）。
 /// 挂载：Card3DInstance / CardDisplay3D / CardIcons3D / Card3DHover / DamageSourceMarker / BoxCollider。
+/// 层级：CardRoot（脚本/碰撞体/占地）→ ModelRoot（模型网格，独立缩放） + UIComponents（文字/图标/三排）。
+///   运行时脚本用 GetComponentInChildren<MeshRenderer>() 取模型网格（ModelRoot 必须是 CardRoot 第 0 子物体）。
 /// 菜单：Tools → 卡牌 → 生成新3D手牌预制体
 /// </summary>
 public static class Card3DNewPrefabBuilder
@@ -72,50 +74,71 @@ public static class Card3DNewPrefabBuilder
             AssetDatabase.CreateAsset(backMat, BackMatPath);
         }
 
-        // ── 实例化模型 ──
-        GameObject root = (GameObject)PrefabUtility.InstantiatePrefab(fbx);
-        root.name = "Card00_New_3D";
-        root.transform.localScale = Vector3.one;
-        root.transform.localRotation = Quaternion.identity;
+        // ── 层级：CardRoot(位置/占地/逻辑) → ModelRoot(模型网格,可独立缩放) + UIComponents(文字/图标/三排) ──
+        GameObject cardRoot = new GameObject("CardRoot");
+        cardRoot.transform.localScale = Vector3.one;
+        cardRoot.transform.localRotation = Quaternion.identity;
+
+        // ModelRoot：只放模型网格——调整它的 Scale 只缩放模型，不影响文字/图标。
+        // 注意：ModelRoot 必须是 CardRoot 的第 0 个子物体，保证运行时 GetComponentInChildren<MeshRenderer>()
+        // 先命中模型网格（TMP 文字也有自己的 MeshRenderer，在 UIComponents 分支里，不能被先找到）。
+        GameObject modelRoot = new GameObject("ModelRoot");
+        modelRoot.transform.SetParent(cardRoot.transform, false);
+        modelRoot.transform.localPosition = Vector3.zero;
+        modelRoot.transform.localRotation = Quaternion.identity;
+        modelRoot.transform.localScale = Vector3.one;
+
+        GameObject fbxInstance = (GameObject)PrefabUtility.InstantiatePrefab(fbx, modelRoot.transform);
+        fbxInstance.name = "CardModel";
+        fbxInstance.transform.localPosition = Vector3.zero;
+        fbxInstance.transform.localRotation = Quaternion.identity;
+        fbxInstance.transform.localScale = Vector3.one;
 
         // ── 材质槽：slot0=卡面(CardComposite)  slot1=卡背 ──
-        MeshRenderer mr = root.GetComponentInChildren<MeshRenderer>();
-        if (mr == null) { Debug.LogError("[Card3DNew] 模型无 MeshRenderer"); Object.DestroyImmediate(root); return; }
+        MeshRenderer mr = fbxInstance.GetComponentInChildren<MeshRenderer>();
+        if (mr == null) { Debug.LogError("[Card3DNew] 模型无 MeshRenderer"); Object.DestroyImmediate(cardRoot); return; }
         Material[] mats = new Material[Mathf.Max(2, mr.sharedMaterials.Length)];
         mats[0] = frontMat;
         for (int i = 1; i < mats.Length; i++) mats[i] = backMat;
         mr.sharedMaterials = mats;
 
-        // ── 脚本（与旧 3D 卡一致 + 图标显示；Animator 由 Card3DInstance.Awake 运行时补）──
-        root.AddComponent<Card3DInstance>();
-        CardDisplay3D display = root.AddComponent<CardDisplay3D>();
-        CardIcons3D icons = root.AddComponent<CardIcons3D>();
-        root.AddComponent<Card3DHover>();
-        root.AddComponent<DamageSourceMarker>();
+        // UIComponents：文字/图标/三排容器，不跟随 ModelRoot 缩放
+        GameObject uiRoot = new GameObject("UIComponents");
+        uiRoot.transform.SetParent(cardRoot.transform, false);
+        uiRoot.transform.localPosition = Vector3.zero;
+        uiRoot.transform.localRotation = Quaternion.identity;
+        uiRoot.transform.localScale = Vector3.one;
+
+        // ── 脚本（挂 CardRoot；MeshRenderer 在 ModelRoot 子层级，运行时用 GetComponentInChildren 取）──
+        cardRoot.AddComponent<Card3DInstance>();
+        CardDisplay3D display = cardRoot.AddComponent<CardDisplay3D>();
+        CardIcons3D icons = cardRoot.AddComponent<CardIcons3D>();
+        cardRoot.AddComponent<Card3DHover>();
+        cardRoot.AddComponent<DamageSourceMarker>();
 
         // ── BoxCollider（比卡面略大便于点击，可调）──
-        BoxCollider bc = root.GetComponent<BoxCollider>();
-        if (bc == null) bc = root.AddComponent<BoxCollider>();
+        BoxCollider bc = cardRoot.GetComponent<BoxCollider>();
+        if (bc == null) bc = cardRoot.AddComponent<BoxCollider>();
         bc.size = new Vector3(1.1f, 1.9f, 0.03f);
         bc.center = Vector3.zero;
 
         // ── 文字（identity 朝向，按 2D 布局定位）──
         // 字号比例对齐 2D（名 8.2 < 费 10 ≈ 血 9.8 < 攻 10.55）：名字最小、攻最大
-        TextMeshPro nameT = CreateTextChild(root, "NameText", font, "卡名", 0.55f, 0.75f, NamePos);
-        TextMeshPro costT = CreateTextChild(root, "CostText", font, "0", 0.72f, 0.92f, CostPos);
-        TextMeshPro atkT  = CreateTextChild(root, "AttackText", font, "0", 0.75f, 0.95f, AttackPos);
-        TextMeshPro hpT   = CreateTextChild(root, "HealthText", font, "0", 0.70f, 0.90f, HealthPos);
+        TextMeshPro nameT = CreateTextChild(uiRoot, "NameText", font, "卡名", 0.55f, 0.75f, NamePos);
+        TextMeshPro costT = CreateTextChild(uiRoot, "CostText", font, "0", 0.72f, 0.92f, CostPos);
+        TextMeshPro atkT  = CreateTextChild(uiRoot, "AttackText", font, "0", 0.75f, 0.95f, AttackPos);
+        TextMeshPro hpT   = CreateTextChild(uiRoot, "HealthText", font, "0", 0.70f, 0.90f, HealthPos);
 
         // ── 角标图标 SpriteRenderer（identity 朝向，运行时由 CardIcons3D 填 sprite）──
-        SpriteRenderer costIcon   = CreateIconChild(root, "CostIcon",   CostPos);
-        SpriteRenderer typeIcon   = CreateIconChild(root, "TypeIcon",   TypePos);
-        SpriteRenderer healthIcon = CreateIconChild(root, "HealthIcon", HealthPos);
-        SpriteRenderer attackIcon = CreateIconChild(root, "AttackIcon", AttackPos);
+        SpriteRenderer costIcon   = CreateIconChild(uiRoot, "CostIcon",   CostPos);
+        SpriteRenderer typeIcon   = CreateIconChild(uiRoot, "TypeIcon",   TypePos);
+        SpriteRenderer healthIcon = CreateIconChild(uiRoot, "HealthIcon", HealthPos);
+        SpriteRenderer attackIcon = CreateIconChild(uiRoot, "AttackIcon", AttackPos);
 
         // ── 三排容器（运行时动态生成子图标）──
-        Transform prefixRow = CreateRowChild(root, "PrefixIconsArea", PrefixRowPos);
-        Transform traitRow  = CreateRowChild(root, "TraitIconsArea",  TraitRowPos);
-        Transform statusRow = CreateRowChild(root, "StatusIconsArea", StatusRowPos);
+        Transform prefixRow = CreateRowChild(uiRoot, "PrefixIconsArea", PrefixRowPos);
+        Transform traitRow  = CreateRowChild(uiRoot, "TraitIconsArea",  TraitRowPos);
+        Transform statusRow = CreateRowChild(uiRoot, "StatusIconsArea", StatusRowPos);
 
         // ── 接线显示脚本 ──
         display.nameText = nameT;
@@ -140,8 +163,8 @@ public static class Card3DNewPrefabBuilder
             string folder = System.IO.Path.GetFileName(dir);
             AssetDatabase.CreateFolder(parent, folder);
         }
-        PrefabUtility.SaveAsPrefabAsset(root, PrefabPath);
-        Object.DestroyImmediate(root);
+        PrefabUtility.SaveAsPrefabAsset(cardRoot, PrefabPath);
+        Object.DestroyImmediate(cardRoot);
 
         AssetDatabase.SaveAssets();
         Debug.Log($"[Card3DNew] 预制体已生成: {PrefabPath}（CardComposite 卡面 + 文字/图标按 2D 布局，三排图标运行时填充）");

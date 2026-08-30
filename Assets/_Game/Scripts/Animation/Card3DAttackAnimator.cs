@@ -52,7 +52,7 @@ public class Card3DAttackAnimator : MonoBehaviour
 
         // 卡牌半高（落点偏移量，让攻击卡牌停在目标边缘、不与目标中心重叠）
         float cardHalf = 0.8f;
-        var mr = GetComponent<MeshRenderer>();
+        var mr = GetComponentInChildren<MeshRenderer>(); // 网格在 ModelRoot 子层级
         if (mr != null && mr.bounds.size.y > 0.01f)
             cardHalf = mr.bounds.size.y * 0.5f;
 

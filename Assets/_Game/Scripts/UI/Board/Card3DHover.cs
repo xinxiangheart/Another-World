@@ -21,7 +21,7 @@ public class Card3DHover : MonoBehaviour
             cardInstance = GetComponent<CardInstance>();
 
         originalScale = transform.localScale;
-        meshRenderer = GetComponent<MeshRenderer>();
+        meshRenderer = GetComponentInChildren<MeshRenderer>(); // 网格在 ModelRoot 子层级
 
     }
 
@@ -37,7 +37,7 @@ public class Card3DHover : MonoBehaviour
             if (hm != null) hm.SetHandAreaRaycast(false);
 
         // 2. 恢复颜色和大小
-            MeshRenderer renderer = GetComponent<MeshRenderer>();
+            MeshRenderer renderer = GetComponentInChildren<MeshRenderer>();
             if (renderer != null)
                 renderer.material.color = Color.yellow;
             transform.localScale = originalScale * 1.05f;
@@ -69,7 +69,7 @@ public class Card3DHover : MonoBehaviour
         if (hm != null) hm.SetHandAreaRaycast(true);
 
         // 2. 恢复颜色和大小
-        MeshRenderer renderer = GetComponent<MeshRenderer>();
+        MeshRenderer renderer = GetComponentInChildren<MeshRenderer>();
         if (renderer != null)
             renderer.material.color = Color.white;
         transform.localScale = originalScale;

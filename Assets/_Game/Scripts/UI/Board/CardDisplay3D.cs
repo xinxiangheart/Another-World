@@ -24,7 +24,7 @@ public class CardDisplay3D : MonoBehaviour
     /// <summary>设置三层合成贴图（通过 MaterialPropertyBlock，避免每卡独立材质）。</summary>
     public void SetCompositeTextures(Texture2D bg, Texture2D border, Texture2D art)
     {
-        var mr = GetComponent<MeshRenderer>();
+        var mr = GetComponentInChildren<MeshRenderer>(); // 网格在 ModelRoot 子层级（模型可独立缩放）
         if (mr == null || _mpb == null) return;
 
         mr.GetPropertyBlock(_mpb);

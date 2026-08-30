@@ -1046,7 +1046,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     void SetCardHighlight(bool highlight)
     {
         if (currentCard3D == null) return;
-        var mr = currentCard3D.GetComponent<MeshRenderer>();
+        var mr = currentCard3D.GetComponentInChildren<MeshRenderer>(); // 网格在 ModelRoot 子层级
         if (mr == null) return;
         if (highlight)
         {
