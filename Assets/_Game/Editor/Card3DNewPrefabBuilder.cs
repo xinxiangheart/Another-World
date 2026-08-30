@@ -31,14 +31,16 @@ public static class Card3DNewPrefabBuilder
 
     // 旧 3D 卡文字显示参数（保证在 0.9×1.6 卡上渲染一致）
     static readonly Vector3 TextScale = new Vector3(1.4814816f, 1f, 0.8333331f);
-    const float TextZ = 0.1f;      // 文字 z
-    const float IconZ = 0.06f;     // 图标 z（文字下层）
-    const float RowZ  = 0.06f;     // 三排 z
+    // 卡面元素 z 必须 > 0.1：卡面网格前表面约在本地 z≈0.1，低于它会被不透明卡面遮挡（0.02~0.06 全被遮，0.1+ 正常）。
+    // 全部抬到 0.1 以上，前->后间隔 0.01~0.02 即可正常渲染。
+    const float TextZ = 0.16f;      // 文字 z（最前）
+    const float IconZ = 0.14f;     // 图标 z
+    const float RowZ  = 0.15f;     // 三排 z
 
-    // 卡面三层 SpriteRenderer z（前->后：卡图 > 前缀背景 > 卡框；均低于图标/三排 0.06）
-    const float FaceArtZ    = 0.05f;   // 卡图 z（最前）
-    const float FacePrefixZ = 0.03f;   // 前缀背景 z
-    const float FaceFrameZ  = 0.02f;   // 卡框 z（最下）
+    // 卡面三层 SpriteRenderer z（前->后：卡图 > 前缀背景 > 卡框；均低于图标/三排）
+    const float FaceArtZ    = 0.13f;   // 卡图 z（最前）
+    const float FacePrefixZ = 0.12f;   // 前缀背景 z
+    const float FaceFrameZ  = 0.11f;   // 卡框 z（最下）
     // 默认铺满尺寸（生成器按贴图 bounds 反算 localScale；生成后可手调，运行时不重算）
     static readonly Vector2 FrameSize   = new Vector2(0.9f, 1.6f);   // 卡框铺满卡面
     static readonly Vector2 ArtAreaSize = new Vector2(0.69f, 0.92f); // 前缀背景/卡图（ArtworkArea 比例）
