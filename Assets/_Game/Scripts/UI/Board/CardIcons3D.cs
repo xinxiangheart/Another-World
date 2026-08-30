@@ -43,13 +43,11 @@ public class CardIcons3D : MonoBehaviour
     public string traitIconPath = "Icons/Buffs/";
     public string statusIconPath = "Icons/Buffs/";
 
-    [Header("尺寸（世界单位，按 1.35×2.4 卡面缩放）")]
-    [Tooltip("角标图标边长（费用/类型/攻/血）")]
-    public float cornerIconSize = 0.24f;
-    [Tooltip("三排单图标边长")]
-    public float rowIconSize = 0.18f;
-    [Tooltip("三排图标水平间距")]
-    public float rowSpacing = 0.22f;
+    [Header("三排图标尺寸参考（不写死，读预制体静态图标）")]
+    [Tooltip("参考图标：三排动态图标按它的 localScale 生成（拖一个预制体里的静态角标图标）")]
+    public SpriteRenderer referenceIconSR;
+    [Tooltip("三排图标间距 = 参考图标 localScale.x × 此系数")]
+    public float rowSpacingFactor = 1.2f;
 
     CardInstance _inst;
     static Sprite _placeholder;
@@ -83,7 +81,7 @@ public class CardIcons3D : MonoBehaviour
         sr.gameObject.SetActive(show);
         if (!show) return;
         sr.sprite = s != null ? s : GetPlaceholder();
-        SetFixedSize(sr, cornerIconSize);
+        sr.enabled = true; // 尺寸沿用预制体手调 localScale，不写死
     }
 
     // ================= 三排图标 =================
@@ -92,6 +90,9 @@ public class CardIcons3D : MonoBehaviour
     {
         if (row == null) return;
         ClearChildren(row);
+        // 动态图标尺寸/间距参考预制体静态图标（referenceIconSR）的 localScale，不写死
+        Vector3 refScale = referenceIconSR != null ? referenceIconSR.transform.localScale : Vector3.one;
+        float spacing = (referenceIconSR != null ? referenceIconSR.transform.localScale.x : 1f) * rowSpacingFactor;
         float x = 0f;
         foreach (var e in entries)
         {
@@ -99,20 +100,12 @@ public class CardIcons3D : MonoBehaviour
             go.transform.SetParent(row, false);
             go.transform.localRotation = Quaternion.identity; // 卡根 Y180 → 世界法线朝相机
             go.transform.localPosition = new Vector3(x, 0, 0);
+            go.transform.localScale = refScale;
             var sr = go.GetComponent<SpriteRenderer>();
             Sprite s = e.direct != null ? e.direct : LoadSprite(e.path);
             sr.sprite = s != null ? s : GetPlaceholder();
-            SetFixedSize(sr, rowIconSize);
-            x += rowSpacing;
+            x += spacing;
         }
-    }
-
-    /// <summary>按 Sprite 原始宽高比缩放到固定世界尺寸（用 bounds.x 缩放，保持比例）。</summary>
-    static void SetFixedSize(SpriteRenderer sr, float worldSize)
-    {
-        if (sr == null || sr.sprite == null) return;
-        float s = worldSize / Mathf.Max(0.001f, sr.sprite.bounds.size.x);
-        sr.transform.localScale = new Vector3(s, s, 1f);
     }
 
     static void ClearChildren(Transform t)

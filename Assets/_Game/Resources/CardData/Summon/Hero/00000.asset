@@ -49,7 +49,7 @@ MonoBehaviour:
   cardSprite2D: {fileID: 0}
   spellCardBackSprite2D: {fileID: 0}
   summonCardBackSprite2D: {fileID: 0}
-  prefab3D: {fileID: 2651563214768550210, guid: e09968ed5c12f8f4c91568ea8122934f, type: 3}
+  prefab3D: {fileID: 7115316631296593520, guid: e09968ed5c12f8f4c91568ea8122934f, type: 3}
   spellPrefab3D: {fileID: 0}
   hasBuff: 0
   buffText: 
