@@ -541,8 +541,8 @@ Transform:
   m_GameObject: {fileID: 1094747110808969126}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0.004, y: 0.002, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalPosition: {x: 0.004, y: -5.55, z: 0}
+  m_LocalScale: {x: 1.4, y: 1.4, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 151089756697985505}
@@ -595,8 +595,8 @@ MonoBehaviour:
   - {fileID: 21300000, guid: 35ef16c49b200a842b642b85325be068, type: 3}
   defaultPrefixArtSprite: {fileID: 21300000, guid: b7e7d2b8f09570042b3d43a492a159ac, type: 3}
   prefixArtSprites:
-  - {fileID: 21300000, guid: db0102c845c7ef3419035d1a8019cc06, type: 3}
-  - {fileID: 21300000, guid: 708745a8649994c4c98dacca3ee11d73, type: 3}
+  - {fileID: 21300000, guid: 03f7426fabfe62344b15e5381a36d784, type: 3}
+  - {fileID: 21300000, guid: fb81b43c3f16e894f90fb8b11fb14441, type: 3}
   - {fileID: 21300000, guid: 5d8e080f8e8792049a049d343f80ac0a, type: 3}
   - {fileID: 21300000, guid: 833d5a95703bd754685dbed99d980ecf, type: 3}
   - {fileID: 21300000, guid: 145199175b8ee374fbcd65030f622c35, type: 3}
@@ -1608,7 +1608,7 @@ SpriteRenderer:
   m_Size: {x: 7.68, y: 13.44}
   m_AdaptiveModeThreshold: 0.5
   m_SpriteTileMode: 0
-  m_WasSpriteAssigned: 1
+  m_WasSpriteAssigned: 0
   m_MaskInteraction: 0
   m_SpriteSortPoint: 0
 --- !u!1 &8936784291041646710

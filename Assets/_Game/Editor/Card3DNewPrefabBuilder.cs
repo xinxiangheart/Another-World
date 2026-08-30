@@ -86,7 +86,9 @@ public static class Card3DNewPrefabBuilder
 
         // ── 层级：CardRoot(位置/占地/逻辑) → ModelRoot(模型网格,可独立缩放) + UIComponents(文字/图标/三排) ──
         GameObject cardRoot = new GameObject("CardRoot");
-        cardRoot.transform.localScale = Vector3.one;
+        // 基础缩放 1.4（呼吸动画在 Card3DAnimator 里以此为基础再放大缩小），y 位置 -5.55
+        cardRoot.transform.localScale = new Vector3(1.4f, 1.4f, 1f);
+        cardRoot.transform.localPosition = new Vector3(0f, -5.55f, 0f);
         cardRoot.transform.localRotation = Quaternion.identity;
 
         // ModelRoot：只放模型网格——调整它的 Scale 只缩放模型，不影响文字/图标。

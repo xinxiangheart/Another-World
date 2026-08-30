@@ -36,7 +36,7 @@ public class CardIcons3D : MonoBehaviour
     public Sprite statusShieldSprite, statusBuffSprite, statusDebuffSprite;
 
     [Header("路径回退（相对 Art/Sprites/，文件实际名）")]
-    public string energyIconPath = "UI/Energy";
+    public string energyIconPath = "UI/Cost"; // 费用图标实际文件是 UI/Cost.png（2D 的 UI/Energy 不存在）
     public string attackIconPath = "UI/Attack";
     public string healthIconPath = "UI/Health";
     public string prefixIconPath = "Icons/Prefixes/";

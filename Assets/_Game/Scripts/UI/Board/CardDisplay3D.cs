@@ -324,18 +324,32 @@ public class CardDisplay3D : MonoBehaviour
         return frontFace;
     }
 
-    /// <summary>正面状态（默认）：显示正面全部组件（卡框/前缀底图/卡图/文字/图标/三排）；卡背随朝向隐藏。不改变比例/位置。</summary>
+    /// <summary>正面状态（默认）：显示正面全部组件（UIComponents），隐藏 CardModel 模型盒。不改变比例/位置。</summary>
     public void ShowFront()
     {
         GameObject f = GetFrontFace();
         if (f != null) f.SetActive(true);
+        Transform m = GetCardModel();
+        if (m != null) m.gameObject.SetActive(false); // 正面：隐藏模型盒，卡背随之完全不可见
     }
 
-    /// <summary>背面状态：隐藏正面全部组件，显示卡背（配合 SetHidden 旋转 0° 使卡背朝相机）。不改变比例/位置。</summary>
+    /// <summary>背面状态：显示 CardModel 模型盒（SetHidden 已把整体模型翻转使卡背朝相机），隐藏正面全部组件。不改变比例/位置。</summary>
     public void ShowBack()
     {
         GameObject f = GetFrontFace();
         if (f != null) f.SetActive(false);
+        Transform m = GetCardModel();
+        if (m != null) m.gameObject.SetActive(true); // 背面：显示模型盒（卡背）
+    }
+
+    /// <summary>模型盒（ModelRoot，内含 fbx 网格：正面白底 + 背面/侧面卡背）。隐藏它=隐藏整个模型。
+    /// 注意：fbx 实例名可能被嵌套预制体剥离，ModelRoot 是固定名且为 CardRoot 第0子物体。</summary>
+    Transform GetCardModel()
+    {
+        Transform t = transform.Find("ModelRoot");
+        if (t != null) return t;
+        var mr = GetComponentInChildren<MeshRenderer>();
+        return mr != null ? mr.transform : null;
     }
 
     /// <summary>隐藏所有3D文字和信息（对方视角/附件用）：保持正面卡面，仅隐藏文字。</summary>
