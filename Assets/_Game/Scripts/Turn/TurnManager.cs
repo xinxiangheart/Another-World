@@ -473,6 +473,7 @@ public partial class TurnManager : MonoBehaviour
                         Destroy(slot.currentCard3D);
                         slot.SetCard(null);
                         GameObject model = Instantiate(bigEvil.prefab3D, pos, Quaternion.Euler(0, 180, 0));
+                        Card3DInstance.PlaySummonOn(model); // 召唤动画
                         Card3DInstance c3d = model.GetComponent<Card3DInstance>();
                         if (c3d != null)
                         {

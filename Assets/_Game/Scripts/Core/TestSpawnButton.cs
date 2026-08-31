@@ -23,6 +23,7 @@ public class TestSpawnButton : MonoBehaviour
         HandManager hm = FindObjectOfType<HandManager>();
         Vector3 pos = hm.GetSlotWorldPosition(slot.slotID);
         GameObject model = Instantiate(data.prefab3D, pos, Quaternion.Euler(0, 180, 0));
+        Card3DInstance.PlaySummonOn(model); // 召唤动画
 
         Card3DInstance inst = model.GetComponent<Card3DInstance>();
         if (inst != null)

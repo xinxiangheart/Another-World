@@ -398,6 +398,7 @@ public class HandManager : MonoBehaviour
 
         Vector3 worldPos = GetSlotWorldPosition(slot.slotID);
         GameObject model = Instantiate(template.prefab3D, worldPos, Quaternion.Euler(0, 180, 0));
+        Card3DInstance.PlaySummonOn(model); // 召唤动画（模型层 0→1.5→1.4→1.0）
         model.name = sourceInstance.instanceID;
         model.transform.localScale = template.prefab3D.transform.localScale;
         Player.Scale3DModel(model);
@@ -496,6 +497,7 @@ public class HandManager : MonoBehaviour
                 {
                     Vector3 mergePos = GetSlotWorldPosition(slot.slotID);
                     GameObject mergeModel = Instantiate(yinYangData.prefab3D, mergePos, Quaternion.Euler(0, 180, 0));
+                    Card3DInstance.PlaySummonOn(mergeModel); // 召唤动画
                     Player.Scale3DModel(mergeModel);
                     mergeModel.name = "03012_merged";
                     Card3DInstance mergeInst = mergeModel.GetComponent<Card3DInstance>();
@@ -895,6 +897,7 @@ public class HandManager : MonoBehaviour
     {
         Vector3 worldPos = GetSlotWorldPosition(slot.slotID);
         GameObject model = Instantiate(template.prefab3D, worldPos, Quaternion.Euler(0, 180, 0));
+        Card3DInstance.PlaySummonOn(model); // 召唤动画
         Player.Scale3DModel(model);
         model.name = sourceInstance.instanceID;
         Card3DInstance instance3D = model.GetComponent<Card3DInstance>();

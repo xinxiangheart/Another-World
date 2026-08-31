@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 
 public class Card3DInstance : MonoBehaviour
@@ -21,5 +22,82 @@ public class Card3DInstance : MonoBehaviour
         // 新 3D 卡图标（费用/类型/攻/血 + 三排）随同一触发点刷新；旧卡无此组件则跳过
         CardIcons3D icons = GetComponent<CardIcons3D>();
         if (icons != null) icons.Refresh();
+    }
+
+    /// <summary>召唤动画（缩放曲线：0 → 正常×1.25 → ×1.2 → ×1.0；前半 0.6s、后半 0.6s）。
+    /// 只影响表现，不改任何逻辑判断；缩放作用在可见正面容器（UIComponents），文字/图标随卡面整体缩放。
+    /// 用协程驱动，不阻塞其它逻辑。</summary>
+    public void PlaySummonAnimation()
+    {
+        if (_summonAnimating) return;
+        StartCoroutine(SummonAnimationRoutine());
+    }
+
+    bool _summonAnimating;
+
+    /// <summary>生成入口统一调用：实例化后立即触发召唤动画（同步把可见正面容器缩到 0，避免先以完整尺寸闪现一帧）。</summary>
+    public static void PlaySummonOn(GameObject model)
+    {
+        if (model != null)
+            model.GetComponent<Card3DInstance>()?.PlaySummonAnimation();
+    }
+
+    IEnumerator SummonAnimationRoutine()
+    {
+        Transform target = GetScaleTarget(); // 可见正面容器（UIComponents）；ModelRoot 是卡背，正面被 ShowFront 禁用不可见
+        if (target == null) yield break;
+
+        _summonAnimating = true;
+        // 动画期间暂停漂浮/呼吸（与攻击动画一致）：旧卡缩放整卡根时避免呼吸缩放覆盖动画
+        Card3DAnimator floatAnim = GetComponent<Card3DAnimator>();
+        if (floatAnim != null) floatAnim.enabled = false;
+
+        Vector3 baseScale = target.localScale; // 正常缩放（新卡 UIComponents=1）
+        target.localScale = Vector3.zero;      // 立即置 0，避免生成后以完整尺寸闪现
+
+        // 阶段1（共 0.6s）：0 → 正常×1.25 → ×1.2
+        const float growDur = 0.4f;    // 0→1.25 迅速放大（ease-out）
+        const float bounceDur = 0.2f;  // 1.25→1.2 回弹
+        float t = 0f;
+        while (t < growDur)
+        {
+            t += Time.deltaTime;
+            float k = Mathf.Clamp01(t / growDur);
+            float eased = 1f - Mathf.Pow(1f - k, 3f);
+            target.localScale = baseScale * (1.25f * eased);
+            yield return null;
+        }
+        t = 0f;
+        while (t < bounceDur)
+        {
+            t += Time.deltaTime;
+            float k = Mathf.Clamp01(t / bounceDur);
+            target.localScale = baseScale * Mathf.Lerp(1.25f, 1.2f, k);
+            yield return null;
+        }
+
+        // 阶段2（0.6s）：×1.2 → ×1.0 慢慢缩小到正常
+        t = 0f;
+        while (t < 0.6f)
+        {
+            t += Time.deltaTime;
+            float k = Mathf.Clamp01(t / 0.6f);
+            float eased = 1f - Mathf.Pow(1f - k, 3f); // ease-out 慢收
+            target.localScale = baseScale * Mathf.Lerp(1.2f, 1.0f, eased);
+            yield return null;
+        }
+        target.localScale = baseScale; // 精确复位到正常
+
+        if (floatAnim != null) floatAnim.enabled = true;
+        _summonAnimating = false;
+    }
+
+    /// <summary>取缩放动画的目标层：可见正面容器 UIComponents（新卡正面视觉=UIComponents 卡面精灵+文字+图标，
+    /// ModelRoot 模型盒是卡背，正面被 CardDisplay3D.ShowFront 禁用）；旧卡无 UIComponents → 整卡根。</summary>
+    Transform GetScaleTarget()
+    {
+        Transform t = transform.Find("UIComponents");
+        if (t != null) return t;
+        return transform;
     }
 }

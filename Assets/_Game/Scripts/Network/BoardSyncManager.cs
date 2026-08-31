@@ -431,6 +431,7 @@ public class BoardSyncManager : MonoBehaviour
             if (t?.prefab3D != null)
             {
                 var m = Instantiate(t.prefab3D, hm.GetSlotWorldPosition(idx), Quaternion.Euler(0, 180, 0));
+                Card3DInstance.PlaySummonOn(m); // 召唤动画
                 var c = m.GetComponent<Card3DInstance>();
                 if (c != null) { var n = m.AddComponent<CardInstance>(); n.InitFromTemplate(t, 0); if (t.templateID == "03007") n.isShadow = true; if (t.templateID == "01502") CardInstance.shadowMasterAlive = true; n._placedAtTime = Time.time; n.placementGeneration = BoardSlot.NextPlacementGeneration(); n.serverAckGen = syncGen; c.cardInstance = n; c.UpdateValues(); }
                 slot.SetCard(m);

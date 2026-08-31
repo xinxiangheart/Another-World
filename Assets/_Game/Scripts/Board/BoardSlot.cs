@@ -3915,6 +3915,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             // 生成狼（空位或有被替换的随从）
             Vector3 pos = FindObjectOfType<HandManager>().GetSlotWorldPosition(i);
             GameObject model = Instantiate(wolfTemplate.prefab3D, pos, Quaternion.Euler(0, 180, 0));
+            Card3DInstance.PlaySummonOn(model); // 召唤动画
             Card3DInstance c3d = model.GetComponent<Card3DInstance>();
             if (c3d != null)
             {

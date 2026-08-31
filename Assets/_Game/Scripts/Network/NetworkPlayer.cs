@@ -646,6 +646,7 @@ public class NetworkPlayer : NetworkBehaviour
                         }
                         Vector3 pos = FindObjectOfType<HandManager>().GetSlotWorldPosition(enemySlot);
                         GameObject model = Instantiate(template.prefab3D, pos, Quaternion.Euler(0, 180, 0));
+                        Card3DInstance.PlaySummonOn(model); // 召唤动画
                         Player.Scale3DModel(model);
                         Card3DInstance c3d = model.GetComponent<Card3DInstance>();
                         if (c3d != null)
@@ -1426,6 +1427,7 @@ public class NetworkPlayer : NetworkBehaviour
 
         Vector3 pos = FindObjectOfType<HandManager>().GetSlotWorldPosition(enemySlot);
         GameObject model = Instantiate(template.prefab3D, pos, Quaternion.Euler(0, 180, 0));
+        Card3DInstance.PlaySummonOn(model); // 召唤动画
         Player.Scale3DModel(model);
         model.name = templateID + "_enemy";
 
@@ -2023,6 +2025,7 @@ public class NetworkPlayer : NetworkBehaviour
                 {
                     Vector3 pos = FindObjectOfType<HandManager>().GetSlotWorldPosition(i);
                     GameObject model = Instantiate(t.prefab3D, pos, Quaternion.Euler(0, 180, 0));
+                    Card3DInstance.PlaySummonOn(model); // 召唤动画
                     Player.Scale3DModel(model);
                     Card3DInstance c3d = model.GetComponent<Card3DInstance>();
                     if (c3d != null)
@@ -2357,6 +2360,7 @@ public class NetworkPlayer : NetworkBehaviour
         HandManager hm = FindObjectOfType<HandManager>();
         Vector3 pos = hm.GetSlotWorldPosition(slotID);
         GameObject model = UnityEngine.Object.Instantiate(t.prefab3D, pos, Quaternion.Euler(0, 180, 0));
+        Card3DInstance.PlaySummonOn(model); // 召唤动画
         Player.Scale3DModel(model);
         Card3DInstance c3d = model.GetComponent<Card3DInstance>();
         if (c3d != null)

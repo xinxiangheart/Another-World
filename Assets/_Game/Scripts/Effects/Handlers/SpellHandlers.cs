@@ -313,6 +313,7 @@ public static class SpellHandlers
         ts.SetCard(null);
         var pos = HM().GetSlotWorldPosition(ts.slotID);
         var model = UnityEngine.Object.Instantiate(newTD.prefab3D, pos, Quaternion.Euler(0, 180, 0));
+        Card3DInstance.PlaySummonOn(model); // 召唤动画
         var new3D = model.GetComponent<Card3DInstance>();
         if (new3D != null)
         {
