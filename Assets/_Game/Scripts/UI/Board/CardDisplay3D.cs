@@ -292,7 +292,8 @@ public class CardDisplay3D : MonoBehaviour
             if (attackText != null) attackText.gameObject.SetActive(false);
             if (healthText != null) healthText.gameObject.SetActive(false);
         }
-        if (costText != null) costText.gameObject.SetActive(false);
+        // 费用文字跟随正反面：ShowFront(UIComponents 激活)时显示，ShowBack 时随整组隐藏 —— 不在此强制隐藏
+        if (costText != null) costText.text = instance.currentCost.ToString();
 
         if (attackText != null) attackText.text = instance.Attack.ToString();
         if (healthText != null)
