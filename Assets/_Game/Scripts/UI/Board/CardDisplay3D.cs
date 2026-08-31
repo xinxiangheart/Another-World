@@ -53,7 +53,9 @@ public class CardDisplay3D : MonoBehaviour
     /// <summary>设置三层合成贴图（通过 MaterialPropertyBlock，避免每卡独立材质）。</summary>
     public void SetCompositeTextures(Texture2D bg, Texture2D border, Texture2D art)
     {
-        var mr = GetComponentInChildren<MeshRenderer>(); // 网格在 ModelRoot 子层级（模型可独立缩放）
+        // (true) 包含 inactive：ModelRoot 正面被隐藏时也能命中卡面网格（第0子物体），
+        // 否则 GetComponentInChildren 会跳过 inactive 模型、误抓到第一个 TMP 文字渲染器，把它的 _MainTex 覆盖成白块！
+        var mr = GetComponentInChildren<MeshRenderer>(true);
         if (mr == null || _mpb == null) return;
 
         mr.GetPropertyBlock(_mpb);
@@ -107,7 +109,8 @@ public class CardDisplay3D : MonoBehaviour
         // ── 卡背：拖入 cardBackSprite 则覆盖网格背槽 _MainTex（MPB，仅当前卡，不污染共享材质）──
         if (cardBackSprite != null)
         {
-            var mr = GetComponentInChildren<MeshRenderer>();
+            // (true) 必须命中卡面网格而非 TMP 文字渲染器（见 SetCompositeTextures 注释）
+            var mr = GetComponentInChildren<MeshRenderer>(true);
             if (mr != null && _mpb != null)
             {
                 mr.GetPropertyBlock(_mpb);
@@ -351,7 +354,7 @@ public class CardDisplay3D : MonoBehaviour
     {
         Transform t = transform.Find("ModelRoot");
         if (t != null) return t;
-        var mr = GetComponentInChildren<MeshRenderer>();
+        var mr = GetComponentInChildren<MeshRenderer>(true); // (true) 避免抓到 TMP 文字渲染器
         return mr != null ? mr.transform : null;
     }
 
