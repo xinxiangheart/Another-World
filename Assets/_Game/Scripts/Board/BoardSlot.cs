@@ -1042,26 +1042,45 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
     }
 
-    /// <summary>高亮槽上 3D 卡牌材质（卡牌在格子上方，仅变 slotImage 被卡牌遮挡）。恢复原色。</summary>
+    /// <summary>高亮槽上 3D 卡牌模型材质（卡牌在格子上方，仅变 slotImage 被卡牌遮挡）。恢复原色。
+    /// 只取「材质有 _Color 的模型网格」——TMP 文字(Distance Field)没有 _Color，跳过不报错。</summary>
     void SetCardHighlight(bool highlight)
     {
         if (currentCard3D == null) return;
-        var mr = currentCard3D.GetComponentInChildren<MeshRenderer>(); // 网格在 ModelRoot 子层级
+        MeshRenderer mr = FindCardModelRenderer(currentCard3D); // 卡牌模型网格（非 TMP 文字）
         if (mr == null) return;
+        Material mat = mr.material;
+        if (mat == null || !mat.HasProperty("_Color")) return; // 保险：无 _Color 不读写
         if (highlight)
         {
             if (!_cardColorStored)
             {
-                _origCardColor = mr.material.color;
+                _origCardColor = mat.color;
                 _cardColorStored = true;
             }
-            mr.material.color = highlightColor;
+            mat.color = highlightColor;
         }
         else if (_cardColorStored)
         {
-            mr.material.color = _origCardColor;
+            mat.color = _origCardColor;
             _cardColorStored = false;
         }
+    }
+
+    /// <summary>取卡牌子层级中第一个材质带 _Color 的 MeshRenderer（即卡牌模型网格）。
+    /// (true) 包含 inactive：隐藏(雾隐)卡模型正面被禁用时也能命中模型网格，
+    /// 否则 GetComponentInChildren 会跳过 inactive 模型、误抓到第一个 TMP 文字渲染器（同 CardDisplay3D 注释）。
+    /// 再按 _Color 判别跳过 TMP(Distance Field) 与 CardComposite(无 _Color 属性)——
+    /// 只有带 _Color 的模型材质才可 tint。无模型网格返回 null（高亮退化为格子环，HighlightRow 已带 1.15x 放大）。</summary>
+    static MeshRenderer FindCardModelRenderer(GameObject cardRoot)
+    {
+        foreach (MeshRenderer mr in cardRoot.GetComponentsInChildren<MeshRenderer>(true))
+        {
+            if (mr == null) continue;
+            Material mat = mr.sharedMaterial;
+            if (mat != null && mat.HasProperty("_Color")) return mr;
+        }
+        return null;
     }
 
     public IEnumerator StartOnEnterEffect(CardData template, CardInstance inst)

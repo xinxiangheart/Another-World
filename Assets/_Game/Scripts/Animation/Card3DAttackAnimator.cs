@@ -82,7 +82,8 @@ public class Card3DAttackAnimator : MonoBehaviour
         // 己方（向上冲）：上半部分（顶部）朝目标翘起；对方（向下冲）：下半部分（底部）朝目标下压
         float pitchDir = isAlly ? -pitch : pitch;
         Quaternion lungeRot = _originalRot * Quaternion.Euler(pitchDir, 0, 0);
-        yield return AnimateBezier(_originalPos, midPoint, impactPos, lunge, lungeRot);
+        // 冲刺后半段速度×1.5（前半段保持原速）→ 总体冲刺时间缩短到 5/6
+        yield return AnimateBezier(_originalPos, midPoint, impactPos, lunge, lungeRot, 1.5f);
 
         // ── 阶段3：击中（单帧：音效 + 飘字 + 伤害应用 + 目标震动）──
         onHit?.Invoke();
@@ -136,17 +137,25 @@ public class Card3DAttackAnimator : MonoBehaviour
         transform.rotation = rot;
     }
 
-    /// <summary>二次贝塞尔弧线飞行（a→b 控制点→c），线性旋转插值。</summary>
-    IEnumerator AnimateBezier(Vector3 a, Vector3 b, Vector3 c, float duration, Quaternion rot)
+    /// <summary>二次贝塞尔弧线飞行（a→b 控制点→c），线性旋转插值。
+    /// secondHalfSpeed>1 时冲刺分前后两半：前半段原速、后半段速度×secondHalfSpeed，
+    /// 总时长 = dur/2 + dur/(2×secondHalfSpeed)（×1.5 时= 5/6 dur）。</summary>
+    IEnumerator AnimateBezier(Vector3 a, Vector3 b, Vector3 c, float duration, Quaternion rot, float secondHalfSpeed = 1f)
     {
         if (duration <= 0f) { transform.position = c; transform.rotation = rot; yield break; }
 
         Quaternion startRot = transform.rotation;
+        float halfTime = duration * 0.5f; // 前半段原速走 dur/2
+        float total = secondHalfSpeed > 0f ? halfTime + halfTime / secondHalfSpeed : duration;
         float elapsed = 0f;
-        while (elapsed < duration)
+        while (elapsed < total)
         {
             elapsed += Time.deltaTime;
-            float t = Mathf.Clamp01(elapsed / duration);
+            // 曲线参数 t：前半段 0→0.5 走原速；后半段 0.5→1.0 加速
+            float t = elapsed <= halfTime
+                ? (elapsed / halfTime) * 0.5f
+                : 0.5f + ((elapsed - halfTime) / (halfTime / secondHalfSpeed)) * 0.5f;
+            t = Mathf.Clamp01(t);
 
             // 二次贝塞尔：B(t) = (1-t)²a + 2(1-t)t·b + t²c
             float u = 1f - t;

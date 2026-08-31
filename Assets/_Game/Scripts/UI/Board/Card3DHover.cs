@@ -12,6 +12,8 @@ public class Card3DHover : MonoBehaviour
     public static int ignoreSlotID = -1;
     bool _discardHovered; // 当前是否处于"可抛置"悬停（格子绿色高亮标志）
     BoardSlot _discardSlot; // 悬停中缓存的高亮槽位（OnMouseOver 每帧重申时避免 FindObjectOfType）
+    BoardSlot _targetHoverSlot; // 选择模式悬停中的槽位（高亮缓存；OnMouseOver 每帧重申）
+    public bool isHidden; // 隐藏（雾隐）态：抑制悬停详情面板(Test1Panel)，但保留选择模式高亮/点击
     void Start()
     {
         Card3DInstance c3d = GetComponent<Card3DInstance>();
@@ -48,8 +50,12 @@ public class Card3DHover : MonoBehaviour
             if (_discardSlot != null) _discardSlot.SetDiscardHighlight(true);
         }
 
-        // 抛置后强制恢复交互
-        if (Test1Panel.Instance != null && cardInstance != null)
+        // 选择模式：悬停卡牌 → 高亮对应格子（含整排类型走 HighlightRow）
+        _targetHoverSlot = null;
+        TryBeginTargetHover();
+
+        // 抛置后强制恢复交互（隐藏卡不弹详情面板，但选择模式高亮照常）
+        if (!isHidden && Test1Panel.Instance != null && cardInstance != null)
             Test1Panel.Instance.Show(cardInstance);
     }
 
@@ -58,8 +64,23 @@ public class Card3DHover : MonoBehaviour
         // 每帧重申抛置绿色高亮：OnMouseEnter 只在碰撞体进入时触发一次，
         // 一旦绿色被格子 OnPointerExit/SyncVisual 等路径覆盖就不会自动重画，
         // 这里保证悬停期间高亮一直存在、可重复触发。
-        if (!_discardHovered) return;
-        if (_discardSlot != null) _discardSlot.SetDiscardHighlight(true);
+        if (_discardHovered)
+            if (_discardSlot != null) _discardSlot.SetDiscardHighlight(true);
+
+        // 选择模式：悬停卡牌 → 高亮对应格子。
+        // 选择中途开始（鼠标已停在卡上）/切到别的格子也每帧检查命中；
+        // 选择已结束则丢弃缓存不再重申（高亮由 EndSelection→ClearAllHighlights 清空）。
+        if (_targetHoverSlot == null)
+        {
+            if (BoardSlot.isTargetingMode) TryBeginTargetHover();
+        }
+        else
+        {
+            if (BoardSlot.isTargetingMode && _targetHoverSlot.IsValidTarget(BoardSlot.currentTargetType))
+                _targetHoverSlot.HighlightRow(true);
+            else
+                _targetHoverSlot = null;
+        }
     }
 
     void OnMouseExit()
@@ -90,7 +111,44 @@ public class Card3DHover : MonoBehaviour
             }
         }
 
+        // 选择模式：退出卡牌 → 取消对应格子高亮（选择已结束时不再触碰格子，避免覆盖 SyncVisual 恢复）
+        if (_targetHoverSlot != null)
+        {
+            if (BoardSlot.isTargetingMode && _targetHoverSlot.IsValidTarget(BoardSlot.currentTargetType))
+                _targetHoverSlot.HighlightRow(false);
+            _targetHoverSlot = null;
+        }
+
         Test1Panel.Instance?.Hide();
+    }
+
+    /// <summary>选择模式悬停命中：卡牌 → 映射所在槽位 → 高亮（整排类型由 HighlightRow 处理）。
+    /// 附着卡牌不可选（isAttached / GetMySlot 找不到）。返回是否进入目标高亮态。</summary>
+    bool TryBeginTargetHover()
+    {
+        if (!BoardSlot.isTargetingMode || BoardSlot.currentTargetType == TargetType.None) return false;
+        if (cardInstance != null && cardInstance.isAttached) return false; // 附着卡牌不可选
+        BoardSlot slot = GetMySlot();
+        if (slot == null || !slot.IsValidTarget(BoardSlot.currentTargetType)) return false;
+        _targetHoverSlot = slot;
+        slot.HighlightRow(true);
+        return true;
+    }
+
+    /// <summary>选择模式：点击卡牌模型 → 选中对应格子（替代原 SelectionManager 3D 射线穿透选格子）。
+    /// OnMouseUpAsButton=按下+松开都在同一碰撞体才算点击，避免拖离误选。
+    /// 附着卡牌不可选；lastTargetClickTime 防与槽位 UI OnPointerClick 双触发。</summary>
+    void OnMouseUpAsButton()
+    {
+        if (!BoardSlot.isTargetingMode || BoardSlot.currentTargetType == TargetType.None) return;
+        if (cardInstance != null && cardInstance.isAttached) return; // 附着卡牌不可选
+        BoardSlot slot = GetMySlot();
+        if (slot == null || !slot.IsValidTarget(BoardSlot.currentTargetType)) return;
+        if (BoardSlot.onTargetSelected == null) return;
+        if (Time.time - BoardSlot.lastTargetClickTime < 0.05f) return;
+        BoardSlot.lastTargetClickTime = Time.time;
+        Debug.Log($"[TargetClick-card] slot={slot.slotID}, type={BoardSlot.currentTargetType}, onTargetSelected={BoardSlot.onTargetSelected != null}");
+        BoardSlot.onTargetSelected?.Invoke(slot);
     }
 
     void OnMouseDown()
@@ -199,7 +257,8 @@ public class Card3DHover : MonoBehaviour
 
     /// <summary>
     /// Apply or remove hidden state for the OPPONENT'S perspective. Visual only.
-    /// hidden=true: model flips (rotation 0°), text hides, hover panel blocked.
+    /// hidden=true: model flips (rotation 0°), text hides, hover detail panel suppressed
+    ///              (但仍可选择模式高亮/点击选中——隐藏不阻断选择)。
     /// hidden=false: restore normal — except attachments never show text.
     /// This does NOT affect targeting, damage, traits, or stat sync.
     /// </summary>
@@ -223,9 +282,10 @@ public class Card3DHover : MonoBehaviour
                 display.ShowFront();
         }
 
-        // 3. Hover panel / discard — disabled when hidden
+        // 3. 隐藏态：抑制悬停详情面板(Test1Panel)，但组件保持启用——
+        //    选择模式仍可悬停高亮 / 点击选中（隐藏允许选择，仅不显示详情）
         Card3DHover hover = model.GetComponent<Card3DHover>();
         if (hover != null)
-            hover.enabled = !hidden;
+            hover.isHidden = hidden;
     }
 }

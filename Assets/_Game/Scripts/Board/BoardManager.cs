@@ -81,7 +81,7 @@ public class BoardManager : MonoBehaviour
 
         GraphicRaycaster raycaster = slotCanvasObj.AddComponent<GraphicRaycaster>();
         // 槽位 GraphicRaycaster.blockingObjects 默认即为 None（不阻挡 3D 卡牌）——
-        // 选择模式下由 SelectionManager 的 3D 射线穿透路径（Physics.RaycastAll）负责点击选中槽位。
+        // 选择模式下由卡牌模型鼠标事件（Card3DHover）驱动悬停高亮 + 点击选中（不再 3D 射线穿透）。
         // eventCamera 是只读属性，自动从 Canvas.worldCamera 解析（上方已设 Camera.main）
 
         slotCanvasTransform = slotCanvasObj.transform;

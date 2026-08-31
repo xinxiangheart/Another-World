@@ -9,7 +9,6 @@ public class SelectionManager : MonoBehaviour
 
     private Stack<string> layerStack = new Stack<string>();
     private int idCounter;
-    BoardSlot _lastTargetHover;
 
     void Awake()
     {
@@ -17,60 +16,10 @@ public class SelectionManager : MonoBehaviour
         Instance = this;
     }
 
-    void Update()
-    {
-        // 目标选择模式：3D 射线（Physics.RaycastAll）穿透卡牌，检测鼠标下的槽位 → 驱动高亮 + 点击。
-        // 卡牌 Collider 保持启用（悬停弹窗/抛置正常），槽位 BoxCollider 在卡牌之后被 RaycastAll 命中。
-        if (layerStack.Count == 0 || BoardSlot.currentTargetType == TargetType.None) return;
-        if (Camera.main == null) return;
-
-        Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
-        var hits = Physics.RaycastAll(ray, 500f);
-        BoardSlot hovered = FindSlotUnderCursor(hits);
-
-        if (hovered != _lastTargetHover)
-        {
-            if (_lastTargetHover != null) _lastTargetHover.HighlightRow(false);
-            _lastTargetHover = hovered;
-            if (hovered != null) hovered.HighlightRow(true);
-        }
-
-        // 选择模式：左键点击 → 穿透 3D 卡牌选中下方格子（Physics.RaycastAll 已穿透卡牌定位槽位，
-        // 弥补 UI 射线被 3D 卡牌遮挡时槽位 OnPointerClick 收不到的问题）。lastTargetClickTime 防与 UI 双触发。
-        if (Input.GetMouseButtonUp(0) && hovered != null && hovered.IsValidTarget(BoardSlot.currentTargetType))
-        {
-            BoardSlot.lastTargetClickTime = Time.time;
-            BoardSlot.onTargetSelected?.Invoke(hovered);
-        }
-    }
-
-    /// <summary>从射线命中中找鼠标下的槽位：命中卡牌 → 映射到其所在槽位（穿透高亮卡牌下的格子）。
-    /// 不新增槽位 collider——避免干扰卡牌 OnMouseEnter（悬停弹窗）。空槽位仍由 UI OnPointerEnter 高亮。</summary>
-    BoardSlot FindSlotUnderCursor(RaycastHit[] hits)
-    {
-        BoardManager bm = FindObjectOfType<BoardManager>();
-        if (bm == null) return null;
-        foreach (var h in hits)
-        {
-            if (h.collider == null) continue;
-            // 直接命中槽位（若未来有槽位 collider）
-            BoardSlot direct = h.collider.GetComponentInParent<BoardSlot>();
-            if (direct != null && direct.IsValidTarget(BoardSlot.currentTargetType)) return direct;
-            // 命中卡牌 → 找它所在槽位
-            Card3DInstance c3d = h.collider.GetComponentInParent<Card3DInstance>();
-            if (c3d != null)
-            {
-                foreach (var s in bm.GetAllSlots())
-                {
-                    if (s != null && s.currentCard3D != null
-                        && s.currentCard3D.GetComponent<Card3DInstance>() == c3d
-                        && s.IsValidTarget(BoardSlot.currentTargetType))
-                        return s;
-                }
-            }
-        }
-        return null;
-    }
+    // 目标选择模式不再在这里做 3D 射线穿透检测格子。
+    // 新行为：悬停卡牌 → 高亮对应格子、点击卡牌 → 选中，全部由卡牌模型的鼠标事件驱动
+    // （Card3DHover.OnMouseEnter/OnMouseOver/OnMouseUp，卡牌命中 → 映射所在槽位 → HighlightRow）。
+    // 空槽位（无卡牌）仍由槽位 UI OnPointerEnter/OnPointerClick 高亮选中（无卡牌遮挡，路径不变）。
 
     /// <summary>
     /// 强制退出所有选择
@@ -156,7 +105,6 @@ public class SelectionManager : MonoBehaviour
             }
             FindObjectOfType<CardDrag>()?.SetButtonsInteractable(true);
             Card3DHover.allowDiscard = true;
-            if (_lastTargetHover != null) { _lastTargetHover.HighlightRow(false); _lastTargetHover = null; }
         }
     }
     /// <summary>
@@ -186,7 +134,6 @@ public class SelectionManager : MonoBehaviour
         }
         FindObjectOfType<CardDrag>()?.SetButtonsInteractable(true);
         Card3DHover.allowDiscard = true;
-        if (_lastTargetHover != null) { _lastTargetHover.HighlightRow(false); _lastTargetHover = null; }
     }
     public void StartSafeCoroutine(IEnumerator routine)
     {
