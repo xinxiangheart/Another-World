@@ -161,6 +161,16 @@ public static class Card3DNewPrefabBuilder
         SpriteRenderer artSR    = CreateFaceSR(uiRoot, "CardArt", FaceArtZ,
             FitScale(AssetDatabase.LoadAssetAtPath<Sprite>("Assets/_Game/Art/Sprites/Cards/Summon/Hero/1/SummonCard_{01103}.png"), ArtAreaSize.x, ArtAreaSize.y));
 
+        // 卡面三层用写深度材质（CardFaceSprite：alpha-test + ZWrite On + Cull Off）——
+        // 主体写深度遮挡后面的槽位/棋盘 UI（3D 深度遮挡，复刻旧卡 CardCutout 方案）；透明区域不写深度；倾斜双面可见
+        Material faceSpriteMat = AssetDatabase.LoadAssetAtPath<Material>("Assets/_Game/Art/Materials/card_new_front_sprite.mat");
+        if (faceSpriteMat != null)
+        {
+            frameSR.sharedMaterial = faceSpriteMat;
+            prefixSR.sharedMaterial = faceSpriteMat;
+            artSR.sharedMaterial = faceSpriteMat;
+        }
+
         // ── 接线显示脚本 ──
         display.nameText = nameT;
         display.costText = costT;
