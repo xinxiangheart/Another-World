@@ -24,6 +24,9 @@ public class CardIcons3D : MonoBehaviour
     public Transform traitIconsRow;
     public Transform statusIconsRow;
 
+    [Header("图标材质（与卡面一致写深度，防止被槽位 UI 嵌入遮挡；缺省回退卡面材质）")]
+    public Material iconMaterial;
+
     [Header("直接拖入 Sprite（优先于路径）")]
     public Sprite energyIconSprite;
     public Sprite attackIconSprite;
@@ -99,7 +102,23 @@ public class CardIcons3D : MonoBehaviour
         sr.gameObject.SetActive(show);
         if (!show) return;
         sr.sprite = s != null ? s : GetPlaceholder();
+        ApplyIconMaterial(sr);
         SetFixedSize(sr, cornerIconSize);
+    }
+
+    /// <summary>图标统一使用卡面写深度材质（CardFaceSprite：ZWrite On + Cull Off）。
+    /// 写深度后正确遮挡后面的槽位/棋盘 UI（与卡面三层同理），防止图标被嵌入槽位预制体；
+    /// 缺省回退 frameSR 的卡面材质。</summary>
+    void ApplyIconMaterial(SpriteRenderer sr)
+    {
+        if (sr == null) return;
+        if (iconMaterial == null)
+        {
+            var display = GetComponent<CardDisplay3D>();
+            if (display != null && display.frameSR != null)
+                iconMaterial = display.frameSR.sharedMaterial;
+        }
+        if (iconMaterial != null) sr.sharedMaterial = iconMaterial;
     }
 
     // ================= 三排图标 =================
@@ -151,6 +170,7 @@ public class CardIcons3D : MonoBehaviour
         go.transform.localPosition = new Vector3(x, 0, 0);
         var sr = go.GetComponent<SpriteRenderer>();
         sr.sprite = s;
+        ApplyIconMaterial(sr); // 写深度材质，防止被槽位 UI 嵌入遮挡
         SetFixedSize(sr, rowIconSize); // 保持各自比例、统一边长，不拉伸
         return x + spacing;
     }
@@ -218,6 +238,7 @@ public class CardIcons3D : MonoBehaviour
             go.transform.localPosition = new Vector3(x, 0, 0);
             var sr = go.GetComponent<SpriteRenderer>();
             sr.sprite = s;
+            ApplyIconMaterial(sr); // 编辑期预览与运行时一致，用写深度材质
             SetFixedSize(sr, rowIconSize);
             x += spacing;
         }

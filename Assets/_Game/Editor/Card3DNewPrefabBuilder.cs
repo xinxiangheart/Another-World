@@ -182,6 +182,8 @@ public static class Card3DNewPrefabBuilder
         icons.typeIcon = typeIcon;
         icons.healthIcon = healthIcon;
         icons.attackIcon = attackIcon;
+        // 图标用与卡面三层一致的写深度材质（CardFaceSprite）——ZWrite On 遮挡后面的槽位 UI，防图标被嵌入
+        icons.iconMaterial = faceSpriteMat;
         icons.prefixIconsRow = prefixRow;
         icons.traitIconsRow = traitRow;
         icons.statusIconsRow = statusRow;
