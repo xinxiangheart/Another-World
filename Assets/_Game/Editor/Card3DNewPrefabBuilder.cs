@@ -136,7 +136,7 @@ public static class Card3DNewPrefabBuilder
 
         // ── 文字（identity 朝向，按 2D 布局定位）──
         // 字号比例对齐 2D（名 8.2 < 费 10 ≈ 血 9.8 < 攻 10.55）：名字最小、攻最大
-        TextMeshPro nameT = CreateTextChild(uiRoot, "NameText", font, "卡名", 0.55f, 0.75f, NamePos);
+        TextMeshPro nameT = CreateTextChild(uiRoot, "NameText", font, "卡名", 0.72f, 0.92f, NamePos); // 字号对齐 CostText，避免 SDF 过小渲染成白块
         TextMeshPro costT = CreateTextChild(uiRoot, "CostText", font, "0", 0.72f, 0.92f, CostPos);
         TextMeshPro atkT  = CreateTextChild(uiRoot, "AttackText", font, "0", 0.75f, 0.95f, AttackPos);
         TextMeshPro hpT   = CreateTextChild(uiRoot, "HealthText", font, "0", 0.70f, 0.90f, HealthPos);
@@ -284,7 +284,7 @@ public static class Card3DNewPrefabBuilder
         tmp.enableAutoSizing = true;
         tmp.fontSizeMin = sizeMin;
         tmp.fontSizeMax = sizeMax;
-        tmp.color = Color.white; // 对齐 2D 新卡（Card00_New_2D 文字为白色）
+        tmp.color = Color.white; // 文字保持白色
         tmp.alignment = TextAlignmentOptions.Center;
         tmp.text = content;
         tmp.rectTransform.sizeDelta = new Vector2(0.5f, 0.5f);
