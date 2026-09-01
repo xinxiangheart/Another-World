@@ -79,7 +79,7 @@ public static class Card3DNewPrefabBuilder
             Shader cutout = AssetDatabase.LoadAssetAtPath<Shader>("Assets/_Game/Art/Shaders/CardCutout.shader");
             if (cutout == null) { Debug.LogError("[Card3DNew] 找不到 shader: AnotherWorld/CardCutout"); return; }
             backMat = new Material(cutout) { name = "card_new_back" };
-            Texture2D backTex = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/_Game/Art/Sprites/Cards/Back.png");
+            Texture2D backTex = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/_Game/Resources/Cards/Back.png");
             if (backTex != null) backMat.SetTexture("_MainTex", backTex);
             AssetDatabase.CreateAsset(backMat, BackMatPath);
         }
@@ -155,11 +155,11 @@ public static class Card3DNewPrefabBuilder
         // ── 卡面三层 SpriteRenderer（卡框/前缀背景/卡图）。
         //    默认比例按实际贴图 bounds 反算（编辑器加载）；生成后可手调，运行时不重算/不覆盖/不缩放。──
         SpriteRenderer frameSR  = CreateFaceSR(uiRoot, "CardFrame", FaceFrameZ,
-            FitScale(AssetDatabase.LoadAssetAtPath<Sprite>("Assets/_Game/Art/Sprites/Cards/SummonCard_0.png"), FrameSize.x, FrameSize.y));
+            FitScale(AssetDatabase.LoadAssetAtPath<Sprite>("Assets/_Game/Resources/Cards/SummonCard_0.png"), FrameSize.x, FrameSize.y));
         SpriteRenderer prefixSR = CreateFaceSR(uiRoot, "PrefixBg", FacePrefixZ,
-            FitScale(AssetDatabase.LoadAssetAtPath<Sprite>("Assets/_Game/Art/Sprites/Cards/PrefixArtBG/Abyss.png"), ArtAreaSize.x, ArtAreaSize.y));
+            FitScale(AssetDatabase.LoadAssetAtPath<Sprite>("Assets/_Game/Resources/Cards/PrefixArtBG/Abyss.png"), ArtAreaSize.x, ArtAreaSize.y));
         SpriteRenderer artSR    = CreateFaceSR(uiRoot, "CardArt", FaceArtZ,
-            FitScale(AssetDatabase.LoadAssetAtPath<Sprite>("Assets/_Game/Art/Sprites/Cards/Summon/Hero/1/SummonCard_{01103}.png"), ArtAreaSize.x, ArtAreaSize.y));
+            FitScale(AssetDatabase.LoadAssetAtPath<Sprite>("Assets/_Game/Resources/Cards/Summon/Hero/1/SummonCard_{01103}.png"), ArtAreaSize.x, ArtAreaSize.y));
 
         // 卡面三层用写深度材质（CardFaceSprite：alpha-test + ZWrite On + Cull Off）——
         // 主体写深度遮挡后面的槽位/棋盘 UI（3D 深度遮挡，复刻旧卡 CardCutout 方案）；透明区域不写深度；倾斜双面可见
@@ -249,7 +249,7 @@ public static class Card3DNewPrefabBuilder
 
     /// <summary>编辑器下从 Art/Sprites/ 相对路径加载 Sprite（供图标/预览字段填充）。</summary>
     static Sprite LoadEditorSprite(string relativePath)
-        => AssetDatabase.LoadAssetAtPath<Sprite>("Assets/_Game/Art/Sprites/" + relativePath + ".png");
+        => AssetDatabase.LoadAssetAtPath<Sprite>("Assets/_Game/Resources/" + relativePath + ".png");
 
     /// <summary>创建卡面 SpriteRenderer（identity 朝向，居中，z 定，比例用传入值——预制体里可手调，运行时不重算）。</summary>
     static SpriteRenderer CreateFaceSR(GameObject parent, string name, float z, Vector3 scale)

@@ -6,7 +6,7 @@ using TMPro;
 /// <summary>
 /// 新 2D 手牌卡牌刷新脚本（独立于旧 CardDisplay2D，不修改旧卡）。
 /// 精灵来源两种：① 直接拖 Sprite 到下方字段（优先）；② 按 Art 分支路径加载。
-/// 路径分支（Assets/_Game/Art/Sprites/）：
+/// 路径分支（Assets/_Game/Resources/）：
 ///   - 费用底图   Cards/SummonCard_{0}（0-5费）
 ///   - 卡面插画   优先取模板 cardSprite2D 字段；其次按镜像 Resources/CardData 目录加载：
 ///                召唤物  Cards/Summon/{SummonType}/{cost}/SummonCard_{templateID}
@@ -648,7 +648,7 @@ public class CardDisplay2DNew : MonoBehaviour
         Sprite s = Resources.Load<Sprite>(artRelativePath);
         if (s != null) return s;
 #if UNITY_EDITOR
-        string fullPath = "Assets/_Game/Art/Sprites/" + artRelativePath + ".png";
+        string fullPath = "Assets/_Game/Resources/" + artRelativePath + ".png";
         s = UnityEditor.AssetDatabase.LoadAssetAtPath<Sprite>(fullPath);
         if (s != null) return s;
         s = UnityEditor.AssetDatabase.LoadAssetAtPath<Sprite>(fullPath.Replace(".png", ".jpg"));

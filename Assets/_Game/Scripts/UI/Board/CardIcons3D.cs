@@ -353,7 +353,7 @@ public class CardIcons3D : MonoBehaviour
         Sprite s = Resources.Load<Sprite>(path);
         if (s != null) return s;
 #if UNITY_EDITOR
-        string fullPath = "Assets/_Game/Art/Sprites/" + path + ".png";
+        string fullPath = "Assets/_Game/Resources/" + path + ".png";
         s = UnityEditor.AssetDatabase.LoadAssetAtPath<Sprite>(fullPath);
         if (s != null) return s;
         s = UnityEditor.AssetDatabase.LoadAssetAtPath<Sprite>(fullPath.Replace(".png", ".jpg"));

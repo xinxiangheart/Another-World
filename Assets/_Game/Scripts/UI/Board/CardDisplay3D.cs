@@ -259,7 +259,7 @@ public class CardDisplay3D : MonoBehaviour
         Sprite s = Resources.Load<Sprite>(path);
         if (s != null) return s;
 #if UNITY_EDITOR
-        string full = "Assets/_Game/Art/Sprites/" + path + ".png";
+        string full = "Assets/_Game/Resources/" + path + ".png";
         s = UnityEditor.AssetDatabase.LoadAssetAtPath<Sprite>(full);
         if (s != null) return s;
         s = UnityEditor.AssetDatabase.LoadAssetAtPath<Sprite>(full.Replace(".png", ".jpg"));

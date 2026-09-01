@@ -15,10 +15,10 @@ using UnityEngine.UI;
 /// </summary>
 public class PhaseWheelBuilder
 {
-    const string RING_EMPTY = "Assets/_Game/Art/Sprites/UI/ring_empty.png";
-    const string BATTLE_ICON = "Assets/_Game/Art/Sprites/UI/Battle Phase.png";
-    const string PHASE_WHEEL = "Assets/_Game/Art/Sprites/UI/Phase Wheel.png";
-    const string CIRCLE_PATH = "Assets/_Game/Art/Sprites/UI/PhaseWheelCircle.png";
+    const string RING_EMPTY = "Assets/_Game/Resources/UI/ring_empty.png";
+    const string BATTLE_ICON = "Assets/_Game/Resources/UI/Battle Phase.png";
+    const string PHASE_WHEEL = "Assets/_Game/Resources/UI/Phase Wheel.png";
+    const string CIRCLE_PATH = "Assets/_Game/Resources/UI/PhaseWheelCircle.png";
     const string PREFAB_PATH = "Assets/_Game/Prefabs/Board/RingSlot.prefab";
 
     /// <summary>5 个环的精确角度（度）：Hidden1=300(左上), Left=240(左下/视觉左), Center=180(正下), Right=120(右下/视觉右), Hidden2=60(右上)。
@@ -167,7 +167,7 @@ public class PhaseWheelBuilder
         if (_circleSprite != null) return _circleSprite;
         // 生成持久的圆形 PNG 资产——运行时创建的 Texture2D/Sprite 不序列化，
         // 预制体/场景保存后 AvatarMask 的圆形遮罩会丢失，导致头像显示为方形。
-        string abs = Path.Combine(Application.dataPath, "_Game/Art/Sprites/UI/PhaseWheelCircle.png");
+        string abs = Path.Combine(Application.dataPath, "_Game/Resources/UI/PhaseWheelCircle.png");
         if (!File.Exists(abs))
         {
             int size = 128;

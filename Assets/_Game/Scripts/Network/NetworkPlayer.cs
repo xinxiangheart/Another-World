@@ -2064,6 +2064,7 @@ public class NetworkPlayer : NetworkBehaviour
                 if (p.Length > 18) ci.buffText = p[18];
                 if (p.Length > 19) ci.hasDebuff = p[19] == "1";
                 if (p.Length > 20) ci.debuffText = p[20];
+                if (p.Length > 21) ci.lastGivenPrefix = p[21]; // 卡名变色：最后一次赋予的新前缀
                 slot.currentCard3D?.GetComponent<Card3DInstance>()?.UpdateValues();
             }
         }
