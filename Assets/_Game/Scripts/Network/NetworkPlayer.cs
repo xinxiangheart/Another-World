@@ -2323,16 +2323,20 @@ public class NetworkPlayer : NetworkBehaviour
         int localSourceSide = 1 - sourceSide; // 来源方镜像：主机"己方"在本端视角是"对方"（上侧）
 
         BoardManager bm = FindObjectOfType<BoardManager>();
-        Vector3 worldPos;
         BoardSlot slot = bm?.GetSlot(localSlot);
         if (slot?.currentCard3D != null)
-            worldPos = slot.currentCard3D.transform.position; // 卡牌模型中心（粒子终点精确落点）
+        {
+            // 终点=卡牌模型中心（粒子精确落点），起点规则与本地一致
+            DamageFX.Request(slot.currentCard3D.transform.position, value, FloaterType.Damage,
+                (DamageFxSource)sourceTypeInt, localSourceSide, localSourceSlot, selfDamage);
+        }
         else
         {
+            // 终点无效（目标卡不存在/未同步）→ 直接弹伤害数字，不播粒子
             HandManager hm = FindObjectOfType<HandManager>();
-            worldPos = hm != null ? hm.GetSlotWorldPosition(localSlot) : Vector3.zero; // 无卡(英雄/空位)→格子位置
+            Vector3 worldPos = hm != null ? hm.GetSlotWorldPosition(localSlot) : Vector3.zero;
+            DamageFloater.Show(worldPos, value, FloaterType.Damage);
         }
-        DamageFX.Request(worldPos, value, FloaterType.Damage, (DamageFxSource)sourceTypeInt, localSourceSide, localSourceSlot, selfDamage);
     }
 
     // ========== Transform sync (腐化/飞升 on any slot) ==========

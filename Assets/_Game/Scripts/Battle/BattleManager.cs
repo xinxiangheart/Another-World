@@ -51,14 +51,20 @@ public class BattleManager : MonoBehaviour
         Debug.LogWarning("[Battle] PhaseStartCoroutine START");
         yield return StartCoroutine(PhaseStartCoroutine());
         Debug.LogWarning("[Battle] PhaseStartCoroutine END");
+        // 阶段开始伤害粒子（瘟疫/深海/光环）串行播完再推进（动画阻塞阶段，逻辑已结算）
+        if (DamageAnimationManager.Instance != null) yield return DamageAnimationManager.Instance.WaitForAll();
 
         Debug.LogWarning("[Battle] FirstStrikeCoroutine START");
         yield return StartCoroutine(FirstStrikeCoroutine());
         Debug.LogWarning("[Battle] FirstStrikeCoroutine END");
+        // 先手阶段所有特性伤害粒子串行播完才进入下一阶段
+        if (DamageAnimationManager.Instance != null) yield return DamageAnimationManager.Instance.WaitForAll();
 
         Debug.LogWarning("[Battle] MinionAttacksCoroutine START");
         yield return StartCoroutine(MinionAttacksCoroutine());
         Debug.LogWarning("[Battle] MinionAttacksCoroutine END");
+        // 攻击阶段粒子（溅射/效果/反击等）播完再进入结算
+        if (DamageAnimationManager.Instance != null) yield return DamageAnimationManager.Instance.WaitForAll();
 
         Debug.LogWarning("[Battle] CompareSurvivors START");
         CompareSurvivors();

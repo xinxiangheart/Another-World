@@ -55,6 +55,16 @@ public class DamageAnimationManager : MonoBehaviour
         StartCoroutine(ProcessBurst());
     }
 
+    /// <summary>等待所有伤害粒子播放完成（含当前缓冲 + 处理中）。阶段推进前调用，动画阻塞推进（与攻击动画一致）。</summary>
+    public IEnumerator WaitForAll()
+    {
+        // 逻辑结算已先行（伤害值算好）；这里只等粒子演出串行播完，再让阶段推进
+        float timeout = 30f;
+        float start = Time.time;
+        while ((_pending.Count > 0 || _processing) && Time.time - start < timeout)
+            yield return null;
+    }
+
     /// <summary>一轮处理：把当前缓冲按 sourceSide 分组，先播完一组再播另一组（串行）。</summary>
     IEnumerator ProcessBurst()
     {
@@ -100,20 +110,29 @@ public class DamageAnimationManager : MonoBehaviour
         Vector3 target = evt.targetWorldPos;
         bool isGrid = evt.source == DamageFxSource.Grid || evt.selfDamage;
 
+        // 规则：起点和终点都有效才播粒子。格子/召唤物来源必须有槽位（起点=该格子位置）
+        bool needSlot = evt.source == DamageFxSource.Grid || evt.source == DamageFxSource.Attacker;
+        if ((needSlot && evt.sourceSlotID < 0) || target == Vector3.zero)
+        {
+            // 缺起点或缺终点 → 直接弹伤害数字，不播粒子
+            DamageFloater.Show(target, evt.value, evt.type);
+            onArrive?.Invoke();
+            return;
+        }
+
         // 起点：格子/来源召唤物 → 其格子中心；自伤 → 自身中心；玩家/法术 → 屏幕中心
         Vector3 from;
-        if (evt.source == DamageFxSource.Grid
-            || (evt.source == DamageFxSource.Attacker && evt.sourceSlotID >= 0))
+        if (needSlot)
             from = GetSlotWorldPos(evt.sourceSlotID);          // 格子中心 / 来源召唤物格子位置
         else if (evt.selfDamage)
             from = target;                                     // 自身中心
         else
             from = GetScreenEdge(evt.sourceSide);              // 屏幕中心下/上侧
 
-        if (from == Vector3.zero || target == Vector3.zero)
+        if (from == Vector3.zero)
         {
-            // 兜底：目标无效 → 直接弹数字
-            DamageFloater.Show(target == Vector3.zero ? from : target, evt.value, evt.type);
+            // 起点位置无效 → 直接弹数字
+            DamageFloater.Show(target, evt.value, evt.type);
             onArrive?.Invoke();
             return;
         }

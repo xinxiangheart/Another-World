@@ -29,10 +29,18 @@ public static class DamageFX
         DamageFxSource source = DamageFxSource.Player, int sourceSide = 0,
         int sourceSlotID = -1, bool selfDamage = false)
     {
-        // 兜底：目标无效或管理器未就绪 → 直接弹数字
-        if (targetWorldPos == Vector3.zero)
+        // 规则：起点和终点都有效才播粒子；缺任一 → 直接弹数字（不播粒子）
+        bool targetValid = targetWorldPos != Vector3.zero;
+        bool sourceValid = source switch
         {
-            DamageFloater.Show(targetWorldPos, value, type);
+            DamageFxSource.Grid    => sourceSlotID >= 0, // 格子来源必须有格子
+            DamageFxSource.Attacker => sourceSlotID >= 0, // 召唤物来源必须有格子（起点=来源召唤物）
+            DamageFxSource.Self    => targetValid,        // 自伤：自身中心即终点
+            _ => true,                                    // Player/Spell：屏幕边缘由相机计算
+        };
+        if (!targetValid || !sourceValid)
+        {
+            DamageFloater.Show(targetWorldPos, value, type); // 缺起点或终点 → 直接弹伤害数字
             return;
         }
         DamageAnimationManager.EnsureInstance();

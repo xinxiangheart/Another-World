@@ -22,6 +22,7 @@ public class Card3DAttackAnimator : MonoBehaviour
     private Quaternion _originalRot;
     private Card3DAnimator _floatAnimator;
     private AnimationConfig _cfg;
+    bool _attacking; // 攻击序列进行中（首次攻击捕获原点；返回完成才复位）
 
     void Awake()
     {
@@ -29,9 +30,14 @@ public class Card3DAttackAnimator : MonoBehaviour
         _cfg = AnimationConfig.Load();
     }
 
-    /// <summary>蓄力翘起 → 弧线冲刺下压 → 击中（阻塞到 onHit 触发）。</summary>
+    /// <summary>蓄力翘起 → 弧线冲刺下压 → 击中（阻塞到 onHit 触发）。
+    /// 同一卡连续攻击（先手+普通/多段）时串行：等前一次返回完成再开始，避免位置冲突和原点误捕获。</summary>
     public IEnumerator ApproachAndHit(GameObject target, Action onHit)
     {
+        // 同一卡上一次攻击的返回仍在动画中 → 等待其完成（此时卡在静止位，原点捕获正确）
+        while (_attacking) yield return null;
+        _attacking = true;
+
         _originalPos = transform.position;
         _originalRot = transform.rotation;
 
@@ -106,6 +112,9 @@ public class Card3DAttackAnimator : MonoBehaviour
 
         transform.position = _originalPos;
         transform.rotation = _originalRot;
+
+        // 攻击序列结束：允许下一次攻击开始（原点已复位到真实原位置）
+        _attacking = false;
 
         // 恢复漂浮
         if (_floatAnimator != null) _floatAnimator.enabled = true;
