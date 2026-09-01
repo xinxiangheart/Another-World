@@ -769,6 +769,16 @@ public class CardInstance : MonoBehaviour
         return entries[index - 1].attributes;
     }
 
+    /// <summary>效果级溯源：按关键字查特性的可见序号（1基，第N条）。找不到返回-1。
+    /// 用于伤害来源记录生成"来自第N条特性（先手：xxx）"。</summary>
+    public int GetTraitIndexByKeyword(string keyword)
+    {
+        var entries = GetVisibleTraitEntries();
+        for (int i = 0; i < entries.Count; i++)
+            if (entries[i].text.Contains(keyword)) return i + 1;
+        return -1;
+    }
+
     /// <summary>格式化一条特性条目为 "N：属性1、属性2：xxx" / "N：xxx" / "N（赋予）（属性）：xxx"。</summary>
     public static string FormatTraitEntry(int n, TraitEntry e)
     {

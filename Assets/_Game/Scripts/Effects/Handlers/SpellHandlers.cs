@@ -167,7 +167,8 @@ public static class SpellHandlers
             var t3d = ts.currentCard3D.GetComponent<Card3DInstance>();
             if (t3d?.cardInstance != null)
             {
-                BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, 3, null);
+                string effectText = CardDatabase.Instance?.GetTemplate(ctx.source?.templateID)?.effect; // 法术级溯源：效果描述
+                BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, 3, null, -1, null, effectText);
                 t3d.UpdateValues();
             }
         }

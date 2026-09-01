@@ -9,9 +9,17 @@ public class DamageSourceMarker : MonoBehaviour
     // 本阶段累计伤害
     public int totalDamageThisPhase = 0;
 
-    // 记录一个伤害来源
-    public void RegisterDamage(GameObject source, int amount)
+    // 效果级溯源：本阶段最近一次伤害的来源明细（可为空——兼容非效果伤害）
+    public int lastTraitIndex = -1;   // 特性序号（第N条可见特性），非特性=-1
+    public string lastTraitText;      // 特性文本（"先手：对对方前排1伤"）
+    public string lastEffectText;     // 法术效果描述（CardData.effect）
+
+    // 记录一个伤害来源（traitIndex/traitText 特性级溯源；effectText 法术级溯源，均可空）
+    public void RegisterDamage(GameObject source, int amount, int traitIndex = -1, string traitText = null, string effectText = null)
     {
+        lastTraitIndex = traitIndex;
+        lastTraitText = traitText;
+        lastEffectText = effectText;
         if (source == null) return;
 
         Card3DInstance source3D = source.GetComponent<Card3DInstance>();

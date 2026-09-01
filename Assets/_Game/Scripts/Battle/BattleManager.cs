@@ -616,7 +616,8 @@ public class BattleManager : MonoBehaviour
                     {
                         Card3DInstance targetInst = targetSlot.currentCard3D.GetComponent<Card3DInstance>();
                         int hpBefore = targetInst?.cardInstance?.currentHealth ?? -1;
-                        ApplyDamageToMinionPublic(targetInst.cardInstance, 2, slot.currentCard3D);
+                        ApplyDamageToMinionPublic(targetInst.cardInstance, 2, slot.currentCard3D,
+                            ci.GetTraitIndexByKeyword("先手"), "先手"); // 特性级溯源
                         int hpAfter = targetInst?.cardInstance?.currentHealth ?? -1;
                         Debug.Log($"[FS-03506] target slot={id} tid={targetInst?.cardInstance?.templateID} hp {hpBefore}→{hpAfter}");
                         targetInst.UpdateValues();
@@ -1756,7 +1757,8 @@ public class BattleManager : MonoBehaviour
         }
         return false;
     }
-    void ApplyDamageToMinion(CardInstance target, int damage, GameObject source)
+    void ApplyDamageToMinion(CardInstance target, int damage, GameObject source,
+        int traitIndex = -1, string traitText = null, string effectText = null)
     {
         if (target == null) return;
 
@@ -1767,7 +1769,10 @@ public class BattleManager : MonoBehaviour
             defender: target,
             baseDamage: damage,
             sourceObject: source,
-            phase: DamagePhase.Battle
+            phase: DamagePhase.Battle,
+            traitIndex: traitIndex,
+            traitText: traitText,
+            effectText: effectText
         ));
         // 护盾吸收/领主重定向/追随者挡死/祭司复活 → DamagePipeline 内全处理。
         // 调用方后续读 target.currentHealth 即可判断生死。
@@ -1859,7 +1864,8 @@ public class BattleManager : MonoBehaviour
         }
         return null;
     }
-    public void ApplyDamageToMinionPublic(CardInstance target, int damage, GameObject source)
+    public void ApplyDamageToMinionPublic(CardInstance target, int damage, GameObject source,
+        int traitIndex = -1, string traitText = null, string effectText = null)
     {
         // Pure client: route through server-authoritative command
         if (NetworkClient.isConnected && !NetworkServer.active)
@@ -1880,7 +1886,7 @@ public class BattleManager : MonoBehaviour
             }
             return;
         }
-        ApplyDamageToMinion(target, damage, source);
+        ApplyDamageToMinion(target, damage, source, traitIndex, traitText, effectText);
     }
     public IEnumerator WaitForSelection(Action<Action> selection)
     {

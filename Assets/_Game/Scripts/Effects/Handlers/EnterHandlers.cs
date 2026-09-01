@@ -78,7 +78,7 @@ public static class EnterHandlers
     // AOE 伤害型（原 early if-check）
     // ═══════════════════════════════════════════════════════════════════
 
-    static void AoeEnemy1(CardInstance inst, BoardSlot slot)
+    static void AoeEnemy1(CardInstance inst, BoardSlot slot, string traitText = null)
     {
         var bm = BM();
         // 基于来源槽位动态推断对方半场——替代硬编码 0-5
@@ -91,7 +91,7 @@ public static class EnterHandlers
                 var ei = es.currentCard3D.GetComponent<Card3DInstance>();
                 if (ei?.cardInstance != null)
                 {
-                    BattleManager.Instance?.ApplyDamageToMinionPublic(ei.cardInstance, 1, null);
+                    BattleManager.Instance?.ApplyDamageToMinionPublic(ei.cardInstance, 1, null, -1, traitText);
                     ei.UpdateValues();
                     if (NetworkClient.isConnected && !NetworkServer.active)
                         NetworkPlayer.Local?.CmdApplyDamageToCard(i, 1);
@@ -103,8 +103,8 @@ public static class EnterHandlers
         slot.CleanupAfterPlacement();
     }
 
-    static void Handle03504(EffectContext ctx) => AoeEnemy1(ctx.source, ctx.sourceSlot);
-    static void Handle03506(EffectContext ctx) => AoeEnemy1(ctx.source, ctx.sourceSlot);
+    static void Handle03504(EffectContext ctx) => AoeEnemy1(ctx.source, ctx.sourceSlot, "进场");
+    static void Handle03506(EffectContext ctx) => AoeEnemy1(ctx.source, ctx.sourceSlot, "进场");
 
     // ═══════════════════════════════════════════════════════════════════
     // 光环注册型

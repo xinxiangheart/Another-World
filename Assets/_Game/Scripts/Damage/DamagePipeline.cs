@@ -44,10 +44,17 @@ public struct DamageInput
     public int attackerSlotTempAttackBoost;
     /// <summary>攻击方槽位（用于读取 slotTempAttackBoost 等槽位数据）。</summary>
     public BoardSlot attackerSlot;
+    /// <summary>效果级溯源：触发伤害的特性序号（第N条可见特性，1基）。非特性伤害=-1。</summary>
+    public int traitIndex;
+    /// <summary>效果级溯源：触发伤害的特性文本（如 "先手：对对方前排1伤"）。非特性=null。</summary>
+    public string traitText;
+    /// <summary>效果级溯源：造成伤害的法术效果描述（CardData.effect）。非法术=null。</summary>
+    public string effectText;
 
     public DamageInput(CardInstance attacker, CardInstance defender, int baseDamage,
         GameObject sourceObject = null, DamagePhase phase = DamagePhase.Battle,
-        int attackerSlotTempAttackBoost = 0, BoardSlot attackerSlot = null)
+        int attackerSlotTempAttackBoost = 0, BoardSlot attackerSlot = null,
+        int traitIndex = -1, string traitText = null, string effectText = null)
     {
         this.attacker = attacker;
         this.defender = defender;
@@ -56,6 +63,9 @@ public struct DamageInput
         this.phase = phase;
         this.attackerSlotTempAttackBoost = attackerSlotTempAttackBoost;
         this.attackerSlot = attackerSlot;
+        this.traitIndex = traitIndex;
+        this.traitText = traitText;
+        this.effectText = effectText;
     }
 }
 
@@ -410,7 +420,8 @@ public static class DamagePipeline
             defenderGO = GetGameObjectOf(def);
             if (defenderGO != null)
                 defenderGO.GetComponent<DamageSourceMarker>()
-                    ?.RegisterDamage(ctx.input.sourceObject, actual);
+                    ?.RegisterDamage(ctx.input.sourceObject, actual,
+                        ctx.input.traitIndex, ctx.input.traitText, ctx.input.effectText);
         }
         // ── 来源记录回退：无 sourceObject 时直接用 CardInstance ──
         // 大量伤害路径（法术、抛置、进场/退场 handler 等）不传 sourceObject，
