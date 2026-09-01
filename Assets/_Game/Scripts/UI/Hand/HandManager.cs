@@ -2520,6 +2520,7 @@ public class HandManager : MonoBehaviour
    public IEnumerator DoorEffect()
     {
         NetworkPlayer.Local.TakeDamage(1);
+        DamageFX.Request(DamageFX.GetPlayerWorldPos(false), 1, FloaterType.Damage, DamageFxSource.Self, 0, -1, true); // 英雄自伤特殊轨迹
         NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
 
         List<CardInstance> summonList = new List<CardInstance>();

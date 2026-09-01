@@ -229,6 +229,7 @@ public partial class TurnManager : MonoBehaviour
                 if (ci != null)
                 {
                     ci.currentHealth -= 1;
+                    DamagePipeline.ShowFloaterAt(ci, 1, FloaterType.Damage, null, i); // 格子伤害特殊轨迹（深海每阶段扣血）
                     slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
                 }
             }

@@ -156,7 +156,7 @@ public static class DamagePipeline
         if (!attackerSilenced && atk.templateID == "01114" && def.hasShield)
         {
             def.currentHealth -= 2;
-            ShowFloaterAt(def, 2, FloaterType.Damage);
+            ShowFloaterAt(def, 2, FloaterType.Damage, atk);
             UpdateDefenderValues(def);
         }
 
@@ -164,7 +164,7 @@ public static class DamagePipeline
         if (def.hasShield && HasBreakerOnField(ctx.Attacker))
         {
             def.currentHealth -= 2;
-            ShowFloaterAt(def, 2, FloaterType.Damage);
+            ShowFloaterAt(def, 2, FloaterType.Damage, ctx.Attacker);
             UpdateDefenderValues(def);
         }
 
@@ -401,7 +401,7 @@ public static class DamagePipeline
 
         // ── 实际扣血 ─────────────────────────────────────────────────
         def.currentHealth -= actual;
-        ShowFloaterAt(def, actual, FloaterType.Damage);
+        ShowFloaterAt(def, actual, FloaterType.Damage, ctx.Attacker);
 
         // ── DamageSourceMarker(防守方) ──────────────────────────────
         GameObject defenderGO = null;
@@ -689,24 +689,48 @@ public static class DamagePipeline
     // 浮动数字
     // ═══════════════════════════════════════════════════════════════════
 
-    /// <summary>在 CardInstance 的 3D 模型上方弹出浮动数字（服务器端同时广播到远端客户端）</summary>
-    public static void ShowFloaterAt(CardInstance ci, int value, FloaterType type)
+    /// <summary>在 CardInstance 的 3D 模型上方弹出浮动数字（服务器端同时广播到远端客户端）。
+    /// Damage 类型走伤害粒子演出（DamageFX），到达终点才弹数字；其它类型直接弹。attacker 用于推断粒子起点。</summary>
+    public static void ShowFloaterAt(CardInstance ci, int value, FloaterType type,
+        CardInstance attacker = null, int sourceSlotID = -1, bool selfDamage = false)
     {
         if (ci == null) return;
         if (type == FloaterType.Damage)
             Debug.LogWarning($"[Floater-Dmg] tid={ci.templateID} val={value}\n{UnityEngine.StackTraceUtility.ExtractStackTrace()}");
         Vector3 worldPos = GetWorldPosOf(ci);
-        DamageFloater.Show(worldPos, value, type);
 
-        // Server broadcasts floater to remote client so they see battle damage numbers too.
-        if (Mirror.NetworkServer.active)
+        // 伤害 → 粒子演出（起点/轨迹由来源类型决定）；其它类型直接弹数字
+        if (type == FloaterType.Damage)
         {
-            var np = NetworkPlayer.Local;
-            if (np != null)
+            int sourceSide = 0;
+            if (attacker != null)
+                sourceSide = GetSlotOf(attacker) >= 6 ? 0 : 1;   // 攻击者在己方半场(6-11)→来源己方
+            else if (sourceSlotID < 0)
+                sourceSide = GetSlotOf(ci) >= 6 ? 1 : 0;         // 无攻击者(效果/AOE)：被伤在己方→来源对方
+            DamageFxSource src = selfDamage ? DamageFxSource.Self
+                : sourceSlotID >= 0 ? DamageFxSource.Grid
+                : attacker != null ? DamageFxSource.Attacker
+                : DamageFxSource.Spell;
+            DamageFX.Request(worldPos, value, type, src, sourceSide, sourceSlotID, selfDamage);
+
+            // 对端粒子广播：让对端播放相同粒子（到达终点由粒子弹数字），不再广播浮字
+            if (Mirror.NetworkServer.active && NetworkPlayer.Local != null)
+            {
+                int targetSlotID = GetSlotOf(ci);
+                if (targetSlotID >= 0)
+                    NetworkPlayer.Local.RpcPlayDamageParticle(targetSlotID, value, (int)src, sourceSlotID, sourceSide, selfDamage);
+            }
+        }
+        else
+        {
+            DamageFloater.Show(worldPos, value, type);
+
+            // Server broadcasts floater to remote client so they see battle damage numbers too.
+            if (Mirror.NetworkServer.active && NetworkPlayer.Local != null)
             {
                 int slotID = GetSlotOf(ci);
                 if (slotID >= 0)
-                    np.RpcShowDamageFloater(slotID, value, (int)type);
+                    NetworkPlayer.Local.RpcShowDamageFloater(slotID, value, (int)type);
             }
         }
     }

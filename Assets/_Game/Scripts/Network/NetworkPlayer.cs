@@ -2309,6 +2309,32 @@ public class NetworkPlayer : NetworkBehaviour
         DamageFloater.Show(worldPos, value, (FloaterType)typeInt);
     }
 
+    /// <summary>Server → clients: 对端播放与发起方相同的伤害粒子（到达终点由粒子弹数字）。
+    /// 只同步视觉，不重复结算伤害。槽位从服务端映射到本端本地布局。</summary>
+    [ClientRpc]
+    public void RpcPlayDamageParticle(int serverSlotID, int value, int sourceTypeInt, int sourceSlotID, int sourceSide, bool selfDamage)
+    {
+        // Host 已本地播（其 ShowFloaterAt 直接请求粒子），跳过自身广播
+        if (isLocalPlayer) return;
+
+        // 服务端槽位 → 本端本地布局（镜像）：服务端"己方(6-11)/对方(0-5)"在本端是相反的
+        int localSlot = serverSlotID >= 6 ? serverSlotID - 6 : serverSlotID + 6;
+        int localSourceSlot = sourceSlotID >= 0 ? (sourceSlotID >= 6 ? sourceSlotID - 6 : sourceSlotID + 6) : -1;
+        int localSourceSide = 1 - sourceSide; // 来源方镜像：主机"己方"在本端视角是"对方"（上侧）
+
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        Vector3 worldPos;
+        BoardSlot slot = bm?.GetSlot(localSlot);
+        if (slot?.currentCard3D != null)
+            worldPos = slot.currentCard3D.transform.position + Vector3.up * 2.5f;
+        else
+        {
+            HandManager hm = FindObjectOfType<HandManager>();
+            worldPos = (hm != null ? hm.GetSlotWorldPosition(localSlot) : Vector3.zero) + Vector3.up * 2.5f;
+        }
+        DamageFX.Request(worldPos, value, FloaterType.Damage, (DamageFxSource)sourceTypeInt, localSourceSide, localSourceSlot, selfDamage);
+    }
+
     // ========== Transform sync (腐化/飞升 on any slot) ==========
 
     /// <summary>

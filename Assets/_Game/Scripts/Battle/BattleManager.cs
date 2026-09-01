@@ -140,8 +140,8 @@ public class BattleManager : MonoBehaviour
                 ci.currentHealth -= slot.plagueRoundCount;
                 ci.currentAttack = Mathf.Max(0, ci.currentAttack - 1);
                 ci.baseAttack = Mathf.Max(0, ci.baseAttack - 1);
-                DamagePipeline.ShowFloaterAt(ci, slot.plagueRoundCount, FloaterType.Debuff);
-                DamagePipeline.ShowFloaterAt(ci, 1, FloaterType.Debuff);
+                DamagePipeline.ShowFloaterAt(ci, slot.plagueRoundCount, FloaterType.Damage, null, i); // 格子伤害特殊轨迹（瘟疫扣血）
+                DamagePipeline.ShowFloaterAt(ci, 1, FloaterType.Debuff); // 攻击力-1 保持 Debuff，不走粒子
                 c3d?.UpdateValues();
             }
             slot.plagueRoundCount++;
@@ -500,7 +500,7 @@ public class BattleManager : MonoBehaviour
                 if (!ci.hasShield)
                 {
                     ci.currentHealth -= 2;
-                    DamagePipeline.ShowFloaterAt(ci, 2, FloaterType.Damage);
+                    DamagePipeline.ShowFloaterAt(ci, 2, FloaterType.Damage, null, -1, true); // 自伤特殊轨迹（亡命之徒先手自伤）
                     ci.GrantShield(true, false, false);
                     slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
                 }
@@ -1122,6 +1122,7 @@ public class BattleManager : MonoBehaviour
             {
                 attackerInst.currentHealth -= atk;
                 if (attackerInst.currentHealth < 0) attackerInst.currentHealth = 0;
+                DamagePipeline.ShowFloaterAt(attackerInst, atk, FloaterType.Damage, null, -1, true); // 自伤宿主特殊轨迹
                 attackerSlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
             }
             // 征服者(01508)：标记目标
