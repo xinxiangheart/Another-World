@@ -754,10 +754,7 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
         {
             if (!targetCI.prefixes.Contains("渊"))
             {
-                if (string.IsNullOrEmpty(targetCI.prefixes) || targetCI.prefixes == "无")
-                    targetCI.prefixes = "渊";
-                else
-                    targetCI.prefixes += " 渊";
+                targetCI.GivePrefix("渊");
             }
 
             Card3DInstance c3d = target.GetComponent<Card3DInstance>();

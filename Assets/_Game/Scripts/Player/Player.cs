@@ -414,10 +414,7 @@ public class Player : MonoBehaviour
 
         if (coreOnField)
         {
-            if (string.IsNullOrEmpty(ci.prefixes) || ci.prefixes == "无")
-                ci.prefixes = "灵能";
-            else
-                ci.prefixes += " 灵能";
+            ci.GivePrefix("灵能");
             CardDisplay2D d2d = ci.GetComponent<CardDisplay2D>();
             d2d?.Refresh();
             // 同步手牌前缀到服务器（打出时 ConsumeHandPrefixOverride 注入）

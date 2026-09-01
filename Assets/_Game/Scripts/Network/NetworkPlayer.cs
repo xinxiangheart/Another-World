@@ -1026,10 +1026,7 @@ public class NetworkPlayer : NetworkBehaviour
             if (fci != null && fci.templateID == "03027") { coreOnField = true; break; }
         }
         if (!coreOnField) return;
-        if (string.IsNullOrEmpty(ci.prefixes) || ci.prefixes == "无")
-            ci.prefixes = "灵能";
-        else
-            ci.prefixes += " 灵能";
+        ci.GivePrefix("灵能");
         ci.GetComponent<CardDisplay2D>()?.Refresh();
         if (NetworkClient.isConnected)
             CmdSetHandCardPrefix(ci.instanceID, "灵能");
@@ -1765,6 +1762,7 @@ public class NetworkPlayer : NetworkBehaviour
                     if (p.Length > 18) ci.buffText = p[18];
                     if (p.Length > 19) ci.hasDebuff = p[19] == "1";
                     if (p.Length > 20) ci.debuffText = p[20];
+                    if (p.Length > 21) ci.lastGivenPrefix = p[21]; // 卡名变色：最后一次赋予的新前缀
                     if (parts[0] == "03007") ci.isShadow = true;
                     slot.currentCard3D?.GetComponent<Card3DInstance>()?.UpdateValues();
                 }
@@ -2656,9 +2654,7 @@ public class NetworkPlayer : NetworkBehaviour
         _handPrefixOverrides.Remove(instanceID);
         foreach (var p in list)
         {
-            if (ci.prefixes.Contains(p)) continue;
-            ci.prefixes = string.IsNullOrEmpty(ci.prefixes) || ci.prefixes == "无"
-                ? p : ci.prefixes + " " + p;
+            ci.GivePrefix(p);
         }
     }
 

@@ -489,6 +489,7 @@ public class BoardSyncManager : MonoBehaviour
             if (p.Length > 18) cur.buffText = p[18];
             if (p.Length > 19) cur.hasDebuff = p[19] == "1";
             if (p.Length > 20) cur.debuffText = p[20];
+            if (p.Length > 21) cur.lastGivenPrefix = p[21]; // 卡名变色：最后一次赋予的新前缀
             // 服务端 FinalDamage 已将临时字段清零；远端本地始终信任服务端同步的 currentAttack
             cur.tempAttackBoost = 0;
             cur.originalAttackBeforeDebuff = 0;

@@ -1821,9 +1821,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         {
             if (!targetCI.prefixes.Contains("灵能"))
             {
-                if (string.IsNullOrEmpty(targetCI.prefixes) || targetCI.prefixes == "无")
-                    targetCI.prefixes = "灵能";
-                else targetCI.prefixes += " 灵能";
+                targetCI.GivePrefix("灵能");
             }
             Card3DInstance c3d = target.GetComponent<Card3DInstance>();
             c3d?.UpdateValues();
@@ -2806,9 +2804,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         if (ci == null) { Card3DInstance c3d = target.GetComponent<Card3DInstance>(); if (c3d != null) ci = c3d.cardInstance; }
         if (ci != null && !ci.prefixes.Contains("渊"))
         {
-            if (string.IsNullOrEmpty(ci.prefixes) || ci.prefixes == "无")
-                ci.prefixes = "渊";
-            else ci.prefixes += " 渊";
+            ci.GivePrefix("渊");
             Card3DInstance c3d = target.GetComponent<Card3DInstance>();
             c3d?.UpdateValues();
             CardDisplay2D d2d = target.GetComponent<CardDisplay2D>();
@@ -3055,8 +3051,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             {
                 if (!ci.prefixes.Contains("血歌"))
                 {
-                    ci.prefixes = string.IsNullOrEmpty(ci.prefixes) || ci.prefixes == "无"
-                        ? "血歌" : ci.prefixes + " 血歌";
+                    ci.GivePrefix("血歌");
                     CardDisplay2D d2d = card.GetComponent<CardDisplay2D>();
                     d2d?.Refresh();
                     TurnManager.SyncMyBoardToOpponent();
@@ -3075,8 +3070,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 Card3DInstance c3d = targetSlot.currentCard3D.GetComponent<Card3DInstance>();
                 if (c3d?.cardInstance != null && !c3d.cardInstance.prefixes.Contains("血歌"))
                 {
-                    c3d.cardInstance.prefixes = string.IsNullOrEmpty(c3d.cardInstance.prefixes) || c3d.cardInstance.prefixes == "无"
-                        ? "血歌" : c3d.cardInstance.prefixes + " 血歌";
+                    c3d.cardInstance.GivePrefix("血歌");
                     c3d.UpdateValues();
                     TurnManager.SyncMyBoardToOpponent();
                 }
@@ -3856,9 +3850,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         if (ci == null) { Card3DInstance c3d = target.GetComponent<Card3DInstance>(); if (c3d != null) ci = c3d.cardInstance; }
         if (ci != null && !ci.prefixes.Contains("机械"))
         {
-            if (string.IsNullOrEmpty(ci.prefixes) || ci.prefixes == "无")
-                ci.prefixes = "机械";
-            else ci.prefixes += " 机械";
+            ci.GivePrefix("机械");
             Card3DInstance c3d = target.GetComponent<Card3DInstance>();
             c3d?.UpdateValues();
             CardDisplay2D d2d = target.GetComponent<CardDisplay2D>();

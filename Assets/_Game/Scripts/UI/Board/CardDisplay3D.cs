@@ -304,6 +304,15 @@ public class CardDisplay3D : MonoBehaviour
 
             healthText.text = instance.currentHealth.ToString();
         }
+
+        // 召唤物文字动态变色（2D/3D 通用，只作用文本；法术不适用）。规则见 CardInstance.Get*Color()。
+        if (template != null && template.cardType != CardType.Spell)
+        {
+            if (nameText != null) nameText.color = instance.GetNameColor();
+            if (costText != null) costText.color = instance.GetCostColor();
+            if (attackText != null) attackText.color = instance.GetAttackColor();
+            if (healthText != null) healthText.color = instance.GetHealthColor();
+        }
     }
     [System.Obsolete]
     private bool IsSuppressorOnField()

@@ -1093,10 +1093,7 @@ public class HandManager : MonoBehaviour
                     // 添加机械前缀（不重复）
                     if (!hostCard.prefixes.Contains("机械"))
                     {
-                        if (string.IsNullOrEmpty(hostCard.prefixes) || hostCard.prefixes == "无")
-                            hostCard.prefixes = "机械";
-                        else
-                            hostCard.prefixes += " 机械";
+                        hostCard.GivePrefix("机械");
                     }
 
                     // 统计其他机械单位数量（不含宿主自己）
@@ -1245,10 +1242,7 @@ public class HandManager : MonoBehaviour
 
                     if (!hostCard.prefixes.Contains("灵能"))
                     {
-                        if (string.IsNullOrEmpty(hostCard.prefixes) || hostCard.prefixes == "无")
-                            hostCard.prefixes = "灵能";
-                        else
-                            hostCard.prefixes += " 灵能";
+                        hostCard.GivePrefix("灵能");
                     }
                 }
                 NetworkPlayer.Local.AddEnergy(1);
@@ -1405,10 +1399,7 @@ public class HandManager : MonoBehaviour
                 CardInstance ci = coreSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
                 if (ci != null && !ci.prefixes.Contains("灵能"))
                 {
-                        if (string.IsNullOrEmpty(ci.prefixes) || ci.prefixes == "无")
-                            ci.prefixes = "灵能";
-                    else
-                            ci.prefixes += " 灵能";
+                        ci.GivePrefix("灵能");
                     coreSlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
                 }
             }
@@ -1422,10 +1413,7 @@ public class HandManager : MonoBehaviour
                     CardData cd = CardDatabase.Instance?.GetTemplate(ci.templateID);
                     if (cd != null && cd.cardType == CardType.Summon && !ci.prefixes.Contains("灵能"))
                     {
-                        if (string.IsNullOrEmpty(ci.prefixes) || ci.prefixes == "无")
-                            ci.prefixes = "灵能";
-                        else
-                            ci.prefixes += " 灵能";
+                        ci.GivePrefix("灵能");
                         CardDisplay2D d2d = handCard.GetComponent<CardDisplay2D>();
                         d2d?.Refresh();
                         // 同步手牌前缀到服务器（打出时 ConsumeHandPrefixOverride 注入）
@@ -1443,10 +1431,7 @@ public class HandManager : MonoBehaviour
                 CardInstance placedCI = slot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
                 if (placedCI != null && !placedCI.prefixes.Contains("灵能"))
                 {
-                    if (string.IsNullOrEmpty(placedCI.prefixes) || placedCI.prefixes == "无")
-                        placedCI.prefixes = "灵能";
-                    else
-                        placedCI.prefixes += " 灵能";
+                    placedCI.GivePrefix("灵能");
                     slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
                     // 场上随从前缀通过 SyncNow 同步
                 }
@@ -2196,10 +2181,7 @@ public class HandManager : MonoBehaviour
                 CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
                 if (ci != null && !ci.prefixes.Contains("灵能"))
                 {
-                        if (string.IsNullOrEmpty(ci.prefixes) || ci.prefixes == "无")
-                            ci.prefixes = "灵能";
-                    else
-                            ci.prefixes += " 灵能";
+                        ci.GivePrefix("灵能");
                     slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
                 }
             }
@@ -2213,10 +2195,7 @@ public class HandManager : MonoBehaviour
                     CardData cd = CardDatabase.Instance?.GetTemplate(ci.templateID);
                     if (cd != null && cd.cardType == CardType.Summon && !ci.prefixes.Contains("灵能"))
                     {
-                        if (string.IsNullOrEmpty(ci.prefixes) || ci.prefixes == "无")
-                            ci.prefixes = "灵能";
-                        else
-                            ci.prefixes += " 灵能";
+                        ci.GivePrefix("灵能");
                         CardDisplay2D d2d = handCard.GetComponent<CardDisplay2D>();
                         d2d?.Refresh();
                         if (NetworkClient.isConnected)

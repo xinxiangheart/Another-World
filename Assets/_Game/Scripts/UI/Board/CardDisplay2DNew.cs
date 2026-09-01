@@ -231,6 +231,15 @@ public class CardDisplay2DNew : MonoBehaviour
         if (cardHealthText != null) cardHealthText.text = _inst.currentHealth.ToString();
         if (cardNameText != null) cardNameText.text = template != null ? template.cardName : "";
 
+        // 召唤物文字动态变色（2D/3D 通用，只作用文本；法术不适用）。规则见 CardInstance.Get*Color()。
+        if (!isSpell)
+        {
+            if (cardNameText != null) cardNameText.color = _inst.GetNameColor();
+            if (cardCostText != null) cardCostText.color = _inst.GetCostColor();
+            if (cardAttackText != null) cardAttackText.color = _inst.GetAttackColor();
+            if (cardHealthText != null) cardHealthText.color = _inst.GetHealthColor();
+        }
+
         // ── 费用底图（0-5 费，直接 Sprite 或路径）──
         if (costFrame != null)
         {

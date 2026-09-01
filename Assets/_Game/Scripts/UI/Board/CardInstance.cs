@@ -16,7 +16,9 @@ public class CardInstance : MonoBehaviour
     public int currentMaxHealth;
     public int currentTier;
     public string prefixes = "";
-   
+    /// <summary>最近一次被赋予的新前缀（卡名变色规则1：以最后一次赋予的为准）。空=未赋予过。</summary>
+    public string lastGivenPrefix = "";
+
     [Header("特性标记")]
     public bool hasOnEnter;
     public bool hasFirstStrike;
@@ -276,6 +278,7 @@ public class CardInstance : MonoBehaviour
         currentTier = template.baseTier;
         baseTier = template.baseTier;
         prefixes = template.prefix;
+        lastGivenPrefix = ""; // 模板前缀非"赋予"——不触发卡名变色
         summonType = template.summonType;
         CopyTraitsFromTemplate(template);
 
@@ -335,6 +338,7 @@ public class CardInstance : MonoBehaviour
         currentTier = src.currentTier;
         baseTier = src.baseTier;
         prefixes = src.prefixes;
+        lastGivenPrefix = src.lastGivenPrefix; // 卡名变色状态随实例复制
         summonType = src.summonType;
         hasOnEnter = src.hasOnEnter;
         hasOnDeath = src.hasOnDeath;
@@ -570,6 +574,9 @@ public class CardInstance : MonoBehaviour
         // 刷新2D手牌显示
         CardDisplay2D display2D = GetComponent<CardDisplay2D>();
         if (display2D != null) display2D.Refresh();
+        // 新2D手牌显示
+        CardDisplay2DNew display2DNew = GetComponent<CardDisplay2DNew>();
+        if (display2DNew != null) display2DNew.Refresh();
 
         // 刷新3D战场显示
         BoardManager bm = FindObjectOfType<BoardManager>();
@@ -886,5 +893,71 @@ public class CardInstance : MonoBehaviour
             }
             return currentAttack;
         }
+    }
+
+    // ═══════════════════ 文字动态变色（2D/3D 通用，只作用文本） ═══════════════════
+
+    /// <summary>五前缀对应卡名颜色：渊=紫 灵能=蓝 神灵画卷=绿 血歌=红 机械=棕。</summary>
+    static readonly Dictionary<string, Color> PrefixNameColors = new Dictionary<string, Color>
+    {
+        { "渊",     new Color(0.70f, 0.30f, 0.90f) }, // 紫
+        { "灵能",   new Color(0.30f, 0.50f, 1.00f) }, // 蓝
+        { "神灵画卷", new Color(0.20f, 0.80f, 0.35f) }, // 绿
+        { "血歌",   new Color(0.90f, 0.25f, 0.25f) }, // 红
+        { "机械",   new Color(0.62f, 0.44f, 0.26f) }, // 棕
+    };
+    static readonly Color CostLowerColor  = new Color(0.20f, 0.80f, 0.30f); // 费用低于基础 → 绿
+    static readonly Color CostHigherColor = new Color(0.90f, 0.25f, 0.25f); // 费用高于基础 → 红
+    static readonly Color HealthLowColor  = new Color(0.90f, 0.25f, 0.25f); // 生命≤基础一半 → 红
+    static readonly Color AttackHighColor = new Color(1.00f, 0.84f, 0.00f); // 攻击高于基础 → 金
+    static readonly Color AttackLowColor  = new Color(0.60f, 0.60f, 0.60f); // 攻击低于基础 → 灰
+
+    /// <summary>赋予一个新前缀（规则1）：已有则不变色；追加到 prefixes 并记录为最后一次赋予（卡名变色以它为准）。</summary>
+    public void GivePrefix(string prefix)
+    {
+        if (string.IsNullOrEmpty(prefix) || prefix == "无") return;
+        string p = prefix.Trim();
+        if (prefixes != null && prefixes.Contains(p)) return; // 重复赋予已有前缀 → 不变色
+        if (string.IsNullOrEmpty(prefixes) || prefixes == "无")
+            prefixes = p;
+        else
+            prefixes = prefixes + " " + p;
+        lastGivenPrefix = p; // 新前缀 → 以最后一次赋予的为准
+        RefreshDisplay();
+    }
+
+    /// <summary>规则1：卡名颜色。新前缀赋予 → 前缀对应色；未赋予过 → 默认白。</summary>
+    public Color GetNameColor()
+    {
+        if (!string.IsNullOrEmpty(lastGivenPrefix) && PrefixNameColors.TryGetValue(lastGivenPrefix, out var c))
+            return c;
+        return Color.white;
+    }
+
+    /// <summary>规则2：费用颜色。当前费用低于模板基础 → 绿；高于 → 红；相等 → 默认。
+    /// 实例不存 baseCost（只有 currentCost/costReduction），基础费用从模板读取。</summary>
+    public Color GetCostColor()
+    {
+        int baseCost = CardDatabase.Instance?.GetTemplate(templateID)?.baseCost ?? currentCost;
+        if (currentCost < baseCost) return CostLowerColor;
+        if (currentCost > baseCost) return CostHigherColor;
+        return Color.white;
+    }
+
+    /// <summary>规则3：生命颜色。当前生命 ≤ 基础生命1/2（向下取整）→ 红；高于一半 → 默认。</summary>
+    public Color GetHealthColor()
+    {
+        if (currentHealth <= baseHealth / 2) return HealthLowColor; // 整数除法天然向下取整
+        return Color.white;
+    }
+
+    /// <summary>规则4：攻击颜色。当前攻击高于基础 → 金；低于 → 灰；相等 → 默认。
+    /// 用 Attack 属性（与显示一致，01512 特殊取对位攻击）。</summary>
+    public Color GetAttackColor()
+    {
+        int atk = Attack;
+        if (atk > baseAttack) return AttackHighColor;
+        if (atk < baseAttack) return AttackLowColor;
+        return Color.white;
     }
 }
