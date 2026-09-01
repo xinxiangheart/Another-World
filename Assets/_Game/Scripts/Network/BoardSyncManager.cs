@@ -285,6 +285,7 @@ public class BoardSyncManager : MonoBehaviour
                 n.isAttached = true; n.hostSlotID = cs; n.attachOrder = o; n._placedAtTime = Time.time;
                 n.placementGeneration = BoardSlot.NextPlacementGeneration();
                 c.cardInstance = n; c.UpdateValues();
+                c.PlayAttachSlideIn(HandManager.GetAttachWorldPos(cs, o + 1), HandManager.GetAttachWorldPos(cs, o)); // 附着滑入（仅表现）
             }
             Card3DHover.SetHidden(m, mistHiderActive, true);
             CardDisplay3D d2 = m.GetComponent<CardDisplay3D>();

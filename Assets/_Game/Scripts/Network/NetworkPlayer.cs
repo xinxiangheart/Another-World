@@ -1975,6 +1975,7 @@ public class NetworkPlayer : NetworkBehaviour
                 var n = m.AddComponent<CardInstance>(); n.InitFromTemplate(t, 0);
                 n.isAttached = true; n.hostSlotID = mapped; n.attachOrder = o; n._placedAtTime = Time.time; n.placementGeneration = BoardSlot.NextPlacementGeneration();
                 c.cardInstance = n; c.UpdateValues();
+                c.PlayAttachSlideIn(HandManager.GetAttachWorldPos(mapped, o + 1), HandManager.GetAttachWorldPos(mapped, o)); // 附着滑入（仅表现）
             }
             bm.attachedModels.Add(m);
         }

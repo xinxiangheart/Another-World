@@ -690,7 +690,7 @@ public class HandManager : MonoBehaviour
             basePos = hm.GetSlotWorldPosition(slotID);
         else
             basePos = Vector3.zero;
-        return new Vector3(basePos.x - 0.5f - attachOrder * 0.5f, basePos.y, basePos.z + 0.1f + attachOrder * 0.1f);
+        return new Vector3(basePos.x - 0.5f - attachOrder * 0.25f, basePos.y, basePos.z + 0.1f + attachOrder * 0.05f); // 间隔÷2（X 0.5→0.25，Z 0.1→0.05）
     }
 
     public void HideAllCards()
@@ -1004,6 +1004,12 @@ public class HandManager : MonoBehaviour
             if (display.healthText != null) display.healthText.gameObject.SetActive(false);
             if (display.costText != null) display.costText.gameObject.SetActive(false);
         }
+        // 修复：附着物自身显示刷新——触发 ApplyArtFromCard，加载前缀背景(PrefixArtBG)/卡图(CardArt)
+        if (instance3D != null) instance3D.UpdateValues();
+
+        // 附着动画：从下一个附着牌理论位置滑入自己理论位置（约0.5s，仅表现，不影响附着逻辑）
+        instance3D?.PlayAttachSlideIn(GetAttachWorldPos(hostSlot.slotID, attachOrder + 1), attachPos);
+
         // 解析附着特性文本，给宿主加增益
         if (!string.IsNullOrEmpty(template.traits))
         {

@@ -42,6 +42,34 @@ public class Card3DInstance : MonoBehaviour
             model.GetComponent<Card3DInstance>()?.PlaySummonAnimation();
     }
 
+    /// <summary>附着滑入动画：从下一个附着牌位置滑到自己理论位置（约0.5s，仅表现，不影响附着逻辑/位置结算）。</summary>
+    public void PlayAttachSlideIn(Vector3 from, Vector3 to, float duration = 0.5f)
+    {
+        StartCoroutine(AttachSlideRoutine(from, to, duration));
+    }
+
+    IEnumerator AttachSlideRoutine(Vector3 from, Vector3 to, float duration)
+    {
+        // 暂停漂浮：漂浮每帧改 localPosition，与滑入的世界位置插值冲突
+        Card3DAnimator floatAnim = GetComponent<Card3DAnimator>();
+        if (floatAnim != null) floatAnim.enabled = false;
+
+        transform.position = from; // 立即定位到起点，避免在目标位置闪现一帧
+        float t = 0f;
+        while (t < duration)
+        {
+            t += Time.deltaTime;
+            float k = Mathf.Clamp01(t / duration);
+            float eased = 1f - (1f - k) * (1f - k); // ease-out 滑入
+            transform.position = Vector3.Lerp(from, to, eased);
+            yield return null;
+        }
+        transform.position = to; // 精确到位（与 GetAttachWorldPos 理论位置一致）
+
+        // 恢复漂浮：先重捕基准位置（滑入后基准已变），否则漂浮会拉回起点
+        if (floatAnim != null) { floatAnim.UpdateBaseLocalPos(); floatAnim.enabled = true; }
+    }
+
     IEnumerator SummonAnimationRoutine()
     {
         Transform target = GetScaleTarget(); // 可见正面容器（UIComponents）；ModelRoot 是卡背，正面被 ShowFront 禁用不可见

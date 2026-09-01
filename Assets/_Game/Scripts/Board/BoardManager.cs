@@ -337,7 +337,7 @@ public class BoardManager : MonoBehaviour
         for (int i = 0; i < attached.Count; i++)
         {
             if (attached[i] == null || attached[i].transform == null) continue;
-            Vector3 newPos = new Vector3(hostPos.x - 0.5f - i * 0.5f, hostPos.y, hostPos.z + 0.1f + i * 0.1f);
+            Vector3 newPos = new Vector3(hostPos.x - 0.5f - i * 0.25f, hostPos.y, hostPos.z + 0.1f + i * 0.05f); // 间隔÷2（与 GetAttachWorldPos 一致）
             attached[i].transform.position = newPos;
         }
     }
