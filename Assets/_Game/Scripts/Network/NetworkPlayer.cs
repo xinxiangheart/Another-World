@@ -2326,11 +2326,11 @@ public class NetworkPlayer : NetworkBehaviour
         Vector3 worldPos;
         BoardSlot slot = bm?.GetSlot(localSlot);
         if (slot?.currentCard3D != null)
-            worldPos = slot.currentCard3D.transform.position + Vector3.up * 2.5f;
+            worldPos = slot.currentCard3D.transform.position; // 卡牌模型中心（粒子终点精确落点）
         else
         {
             HandManager hm = FindObjectOfType<HandManager>();
-            worldPos = (hm != null ? hm.GetSlotWorldPosition(localSlot) : Vector3.zero) + Vector3.up * 2.5f;
+            worldPos = hm != null ? hm.GetSlotWorldPosition(localSlot) : Vector3.zero; // 无卡(英雄/空位)→格子位置
         }
         DamageFX.Request(worldPos, value, FloaterType.Damage, (DamageFxSource)sourceTypeInt, localSourceSide, localSourceSlot, selfDamage);
     }

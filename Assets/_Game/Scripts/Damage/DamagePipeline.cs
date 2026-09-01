@@ -708,28 +708,33 @@ public static class DamagePipeline
         if (ci == null) return;
         if (type == FloaterType.Damage)
             Debug.LogWarning($"[Floater-Dmg] tid={ci.templateID} val={value}\n{UnityEngine.StackTraceUtility.ExtractStackTrace()}");
-        Vector3 worldPos = GetWorldPosOf(ci);
+        Vector3 worldPos = GetWorldPosOf(ci);      // 浮字位置（卡牌上方 +2.5）
+        Vector3 cardCenter = GetCardCenterOf(ci);  // 卡牌模型中心（粒子终点）
 
         // 伤害 → 粒子演出（起点/轨迹由来源类型决定）；其它类型直接弹数字
         if (type == FloaterType.Damage)
         {
             int sourceSide = 0;
+            int srcSlot = sourceSlotID; // 来源格子槽位（格子伤害用参数；召唤物伤害用攻击者格子）
             if (attacker != null)
-                sourceSide = GetSlotOf(attacker) >= 6 ? 0 : 1;   // 攻击者在己方半场(6-11)→来源己方
+            {
+                sourceSide = GetSlotOf(attacker) >= 6 ? 0 : 1; // 攻击者在己方半场(6-11)→来源己方
+                srcSlot = GetSlotOf(attacker);                 // 来源召唤物格子位置 → 粒子起点
+            }
             else if (sourceSlotID < 0)
-                sourceSide = GetSlotOf(ci) >= 6 ? 1 : 0;         // 无攻击者(效果/AOE)：被伤在己方→来源对方
+                sourceSide = GetSlotOf(ci) >= 6 ? 1 : 0;       // 无攻击者(效果/AOE)：被伤在己方→来源对方
             DamageFxSource src = selfDamage ? DamageFxSource.Self
-                : sourceSlotID >= 0 ? DamageFxSource.Grid
                 : attacker != null ? DamageFxSource.Attacker
+                : sourceSlotID >= 0 ? DamageFxSource.Grid
                 : DamageFxSource.Spell;
-            DamageFX.Request(worldPos, value, type, src, sourceSide, sourceSlotID, selfDamage);
+            DamageFX.Request(cardCenter, value, type, src, sourceSide, srcSlot, selfDamage); // 终点=卡牌模型中心
 
             // 对端粒子广播：让对端播放相同粒子（到达终点由粒子弹数字），不再广播浮字
             if (Mirror.NetworkServer.active && NetworkPlayer.Local != null)
             {
                 int targetSlotID = GetSlotOf(ci);
                 if (targetSlotID >= 0)
-                    NetworkPlayer.Local.RpcPlayDamageParticle(targetSlotID, value, (int)src, sourceSlotID, sourceSide, selfDamage);
+                    NetworkPlayer.Local.RpcPlayDamageParticle(targetSlotID, value, (int)src, srcSlot, sourceSide, selfDamage);
             }
         }
         else
@@ -757,6 +762,21 @@ public static class DamagePipeline
             var c3d = s?.currentCard3D?.GetComponent<Card3DInstance>();
             if (c3d?.cardInstance == ci && s.currentCard3D != null)
                 return s.currentCard3D.transform.position + Vector3.up * offset;
+        }
+        return Vector3.zero;
+    }
+
+    /// <summary>卡牌 3D 模型中心的世界坐标（粒子终点精确落点）。找不到回退浮字位置。</summary>
+    static Vector3 GetCardCenterOf(CardInstance ci)
+    {
+        var bm = UnityEngine.Object.FindObjectOfType<BoardManager>();
+        if (bm == null) return Vector3.zero;
+        for (int i = 0; i < 12; i++)
+        {
+            var s = bm.GetSlot(i);
+            var c3d = s?.currentCard3D?.GetComponent<Card3DInstance>();
+            if (c3d?.cardInstance == ci && s.currentCard3D != null)
+                return s.currentCard3D.transform.position; // 模型中心，无偏移
         }
         return Vector3.zero;
     }

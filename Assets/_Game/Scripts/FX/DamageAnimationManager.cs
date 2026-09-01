@@ -100,10 +100,11 @@ public class DamageAnimationManager : MonoBehaviour
         Vector3 target = evt.targetWorldPos;
         bool isGrid = evt.source == DamageFxSource.Grid || evt.selfDamage;
 
-        // 起点
+        // 起点：格子/来源召唤物 → 其格子中心；自伤 → 自身中心；玩家/法术 → 屏幕中心
         Vector3 from;
-        if (evt.source == DamageFxSource.Grid)
-            from = GetSlotWorldPos(evt.sourceSlotID);          // 格子中心
+        if (evt.source == DamageFxSource.Grid
+            || (evt.source == DamageFxSource.Attacker && evt.sourceSlotID >= 0))
+            from = GetSlotWorldPos(evt.sourceSlotID);          // 格子中心 / 来源召唤物格子位置
         else if (evt.selfDamage)
             from = target;                                     // 自身中心
         else

@@ -78,11 +78,13 @@ public static class EnterHandlers
     // AOE 伤害型（原 early if-check）
     // ═══════════════════════════════════════════════════════════════════
 
-    static void AoeEnemy1(CardInstance inst, BoardSlot slot, string traitText = null)
+    static void AoeEnemy1(CardInstance inst, BoardSlot slot, int traitIndex = -1, string traitText = null)
     {
         var bm = BM();
         // 基于来源槽位动态推断对方半场——替代硬编码 0-5
         BoardManager.GetEnemySideRange(slot.slotID, out int enemyStart, out int enemyEnd);
+        // 来源召唤物模型（粒子起点用其格子位置）——不为 null，保证管道能拿到攻击者
+        GameObject sourceGO = slot != null ? slot.currentCard3D : null;
         for (int i = enemyStart; i <= enemyEnd; i++)
         {
             var es = bm?.GetSlot(i);
@@ -91,7 +93,7 @@ public static class EnterHandlers
                 var ei = es.currentCard3D.GetComponent<Card3DInstance>();
                 if (ei?.cardInstance != null)
                 {
-                    BattleManager.Instance?.ApplyDamageToMinionPublic(ei.cardInstance, 1, null, -1, traitText);
+                    BattleManager.Instance?.ApplyDamageToMinionPublic(ei.cardInstance, 1, sourceGO, traitIndex, traitText);
                     ei.UpdateValues();
                     if (NetworkClient.isConnected && !NetworkServer.active)
                         NetworkPlayer.Local?.CmdApplyDamageToCard(i, 1);
@@ -103,8 +105,16 @@ public static class EnterHandlers
         slot.CleanupAfterPlacement();
     }
 
-    static void Handle03504(EffectContext ctx) => AoeEnemy1(ctx.source, ctx.sourceSlot, "进场");
-    static void Handle03506(EffectContext ctx) => AoeEnemy1(ctx.source, ctx.sourceSlot, "进场");
+    static void Handle03504(EffectContext ctx)
+    {
+        int idx = ctx.source != null ? ctx.source.GetTraitIndexByKeyword("进场") : -1;
+        AoeEnemy1(ctx.source, ctx.sourceSlot, idx, "进场");
+    }
+    static void Handle03506(EffectContext ctx)
+    {
+        int idx = ctx.source != null ? ctx.source.GetTraitIndexByKeyword("进场") : -1;
+        AoeEnemy1(ctx.source, ctx.sourceSlot, idx, "进场");
+    }
 
     // ═══════════════════════════════════════════════════════════════════
     // 光环注册型
