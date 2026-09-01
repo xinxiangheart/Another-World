@@ -84,7 +84,7 @@ public class Card3DInstance : MonoBehaviour
         target.localScale = Vector3.zero;      // 立即置 0，避免生成后以完整尺寸闪现
 
         // 阶段1（共 0.6s）：0 → 正常×1.25 → ×1.2
-        const float growDur = 0.4f;    // 0→1.25 迅速放大（ease-out）
+        const float growDur = 0.4f / 1.5f; // 0→1.25 放大阶段速度×1.5（0.4→≈0.267s）
         const float bounceDur = 0.2f;  // 1.25→1.2 回弹
         float t = 0f;
         while (t < growDur)

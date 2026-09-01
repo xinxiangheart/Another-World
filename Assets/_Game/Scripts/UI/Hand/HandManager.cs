@@ -690,7 +690,7 @@ public class HandManager : MonoBehaviour
             basePos = hm.GetSlotWorldPosition(slotID);
         else
             basePos = Vector3.zero;
-        return new Vector3(basePos.x - 0.5f - attachOrder * 0.25f, basePos.y, basePos.z + 0.1f + attachOrder * 0.05f); // 间隔÷2（X 0.5→0.25，Z 0.1→0.05）
+        return new Vector3(basePos.x - 0.25f - attachOrder * 0.25f, basePos.y, basePos.z + 0.1f + attachOrder * 0.05f); // 附着-宿主及附着-附着 X 间隔均0.25
     }
 
     public void HideAllCards()
