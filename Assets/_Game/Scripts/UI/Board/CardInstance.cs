@@ -934,13 +934,26 @@ public class CardInstance : MonoBehaviour
         return Color.white;
     }
 
-    /// <summary>规则2：费用颜色。当前费用低于模板基础 → 绿；高于 → 红；相等 → 默认。
+    /// <summary>当前有效费用（含商户/能量收割者减费光环的显示折扣）。手牌 CostText/费用底图/费用变色共用，
+    /// 保证显示与变色一致（旧 CardDisplay2D 的 displayCost 同款逻辑）。场上卡两个减费标志已清零 → 等于 currentCost。</summary>
+    public int GetDisplayCost()
+    {
+        int cost = currentCost;
+        if (merchantDiscounted && NetworkPlayer.Local != null && NetworkPlayer.Local.IsMerchantOnFieldPublic())
+            cost = Mathf.Max(0, cost - 1);
+        if (energyReaperDiscounted && NetworkPlayer.Local != null && NetworkPlayer.Local.IsEnergyReaperOnFieldPublic())
+            cost = Mathf.Max(0, cost - 1);
+        return cost;
+    }
+
+    /// <summary>规则2：费用颜色。当前有效费用低于模板基础 → 绿；高于 → 红；相等 → 默认。
     /// 实例不存 baseCost（只有 currentCost/costReduction），基础费用从模板读取。</summary>
     public Color GetCostColor()
     {
         int baseCost = CardDatabase.Instance?.GetTemplate(templateID)?.baseCost ?? currentCost;
-        if (currentCost < baseCost) return CostLowerColor;
-        if (currentCost > baseCost) return CostHigherColor;
+        int displayCost = GetDisplayCost(); // 与 CostText 显示一致（含减费光环）
+        if (displayCost < baseCost) return CostLowerColor;
+        if (displayCost > baseCost) return CostHigherColor;
         return Color.white;
     }
 

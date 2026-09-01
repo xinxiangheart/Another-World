@@ -225,8 +225,8 @@ public class CardDisplay2DNew : MonoBehaviour
             template = FindTemplate(_inst.templateID);
         bool isSpell = template != null && template.cardType == CardType.Spell;
 
-        // ── 数字文字 ──
-        if (cardCostText != null) cardCostText.text = _inst.currentCost.ToString();
+        // ── 数字文字（费用用 GetDisplayCost：含商户/能量收割者减费光环的显示折扣）──
+        if (cardCostText != null) cardCostText.text = _inst.GetDisplayCost().ToString();
         if (cardAttackText != null) cardAttackText.text = _inst.Attack.ToString();
         if (cardHealthText != null) cardHealthText.text = _inst.currentHealth.ToString();
         if (cardNameText != null) cardNameText.text = template != null ? template.cardName : "";
@@ -240,10 +240,10 @@ public class CardDisplay2DNew : MonoBehaviour
             if (cardHealthText != null) cardHealthText.color = _inst.GetHealthColor();
         }
 
-        // ── 费用底图（0-5 费，直接 Sprite 或路径）──
+        // ── 费用底图（0-5 费，直接 Sprite 或路径；与文本一致用 GetDisplayCost）──
         if (costFrame != null)
         {
-            int c = Mathf.Clamp(_inst.currentCost, 0, 5);
+            int c = Mathf.Clamp(_inst.GetDisplayCost(), 0, 5);
             Sprite direct = costFrameSprites != null && c < costFrameSprites.Length ? costFrameSprites[c] : null;
             costFrame.sprite = PickSprite(direct, string.Format(costFramePath, c));
             costFrame.enabled = true;
