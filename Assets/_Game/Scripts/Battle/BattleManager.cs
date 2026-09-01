@@ -1228,13 +1228,13 @@ public class BattleManager : MonoBehaviour
         }
         else
         {
-            // 打随从：DamagePipeline.Process 扣血 + 弹数字 + 攻击音效
+            // 打随从：DamagePipeline.Process 扣血 + 弹数字 + 攻击音效。
+            // isDirectAttack=true：普通对位攻击不播粒子，数字只弹在目标上（由管线直接弹）；不重复 onImpact 弹数字
             evt.onImpact = () =>
             {
                 if (defenderInst != null)
-                    DamagePipeline.Process(new DamageInput(attackerInst, defenderInst, damage, defenderCard, DamagePhase.Battle));
-                if (defenderCard != null)
-                    DamageFloater.Show(defenderCard.transform.position, damage, FloaterType.Damage);
+                    DamagePipeline.Process(new DamageInput(attackerInst, defenderInst, damage, defenderCard, DamagePhase.Battle,
+                        isDirectAttack: true));
                 AudioManager.Instance?.Play(SoundEffectType.Attack, 0.4f, 1.2f);
             };
         }

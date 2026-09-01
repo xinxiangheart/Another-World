@@ -50,11 +50,14 @@ public struct DamageInput
     public string traitText;
     /// <summary>效果级溯源：造成伤害的法术效果描述（CardData.effect）。非法术=null。</summary>
     public string effectText;
+    /// <summary>普通对位攻击（召唤物直接撞击目标）：已有飞卡动画，不播伤害粒子，直接弹数字。</summary>
+    public bool isDirectAttack;
 
     public DamageInput(CardInstance attacker, CardInstance defender, int baseDamage,
         GameObject sourceObject = null, DamagePhase phase = DamagePhase.Battle,
         int attackerSlotTempAttackBoost = 0, BoardSlot attackerSlot = null,
-        int traitIndex = -1, string traitText = null, string effectText = null)
+        int traitIndex = -1, string traitText = null, string effectText = null,
+        bool isDirectAttack = false)
     {
         this.attacker = attacker;
         this.defender = defender;
@@ -66,6 +69,7 @@ public struct DamageInput
         this.traitIndex = traitIndex;
         this.traitText = traitText;
         this.effectText = effectText;
+        this.isDirectAttack = isDirectAttack;
     }
 }
 
@@ -411,7 +415,7 @@ public static class DamagePipeline
 
         // ── 实际扣血 ─────────────────────────────────────────────────
         def.currentHealth -= actual;
-        ShowFloaterAt(def, actual, FloaterType.Damage, ctx.Attacker);
+        ShowFloaterAt(def, actual, FloaterType.Damage, ctx.Attacker, -1, false, ctx.input.isDirectAttack);
 
         // ── DamageSourceMarker(防守方) ──────────────────────────────
         GameObject defenderGO = null;
@@ -701,15 +705,24 @@ public static class DamagePipeline
     // ═══════════════════════════════════════════════════════════════════
 
     /// <summary>在 CardInstance 的 3D 模型上方弹出浮动数字（服务器端同时广播到远端客户端）。
-    /// Damage 类型走伤害粒子演出（DamageFX），到达终点才弹数字；其它类型直接弹。attacker 用于推断粒子起点。</summary>
+    /// Damage 类型走伤害粒子演出（DamageFX），到达终点才弹数字；其它类型直接弹。attacker 用于推断粒子起点。
+    /// isDirectAttack=true（普通对位攻击）：不播粒子，直接弹数字（对端攻击动画 PlayAttackLocally 自己弹）。</summary>
     public static void ShowFloaterAt(CardInstance ci, int value, FloaterType type,
-        CardInstance attacker = null, int sourceSlotID = -1, bool selfDamage = false)
+        CardInstance attacker = null, int sourceSlotID = -1, bool selfDamage = false,
+        bool isDirectAttack = false)
     {
         if (ci == null) return;
         if (type == FloaterType.Damage)
             Debug.LogWarning($"[Floater-Dmg] tid={ci.templateID} val={value}\n{UnityEngine.StackTraceUtility.ExtractStackTrace()}");
         Vector3 worldPos = GetWorldPosOf(ci);      // 浮字位置（卡牌上方 +2.5）
         Vector3 cardCenter = GetCardCenterOf(ci);  // 卡牌模型中心（粒子终点）
+
+        // 普通对位攻击：已有飞卡动画，直接弹数字（不播粒子、不广播粒子——对端由攻击动画弹数字）
+        if (type == FloaterType.Damage && isDirectAttack)
+        {
+            DamageFloater.Show(worldPos, value, type);
+            return;
+        }
 
         // 伤害 → 粒子演出（起点/轨迹由来源类型决定）；其它类型直接弹数字
         if (type == FloaterType.Damage)
