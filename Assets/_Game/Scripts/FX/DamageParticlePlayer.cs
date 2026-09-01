@@ -157,17 +157,15 @@ public class DamageParticlePlayer : MonoBehaviour
 
     void BuildVisual()
     {
-        // 发光粒子：红色小圆 + Additive
+        // 发光粒子：红色圆（边缘渐变模拟发光）。
+        // 不创建运行时材质——用 SpriteRenderer 默认材质（避免 new Material 触发 GPU 断言 SUCCEEDED(hr)）
         if (_sharedSprite == null)
-            _sharedSprite = MakeCircleSprite(1, new Color(1f, 0.25f, 0.2f, 1f));
+            _sharedSprite = MakeCircleSprite(32, new Color(1f, 0.25f, 0.2f, 1f));
         _sr = gameObject.AddComponent<SpriteRenderer>();
         _sr.sprite = _sharedSprite;
-        _sr.color = new Color(1f, 1f, 1f, 1f);
         _sr.sortingOrder = 200;
-        // Additive 发光：无灯光时用高亮色 + 轻微外发光（靠材质色叠加）
-        _sr.material = new Material(Shader.Find("Sprites/Default"));
 
-        // 短拖尾（Additive 渐隐）
+        // 短拖尾（startColor/endColor 控制红色渐隐）——不创建运行时材质，用 TrailRenderer 默认材质
         _trail = gameObject.AddComponent<TrailRenderer>();
         _trail.startColor = new Color(1f, 0.3f, 0.2f, 0.9f);
         _trail.endColor = new Color(1f, 0.1f, 0.1f, 0f);
@@ -175,26 +173,24 @@ public class DamageParticlePlayer : MonoBehaviour
         _trail.startWidth = 0.12f;
         _trail.endWidth = 0.02f;
         _trail.minVertexDistance = 0.05f;
-        _trail.material = new Material(Shader.Find("Sprites/Default"));
 
-        transform.localScale = new Vector3(0.18f, 0.18f, 1f);
+        transform.localScale = new Vector3(0.6f, 0.6f, 1f);
     }
 
-    /// <summary>运行时生成一个中心实心圆贴图（不依赖外部美术）。</summary>
+    /// <summary>运行时生成一个中心实心圆贴图（不依赖外部美术）。size=像素边长（32→0.32 世界单位）。</summary>
     static Sprite MakeCircleSprite(int size, Color color)
     {
-        var tex = new Texture2D(size * 4, size * 4, TextureFormat.RGBA32, false);
-        int n = tex.width;
-        float center = (n - 1) * 0.5f;
-        float r = n * 0.5f;
-        for (int y = 0; y < n; y++)
-            for (int x = 0; x < n; x++)
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        float center = (size - 1) * 0.5f;
+        float r = size * 0.5f;
+        for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++)
             {
                 float d = Vector2.Distance(new Vector2(x, y), new Vector2(center, center)) / r;
                 float a = Mathf.Clamp01(1f - d); // 边缘渐变 → 发光感
                 tex.SetPixel(x, y, new Color(color.r, color.g, color.b, a));
             }
         tex.Apply();
-        return Sprite.Create(tex, new Rect(0, 0, n, n), new Vector2(0.5f, 0.5f), 100f);
+        return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f);
     }
 }
