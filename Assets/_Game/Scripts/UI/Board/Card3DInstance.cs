@@ -30,10 +30,26 @@ public class Card3DInstance : MonoBehaviour
     public void PlaySummonAnimation()
     {
         if (_summonAnimating) return;
-        StartCoroutine(SummonAnimationRoutine());
+        _summonRoutine = StartCoroutine(SummonAnimationRoutine());
     }
 
+    /// <summary>立即完成召唤动画（攻击动画开始前调用）：停止缩放协程、复位正常缩放、恢复浮动。
+    /// 防召唤动画未结束时攻击动画与其交互（缩放/浮动状态冲突）导致位置 bug。</summary>
+    public void CompleteSummonAnimation()
+    {
+        if (!_summonAnimating) return;
+        if (_summonRoutine != null) StopCoroutine(_summonRoutine);
+        _summonRoutine = null;
+        Transform target = GetScaleTarget();
+        if (target != null) target.localScale = _summonBaseScale; // 复位到正常缩放
+        Card3DAnimator fa = GetComponent<Card3DAnimator>();
+        if (fa != null) fa.enabled = true; // 恢复浮动（攻击动画随后自行暂停）
+        _summonAnimating = false;
+    }
+
+    Coroutine _summonRoutine;
     bool _summonAnimating;
+    Vector3 _summonBaseScale = Vector3.one;
 
     /// <summary>生成入口统一调用：实例化后立即触发召唤动画（同步把可见正面容器缩到 0，避免先以完整尺寸闪现一帧）。</summary>
     public static void PlaySummonOn(GameObject model)
@@ -76,11 +92,13 @@ public class Card3DInstance : MonoBehaviour
         if (target == null) yield break;
 
         _summonAnimating = true;
+        _summonRoutine = null; // 本协程运行中（引用由 PlaySummonAnimation 持有）
         // 动画期间暂停漂浮/呼吸（与攻击动画一致）：旧卡缩放整卡根时避免呼吸缩放覆盖动画
         Card3DAnimator floatAnim = GetComponent<Card3DAnimator>();
         if (floatAnim != null) floatAnim.enabled = false;
 
         Vector3 baseScale = target.localScale; // 正常缩放（新卡 UIComponents=1）
+        _summonBaseScale = baseScale;          // 记录正常缩放（供攻击前强制完成时复位）
         target.localScale = Vector3.zero;      // 立即置 0，避免生成后以完整尺寸闪现
 
         // 阶段1（共 0.6s）：0 → 正常×1.25 → ×1.2

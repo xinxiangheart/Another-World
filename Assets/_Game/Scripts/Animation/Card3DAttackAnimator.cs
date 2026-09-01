@@ -34,10 +34,18 @@ public class Card3DAttackAnimator : MonoBehaviour
     /// 同一卡连续攻击（先手+普通/多段）时串行：等前一次返回完成再开始，避免位置冲突和原点误捕获。</summary>
     public IEnumerator ApproachAndHit(GameObject target, Action onHit)
     {
-        // 同一卡上一次攻击的返回仍在动画中 → 等待其完成（此时卡在静止位，原点捕获正确）
-        while (_attacking) yield return null;
+        // 攻击前立即完成召唤动画（防召唤缩放/浮动状态与攻击动画交互导致位置 bug）
+        var c3dInst = GetComponent<Card3DInstance>();
+        if (c3dInst != null) c3dInst.CompleteSummonAnimation();
+
+        // 同一卡上一次攻击的返回仍在动画中 → 等待其完成（此时卡在静止位，原点捕获正确）。
+        // 超时兜底：前一次返回若被中断导致 _attacking 卡死，强制复位并回到槽位，防卡停攻击位
+        float waitStart = Time.time;
+        while (_attacking && Time.time - waitStart < 5f) yield return null;
         _attacking = true;
 
+        // 保底：先吸附到所在槽位位置（防前一次返回被中断导致起点/原点错误），再捕获原始位置
+        transform.position = GetCardSlotPosition();
         _originalPos = transform.position;
         _originalRot = transform.rotation;
 
@@ -110,14 +118,35 @@ public class Card3DAttackAnimator : MonoBehaviour
         // ── 阶段5：弹性返回（ease-out back 过冲）──
         yield return AnimateBack(_originalPos, _originalRot, ret, overshoot);
 
-        transform.position = _originalPos;
+        // 保底：吸附到当前所在槽位的精确位置（fresh 计算，不依赖可能误捕获的 _originalPos/记录值）
+        transform.position = GetCardSlotPosition();
         transform.rotation = _originalRot;
 
-        // 攻击序列结束：允许下一次攻击开始（原点已复位到真实原位置）
+        // 攻击序列结束：允许下一次攻击开始（位置已精确复位到槽位）
         _attacking = false;
 
         // 恢复漂浮
         if (_floatAnimator != null) _floatAnimator.enabled = true;
+    }
+
+    /// <summary>精确回归参考：以卡槽/卡牌放置的权威 XY（GetSlotWorldPosition）为参考，Z 保持卡牌自身的 Z。
+    /// 不在任何槽（附着/异常）回退当前世界位置。</summary>
+    Vector3 GetCardSlotPosition()
+    {
+        BoardManager bm = UnityEngine.Object.FindObjectOfType<BoardManager>();
+        if (bm == null) return transform.position;
+        HandManager hm = UnityEngine.Object.FindObjectOfType<HandManager>();
+        for (int i = 0; i < 12; i++)
+        {
+            BoardSlot s = bm.GetSlot(i);
+            if (s != null && s.currentCard3D == gameObject)
+            {
+                // 卡牌放置的权威 XY（与卡槽 XY 一致，避开槽位 UI transform 可能的位置偏差），Z 用卡牌自身 Z
+                Vector3 slotPos = hm != null ? hm.GetSlotWorldPosition(i) : transform.position;
+                return new Vector3(slotPos.x, slotPos.y, transform.position.z);
+            }
+        }
+        return transform.position;
     }
 
     // ═══════════════════════════════════════════════════════════════════
