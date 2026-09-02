@@ -13,10 +13,10 @@ using UnityEngine;
 //
 // 内容：
 //   - 特性：CardInstance.GetVisibleTraitEntries() → "属性：文本"；完全沉默时空列。
-//   - 状态：仅显示"目标实际受到的、有来源记录的状态"。注意 CardData.buffText/debuffText
-//     是"本卡给予别人状态时的描述"，不是自己身上的状态 → 自己悬停时绝不读取。
-//     当前无目标侧来源记录机制（GrantBuff/GrantDebuff 无运行时调用），故右侧暂时只显示
-//     01525 格子强化动态条 = 攻击力临时+{slot.slotTempAttackBoost}（槽位真源，目标实际受到的加成）。
+//   - 状态：仅显示"目标实际受到的、有来源记录的状态"：
+//     ① ci.activeStatuses（AddStatus 登记的目标侧状态来源记录）→ 每条一个标签（description）；
+//     ② 01525 格子强化动态条 = 攻击力临时+{slot.slotTempAttackBoost}（槽位真源，目标实际受到的加成）。
+//     CardData.buffText/debuffText 是"本卡给予别人状态时的描述"，不是自己身上的状态 → 自己悬停时绝不读取。
 //
 // 坐标（全部在 Canvas 局域单位）：锚点 = 卡牌世界中心投影到 tagLayer 的局域点；
 //   每个标签存相对该锚点的局域偏移，每帧重投影锚点再摆放。
@@ -269,16 +269,21 @@ public class HoverTagSystem : MonoBehaviour
     }
 
     /// <summary>右列状态文本：目标实际受到的、有来源记录的状态。
-    /// 注意：CardData.buffText/debuffText 是"本卡给予别人状态时的描述"，不是自己身上的状态，
-    /// 故不在自己悬停时读取。当前项目尚无"目标侧记录来源卡施加的状态描述"机制
-    /// （GrantBuff/GrantDebuff 无运行时调用），因此右侧暂时只显示由槽位真源驱动的 01525 强化条。</summary>
+    /// 数据源 = 目标自己记录的 activeStatuses（AddStatus 写入，来源卡施加时登记）+ 01525 槽位强化真源。
+    /// 注意：CardData.buffText/debuffText 是"本卡给予别人状态时的描述"，不是自己身上的状态，故不在此读取。</summary>
     List<string> BuildStatusTexts(CardInstance ci)
     {
         var outList = new List<string>();
         if (ci == null) return outList;
 
-        // ① 预留：将来"目标侧来源记录"接入时，这里对每条记录调用 SplitStatusText 生成多个标签。
-        //    目前不读自身 CardData.buffText/debuffText（语义见类注释），故该能力暂不被自身悬停触发。
+        // ① 目标侧来源记录：本卡被施加的每条状态 = 一个标签（description；可含 \n 多条则拆开）。
+        if (ci.activeStatuses != null)
+            foreach (var a in ci.activeStatuses)
+            {
+                if (a == null) continue;
+                foreach (var line in SplitStatusText(a.description))
+                    outList.Add(line);
+            }
 
         // ② 01525 格子强化：反查所在槽位现读 slotTempAttackBoost——这是目标实际受到的临时攻击加成
         //    （槽位持久真源，非本卡 CardData 描述），叠加天然正确：+2 → +4 → +6 …
@@ -290,8 +295,7 @@ public class HoverTagSystem : MonoBehaviour
     }
 
     /// <summary>把可能含 \n 多条的状态描述拆成多个独立标签文本（trim、跳过空段）。
-    /// 能力预留：供 buffText/debuffText 一条含多条 buff/debuff 时按 \n 拆分显示；
-    /// 目前未被自身悬停触发（见 BuildStatusTexts ①），等"目标侧来源记录"机制就绪后接入。</summary>
+    /// activeStatuses.description 一条可含多条 buff/debuff 时按 \n 拆分显示。</summary>
     static List<string> SplitStatusText(string raw)
     {
         var list = new List<string>();

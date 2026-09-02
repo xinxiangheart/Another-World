@@ -109,6 +109,9 @@ public class CardInstance : MonoBehaviour
     public List<string> grantedTraitTexts = new List<string>();
     /// <summary>结构化赋予特性（text + 属性 + 源模板ID），与 grantedTraitTexts 锁步维护（按 text 对齐）。</summary>
     public List<GrantedTrait> grantedTraits = new List<GrantedTrait>();
+    /// <summary>目标侧状态来源记录：本卡被别的卡施加的 buff/debuff（来源+描述），悬停/详情按此显示。
+    /// 与 grantedTraits 同等待遇参与网络序列化（";;"/"~" 分隔）。来源离场/时限到期时移除。</summary>
+    public List<ActiveStatus> activeStatuses = new List<ActiveStatus>();
     /// <summary>特性组（每卡一个）：三层粒度查询（HasTrait/IsTraitActive/CanSend/CanReceive）+ 计数式多重禁制。
     /// InitFromTemplate/CopyFrom 构建（固有+授予+伪特性）；授予特性增删时 RefreshGranted 同步。旧 bool 并行保留、只读不写。</summary>
     [System.NonSerialized] public TraitGroup traits;
@@ -268,6 +271,7 @@ public class CardInstance : MonoBehaviour
         // 初始化所有可变集合（同步 diff 需非 null）
         grantedTraitTexts = new List<string>();
         grantedTraits = new List<GrantedTrait>();
+        activeStatuses = new List<ActiveStatus>();
         giveableDeathTraits = new List<string>();
         enemyDamageSourceIDs = new List<string>();
         damageSourceInstanceIDs = new List<string>();
@@ -387,6 +391,15 @@ public class CardInstance : MonoBehaviour
                 sourceTemplateID = g?.sourceTemplateID ?? ""
             })
             : new List<GrantedTrait>();
+        activeStatuses = src.activeStatuses != null
+            ? src.activeStatuses.ConvertAll(a => new ActiveStatus
+            {
+                isDebuff = a != null && a.isDebuff,
+                description = a?.description ?? "",
+                sourceName = a?.sourceName ?? "",
+                sourceID = a?.sourceID ?? ""
+            })
+            : new List<ActiveStatus>();
         hasOriginalFirstStrike = src.hasOriginalFirstStrike;
         hasOriginalOnEnter = src.hasOriginalOnEnter;
         hasOriginalOnDeath = src.hasOriginalOnDeath;
@@ -719,6 +732,16 @@ public class CardInstance : MonoBehaviour
         public string sourceTemplateID;        // 源卡模板ID（溯源）
     }
 
+    /// <summary>目标侧状态来源记录：别的卡给本卡施加的一条 buff/debuff。</summary>
+    [System.Serializable]
+    public class ActiveStatus
+    {
+        public bool isDebuff;        // 是否为减益（用于图标区分，文本不强制带前缀）
+        public string description;   // 状态描述（如"攻击力临时+2"）
+        public string sourceName;    // 来源卡名（显示用；查不到时回退 sourceID）
+        public string sourceID;      // 来源卡模板ID（溯源/来源离场清理）
+    }
+
     /// <summary>构建可见特性列表：固有（跳过"赋予"标记条目）+ 获得的赋予特性。编号在显示时按此顺序生成。</summary>
     public List<TraitEntry> GetVisibleTraitEntries()
     {
@@ -903,6 +926,96 @@ public class CardInstance : MonoBehaviour
             GrantTrait(e.Item1, e.Item2, e.Item3);
         }
     }
+
+    // ═══════════════════ 目标侧状态来源记录（activeStatuses）═══════════════════
+
+    /// <summary>记录一条别的卡给本卡施加的状态。同 sourceID + 同 description 去重（叠加态数值合入 description，不重复加条目）。
+    /// source 为 null 时按纯文本记录（无来源，仅显示，不清除/不走来源离场清理）。</summary>
+    public void AddStatus(bool isDebuff, string description, CardInstance source)
+    {
+        if (activeStatuses == null) activeStatuses = new List<ActiveStatus>();
+        if (string.IsNullOrEmpty(description)) return;
+
+        string srcID = source != null ? source.templateID : "";
+        string srcName = source != null ? GetCardName(source.templateID) : "";
+        foreach (var a in activeStatuses)
+            if (a != null && a.sourceID == srcID && a.description == description)
+                return; // 同来源同描述已存在 → 不重复
+
+        activeStatuses.Add(new ActiveStatus
+        {
+            isDebuff = isDebuff,
+            description = description,
+            sourceName = srcName,
+            sourceID = srcID
+        });
+    }
+
+    /// <summary>移除某来源卡施加的全部状态（来源离场/失效时调用）。sourceID 为空 → 移除所有无来源项。</summary>
+    public void RemoveStatusBySource(string sourceID)
+    {
+        if (activeStatuses == null) return;
+        activeStatuses.RemoveAll(a => a == null || a.sourceID == sourceID);
+    }
+
+    /// <summary>序列化 activeStatuses → ";;" 分隔，每项 "isDebuff~description~sourceName~sourceID"。</summary>
+    public string SerializeActiveStatuses()
+    {
+        if (activeStatuses == null || activeStatuses.Count == 0) return "";
+        var parts = new List<string>();
+        foreach (var a in activeStatuses)
+        {
+            if (a == null) continue;
+            parts.Add($"{(a.isDebuff ? "1" : "0")}~{a.description ?? ""}~{a.sourceName ?? ""}~{a.sourceID ?? ""}");
+        }
+        return parts.Count > 0 ? string.Join(";;", parts) : "";
+    }
+
+    /// <summary>解析 ";;" 分隔的 activeStatuses 串 → 条目列表。</summary>
+    public List<ActiveStatus> ParseActiveStatuses(string raw)
+    {
+        var result = new List<ActiveStatus>();
+        if (string.IsNullOrEmpty(raw)) return result;
+        foreach (var entry in raw.Split(new[] { ";;" }, System.StringSplitOptions.None))
+        {
+            if (string.IsNullOrEmpty(entry)) continue;
+            var p = entry.Split('~');
+            result.Add(new ActiveStatus
+            {
+                isDebuff = p.Length > 0 && p[0] == "1",
+                description = p.Length > 1 ? p[1] : "",
+                sourceName = p.Length > 2 ? p[2] : "",
+                sourceID = p.Length > 3 ? p[3] : ""
+            });
+        }
+        return result;
+    }
+
+    /// <summary>用同步数据全量刷新 activeStatuses（diff 式：去重追加 + 移除不存在的；来源名以接收端解析为准，
+    /// 保留发送端填好的 sourceName，缺失时按 sourceID 现查）。</summary>
+    public void ApplySyncedActiveStatuses(string raw)
+    {
+        var incoming = ParseActiveStatuses(raw);
+        if (activeStatuses == null) activeStatuses = new List<ActiveStatus>();
+
+        // 移除发送端已没有的（按 description+sourceID 匹配）
+        activeStatuses.RemoveAll(a =>
+            a != null && !incoming.Exists(b => b != null && b.description == a.description && b.sourceID == a.sourceID));
+
+        // 追加新的
+        foreach (var b in incoming)
+        {
+            if (b == null || string.IsNullOrEmpty(b.description)) continue;
+            if (activeStatuses.Exists(a => a != null && a.description == b.description && a.sourceID == b.sourceID)) continue;
+            if (string.IsNullOrEmpty(b.sourceName)) b.sourceName = GetCardName(b.sourceID);
+            activeStatuses.Add(b);
+        }
+    }
+
+    /// <summary>按模板ID取卡名（来源显示用）；查不到回退 ID 本身。</summary>
+    public static string GetCardName(string templateID)
+        => string.IsNullOrEmpty(templateID) ? ""
+         : CardDatabase.Instance?.GetTemplate(templateID)?.cardName ?? templateID;
 
     public int Attack
     {

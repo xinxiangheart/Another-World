@@ -1578,6 +1578,7 @@ public class NetworkPlayer : NetworkBehaviour
     //   0=templateID 1=HP 2=ATK 3=maxHP 4=baseATK 5=baseHP 6=baseMaxHP
     //   7=cost 8=tier 9=baseTier 10=shield 11=silenced 12=attached 13=poisoned
     //   14=prefixes 15=grantedTraits 16=totalDamageTaken 17=hasBuff 18=buffText 19=hasDebuff 20=debuffText
+    //   21=lastGivenPrefix 22=activeStatuses
     static readonly HashSet<int> CrossHalfBoolFields = new() { 11 /*silencedThisPhase*/, 13 /*poisoned*/ };
     // 交叉半场属性白名单——仅上报值"更严重"时适用（debuf 攻击力=更低更好）
 
@@ -1763,6 +1764,7 @@ public class NetworkPlayer : NetworkBehaviour
                     if (p.Length > 19) ci.hasDebuff = p[19] == "1";
                     if (p.Length > 20) ci.debuffText = p[20];
                     if (p.Length > 21) ci.lastGivenPrefix = p[21]; // 卡名变色：最后一次赋予的新前缀
+                    if (p.Length > 22) ci.ApplySyncedActiveStatuses(p[22]); // 目标侧状态来源记录
                     if (parts[0] == "03007") ci.isShadow = true;
                     slot.currentCard3D?.GetComponent<Card3DInstance>()?.UpdateValues();
                 }
@@ -2065,6 +2067,7 @@ public class NetworkPlayer : NetworkBehaviour
                 if (p.Length > 19) ci.hasDebuff = p[19] == "1";
                 if (p.Length > 20) ci.debuffText = p[20];
                 if (p.Length > 21) ci.lastGivenPrefix = p[21]; // 卡名变色：最后一次赋予的新前缀
+                if (p.Length > 22) ci.ApplySyncedActiveStatuses(p[22]); // 目标侧状态来源记录
                 slot.currentCard3D?.GetComponent<Card3DInstance>()?.UpdateValues();
             }
         }

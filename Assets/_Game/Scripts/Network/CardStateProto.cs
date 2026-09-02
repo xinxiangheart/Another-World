@@ -30,6 +30,7 @@ public struct CardStateProto
     public bool hasDebuff;
     public string debuffText;
     public string lastGivenPrefix; // 卡名变色：最后一次赋予的新前缀（规则1）
+    public string activeStatuses;  // ";;" 分隔的目标侧状态来源记录（description~…）；与 grantedTraits 同待遇
 
     // ═══════════════════ 槽位标记 ═══════════════════
     public bool slotBlocked, slotPrison, slotPlague, slotSpotlight;
@@ -56,7 +57,8 @@ public struct CardStateProto
             buffText ?? "",
             hasDebuff ? "1" : "0",
             debuffText ?? "",
-            lastGivenPrefix ?? "");
+            lastGivenPrefix ?? "",
+            activeStatuses ?? "");
     }
 
     /// <summary>从 pipe 格式反序列化（不设 instanceID/zone/slotID——由调用方补充）。</summary>
@@ -89,6 +91,7 @@ public struct CardStateProto
         if (p.Length > 19) s.hasDebuff = p[19] == "1";
         if (p.Length > 20) s.debuffText = p[20];
         if (p.Length > 21) s.lastGivenPrefix = p[21];
+        if (p.Length > 22) s.activeStatuses = p[22];
         return s;
     }
 
@@ -129,6 +132,7 @@ public struct CardStateProto
             hasDebuff = ci.hasDebuff,
             debuffText = ci.debuffText ?? "",
             lastGivenPrefix = ci.lastGivenPrefix ?? "",
+            activeStatuses = ci.SerializeActiveStatuses(),
         };
     }
 

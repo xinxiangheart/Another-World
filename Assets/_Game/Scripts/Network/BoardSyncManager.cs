@@ -141,9 +141,10 @@ public class BoardSyncManager : MonoBehaviour
         //   7=cost⛔  8=tier⛔  9=baseTier⛔  10=shield⛔  11=silenced✓  12=attached⛔  13=poisoned✓
         //   14=prefixes⛔  15=grantedTraits⛔  16=totalDamageTaken⛔
         //   17=hasBuff⛔  18=buffText⛔  19=hasDebuff⛔  20=debuffText⛔  21=lastGivenPrefix⛔（卡名变色规则1）
+        //   22=activeStatuses⛔（目标侧状态来源记录）
         //   ✓=允许跨半场  ⛔=仅己方半场
         string gtt = ci.SerializeGrantedTraits();
-        return $"{ci.templateID}|{ci.currentHealth}|{ci.currentAttack}|{ci.currentMaxHealth}|{ci.baseAttack}|{ci.baseHealth}|{ci.baseMaxHealth}|{ci.currentCost}|{ci.currentTier}|{ci.baseTier}|{(ci.hasShield?(1+(ci.shieldIsPermanent?2:0)+(ci.shieldEndAtBattleStart?4:0)+(ci.shieldEndAtBattleEnd?8:0)):0)}|{(ci.silencedThisPhase?1:0)}|{(ci.isAttached?1:0)}|{(ci.poisoned?1:0)}|{ci.prefixes??""}|{gtt}|{ci.totalDamageTaken}|{(ci.hasBuff?1:0)}|{ci.buffText??""}|{(ci.hasDebuff?1:0)}|{ci.debuffText??""}|{ci.lastGivenPrefix??""}";
+        return $"{ci.templateID}|{ci.currentHealth}|{ci.currentAttack}|{ci.currentMaxHealth}|{ci.baseAttack}|{ci.baseHealth}|{ci.baseMaxHealth}|{ci.currentCost}|{ci.currentTier}|{ci.baseTier}|{(ci.hasShield?(1+(ci.shieldIsPermanent?2:0)+(ci.shieldEndAtBattleStart?4:0)+(ci.shieldEndAtBattleEnd?8:0)):0)}|{(ci.silencedThisPhase?1:0)}|{(ci.isAttached?1:0)}|{(ci.poisoned?1:0)}|{ci.prefixes??""}|{gtt}|{ci.totalDamageTaken}|{(ci.hasBuff?1:0)}|{ci.buffText??""}|{(ci.hasDebuff?1:0)}|{ci.debuffText??""}|{ci.lastGivenPrefix??""}|{ci.SerializeActiveStatuses()}";
     }
 
     // ============= Client =============
@@ -492,6 +493,7 @@ public class BoardSyncManager : MonoBehaviour
             if (p.Length > 19) cur.hasDebuff = p[19] == "1";
             if (p.Length > 20) cur.debuffText = p[20];
             if (p.Length > 21) cur.lastGivenPrefix = p[21]; // 卡名变色：最后一次赋予的新前缀
+            if (p.Length > 22) cur.ApplySyncedActiveStatuses(p[22]); // 目标侧状态来源记录（23rd field）
             // 服务端 FinalDamage 已将临时字段清零；远端本地始终信任服务端同步的 currentAttack
             cur.tempAttackBoost = 0;
             cur.originalAttackBeforeDebuff = 0;

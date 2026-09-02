@@ -208,7 +208,8 @@ public partial class TurnManager
                     ci.buffText ?? "",
                     ci.hasDebuff ? "1" : "0",
                     ci.debuffText ?? "",
-                    ci.lastGivenPrefix ?? ""); // 卡名变色（规则1）：最后一次赋予的新前缀
+                    ci.lastGivenPrefix ?? "", // 卡名变色（规则1）：最后一次赋予的新前缀
+                    ci.SerializeActiveStatuses()); // 目标侧状态来源记录
             string flagPart = slot == null ? "0000000|0|0|0|0" :
                 $"{(slot.isBlocked?1:0)}{(slot.prisonBlocked?1:0)}{(slot.hasPlague?1:0)}{(slot.hasSpotlight?1:0)}{(slot.deepSeaMarked?1:0)}{(slot.deepSeaHealthDebuff?1:0)}{(slot.permaBlocked?1:0)}|{slot.plagueRoundCount}|{slot.spotlightTierBoost}|{slot.slotTempAttackBoost}~{slot.deepSeaAttackDebuff}";
             all[i] = $"{cardPart}|{flagPart}";
