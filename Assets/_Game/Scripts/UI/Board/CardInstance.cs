@@ -109,6 +109,9 @@ public class CardInstance : MonoBehaviour
     public List<string> grantedTraitTexts = new List<string>();
     /// <summary>结构化赋予特性（text + 属性 + 源模板ID），与 grantedTraitTexts 锁步维护（按 text 对齐）。</summary>
     public List<GrantedTrait> grantedTraits = new List<GrantedTrait>();
+    /// <summary>特性组（每卡一个）：三层粒度查询（HasTrait/IsTraitActive/CanSend/CanReceive）+ 计数式多重禁制。
+    /// InitFromTemplate/CopyFrom 构建（固有+授予+伪特性）；授予特性增删时 RefreshGranted 同步。旧 bool 并行保留、只读不写。</summary>
+    [System.NonSerialized] public TraitGroup traits;
     // 苦难给予者专用
     public List<string> giveableDeathTraits = new List<string>();
     // 模板原始特性记录
@@ -323,6 +326,8 @@ public class CardInstance : MonoBehaviour
             mindScholarCopiedTraits = new List<string>();
             mindScholarTriggeredKeys = new List<string>();
         }
+
+        traits = TraitGroup.BuildFrom(this); // 特性组构建（固有 + 授予 + 伪特性）
     }
     public void CopyFrom(CardInstance src)
     {
@@ -431,6 +436,8 @@ public class CardInstance : MonoBehaviour
         buffText = src.buffText;
         hasDebuff = src.hasDebuff;
         debuffText = src.debuffText;
+
+        traits = TraitGroup.BuildFrom(this); // 特性组构建（复制后按新模板 + 已复制授予重建）
     }
     public void CopyTraitsFromTemplate(CardData template)
     {
@@ -538,6 +545,8 @@ public class CardInstance : MonoBehaviour
         if (text.Contains("附着")) canAttach = true;
         if (text.Contains("攻击前排")) { attacksFrontRow = true; attacksBackRow = false; }
         if (text.Contains("攻击后排")) { attacksBackRow = true; attacksFrontRow = false; }
+
+        traits?.RefreshGranted(); // 特性组同步授予
     }
 
     public void RemoveGrantedTrait(string fullTraitText)
@@ -565,6 +574,8 @@ public class CardInstance : MonoBehaviour
         if (!stillHasAttach) canAttach = hasOriginalAttach;
         if (!stillHasAttackFront && !stillHasAttackBack) attacksFrontRow = hasOriginalAttacksFrontRow;
         if (!stillHasAttackBack && !stillHasAttackFront) attacksBackRow = hasOriginalAttacksBackRow;
+
+        traits?.RefreshGranted(); // 特性组同步授予移除
     }
     /// <summary>
     /// 刷新该实例的2D/3D显示
