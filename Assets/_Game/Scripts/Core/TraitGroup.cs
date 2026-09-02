@@ -9,10 +9,11 @@ using System.Collections.Generic;
 //   HasTrait(id)        拥有（数据存在）
 //   IsTraitActive(id)   拥有 + 未被禁（单条禁 或 沉默 BlockAll 均失效）
 //   CanSend(category)   发送侧：沉默(BlockAll) 或 该类被禁 → 不能发动
-//   CanReceive(cat)     接收侧：BlockReceive 该类 → 不能承受（独立于发送）
+//   CanReceive(cat)     接收侧：BlockReceive 显式禁制 或 活跃特性自带 receiveBlocks → 不能承受
 //
 // 计数式多重禁制：同一特性/类别被多个来源禁 → 计数累加；一个来源解除计数-1，归零才解禁。
 // BlockAll = 沉默（只禁发送侧 CanSend/IsTraitActive；CanReceive 独立，另用 BlockReceive）。
+// 特性自带 receiveBlocks（如禁疗→Healed）在特性活跃时拦截；特性被禁/沉默 → IsTraitActive=false → 拦截失效。
 //
 // 生命周期：Phase=阶段边界自动清除；SourceAlive=来源退场/移除时主动 Unblock；Permanent=手动。
 // 重结算：仅 isPersistent=true 的常驻特性，被禁调 removeEffect、恢复调 applyEffect；
@@ -64,12 +65,17 @@ public class TraitGroup
                 foreach (var e in entries)
                 {
                     string[] attrs = e.isGrant ? new[] { "赋予" } : e.GetAttributes();
-                    tg.traits.Add(new RuntimeTrait
+                    var rt = new RuntimeTrait
                     {
                         traitId = RuntimeTrait.BuildUniqueId(attrs, e.text, tg.traits),
                         text = e.text,
                         sourceTemplateID = null, // 固有
-                    });
+                    };
+                    // 固有禁疗注册（03026/01531）：文本含"无法…恢复生命值"的常驻特性 → 拦截 Healed。
+                    // 特性被沉默/单条禁（IsTraitActive=false）→ 该条拦截失效 → 恢复可治疗。
+                    if (IsInherentAntiHeal(ci.templateID, e.text))
+                        rt.receiveBlocks = EffectCategory.Healed;
+                    tg.traits.Add(rt);
                 }
         }
 
@@ -87,6 +93,15 @@ public class TraitGroup
                 tg.traits.Add(new RuntimeTrait { traitId = "攻击后排限制", text = "攻击后排限制", sourceTemplateID = null });
         }
         return tg;
+    }
+
+    /// <summary>固有"禁疗"特性识别：仅 03026/01531 迁入特性组（receiveBlocks=Healed）。
+    /// 判定 = 模板ID白名单 + 常驻文本同时含"无法"+"恢复生命值"。其他卡即使文本相似也暂不拦（未迁移）。</summary>
+    static bool IsInherentAntiHeal(string templateID, string text)
+    {
+        if (templateID != "03026" && templateID != "01531") return false;
+        if (string.IsNullOrEmpty(text)) return false;
+        return text.Contains("无法") && text.Contains("恢复生命值");
     }
 
     /// <summary>重建授予 RuntimeTrait（移除旧授予 + 从 owner.grantedTraits 重加）。</summary>
@@ -133,9 +148,21 @@ public class TraitGroup
         return !(_blockedCategories.TryGetValue(c, out int cc) && cc > 0);
     }
 
-    /// <summary>接收侧：此卡能否承受 c 类效果（独立于发送禁制）。</summary>
+    /// <summary>接收侧：此卡能否承受 c 类效果（独立于发送禁制）。
+    /// 双重拦截：① 外部 BlockReceive 显式禁制（计数式）；② 活跃特性的 receiveBlocks（如禁疗→Healed）。
+    /// 特性被禁/沉默（IsTraitActive=false）则该条拦截失效 → 恢复可接收。</summary>
     public bool CanReceive(EffectCategory c)
-        => !(_blockedReceive.TryGetValue(c, out int cc) && cc > 0);
+    {
+        if (_blockedReceive.TryGetValue(c, out int cc) && cc > 0) return false;
+        for (int i = 0; i < traits.Count; i++)
+        {
+            RuntimeTrait t = traits[i];
+            if (t == null || t.receiveBlocks == 0) continue;
+            if ((t.receiveBlocks & c) == 0) continue;
+            if (IsTraitActive(t.traitId)) return false; // 特性在生效 → 拦截该接收类别
+        }
+        return true;
+    }
 
     /// <summary>是否有任一活跃禁制（状态栏 debuff 图标：多个禁制只显示一个，用此单 bool）。</summary>
     public bool HasActiveBlock()

@@ -43,7 +43,7 @@ MonoBehaviour:
   traits: "1.\u5728\u573A\u65F6\u5BF9\u65B9\u65E0\u6CD5\u89E6\u53D1\u9000\u573A"
   traitProperties: 
   traitEntries:
-  - text: "\u5728\u573A\u65F6\u5BF9\u65B9\u65E0\u6CD5\u89E6\u53D1\u9000\u573A"
+  - text: "\u5728\u573A\u65F6\u5BF9\u65B9\u65E0\u6CD5\u89E6\u53D1\u9000\u573A\uFF08\u4E0D\u5305\u62EC\u4E3B\u52A8\u9000\u573A\uFF09"
     isEnter: 0
     isFirstStrike: 0
     isRevenge: 0
@@ -62,6 +62,6 @@ MonoBehaviour:
   spellPrefab3D: {fileID: 1451899876978532017, guid: 433df7af0d0b28b45948cbdf892cd669, type: 3}
   hasBuff: 0
   buffText: 
-  hasDebuff: 0
-  debuffText: 
+  hasDebuff: 1
+  debuffText: "\u65E0\u6CD5\u89E6\u53D1\u9000\u573A\uFF08\u4E0D\u5305\u62EC\u4E3B\u52A8\u9000\u573A\uFF09"
   targetType: 0

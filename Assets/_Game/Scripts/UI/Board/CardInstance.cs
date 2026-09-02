@@ -317,8 +317,6 @@ public class CardInstance : MonoBehaviour
             isWatcher = true;
         if (templateID == "01508")
             immuneToEnemySpell = true;
-        if (templateID == "03026")
-            cannotHeal = true;
         if (templateID == "01514")
             braveTemplateID = "01514";
         if (templateID == "01510")
@@ -617,7 +615,8 @@ public class CardInstance : MonoBehaviour
     /// <summary>对召唤物进行治疗（统一入口）</summary>
     public void ReceiveHeal(int amount, HealSourceType sourceType)
     {
-        if (cannotHeal) return;
+        // 禁疗：外部状态 cannotHeal（留给外部写入） + 特性组 receiveBlocks（禁疗特性拦截 Healed）
+        if (cannotHeal || (traits != null && !traits.CanReceive(EffectCategory.Healed))) return;
         if (isAttached) return;
 
         // 事件拦截/修正

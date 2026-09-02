@@ -53,7 +53,7 @@ MonoBehaviour:
     isDiscard: 0
     isAttach: 0
     isGrant: 0
-  - text: "\u56DE\u5230\u624B\u724C    3.\u5DF1\u65B9\u56DE\u5408\u5F00\u59CB\u9000\u573A\u5E76+2\u80FD\u91CF"
+  - text: "\u56DE\u5230\u624B\u724C"
     isEnter: 0
     isFirstStrike: 0
     isRevenge: 0
@@ -62,7 +62,7 @@ MonoBehaviour:
     isDiscard: 0
     isAttach: 0
     isGrant: 0
-  - text: "\uFF08\u8BE5\u53EC\u5524\u7269\u7684\u6BCF\u4E2A\u7279\u6027\u5904\u7406\u5B8C\u6210\u624D\u8FDB\u884C\u4E0B\u4E2A\u7279\u6027\uFF09"
+  - text: "\u5DF1\u65B9\u56DE\u5408\u5F00\u59CB\u9000\u573A\u5E76+2\u80FD\u91CF"
     isEnter: 0
     isFirstStrike: 0
     isRevenge: 0

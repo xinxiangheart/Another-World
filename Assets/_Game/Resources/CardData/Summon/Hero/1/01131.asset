@@ -60,8 +60,8 @@ MonoBehaviour:
   summonCardBackSprite2D: {fileID: 21300000, guid: dedb5407eb25af146b5304d6186e765c, type: 3}
   prefab3D: {fileID: 1094747110808969126, guid: e09968ed5c12f8f4c91568ea8122934f, type: 3}
   spellPrefab3D: {fileID: 1451899876978532017, guid: 433df7af0d0b28b45948cbdf892cd669, type: 3}
-  hasBuff: 0
-  buffText: 
+  hasBuff: 1
+  buffText: "\u89E6\u53D1\u9000\u573A\u65F6\uFF0C\u82E5\u62E5\u6709\u4E3B\u52A8\u9000\u573A\u7279\u6027\uFF0C\u5219\u6539\u4E3A\u89E6\u53D1\u4E3B\u52A8\u9000\u573A"
   hasDebuff: 0
   debuffText: 
   targetType: 0

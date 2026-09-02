@@ -71,6 +71,6 @@ MonoBehaviour:
   spellPrefab3D: {fileID: 1451899876978532017, guid: 433df7af0d0b28b45948cbdf892cd669, type: 3}
   hasBuff: 0
   buffText: 
-  hasDebuff: 0
-  debuffText: 
+  hasDebuff: 1
+  debuffText: "\u65E0\u6CD5\u89E6\u53D1\u8FDB\u573A\u548C\u629B\u7F6E\u7279\u6027"
   targetType: 0

@@ -18,6 +18,7 @@ public class RuntimeTrait
     public string sourceTemplateID; // null=固有（模板自带）；非空=授予来源（供 RefreshGranted 区分/移除）
     public bool isPersistent;       // 常驻？人工声明，默认 false（一次性不重结算）
     public bool hasTargets;         // 有作用目标？人工声明，默认 false
+    public EffectCategory receiveBlocks; // 常驻生效时拦截的接收类别（如禁疗 → Healed）；特性被禁则恢复可接收
     public Action applyEffect;      // 生效方法（空=零变化；未迁移特性为空）
     public Action removeEffect;     // 失效方法（空=零变化）
 
