@@ -78,10 +78,11 @@ public class CardDisplay3D : MonoBehaviour
         CardData template = CardDatabase.Instance?.GetTemplate(instance.templateID);
         if (template == null) return;
 
-        // ── 卡框：预览 → costFrameSprites[费用] → 路径 Cards/SummonCard_{cost}；比例用预制体手调值，不重算 ──
+        // ── 卡框：预览 → costFrameSprites[费用] → 路径 Cards/SummonCard_{cost}；比例用预制体手调值，不重算。
+        //    费用档只由模板决定（baseCost；01524 画卷之核模板0费但用5费框），与 currentCost 无关。──
         if (frameSR != null)
         {
-            int cost = Mathf.Clamp(template.baseCost, 0, 5);
+            int cost = ResolveCostFrameIndex(template);
             Sprite frame = previewFrameSprite != null
                 ? previewFrameSprite
                 : (costFrameSprites != null && cost < costFrameSprites.Length ? costFrameSprites[cost] : null)
@@ -118,6 +119,15 @@ public class CardDisplay3D : MonoBehaviour
                 mr.SetPropertyBlock(_mpb);
             }
         }
+    }
+
+    /// <summary>卡框费用档位（0-5）：只由模板决定。baseCost 直接映射；
+    /// 01524 画卷之核模板费用0但强制用5费卡框。结果与 currentCost 无关。</summary>
+    int ResolveCostFrameIndex(CardData template)
+    {
+        if (template == null) return 0;
+        if (template.templateID == "01524") return 5; // 画卷之核特判：0费 → 5费框
+        return Mathf.Clamp(template.baseCost, 0, 5);
     }
 
     /// <summary>前缀底图：拖入 prefixArtSprites[idx]（五前缀）或 defaultPrefixArtSprite（通用）→ 路径 Cards/PrefixArtBG/{English}。对齐 2D GetPrefixArtBGSprite。</summary>

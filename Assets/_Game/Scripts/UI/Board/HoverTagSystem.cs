@@ -277,13 +277,31 @@ public class HoverTagSystem : MonoBehaviour
         var outList = new List<string>();
         if (ci == null) return outList;
 
-        // 01525 格子强化：反查所在槽位现读 slotTempAttackBoost——这是目标实际受到的临时攻击加成
-        // （槽位持久真源，非本卡 CardData 描述），叠加天然正确。
+        // ① 预留：将来"目标侧来源记录"接入时，这里对每条记录调用 SplitStatusText 生成多个标签。
+        //    目前不读自身 CardData.buffText/debuffText（语义见类注释），故该能力暂不被自身悬停触发。
+
+        // ② 01525 格子强化：反查所在槽位现读 slotTempAttackBoost——这是目标实际受到的临时攻击加成
+        //    （槽位持久真源，非本卡 CardData 描述），叠加天然正确：+2 → +4 → +6 …
         BoardSlot slot = FindSlotOfAnchor();
         if (slot != null && slot.slotTempAttackBoost > 0)
             outList.Add($"攻击力临时+{slot.slotTempAttackBoost}");
 
         return outList;
+    }
+
+    /// <summary>把可能含 \n 多条的状态描述拆成多个独立标签文本（trim、跳过空段）。
+    /// 能力预留：供 buffText/debuffText 一条含多条 buff/debuff 时按 \n 拆分显示；
+    /// 目前未被自身悬停触发（见 BuildStatusTexts ①），等"目标侧来源记录"机制就绪后接入。</summary>
+    static List<string> SplitStatusText(string raw)
+    {
+        var list = new List<string>();
+        if (string.IsNullOrEmpty(raw)) return list;
+        foreach (var seg in raw.Split('\n'))
+        {
+            string s = seg.Trim();
+            if (s.Length > 0) list.Add(s);
+        }
+        return list;
     }
 
     /// <summary>按悬停 3D 模型反查 BoardSlot（Card3DHover.GetMySlot 同款）。附着卡匹配不到 → null。</summary>

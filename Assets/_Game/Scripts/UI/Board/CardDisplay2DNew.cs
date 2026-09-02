@@ -160,6 +160,11 @@ public class CardDisplay2DNew : MonoBehaviour
     CardInstance _inst;
     static Sprite _placeholder;
 
+    // 卡框缓存：卡框只由模板决定（baseCost/01524 特判），生成时按模板检测一次，
+    // 之后即使 currentCost 因召唤/减费光环变化也不重新选框。换模板才重解。
+    string _costFrameTemplateID = null;
+    int _costFrameIndex = -1;
+
     // ================= 对外 API =================
 
     public void RefreshWithInstance(CardInstance inst)
@@ -240,12 +245,18 @@ public class CardDisplay2DNew : MonoBehaviour
             if (cardHealthText != null) cardHealthText.color = _inst.GetHealthColor();
         }
 
-        // ── 费用底图（0-5 费，直接 Sprite 或路径；与文本一致用 GetDisplayCost）──
+        // ── 费用底图：只由模板决定（baseCost；01524 画卷之核模板0费但用5费框），
+        //    按模板检测一次后缓存，不随 currentCost（召唤费用/减费光环）变化。──
         if (costFrame != null)
         {
-            int c = Mathf.Clamp(_inst.GetDisplayCost(), 0, 5);
-            Sprite direct = costFrameSprites != null && c < costFrameSprites.Length ? costFrameSprites[c] : null;
-            costFrame.sprite = PickSprite(direct, string.Format(costFramePath, c));
+            int c = ResolveCostFrameIndex(template);
+            if (c != _costFrameIndex || template?.templateID != _costFrameTemplateID)
+            {
+                _costFrameIndex = c;
+                _costFrameTemplateID = template?.templateID;
+                Sprite direct = costFrameSprites != null && c < costFrameSprites.Length ? costFrameSprites[c] : null;
+                costFrame.sprite = PickSprite(direct, string.Format(costFramePath, c));
+            }
             costFrame.enabled = true;
         }
 
@@ -564,6 +575,15 @@ public class CardDisplay2DNew : MonoBehaviour
     }
 
     // ================= 资源加载（直接 Sprite 优先 → 路径 → 占位） =================
+
+    /// <summary>卡框费用档位（0-5）：只由模板决定。baseCost 直接映射；
+    /// 01524 画卷之核模板费用0但强制用5费卡框。结果与 currentCost 无关。</summary>
+    int ResolveCostFrameIndex(CardData template)
+    {
+        if (template == null) return 0;
+        if (template.templateID == "01524") return 5; // 画卷之核特判：0费 → 5费框
+        return Mathf.Clamp(template.baseCost, 0, 5);
+    }
 
     /// <summary>直接 Sprite 优先，否则路径加载（含占位兜底）。</summary>
     Sprite PickSprite(Sprite direct, string path)
