@@ -20,8 +20,8 @@ using UnityEngine;
 //
 // 坐标（全部在 Canvas 局域单位）：锚点 = 卡牌世界中心投影到 tagLayer 的局域点；
 //   每个标签存相对该锚点的局域偏移，每帧重投影锚点再摆放。
-// 入场动画：Show 时标签从接近最终位置(slideStartRatio×目标偏移，短滑距)在 slideDuration 秒内
-//   平滑滑到目标位置（smoothstep，EaseInOffset）；Hide 直接销毁，无退场动画。仅表现，不改布局/内容。
+// 入场动画：Show 时标签起点 y=最终位、x=最终x×slideStartRatio（各标签竖直平行），在 slideDuration 秒内
+//   整体水平滑到目标位置（smoothstep，EaseInOffset）；Hide 直接销毁，无退场动画。仅表现，不改布局/内容。
 // ============================================================================
 
 public class HoverTagSystem : MonoBehaviour
@@ -49,9 +49,9 @@ public class HoverTagSystem : MonoBehaviour
     [Header("入场动画")]
     [Tooltip("标签从近目标处滑到目标位置的时长（秒）")]
     public float slideDuration = 0.12f;
-    [Tooltip("入场起始点相对目标偏移的比例（0=从中心起, 1=直接从目标位置出现）。例 0.65=从距中心 65% 处滑出，滑动距离短")]
+    [Tooltip("入场起点水平位置 = 最终 x 的该比例（y 保持最终位 → 各标签平行水平滑入，不斜向汇聚）。例 0.8=从最终 x 的 80% 处开始，短距平行滑出")]
     [Range(0f, 1f)]
-    public float slideStartRatio = 0.65f;
+    public float slideStartRatio = 0.8f;
 
     // ── 悬停状态 ──
     Transform _anchor;                  // 悬停的 3D 卡根（世界锚点）
@@ -97,7 +97,7 @@ public class HoverTagSystem : MonoBehaviour
         }
     }
 
-    /// <summary>入场动画偏移：从近中心起始点平滑滑到目标偏移；时长到即锁定目标并清动画态。</summary>
+    /// <summary>入场动画偏移：从起点(y=最终位, x=最终x×ratio)平行水平滑到目标偏移；时长到即锁定目标并清动画态。</summary>
     Vector2 EaseInOffset(HoverTagLabel tag, Vector2 target)
     {
         if (!_animTime.TryGetValue(tag, out float t0)) return target;   // 非动画态/已完成 → 直接用目标
@@ -253,9 +253,9 @@ public class HoverTagSystem : MonoBehaviour
 
             Vector2 target = new Vector2(cx, cy);
             _offsets[label] = target;
-            // 入场动画：起点 = 目标偏移的 slideStartRatio 处（接近最终位置、滑动距离短），
-            // 记录起始偏移与时间 → EaseInOffset 逐帧滑向 target。
-            _animStart[label] = target * slideStartRatio;
+            // 入场动画：起点 x = 最终 x × slideStartRatio（向卡中心水平收缩），y 保持最终位 →
+            // 同侧各标签起点在一条竖直线上，整体平行水平滑向最终位置（非斜向汇聚）。时长 slideDuration。
+            _animStart[label] = new Vector2(target.x * slideStartRatio, target.y);
             _animTime[label] = Time.time;
         }
     }
