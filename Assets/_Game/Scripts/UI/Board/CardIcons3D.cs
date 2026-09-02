@@ -282,6 +282,7 @@ public class CardIcons3D : MonoBehaviour
         if (inst == null) return list;
         if (inst.hasShield) list.Add(("shield", statusShieldSprite, statusIconPath + "Shield"));
         if (IsBuffed(inst)) list.Add(("buff",   statusBuffSprite,   statusIconPath + "Buff"));
+        // 减益图标：仅状态类（中毒/沉默/临时减攻/攻击压制）；特性禁制(HasActiveBlock)是规则失效不是状态，不显示
         if (inst.poisoned || IsFullySilenced(inst) || IsDebuffed(inst))
             list.Add(("debuff", statusDebuffSprite, statusIconPath + "DeBuff"));
         return list;

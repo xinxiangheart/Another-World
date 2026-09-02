@@ -389,7 +389,7 @@ public class CardDisplay2DNew : MonoBehaviour
         Vector2 size = GetIconRowSize(statusTestSprite, statusIconSize);
         if (inst.hasShield)    AddRowIcon(statusIconsArea, "status_shield", statusShieldSprite, statusIconPath + "status_shield", size);
         if (IsBuffed(inst))    AddRowIcon(statusIconsArea, "status_buff", statusBuffSprite, statusIconPath + "status_buff", size);
-        // 中毒/沉默/其他减益 → 统一一个负面减益图标
+        // 中毒/沉默/其他减益 → 统一一个负面减益图标（仅状态类；特性禁制是规则失效不是状态，不显示）
         if (inst.poisoned || IsFullySilenced(inst) || IsDebuffed(inst))
             AddRowIcon(statusIconsArea, "status_debuff", statusDebuffSprite, statusIconPath + "status_debuff", size);
     }
