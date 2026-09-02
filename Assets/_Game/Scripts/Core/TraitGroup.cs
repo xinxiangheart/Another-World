@@ -75,6 +75,10 @@ public class TraitGroup
                     // 特性被沉默/单条禁（IsTraitActive=false）→ 该条拦截失效 → 恢复可治疗。
                     if (IsInherentAntiHeal(ci.templateID, e.text))
                         rt.receiveBlocks = EffectCategory.Healed;
+                    // 固有反制免疫（无畏者01319）：文本含"不触发反制"的常驻特性 → 拦截 Countered。
+                    // 特性被禁/沉默 → 拦截失效 → 恢复可被反制。
+                    if (IsInherentCounterImmune(ci.templateID, e.text))
+                        rt.receiveBlocks |= EffectCategory.Countered;
                     tg.traits.Add(rt);
                 }
         }
@@ -102,6 +106,16 @@ public class TraitGroup
         if (templateID != "03026" && templateID != "01531") return false;
         if (string.IsNullOrEmpty(text)) return false;
         return text.Contains("无法") && text.Contains("恢复生命值");
+    }
+
+    /// <summary>固有"反制免疫"特性识别：仅 01319（无畏者）迁入特性组。
+    /// 判定 = 模板ID白名单 + 常驻文本含"不触发反制"。其他卡即使文本相似也暂不拦（未迁移）。</summary>
+    static bool IsInherentCounterImmune(string templateID, string text)
+    {
+        if (templateID != "01319") return false;
+        if (string.IsNullOrEmpty(text)) return false;
+        // 无畏者 01319 常驻文本："该召唤物不会触发反制牌" / "不触发反制牌"
+        return text.Contains("不会触发反制牌") || text.Contains("不触发反制牌");
     }
 
     /// <summary>重建授予 RuntimeTrait（移除旧授予 + 从 owner.grantedTraits 重加）。</summary>

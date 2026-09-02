@@ -131,11 +131,22 @@ public class CounterManager : MonoBehaviour
         ServerCheckOnCardPlayed(playedCard, false);
     }
 
-    /// <summary>Server-side: check counters matching a played card. hostPlayed = who played the card.</summary>
-    public void ServerCheckOnCardPlayed(CardData playedCard, bool hostPlayed)
+    /// <summary>Server-side: check counters matching a played card. hostPlayed = who played the card.
+    /// playedInst 可选：能拿到打出卡 CardInstance 时传入以查特性组（反制免疫 receiveBlocks=Countered）；
+    /// 拿不到（Host 分支/离线 AI）传 null → 回退旧 templateID=="01319" 硬编码。</summary>
+    public void ServerCheckOnCardPlayed(CardData playedCard, bool hostPlayed, CardInstance playedInst = null)
     {
-        // 无畏者(01319)：该召唤物不触发任何反制牌，无论计数型还是触发型
-        if (playedCard != null && playedCard.templateID == "01319") return;
+        // 反制免疫：打出卡不可被反制 → 该召唤物不触发任何反制牌。
+        // 特性组优先（无畏者01319 固有 receiveBlocks=Countered；被禁/沉默则失效恢复可被反制）；
+        // 无实例（Host 分支/AI）回退旧 templateID 硬编码。
+        if (playedInst != null && playedInst.traits != null)
+        {
+            if (!playedInst.traits.CanReceive(EffectCategory.Countered)) return;
+        }
+        else if (playedCard != null && playedCard.templateID == "01319")
+        {
+            return;
+        }
 
         if (hostPlayed)
         {

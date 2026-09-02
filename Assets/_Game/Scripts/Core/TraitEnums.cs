@@ -37,5 +37,6 @@ public enum EffectCategory
     AttackTargeted = 1 << 3,  // 可被攻击选中
     Buffed = 1 << 4,          // 可被增益
     Debuffed = 1 << 5,        // 可被减益
-    Moved = 1 << 6            // 可被移动/交换/回手
+    Moved = 1 << 6,           // 可被移动/交换/回手
+    Countered = 1 << 7        // 可被反制牌影响（拦截它=免疫反制，如无畏者01319）
 }

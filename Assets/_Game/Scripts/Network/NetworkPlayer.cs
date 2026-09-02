@@ -716,7 +716,17 @@ public class NetworkPlayer : NetworkBehaviour
         {
             // Remote 打牌 → 检查 Host 的反制牌（myCounters）
             // Host 打牌 → 检查 Remote 的反制牌（enemyCounters）
-            CounterManager.Instance?.ServerCheckOnCardPlayed(template, this == NetworkPlayer.Local);
+            // 尽量传入刚放置的卡实例（查反制免疫特性组）；取不到（Host 模型未入槽等）传 null → CounterManager 回退模板ID。
+            CardInstance playedCI = null;
+            if (template.cardType == CardType.Summon)
+            {
+                int probeSlot = this != NetworkPlayer.Local
+                    ? (slotID >= 6 ? slotID - 6 : slotID + 6) // Remote 的本地槽镜像到服务器槽
+                    : slotID;
+                var pSlot = FindObjectOfType<BoardManager>()?.GetSlot(probeSlot);
+                playedCI = pSlot?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+            }
+            CounterManager.Instance?.ServerCheckOnCardPlayed(template, this == NetworkPlayer.Local, playedCI);
 
             // 蛊惑之音(02304): if Remote's counter redirected this card's enter effect,
             // tell the owning client to select an ally and run the redirected enter effect.

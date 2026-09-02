@@ -186,7 +186,11 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
 
         bool isEnemyPlay = FakeEnemyPlayButton.nextPlayAsEnemy;
 
-        if (inst != null && inst.ignoreAllCounters)
+        // 反制免疫（无畏者01319 等）：特性组优先（receiveBlocks=Countered，被禁/沉默则恢复可被反制）；
+        // 无特性组时回退旧 ignoreAllCounters bool。
+        bool counterImmune = inst != null &&
+            (inst.traits != null ? !inst.traits.CanReceive(EffectCategory.Countered) : inst.ignoreAllCounters);
+        if (counterImmune)
         {
             FakeEnemyPlayButton.nextPlayAsEnemy = false;
         }

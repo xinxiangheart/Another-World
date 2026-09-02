@@ -1011,6 +1011,24 @@ public class BattleManager : MonoBehaviour
         );
     }
 
+    // 行限制查询（特性组优先，旧 bool 兜底）：
+    //   攻击前排限制/攻击后排限制 伪特性在 BuildFrom 按模板注册；动态授予的行文本只写旧 bool。
+    //   特性被禁/沉默(IsTraitActive=false) → 限制失效 → 恢复正常攻击目标。
+    static bool AttacksOnlyFrontRow(CardInstance inst)
+    {
+        if (inst == null) return false;
+        if (inst.traits != null && inst.traits.HasTrait("攻击前排限制"))
+            return inst.traits.IsTraitActive("攻击前排限制");
+        return inst.attacksFrontRow; // 动态授予兜底（无伪特性时）
+    }
+    static bool AttacksOnlyBackRow(CardInstance inst)
+    {
+        if (inst == null) return false;
+        if (inst.traits != null && inst.traits.HasTrait("攻击后排限制"))
+            return inst.traits.IsTraitActive("攻击后排限制");
+        return inst.attacksBackRow; // 动态授予兜底（无伪特性时）
+    }
+
     void ProcessAttackerVsDefender(
         GameObject attackerCard, CardInstance attackerInst, BoardSlot attackerSlot,
         int attackerSlotID, int defenderSlotID,
@@ -1086,11 +1104,11 @@ public class BattleManager : MonoBehaviour
                 }
             }
         }
-        else if (attackerInst.attacksBackRow)
+        else if (AttacksOnlyBackRow(attackerInst))
         {
             targetDefenderSlotIndex = defenderHalfStart + 3 + col;
         }
-        else if (attackerInst.attacksFrontRow)
+        else if (AttacksOnlyFrontRow(attackerInst))
         {
             targetDefenderSlotIndex = defenderHalfStart + col;
         }
