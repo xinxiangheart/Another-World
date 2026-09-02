@@ -13,8 +13,10 @@ using UnityEngine;
 //
 // 内容：
 //   - 特性：CardInstance.GetVisibleTraitEntries() → "属性：文本"；完全沉默时空列。
-//   - 状态：buffText/debuffText 按 \n 拆多条，各为独立标签；
-//     01525 格子强化动态条 = 攻击力临时+{slot.slotTempAttackBoost}（现读真源）。
+//   - 状态：仅显示"目标实际受到的、有来源记录的状态"。注意 CardData.buffText/debuffText
+//     是"本卡给予别人状态时的描述"，不是自己身上的状态 → 自己悬停时绝不读取。
+//     当前无目标侧来源记录机制（GrantBuff/GrantDebuff 无运行时调用），故右侧暂时只显示
+//     01525 格子强化动态条 = 攻击力临时+{slot.slotTempAttackBoost}（槽位真源，目标实际受到的加成）。
 //
 // 坐标（全部在 Canvas 局域单位）：锚点 = 卡牌世界中心投影到 tagLayer 的局域点；
 //   每个标签存相对该锚点的局域偏移，每帧重投影锚点再摆放。
@@ -266,31 +268,22 @@ public class HoverTagSystem : MonoBehaviour
         return outList;
     }
 
-    /// <summary>右列状态文本：buffText/debuffText 按 \n 拆多条 + 01525 格子强化动态条。</summary>
+    /// <summary>右列状态文本：目标实际受到的、有来源记录的状态。
+    /// 注意：CardData.buffText/debuffText 是"本卡给予别人状态时的描述"，不是自己身上的状态，
+    /// 故不在自己悬停时读取。当前项目尚无"目标侧记录来源卡施加的状态描述"机制
+    /// （GrantBuff/GrantDebuff 无运行时调用），因此右侧暂时只显示由槽位真源驱动的 01525 强化条。</summary>
     List<string> BuildStatusTexts(CardInstance ci)
     {
         var outList = new List<string>();
         if (ci == null) return outList;
 
-        AddSplitLines(outList, ci.buffText);
-        AddSplitLines(outList, ci.debuffText);
-
-        // 01525 格子强化动态条：反查所在槽位，现读 slotTempAttackBoost（真源，天然叠加）。
+        // 01525 格子强化：反查所在槽位现读 slotTempAttackBoost——这是目标实际受到的临时攻击加成
+        // （槽位持久真源，非本卡 CardData 描述），叠加天然正确。
         BoardSlot slot = FindSlotOfAnchor();
         if (slot != null && slot.slotTempAttackBoost > 0)
             outList.Add($"攻击力临时+{slot.slotTempAttackBoost}");
 
         return outList;
-    }
-
-    static void AddSplitLines(List<string> dst, string text)
-    {
-        if (string.IsNullOrEmpty(text)) return;
-        foreach (var seg in text.Split('\n'))
-        {
-            string s = seg.Trim();
-            if (s.Length > 0) dst.Add(s);
-        }
     }
 
     /// <summary>按悬停 3D 模型反查 BoardSlot（Card3DHover.GetMySlot 同款）。附着卡匹配不到 → null。</summary>
