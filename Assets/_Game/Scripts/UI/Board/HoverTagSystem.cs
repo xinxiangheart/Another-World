@@ -47,7 +47,7 @@ public class HoverTagSystem : MonoBehaviour
     readonly List<HoverTagLabel> _tags = new List<HoverTagLabel>();
     readonly Dictionary<HoverTagLabel, Vector2> _offsets = new Dictionary<HoverTagLabel, Vector2>();
 
-    static GameObject _prefab;          // Resources.Load("UI/TagLabel")
+    static GameObject _prefab;          // 来自 Resources.Load<HoverTagConfig>("Config/HoverTagConfig").tagLabelPrefab
 
     void OnDestroy()
     {
@@ -111,9 +111,13 @@ public class HoverTagSystem : MonoBehaviour
         Instance = sys;
 
         if (_prefab == null)
-            _prefab = Resources.Load<GameObject>("UI/TagLabel");
+        {
+            // TagLabel.prefab 在 Prefabs/UI/Panels（非 Resources）→ 由 Config 资产持引用。
+            var cfg = Resources.Load<HoverTagConfig>("Config/HoverTagConfig");
+            if (cfg != null) _prefab = cfg.tagLabelPrefab;
+        }
         if (_prefab == null)
-            Debug.LogWarning("[HoverTag] 找不到 UI/TagLabel.prefab —— 请先执行 Tools/卡牌/生成悬停标签预制体");
+            Debug.LogWarning("[HoverTag] 未取得悬停标签预制体 —— 请先执行 Tools/卡牌/生成悬停标签预制体（生成 TagLabel.prefab + HoverTagConfig.asset）");
         return sys;
     }
 

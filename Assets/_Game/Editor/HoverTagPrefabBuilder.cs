@@ -16,7 +16,10 @@ using UnityEngine.UI;
 public static class HoverTagPrefabBuilder
 {
     const string FontPath = "Assets/_Game/Fonts/NotoSerifCJKsc-Black SDF.asset";
-    const string PrefabPath = "Assets/_Game/Resources/UI/TagLabel.prefab";
+    // TagLabel 与其它 UI 预制体同目录（Prefabs/UI/Panels）；运行时不走 Resources.Load，
+    // 由 Resources/Config/HoverTagConfig.asset 持引用（见下）。
+    const string PrefabPath = "Assets/_Game/Prefabs/UI/Panels/TagLabel.prefab";
+    const string ConfigPath = "Assets/_Game/Resources/Config/HoverTagConfig.asset";
 
     // 根默认尺寸（SetText 会覆盖），先给非零避免首帧 0
     static readonly Vector2 DefaultSize = new Vector2(120f, 40f);
@@ -78,13 +81,43 @@ public static class HoverTagPrefabBuilder
         label.tagMaxWidth = 260f;
         label.tagPadding = new Vector2(10f, 6f);
 
-        // ── 保存 ──
-        if (!AssetDatabase.IsValidFolder("Assets/_Game/Resources/UI"))
-            AssetDatabase.CreateFolder("Assets/_Game/Resources", "UI");
+        // ── 保存预制体到 Prefabs/UI/Panels ──
+        string dir = System.IO.Path.GetDirectoryName(PrefabPath).Replace('\\', '/');
+        if (!AssetDatabase.IsValidFolder(dir))
+        {
+            string parent = System.IO.Path.GetDirectoryName(dir).Replace('\\', '/');
+            string folder = System.IO.Path.GetFileName(dir);
+            if (AssetDatabase.IsValidFolder(parent))
+                AssetDatabase.CreateFolder(parent, folder);
+            else
+                AssetDatabase.CreateFolder("Assets/_Game/Prefabs/UI", folder);
+        }
         PrefabUtility.SaveAsPrefabAsset(root, PrefabPath);
         Object.DestroyImmediate(root);
 
+        // ── 生成/更新 Config 资产：持预制体引用（运行时 Resources.Load<HoverTagConfig>）──
+        WriteConfig();
+
         AssetDatabase.SaveAssets();
-        Debug.Log($"[HoverTag] 预制体已生成: {PrefabPath}");
+        Debug.Log($"[HoverTag] 预制体已生成: {PrefabPath}；Config: {ConfigPath}");
+    }
+
+    /// <summary>创建或更新 Resources/Config/HoverTagConfig.asset，tagLabelPrefab 指向新预制体。</summary>
+    static void WriteConfig()
+    {
+        string dir = System.IO.Path.GetDirectoryName(ConfigPath).Replace('\\', '/');
+        if (!AssetDatabase.IsValidFolder(dir))
+            AssetDatabase.CreateFolder("Assets/_Game/Resources", "Config");
+
+        var cfg = AssetDatabase.LoadAssetAtPath<HoverTagConfig>(ConfigPath);
+        if (cfg == null)
+        {
+            cfg = ScriptableObject.CreateInstance<HoverTagConfig>();
+            AssetDatabase.CreateAsset(cfg, ConfigPath);
+        }
+        var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath);
+        if (prefab == null) { Debug.LogError($"[HoverTag] 生成失败，找不到预制体: {PrefabPath}"); return; }
+        cfg.tagLabelPrefab = prefab;
+        EditorUtility.SetDirty(cfg);
     }
 }
