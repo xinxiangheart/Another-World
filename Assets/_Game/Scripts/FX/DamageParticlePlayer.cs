@@ -24,7 +24,6 @@ public class DamageParticlePlayer : MonoBehaviour
     SpriteRenderer _sr;
     TrailRenderer _trail;
     Coroutine _routine;
-    bool _playing;
 
     /// <summary>从池取一个粒子播放器（无则新建），返回前设为活动。</summary>
     public static DamageParticlePlayer Get()
@@ -32,7 +31,6 @@ public class DamageParticlePlayer : MonoBehaviour
         EnsurePool();
         DamageParticlePlayer p = _pool.Count > 0 ? _pool.Dequeue() : Create();
         p.gameObject.SetActive(true);
-        p._playing = false;
         if (p._trail != null) p._trail.Clear();
         return p;
     }
@@ -53,7 +51,6 @@ public class DamageParticlePlayer : MonoBehaviour
 
     IEnumerator StraightRoutine(Vector3 from, Vector3 to, float duration, Action onArrive)
     {
-        _playing = true;
         transform.position = AtDepth(from);
         float t = 0f;
         while (t < duration)
@@ -65,14 +62,12 @@ public class DamageParticlePlayer : MonoBehaviour
             yield return null;
         }
         transform.position = AtDepth(to);
-        _playing = false;
         onArrive?.Invoke();
         Release();
     }
 
     IEnumerator SpecialRoutine(Vector3 start, Vector3 target, float duration, Action onArrive)
     {
-        _playing = true;
         transform.position = AtDepth(start);
         float radius = 0.6f; // 上移距离 = 环绕半径
 
@@ -110,7 +105,6 @@ public class DamageParticlePlayer : MonoBehaviour
             yield return null;
         }
         transform.position = AtDepth(target);
-        _playing = false;
         onArrive?.Invoke();
         Release();
     }

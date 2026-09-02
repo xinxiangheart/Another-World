@@ -158,7 +158,9 @@ public class CardDisplay3D : MonoBehaviour
     }
 
     /// <summary>编辑期预览：拖入预览 Sprite 立即显示到对应层（对齐 2D 拖入字段；仅设属性不改层级）。
-    /// 运行时 Refresh 会按"预览优先→路径"重新填 sprite，预制体里手调的比例不被覆盖。</summary>
+    /// 运行时 Refresh 会按"预览优先→路径"重新填 sprite，预制体里手调的比例不被覆盖。
+    /// OnValidate 是编辑器回调（引 UnityEditor），玩家构建不编译 → 避免 CS0219（changed 只读于此）。</summary>
+#if UNITY_EDITOR
     void OnValidate()
     {
         if (Application.isPlaying) return;
@@ -166,10 +168,9 @@ public class CardDisplay3D : MonoBehaviour
         if (frameSR != null && previewFrameSprite != null) { frameSR.sprite = previewFrameSprite; frameSR.enabled = true; changed = true; }
         if (prefixBgSR != null && previewPrefixBgSprite != null) { prefixBgSR.sprite = previewPrefixBgSprite; prefixBgSR.enabled = true; changed = true; }
         if (cardArtSR != null && previewArtSprite != null) { cardArtSR.sprite = previewArtSprite; cardArtSR.gameObject.SetActive(true); changed = true; }
-#if UNITY_EDITOR
         if (changed) UnityEditor.EditorUtility.SetDirty(this);
-#endif
     }
+#endif
 
     /// <summary>卡面 Sprite：真实 cardSprite2D → {tid}_Front → 镜像 Cards/Summon 目录（含法术 Normal/Special）→ null（调用方隐藏 CardArt 露出前缀背景）。</summary>
     Sprite ResolveArtSprite(CardData template)
