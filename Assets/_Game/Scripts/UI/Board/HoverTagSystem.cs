@@ -20,6 +20,8 @@ using UnityEngine;
 //
 // 坐标（全部在 Canvas 局域单位）：锚点 = 卡牌世界中心投影到 tagLayer 的局域点；
 //   每个标签存相对该锚点的局域偏移，每帧重投影锚点再摆放。
+// 入场动画：Show 时标签从接近最终位置(slideStartRatio×目标偏移，短滑距)在 slideDuration 秒内
+//   平滑滑到目标位置（smoothstep，EaseInOffset）；Hide 直接销毁，无退场动画。仅表现，不改布局/内容。
 // ============================================================================
 
 public class HoverTagSystem : MonoBehaviour
@@ -44,10 +46,20 @@ public class HoverTagSystem : MonoBehaviour
     [Tooltip("整簇相对卡中心的垂直偏移（正=下移）")]
     public float verticalOffset = 0f;
 
+    [Header("入场动画")]
+    [Tooltip("标签从近目标处滑到目标位置的时长（秒）")]
+    public float slideDuration = 0.12f;
+    [Tooltip("入场起始点相对目标偏移的比例（0=从中心起, 1=直接从目标位置出现）。例 0.65=从距中心 65% 处滑出，滑动距离短")]
+    [Range(0f, 1f)]
+    public float slideStartRatio = 0.65f;
+
     // ── 悬停状态 ──
     Transform _anchor;                  // 悬停的 3D 卡根（世界锚点）
     readonly List<HoverTagLabel> _tags = new List<HoverTagLabel>();
     readonly Dictionary<HoverTagLabel, Vector2> _offsets = new Dictionary<HoverTagLabel, Vector2>();
+    // 入场动画状态：每标签记 起始偏移(近中心) 与 开始时间，滑到 _offsets 记录的目标偏移。
+    readonly Dictionary<HoverTagLabel, Vector2> _animStart = new Dictionary<HoverTagLabel, Vector2>();
+    readonly Dictionary<HoverTagLabel, float> _animTime = new Dictionary<HoverTagLabel, float>();
 
     static GameObject _prefab;          // 来自 Resources.Load<HoverTagConfig>("Config/HoverTagConfig").tagLabelPrefab
 
@@ -79,9 +91,26 @@ public class HoverTagSystem : MonoBehaviour
             HoverTagLabel tag = _tags[i];
             if (tag == null) continue;
             if (!_offsets.TryGetValue(tag, out Vector2 off)) continue;
+            Vector2 cur = EaseInOffset(tag, off);
             var rt = (RectTransform)tag.transform;
-            rt.anchoredPosition = centerLocal + off;
+            rt.anchoredPosition = centerLocal + cur;
         }
+    }
+
+    /// <summary>入场动画偏移：从近中心起始点平滑滑到目标偏移；时长到即锁定目标并清动画态。</summary>
+    Vector2 EaseInOffset(HoverTagLabel tag, Vector2 target)
+    {
+        if (!_animTime.TryGetValue(tag, out float t0)) return target;   // 非动画态/已完成 → 直接用目标
+        float t = slideDuration > 0f ? (Time.time - t0) / slideDuration : 1f;
+        if (t >= 1f)
+        {
+            _animTime.Remove(tag);
+            _animStart.Remove(tag);
+            return target;
+        }
+        Vector2 start = _animStart.TryGetValue(tag, out Vector2 s) ? s : target;
+        float e = t * t * (3f - 2f * t); // smoothstep 平滑
+        return Vector2.LerpUnclamped(start, target, e);
     }
 
     // ═══════════════════ 单例 & 生命周期 ═══════════════════
@@ -149,6 +178,8 @@ public class HoverTagSystem : MonoBehaviour
             if (tag != null) Object.Destroy(tag.gameObject);
         _tags.Clear();
         _offsets.Clear();
+        _animStart.Clear();
+        _animTime.Clear();
     }
 
     // ═══════════════════ 单侧列布局 ═══════════════════
@@ -220,7 +251,12 @@ public class HoverTagSystem : MonoBehaviour
                 : colInnerX[c] + sz.x * 0.5f;                   // 右列：左边缘贴 inner
             float cy = colTopY - sz.y * 0.5f;                   // 标签顶往下半高 = 标签中心
 
-            _offsets[label] = new Vector2(cx, cy);
+            Vector2 target = new Vector2(cx, cy);
+            _offsets[label] = target;
+            // 入场动画：起点 = 目标偏移的 slideStartRatio 处（接近最终位置、滑动距离短），
+            // 记录起始偏移与时间 → EaseInOffset 逐帧滑向 target。
+            _animStart[label] = target * slideStartRatio;
+            _animTime[label] = Time.time;
         }
     }
 

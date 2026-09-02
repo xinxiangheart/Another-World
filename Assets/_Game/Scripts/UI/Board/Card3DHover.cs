@@ -14,6 +14,8 @@ public class Card3DHover : MonoBehaviour
     BoardSlot _discardSlot; // 悬停中缓存的高亮槽位（OnMouseOver 每帧重申时避免 FindObjectOfType）
     BoardSlot _targetHoverSlot; // 选择模式悬停中的槽位（高亮缓存；OnMouseOver 每帧重申）
     public bool isHidden; // 隐藏（雾隐）态：抑制悬停详情面板(Test1Panel)，但保留选择模式高亮/点击
+    bool _hovering;      // 鼠标当前在本卡 collider 上（OnMouseEnter/Exit 维护）
+    bool _detailShown;   // 本卡是否因"悬停+按住右键"显示了 Test1Panel（防每帧重建）
     void Start()
     {
         Card3DInstance c3d = GetComponent<Card3DInstance>();
@@ -30,6 +32,7 @@ public class Card3DHover : MonoBehaviour
     void OnMouseEnter()
     {
         Debug.Log($"OnMouseEnter 被调用：hasDiscard={cardInstance?.hasDiscard}, isMyTurn={FindObjectOfType<TurnManager>()?.IsMyTurn()}, isPlacingCard={BoardSlot.isPlacingCard}, isTargetingMode={BoardSlot.isTargetingMode}, isAttachSelectMode={BoardSlot.isAttachSelectMode}");
+        _hovering = true;
         _discardHovered = false;
         _discardSlot = null;
         if (CanDiscard())
@@ -54,16 +57,19 @@ public class Card3DHover : MonoBehaviour
         _targetHoverSlot = null;
         TryBeginTargetHover();
 
-        // 抛置后强制恢复交互（隐藏卡不弹详情面板，但选择模式高亮照常）
-        if (!isHidden && Test1Panel.Instance != null && cardInstance != null)
-            Test1Panel.Instance.Show(cardInstance);
-        // 3D 悬停标签（左=特性 右=状态，锚卡位置固定）：同一 !isHidden gate。
+        // 抛置后强制恢复交互。Test1Panel 现改为"悬停 + 按住右键"才显示（见 UpdateDetailPanel），
+        // 不再在 Enter 直接弹。选择模式高亮照常。
+        // 3D 悬停标签（左=特性 右=状态，锚卡位置固定）：同一 !isHidden gate，悬停即显示（不要求右键）。
         if (!isHidden && cardInstance != null)
             HoverTagSystem.Ensure()?.Show(cardInstance, gameObject);
+        UpdateDetailPanel();
     }
 
     void OnMouseOver()
     {
+        // 悬停+按住右键 → 显示 Test1Panel；右键松开 → 隐藏（边沿检测，防每帧重建）
+        UpdateDetailPanel();
+
         // 每帧重申抛置绿色高亮：OnMouseEnter 只在碰撞体进入时触发一次，
         // 一旦绿色被格子 OnPointerExit/SyncVisual 等路径覆盖就不会自动重画，
         // 这里保证悬停期间高亮一直存在、可重复触发。
@@ -122,8 +128,27 @@ public class Card3DHover : MonoBehaviour
             _targetHoverSlot = null;
         }
 
+        _hovering = false;
+        _detailShown = false;
         Test1Panel.Instance?.Hide();
         HoverTagSystem.Instance?.Hide();
+    }
+
+    /// <summary>Test1Panel 触发：悬停 + 按住鼠标右键才显示；右键松开即隐藏。
+    /// OnMouseEnter/OnMouseOver 调用（OnMouseOver 每帧在 collider 上触发，边沿检测避免每帧重建）。</summary>
+    void UpdateDetailPanel()
+    {
+        bool want = _hovering && !isHidden && cardInstance != null && Input.GetMouseButton(1);
+        if (want && !_detailShown && Test1Panel.Instance != null)
+        {
+            Test1Panel.Instance.Show(cardInstance);
+            _detailShown = true;
+        }
+        else if (!want && _detailShown)
+        {
+            Test1Panel.Instance?.Hide();
+            _detailShown = false;
+        }
     }
 
     /// <summary>选择模式悬停命中：卡牌 → 映射所在槽位 → 高亮（整排类型由 HighlightRow 处理）。
@@ -177,8 +202,11 @@ public class Card3DHover : MonoBehaviour
         cardInstance.savedAttackForDiscard = cardInstance.currentAttack;
         cardInstance.savedTotalDamage = cardInstance.totalDamageTaken;
 
-        // 抛置销毁卡牌 → 无 OnMouseExit，主动隐藏悬停标签防残留。
+        // 抛置销毁卡牌 → 无 OnMouseExit，主动复位并隐藏悬停标签 / Test1Panel 防残留。
+        _hovering = false;
+        _detailShown = false;
         HoverTagSystem.Instance?.Hide();
+        Test1Panel.Instance?.Hide();
 
         slot.HandleDeath(gameObject);
 
