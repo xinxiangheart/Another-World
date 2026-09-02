@@ -130,6 +130,7 @@ public static class EnterHandlers
             {
                 var targetCI = targetSlot.currentCard3D.GetComponent<Card3DInstance>().cardInstance;
                 targetCI.silencedThisPhase = true;
+                targetCI.ApplySilenceToTraits(); // 特性组同步沉默（BlockAll）
                 Debug.Log($"[03501] 沉默目标: slot={targetSlot.slotID} tid={targetCI.templateID} instID={targetCI.instanceID}");
                 targetSlot.currentCard3D.GetComponent<Card3DInstance>().UpdateValues();
                 TurnManager.SyncMyBoardToOpponent();

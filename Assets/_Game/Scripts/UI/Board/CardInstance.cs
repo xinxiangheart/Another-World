@@ -112,6 +112,8 @@ public class CardInstance : MonoBehaviour
     /// <summary>特性组（每卡一个）：三层粒度查询（HasTrait/IsTraitActive/CanSend/CanReceive）+ 计数式多重禁制。
     /// InitFromTemplate/CopyFrom 构建（固有+授予+伪特性）；授予特性增删时 RefreshGranted 同步。旧 bool 并行保留、只读不写。</summary>
     [System.NonSerialized] public TraitGroup traits;
+    /// <summary>特性组是否已按当前 silencedThisPhase 同步过（防重复 BlockAll 计数；构建时初始化对齐）。</summary>
+    [System.NonSerialized] bool _silenceAppliedToTraits;
     // 苦难给予者专用
     public List<string> giveableDeathTraits = new List<string>();
     // 模板原始特性记录
@@ -328,6 +330,8 @@ public class CardInstance : MonoBehaviour
         }
 
         traits = TraitGroup.BuildFrom(this); // 特性组构建（固有 + 授予 + 伪特性）
+        _silenceAppliedToTraits = silencedThisPhase; // 守卫对齐当前沉默态
+        if (silencedThisPhase && traits != null) traits.BlockAll(this);
     }
     public void CopyFrom(CardInstance src)
     {
@@ -438,6 +442,8 @@ public class CardInstance : MonoBehaviour
         debuffText = src.debuffText;
 
         traits = TraitGroup.BuildFrom(this); // 特性组构建（复制后按新模板 + 已复制授予重建）
+        _silenceAppliedToTraits = silencedThisPhase; // 守卫对齐当前沉默态
+        if (silencedThisPhase && traits != null) traits.BlockAll(this);
     }
     public void CopyTraitsFromTemplate(CardData template)
     {
@@ -788,6 +794,19 @@ public class CardInstance : MonoBehaviour
         for (int i = 0; i < entries.Count; i++)
             if (entries[i].text.Contains(keyword)) return i + 1;
         return -1;
+    }
+
+    /// <summary>特性组同步沉默：按 synced silencedThisPhase 值派生 BlockAll/UnblockAll。
+    /// 双端都调用（施法端设值后 + 对端板面同步应用后）——靠同一 synced 值收敛，保证 traits 一致。
+    /// 值未变不重复计数（防每帧/每次板面同步重复 BlockAll）。不改旧 silencedThisPhase/IsFullySilenced 逻辑。</summary>
+    public void ApplySilenceToTraits()
+    {
+        if (traits == null) return;
+        bool want = silencedThisPhase;
+        if (want == _silenceAppliedToTraits) return;
+        _silenceAppliedToTraits = want;
+        if (want) traits.BlockAll(this);       // 沉默 → 禁所有发送（CanSend/IsTraitActive 失效）
+        else traits.UnblockAll(this);          // 解除 → 恢复
     }
 
     /// <summary>格式化一条特性条目为 "N：属性1、属性2：xxx" / "N：xxx" / "N（赋予）（属性）：xxx"。</summary>

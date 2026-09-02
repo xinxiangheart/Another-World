@@ -476,6 +476,7 @@ public class BoardSyncManager : MonoBehaviour
                 cur.shieldEndAtBattleEnd = false;
             }
             cur.silencedThisPhase = (p[11] == "1");
+            cur.ApplySilenceToTraits(); // 对端板面同步应用：特性组派生 BlockAll/UnblockAll
             cur.isAttached = (p[12] == "1");
             cur.poisoned = (p[13] == "1");
             cur.prefixes = p[14];

@@ -1748,7 +1748,7 @@ public class NetworkPlayer : NetworkBehaviour
                         ci.shieldEndAtBattleStart = false;
                         ci.shieldEndAtBattleEnd = false;
                     }
-                    if (p.Length > 11) ci.silencedThisPhase = (p[11] == "1");
+                    if (p.Length > 11) { ci.silencedThisPhase = (p[11] == "1"); ci.ApplySilenceToTraits(); }
                     if (p.Length > 12) ci.isAttached = (p[12] == "1");
                     if (p.Length > 13) ci.poisoned = (p[13] == "1");
                     if (p.Length > 14) ci.prefixes = p[14];
@@ -1803,7 +1803,7 @@ public class NetworkPlayer : NetworkBehaviour
     {
         switch (fieldIdx)
         {
-            case 11: ci.silencedThisPhase = true; break;
+            case 11: ci.silencedThisPhase = true; ci.ApplySilenceToTraits(); break;
             case 13: ci.poisoned = true; break;
             // 新字段加 case 即可
         }
@@ -2052,7 +2052,7 @@ public class NetworkPlayer : NetworkBehaviour
                 if (p.Length > 8 && int.TryParse(p[8], out tier2)) ci.currentTier = tier2;
                 if (p.Length > 9 && int.TryParse(p[9], out bt2)) ci.baseTier = bt2;
                 if (p.Length > 10) ci.hasShield = (p[10] == "1");
-                if (p.Length > 11) ci.silencedThisPhase = (p[11] == "1");
+                if (p.Length > 11) { ci.silencedThisPhase = (p[11] == "1"); ci.ApplySilenceToTraits(); }
                 if (p.Length > 12) ci.isAttached = (p[12] == "1");
                 if (p.Length > 13) ci.poisoned = (p[13] == "1");
                 if (p.Length > 14) ci.prefixes = p[14];

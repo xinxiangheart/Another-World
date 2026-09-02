@@ -198,6 +198,7 @@ public partial class TurnManager : MonoBehaviour
             if (ci.templateID == "01531")
                 ci._outlawPlayerDamageThisTurn = false;
             ci.silencedThisPhase = false;
+            ci.ApplySilenceToTraits(); // 阶段边界：特性组解除沉默（UnblockAll）
             ci.poisoned = false;
             ci.enemyDamageSourceIDs.Clear();
             ci.damageSourceInstanceIDs.Clear();
