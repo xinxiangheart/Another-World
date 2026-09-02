@@ -57,6 +57,9 @@ public class Card3DHover : MonoBehaviour
         // 抛置后强制恢复交互（隐藏卡不弹详情面板，但选择模式高亮照常）
         if (!isHidden && Test1Panel.Instance != null && cardInstance != null)
             Test1Panel.Instance.Show(cardInstance);
+        // 3D 悬停标签（左=特性 右=状态，锚卡位置固定）：同一 !isHidden gate。
+        if (!isHidden && cardInstance != null)
+            HoverTagSystem.Ensure()?.Show(cardInstance, gameObject);
     }
 
     void OnMouseOver()
@@ -120,6 +123,7 @@ public class Card3DHover : MonoBehaviour
         }
 
         Test1Panel.Instance?.Hide();
+        HoverTagSystem.Instance?.Hide();
     }
 
     /// <summary>选择模式悬停命中：卡牌 → 映射所在槽位 → 高亮（整排类型由 HighlightRow 处理）。
@@ -172,6 +176,9 @@ public class Card3DHover : MonoBehaviour
 
         cardInstance.savedAttackForDiscard = cardInstance.currentAttack;
         cardInstance.savedTotalDamage = cardInstance.totalDamageTaken;
+
+        // 抛置销毁卡牌 → 无 OnMouseExit，主动隐藏悬停标签防残留。
+        HoverTagSystem.Instance?.Hide();
 
         slot.HandleDeath(gameObject);
 

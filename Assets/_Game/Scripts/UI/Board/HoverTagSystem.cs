@@ -1,0 +1,312 @@
+using System.Collections.Generic;
+using UnityEngine;
+
+// ============================================================================
+// HoverTagSystem — 3D 召唤物悬停文本标签系统（单例，懒创建）。
+//
+// 语义：
+//   - 鼠标悬停（Card3DHover.OnMouseEnter）只是开关；标签位置锚在 3D 卡牌上，
+//     不跟随鼠标。卡停则标签固定（呼吸动画带来的微浮动属预期）。
+//   - 所有标签生成在 2D 空间，父级 = Test1Panel 所在 Canvas（CardCanvas）。
+//   - 左列 = 特性标签（从卡中心向左展开）；右列 = 状态标签（从卡中心向右展开）。
+//   - 每列超 max*PerColumn 自动分新列（特性新列再向左、状态新列再向右）。
+//
+// 内容：
+//   - 特性：CardInstance.GetVisibleTraitEntries() → "属性：文本"；完全沉默时空列。
+//   - 状态：buffText/debuffText 按 \n 拆多条，各为独立标签；
+//     01525 格子强化动态条 = 攻击力临时+{slot.slotTempAttackBoost}（现读真源）。
+//
+// 坐标（全部在 Canvas 局域单位）：锚点 = 卡牌世界中心投影到 tagLayer 的局域点；
+//   每个标签存相对该锚点的局域偏移，每帧重投影锚点再摆放。
+// ============================================================================
+
+public class HoverTagSystem : MonoBehaviour
+{
+    public static HoverTagSystem Instance { get; private set; }
+
+    [Header("运行时引用（懒创建自动填）")]
+    public RectTransform tagLayer;      // 标签父节点（CardCanvas 全屏 stretch，pivot 中心）
+    public Canvas canvas;               // 所属 Canvas（取 worldCamera）
+
+    [Header("布局参数（Canvas 局域单位；1920×1080 参考分辨率下≈像素）")]
+    [Tooltip("同列内上下标签间距")]
+    public float tagSpacing = 6f;
+    [Tooltip("不同列之间水平间距")]
+    public float columnSpacing = 16f;
+    [Tooltip("每列特性标签上限，超过自动分新列向左")]
+    public int maxTraitsPerColumn = 8;
+    [Tooltip("每列状态标签上限，超过自动分新列向右")]
+    public int maxStatusPerColumn = 8;
+    [Tooltip("最近列内边缘距卡边缘的水平空隙")]
+    public float horizontalMargin = 12f;
+    [Tooltip("整簇相对卡中心的垂直偏移（正=下移）")]
+    public float verticalOffset = 0f;
+
+    // ── 悬停状态 ──
+    Transform _anchor;                  // 悬停的 3D 卡根（世界锚点）
+    readonly List<HoverTagLabel> _tags = new List<HoverTagLabel>();
+    readonly Dictionary<HoverTagLabel, Vector2> _offsets = new Dictionary<HoverTagLabel, Vector2>();
+
+    static GameObject _prefab;          // Resources.Load("UI/TagLabel")
+
+    void OnDestroy()
+    {
+        if (Instance == this) Instance = null;
+    }
+
+    void Update()
+    {
+        if (_anchor != null && tagLayer != null && canvas != null && _tags.Count > 0)
+            ApplyPositions();
+    }
+
+    /// <summary>按当前锚点把全部标签摆到正确位置（每帧 + Show 后各调一次）。</summary>
+    void ApplyPositions()
+    {
+        if (_anchor == null || tagLayer == null || canvas == null || _tags.Count == 0) return;
+        Camera cam = canvas.worldCamera != null ? canvas.worldCamera : Camera.main;
+        if (cam == null) return;
+
+        // 锚点世界中心 → tagLayer 局域点（复刻 DamageFloater 换算）。
+        Vector2 centerPx = RectTransformUtility.WorldToScreenPoint(cam, _anchor.position);
+        if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(tagLayer, centerPx, cam, out Vector2 centerLocal))
+            return;
+
+        for (int i = 0; i < _tags.Count; i++)
+        {
+            HoverTagLabel tag = _tags[i];
+            if (tag == null) continue;
+            if (!_offsets.TryGetValue(tag, out Vector2 off)) continue;
+            var rt = (RectTransform)tag.transform;
+            rt.anchoredPosition = centerLocal + off;
+        }
+    }
+
+    // ═══════════════════ 单例 & 生命周期 ═══════════════════
+
+    /// <summary>确保单例存在（懒创建）。无 Test1Panel/Canvas 时返回 null（仅 Game 场景用）。</summary>
+    public static HoverTagSystem Ensure()
+    {
+        if (Instance != null) return Instance;
+        var t1 = Test1Panel.Instance;
+        Transform parentCanvas = t1 != null ? t1.transform.parent : null;
+        if (parentCanvas == null)
+        {
+            var cv = Object.FindObjectOfType<Canvas>();
+            parentCanvas = cv != null ? cv.transform : null;
+        }
+        if (parentCanvas == null) return null;
+
+        GameObject layerGo = new GameObject("HoverTagLayer", typeof(RectTransform));
+        RectTransform layerRT = (RectTransform)layerGo.transform;
+        layerRT.SetParent(parentCanvas, false);
+        layerRT.anchorMin = Vector2.zero; layerRT.anchorMax = Vector2.one;
+        layerRT.offsetMin = Vector2.zero; layerRT.offsetMax = Vector2.zero;
+        layerRT.pivot = new Vector2(0.5f, 0.5f);
+        layerGo.transform.SetAsLastSibling();
+
+        HoverTagSystem sys = layerGo.AddComponent<HoverTagSystem>();
+        sys.tagLayer = layerRT;
+        sys.canvas = parentCanvas.GetComponent<Canvas>();
+        Instance = sys;
+
+        if (_prefab == null)
+            _prefab = Resources.Load<GameObject>("UI/TagLabel");
+        if (_prefab == null)
+            Debug.LogWarning("[HoverTag] 找不到 UI/TagLabel.prefab —— 请先执行 Tools/卡牌/生成悬停标签预制体");
+        return sys;
+    }
+
+    /// <summary>显示某张 3D 卡的悬停标签。anchor3D = 卡牌根 GameObject（世界锚点）。</summary>
+    public void Show(CardInstance ci, GameObject anchor3D)
+    {
+        Hide();
+        if (ci == null || anchor3D == null || _prefab == null) return;
+
+        _anchor = anchor3D.transform;
+
+        var traitTexts = BuildTraitTexts(ci);   // 左
+        var statusTexts = BuildStatusTexts(ci); // 右
+
+        if (traitTexts.Count == 0 && statusTexts.Count == 0) return;
+
+        float cardHalfW = EstimateCardHalfWLocal(anchor3D);
+        BuildSide(traitTexts, true, maxTraitsPerColumn, cardHalfW);
+        BuildSide(statusTexts, false, maxStatusPerColumn, cardHalfW);
+        ApplyPositions(); // 立即摆一次，避免本帧悬停在 (0,0) 闪一下
+    }
+
+    public void Hide()
+    {
+        _anchor = null;
+        foreach (var tag in _tags)
+            if (tag != null) Object.Destroy(tag.gameObject);
+        _tags.Clear();
+        _offsets.Clear();
+    }
+
+    // ═══════════════════ 单侧列布局 ═══════════════════
+
+    void BuildSide(List<string> texts, bool isLeft, int maxPerColumn, float cardHalfW)
+    {
+        int perCol = Mathf.Max(1, maxPerColumn);
+        int columnCount = Mathf.CeilToInt((float)texts.Count / perCol);
+
+        // ① 实例化所有标签并测量尺寸（GetSize 为局域单位）。
+        var sizes = new List<Vector2>();
+        foreach (var t in texts)
+        {
+            GameObject go = Instantiate(_prefab, tagLayer, false);
+            go.name = isLeft ? "TraitTag" : "StatusTag";
+            var label = go.GetComponent<HoverTagLabel>();
+            if (label == null) label = go.AddComponent<HoverTagLabel>();
+            if (!label.SetText(t)) { Object.Destroy(go); continue; }
+            _tags.Add(label);
+            sizes.Add(label.GetSize());
+        }
+        if (sizes.Count == 0) return;
+        int n = sizes.Count;
+
+        // ② 列统计：每列宽 = 该列最宽标签；每列高 = 纵排总高。
+        var colW = new float[columnCount];
+        var colH = new float[columnCount];
+        var colCnt = new int[columnCount];
+        for (int i = 0; i < n; i++)
+        {
+            int c = i / perCol;
+            colW[c] = Mathf.Max(colW[c], sizes[i].x);
+            colH[c] += sizes[i].y + (colCnt[c] > 0 ? tagSpacing : 0f);
+            colCnt[c]++;
+        }
+
+        // ③ 每列"靠中心侧"边缘的相对局域 x（相对卡中心）：
+        //    最近列内边缘 = 卡边缘(cardHalfW) + horizontalMargin；
+        //    后续新列向更外侧移动 (上一列宽 + columnSpacing)。
+        var colInnerX = new float[columnCount];
+        for (int c = 0; c < columnCount; c++)
+        {
+            float edge = (isLeft ? -1f : 1f) * (cardHalfW + horizontalMargin);
+            for (int k = 0; k < c; k++)
+                edge += (isLeft ? -1f : 1f) * (colW[k] + columnSpacing);
+            colInnerX[c] = edge;
+        }
+
+        // ④ 逐标签定位：每列纵向以卡中心为中央（整体高 colH 中点），
+        //    列内自上而下排。rect 坐标 +y=上；verticalOffset 正值下移。
+        //    （先算出该列第0个标签顶的 y，再逐行向下 = y 递减。）
+        for (int i = 0; i < n; i++)
+        {
+            HoverTagLabel label = _tags[_tags.Count - n + i];
+            Vector2 sz = sizes[i];
+            int c = i / perCol;
+            int r = i % perCol;
+
+            // 该列垂直中点在 verticalOffset（向下为正 → rect 中 -verticalOffset）。
+            float colTopY = -verticalOffset + colH[c] * 0.5f;
+            for (int k = 0; k < r; k++)
+            {
+                int idx = c * perCol + k;
+                colTopY -= sizes[idx].y + tagSpacing;
+            }
+
+            float cx = isLeft
+                ? colInnerX[c] - sz.x * 0.5f                    // 左列：右边缘贴 inner
+                : colInnerX[c] + sz.x * 0.5f;                   // 右列：左边缘贴 inner
+            float cy = colTopY - sz.y * 0.5f;                   // 标签顶往下半高 = 标签中心
+
+            _offsets[label] = new Vector2(cx, cy);
+        }
+    }
+
+    // ═══════════════════ 工具 ═══════════════════
+
+    /// <summary>估算卡牌半宽（局域单位）：中心 与 中心±0.75世界单位 两投影点直接取局域差。
+    /// 卡模型宽约 0.9×1.4，半宽≈0.63 世界；探针取 0.75 略宽 → 标签不压卡面。</summary>
+    float EstimateCardHalfWLocal(GameObject anchor3D)
+    {
+        Camera cam = canvas != null && canvas.worldCamera != null ? canvas.worldCamera : Camera.main;
+        if (cam == null || anchor3D == null || tagLayer == null) return 60f;
+        Vector3 p = anchor3D.transform.position;
+        const float probe = 0.75f;
+
+        if (RectTransformUtility.ScreenPointToLocalPointInRectangle(tagLayer,
+                RectTransformUtility.WorldToScreenPoint(cam, p), cam, out Vector2 cLocal)
+            && RectTransformUtility.ScreenPointToLocalPointInRectangle(tagLayer,
+                RectTransformUtility.WorldToScreenPoint(cam, p + Vector3.right * probe), cam, out Vector2 rLocal))
+            return Mathf.Max(8f, Mathf.Abs(rLocal.x - cLocal.x));
+        return 60f;
+    }
+
+    // ═══════════════════ 内容生成 ═══════════════════
+
+    /// <summary>左列特性文本：GetVisibleTraitEntries → "属性：文本"（无编号、无赋予标注）。</summary>
+    static List<string> BuildTraitTexts(CardInstance ci)
+    {
+        var outList = new List<string>();
+        if (ci == null) return outList;
+        if (IsFullySilenced(ci)) return outList; // 完全沉默 → 特性失效，空列（对齐图标侧）
+
+        var entries = ci.GetVisibleTraitEntries();
+        foreach (var e in entries)
+        {
+            string cleaned = e.text;
+            if (e.attributes != null && e.attributes.Length > 0
+                && cleaned != null && cleaned.StartsWith(e.attributes[0] + "："))
+                cleaned = cleaned.Substring(e.attributes[0].Length + 1).TrimStart();
+
+            string line = (e.attributes != null && e.attributes.Length > 0)
+                ? string.Join("、", e.attributes) + "：" + cleaned
+                : cleaned;
+            if (!string.IsNullOrEmpty(line)) outList.Add(line);
+        }
+        return outList;
+    }
+
+    /// <summary>右列状态文本：buffText/debuffText 按 \n 拆多条 + 01525 格子强化动态条。</summary>
+    List<string> BuildStatusTexts(CardInstance ci)
+    {
+        var outList = new List<string>();
+        if (ci == null) return outList;
+
+        AddSplitLines(outList, ci.buffText);
+        AddSplitLines(outList, ci.debuffText);
+
+        // 01525 格子强化动态条：反查所在槽位，现读 slotTempAttackBoost（真源，天然叠加）。
+        BoardSlot slot = FindSlotOfAnchor();
+        if (slot != null && slot.slotTempAttackBoost > 0)
+            outList.Add($"攻击力临时+{slot.slotTempAttackBoost}");
+
+        return outList;
+    }
+
+    static void AddSplitLines(List<string> dst, string text)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+        foreach (var seg in text.Split('\n'))
+        {
+            string s = seg.Trim();
+            if (s.Length > 0) dst.Add(s);
+        }
+    }
+
+    /// <summary>按悬停 3D 模型反查 BoardSlot（Card3DHover.GetMySlot 同款）。附着卡匹配不到 → null。</summary>
+    BoardSlot FindSlotOfAnchor()
+    {
+        if (_anchor == null) return null;
+        var bm = Object.FindObjectOfType<BoardManager>();
+        if (bm == null) return null;
+        var slots = bm.GetAllSlots();
+        if (slots == null) return null;
+        for (int i = 0; i < slots.Length; i++)
+            if (slots[i] != null && slots[i].currentCard3D == _anchor.gameObject)
+                return slots[i];
+        return null;
+    }
+
+    static bool IsFullySilenced(CardInstance inst)
+    {
+        if (inst == null) return false;
+        if (inst.silencedThisPhase) return true;
+        return GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(inst);
+    }
+}
