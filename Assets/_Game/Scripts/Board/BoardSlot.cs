@@ -22,6 +22,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     private static float lastClickTime = 0f;
     public int plagueRoundCount;
     public bool hasPlague;
+    /// <summary>瘟疫(02408)来源 templateID（施法法术离场，用模板ID记录）；空=无来源。用于扣血归因。</summary>
+    public string plagueSourceTemplateID;
     public static bool isTargetingMode
     {
         get => SelectionManager.Instance != null && SelectionManager.Instance.IsSelecting;
@@ -112,9 +114,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public static bool isStrengtheningSlot = false;
 
     /// <summary>退场后待处理的反击队列（同时窗口分界线）。
-    /// 存储(死卡槽位ID, 反击效果文本, 伤害来源实例ID列表)。</summary>
-    public static List<(int deadSlotID, string revengeEffect, List<string> sourceInstanceIDs)> pendingRevenges
-        = new List<(int, string, List<string>)>();
+    /// 存储(死卡槽位ID, 反击效果文本, 伤害来源实例ID列表, 死亡者instanceID)。</summary>
+    public static List<(int deadSlotID, string revengeEffect, List<string> sourceInstanceIDs, string deadInstanceID)> pendingRevenges
+        = new List<(int, string, List<string>, string)>();
 
     /// <summary>[Legacy] 无赖(01309)退场召唤阶段阻塞标记。已由 NestingContext.IsNested + WaitForSimultaneousWindow 替代外部等待链。</summary>
     public static bool _roguePhaseBlock;
@@ -1345,7 +1347,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     .FindAll(g => g != null && g.GetComponent<Card3DInstance>()?.cardInstance != null)
                     .ConvertAll(g => g.GetComponent<Card3DInstance>().cardInstance.instanceID);
             }
-            pendingRevenges.Add((s.slotID, ci.revengeEffect, sourceIDs));
+            pendingRevenges.Add((s.slotID, ci.revengeEffect, sourceIDs, ci.instanceID));
             ci.revengeSnapshotIDs = sourceIDs;
         }
 
@@ -3527,20 +3529,22 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         BoardSlot.isStrengtheningSlot = false;
 
-        // 两格施加 debuff + 蓝色高亮
-        if (first != null) { ApplyDeepSeaDebuffLocal(first); first.deepSeaMarked = true; first.SyncVisual(); }
-        if (second != null) { ApplyDeepSeaDebuffLocal(second); second.deepSeaMarked = true; second.SyncVisual(); }
+        // 两格施加 debuff + 蓝色高亮（来源=主动退场的 01338）
+        string srcID = currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance?.instanceID;
+        if (first != null) { ApplyDeepSeaDebuffLocal(first, srcID); first.deepSeaMarked = true; first.SyncVisual(); }
+        if (second != null) { ApplyDeepSeaDebuffLocal(second, srcID); second.deepSeaMarked = true; second.SyncVisual(); }
 
         NetworkPlayer.Local.AddEnergy(1);
         TurnManager.SyncMyBoardToOpponent();
     }
 
-    void ApplyDeepSeaDebuffLocal(BoardSlot slot)
+    void ApplyDeepSeaDebuffLocal(BoardSlot slot, string sourceInstanceID)
     {
         if (slot == null) return;
         bool alreadyDebuffed = slot.deepSeaAttackDebuff >= 1;
         slot.deepSeaAttackDebuff = 1;   // 不可叠加，始终 -1
         slot.deepSeaHealthDebuff = true;
+        if (!string.IsNullOrEmpty(sourceInstanceID)) slot.deepSeaSourceInstanceID = sourceInstanceID;
         if (slot.currentCard3D != null && !alreadyDebuffed)
         {
             var ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;

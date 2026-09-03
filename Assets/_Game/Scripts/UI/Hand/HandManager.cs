@@ -2645,8 +2645,10 @@ public class HandManager : MonoBehaviour
 
         first.hasPlague = true;
         first.plagueRoundCount = 1;
+        first.plagueSourceTemplateID = "02408"; // 来源=瘟疫法术（离场，记模板ID）
         second.hasPlague = true;
         second.plagueRoundCount = 1;
+        second.plagueSourceTemplateID = "02408";
         // hasPlague/plagueRoundCount 已在 BoardSyncManager 同步管道中，只需触发上报
         TurnManager.SyncMyBoardToOpponent();
 

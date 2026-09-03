@@ -230,6 +230,13 @@ public partial class TurnManager : MonoBehaviour
                 if (ci != null)
                 {
                     ci.currentHealth -= 1;
+                    // 来源归因：记录施加者(01338) instanceID 到目标来源列表（自伤/格子伤，非敌方→不进 enemyDamageSourceIDs）
+                    if (!string.IsNullOrEmpty(slot.deepSeaSourceInstanceID))
+                    {
+                        if (ci.damageSourceInstanceIDs == null) ci.damageSourceInstanceIDs = new System.Collections.Generic.List<string>();
+                        if (!ci.damageSourceInstanceIDs.Contains(slot.deepSeaSourceInstanceID))
+                            ci.damageSourceInstanceIDs.Add(slot.deepSeaSourceInstanceID);
+                    }
                     DamagePipeline.ShowFloaterAt(ci, 1, FloaterType.Damage, null, i); // 格子伤害特殊轨迹（深海每阶段扣血）
                     slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
                 }

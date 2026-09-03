@@ -146,6 +146,14 @@ public class BattleManager : MonoBehaviour
                 ci.currentHealth -= slot.plagueRoundCount;
                 ci.currentAttack = Mathf.Max(0, ci.currentAttack - 1);
                 ci.baseAttack = Mathf.Max(0, ci.baseAttack - 1);
+                // 来源归因：瘟疫(02408)已离场，记施法法术 templateID 到目标来源列表（非敌方场卡，不进 enemyDamageSourceIDs）。
+                // GlobalDeathEventHandler 用 instanceID 反查场卡查不到 02408 → 不会误触发击杀归因，仅作来源追溯/显示。
+                if (!string.IsNullOrEmpty(slot.plagueSourceTemplateID))
+                {
+                    if (ci.damageSourceInstanceIDs == null) ci.damageSourceInstanceIDs = new System.Collections.Generic.List<string>();
+                    if (!ci.damageSourceInstanceIDs.Contains(slot.plagueSourceTemplateID))
+                        ci.damageSourceInstanceIDs.Add(slot.plagueSourceTemplateID);
+                }
                 DamagePipeline.ShowFloaterAt(ci, slot.plagueRoundCount, FloaterType.Damage, null, i); // 格子伤害特殊轨迹（瘟疫扣血）
                 DamagePipeline.ShowFloaterAt(ci, 1, FloaterType.Debuff); // 攻击力-1 保持 Debuff，不走粒子
                 c3d?.UpdateValues();
@@ -506,6 +514,10 @@ public class BattleManager : MonoBehaviour
                 if (!ci.hasShield)
                 {
                     ci.currentHealth -= 2;
+                    // 自伤来源：补自身 instanceID（非敌方，不进 enemyDamageSourceIDs）
+                    if (ci.damageSourceInstanceIDs == null) ci.damageSourceInstanceIDs = new System.Collections.Generic.List<string>();
+                    if (!ci.damageSourceInstanceIDs.Contains(ci.instanceID))
+                        ci.damageSourceInstanceIDs.Add(ci.instanceID);
                     DamagePipeline.ShowFloaterAt(ci, 2, FloaterType.Damage, null, -1, true); // 自伤特殊轨迹（亡命之徒先手自伤）
                     ci.GrantShield(true, false, false);
                     slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
@@ -1136,6 +1148,10 @@ public class BattleManager : MonoBehaviour
             {
                 attackerInst.currentHealth -= atk;
                 if (attackerInst.currentHealth < 0) attackerInst.currentHealth = 0;
+                // 自伤来源：补自身 instanceID（非敌方，不进 enemyDamageSourceIDs）
+                if (attackerInst.damageSourceInstanceIDs == null) attackerInst.damageSourceInstanceIDs = new System.Collections.Generic.List<string>();
+                if (!attackerInst.damageSourceInstanceIDs.Contains(attackerInst.instanceID))
+                    attackerInst.damageSourceInstanceIDs.Add(attackerInst.instanceID);
                 DamagePipeline.ShowFloaterAt(attackerInst, atk, FloaterType.Damage, null, -1, true); // 自伤宿主特殊轨迹
                 attackerSlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
             }
@@ -1170,6 +1186,10 @@ public class BattleManager : MonoBehaviour
                 // 01327：空位攻击也自伤宿主自己的 HP
                 attackerInst.currentHealth -= attackerInst.currentAttack;
                 if (attackerInst.currentHealth < 0) attackerInst.currentHealth = 0;
+                // 自伤来源：补自身 instanceID（非敌方，不进 enemyDamageSourceIDs）
+                if (attackerInst.damageSourceInstanceIDs == null) attackerInst.damageSourceInstanceIDs = new System.Collections.Generic.List<string>();
+                if (!attackerInst.damageSourceInstanceIDs.Contains(attackerInst.instanceID))
+                    attackerInst.damageSourceInstanceIDs.Add(attackerInst.instanceID);
                 attackerSlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
             }
             else if (!attackerSilenced && attackerInst.templateID == "01531")
@@ -1330,7 +1350,7 @@ public class BattleManager : MonoBehaviour
                 {
                     if (targetSlot != null && !targetSlot.isBlocked)
                     {
-                        ApplyDeepSeaDebuff(targetSlot);
+                        ApplyDeepSeaDebuff(targetSlot, deadCard?.GetComponent<Card3DInstance>()?.cardInstance?.instanceID);
                         targetSlot.deepSeaMarked = true;
                         targetSlot.SyncVisual();
                     }
@@ -1360,14 +1380,14 @@ public class BattleManager : MonoBehaviour
         var bm = FindObjectOfType<BoardManager>();
         var bmInstance = BattleManager.Instance;
         int safety = 0;
-        var batch = new List<(int deadSlotID, string effect, List<string> sourceIDs)>();
+        var batch = new List<(int deadSlotID, string effect, List<string> sourceIDs, string deadInstanceID)>();
         while (BoardSlot.pendingRevenges.Count > 0 && safety++ < 20)
         {
             batch.Clear();
             batch.AddRange(BoardSlot.pendingRevenges);
             BoardSlot.pendingRevenges.Clear();
 
-            foreach (var (deadSlotID, effect, sourceIDs) in batch)
+            foreach (var (deadSlotID, effect, sourceIDs, deadInstanceID) in batch)
             {
                 // 对方摸两张牌——始终用 deadSlotID 的对手（与 sourceIDs 是否为空无关）
                 if (effect.Contains("对方摸两张牌"))
@@ -1414,7 +1434,7 @@ public class BattleManager : MonoBehaviour
                         if (chosen >= 0 && chosen < 12)
                         {
                             BoardSlot ts = bm.GetSlot(chosen);
-                            if (ts != null) { ApplyDeepSeaDebuff(ts); ts.deepSeaMarked = true; ts.SyncVisual(); }
+                            if (ts != null) { ApplyDeepSeaDebuff(ts, deadInstanceID); ts.deepSeaMarked = true; ts.SyncVisual(); }
                         }
                     }
                     else
@@ -1429,7 +1449,7 @@ public class BattleManager : MonoBehaviour
                                 SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (ts) =>
                                 {
                                     if (ts != null && !ts.isBlocked)
-                                    { ApplyDeepSeaDebuff(ts); ts.deepSeaMarked = true; ts.SyncVisual(); }
+                                    { ApplyDeepSeaDebuff(ts, deadInstanceID); ts.deepSeaMarked = true; ts.SyncVisual(); }
                                     onDone();
                                 });
                                 BoardSlot.isStrengtheningSlot = true;
@@ -2204,13 +2224,15 @@ public class BattleManager : MonoBehaviour
         return -1;
     }
 
-    /// <summary>深海恶物 debuff：格子攻击力-1 + 每阶段扣血 + 当前卡攻击力-1。</summary>
-    static void ApplyDeepSeaDebuff(BoardSlot slot)
+    /// <summary>深海恶物 debuff：格子攻击力-1 + 每阶段扣血 + 当前卡攻击力-1。
+    /// sourceInstanceID = 施加者(01338) instanceID，记录到格子供每阶段扣血来源溯源。</summary>
+    static void ApplyDeepSeaDebuff(BoardSlot slot, string sourceInstanceID)
     {
         if (slot == null) return;
         bool alreadyDebuffed = slot.deepSeaAttackDebuff >= 1;
         slot.deepSeaAttackDebuff = 1;   // 不可叠加，始终 -1
         slot.deepSeaHealthDebuff = true;
+        if (!string.IsNullOrEmpty(sourceInstanceID)) slot.deepSeaSourceInstanceID = sourceInstanceID;
         if (slot.currentCard3D != null && !alreadyDebuffed)
         {
             var ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
