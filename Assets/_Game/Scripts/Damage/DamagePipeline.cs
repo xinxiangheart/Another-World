@@ -175,7 +175,8 @@ public static class DamagePipeline
         }
 
         // ── 01328 破防者: 己方有破防者 → 攻击护盾目标额外扣2HP ────
-        if (def.hasShield && HasBreakerOnField(ctx.Attacker))
+        // 与暴徒(170)一致：攻击者被沉默时破防者光环不应让本次攻击额外扣血。
+        if (!attackerSilenced && def.hasShield && HasBreakerOnField(ctx.Attacker))
         {
             def.currentHealth -= 2;
             ShowFloaterAt(def, 2, FloaterType.Damage, ctx.Attacker);

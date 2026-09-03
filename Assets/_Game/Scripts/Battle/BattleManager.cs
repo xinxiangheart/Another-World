@@ -1128,19 +1128,8 @@ public class BattleManager : MonoBehaviour
             {
                 atk += attackerSlot.slotTempAttackBoost;
             }
-            // 暴徒(01114)：攻击护盾目标额外扣2HP
-            if (!attackerSilenced && attackerInst.templateID == "01114" && targetInst.hasShield)
-            {
-                targetInst.currentHealth -= 2;
-                targetInst.GetComponent<Card3DInstance>()?.UpdateValues();
-            }
-            // 破防者(01328)光环：护盾目标额外扣2HP
-            if (targetInst.hasShield && HasBreakerOnSide(attackerSlotID))
-            {
-                targetInst.currentHealth -= 2;
-                targetInst.GetComponent<Card3DInstance>()?.UpdateValues();
-            }
-            // 01118/01125 攻击修正已在 DamagePipeline.Stage1_Give 统一处理，此处不重复
+            // 暴徒(01114)/破防者(01328) 的护盾额外扣血已统一到 DamagePipeline.Stage1_Give（170-183），
+            // 此处不再裸扣，避免同一效果重复结算（旧双扣 Bug）。01118/01125 同理走管线。
             events.Add(CreateAttackEvent(attackerCard, attackerInst, targetCard, targetInst, atk, attackerSlotID, false, false, targetDefenderSlotIndex));
             // 01327 阴影聚合体：宿主攻击时自伤宿主自己的 HP
             if (IsShadowHost(attackerInst) && targetInst != null)
