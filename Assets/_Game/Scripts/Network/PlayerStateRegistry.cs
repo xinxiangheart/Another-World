@@ -92,6 +92,11 @@ public class PlayerStateRegistry
 
     // ═══════════════════ 查询 API ═══════════════════
 
+    /// <summary>按 instanceID 查询卡状态快照（含 templateID / slotID / zone 等），供来源溯源等按 ID 反查。
+    /// 查不到返回 null（CardStateProto 是 struct，用可空表达"不存在"）。等价于 GetCard，语义命名更明确。</summary>
+    public CardStateProto? GetCardStateByInstanceID(string instanceID)
+        => GetCard(instanceID);
+
     public List<CardStateProto> GetHandCards()
     {
         var list = new List<CardStateProto>();
