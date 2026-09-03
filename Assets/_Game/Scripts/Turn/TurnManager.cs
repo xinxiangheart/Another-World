@@ -1052,7 +1052,12 @@ public partial class TurnManager : MonoBehaviour
                 {
                     Card3DInstance c3d = target.currentCard3D.GetComponent<Card3DInstance>();
                     if (c3d?.cardInstance != null && !c3d.cardInstance.isXValue)
-                    { c3d.cardInstance.currentAttack += 2; c3d.UpdateValues(); }
+                    {
+                        c3d.cardInstance.currentAttack += 2;
+                        // 4.2 熔能铁匠：给强化格子当前卡记状态（换卡时随 setter 转移）
+                        c3d.cardInstance.AddStatus(false, "攻击力临时+2", "01525");
+                        c3d.UpdateValues();
+                    }
                 }
             }
             BoardSlot.isStrengtheningSlot = false;

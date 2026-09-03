@@ -1947,6 +1947,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                         oc.cardInstance.currentAttack -= slotTempAttackBoost;
                     oc.cardInstance.currentAttack += deepSeaAttackDebuff;
                     oc.cardInstance.currentTier -= spotlightTierBoost;
+                    // 4.2 格子级状态：旧占位卡离场/换卡 → 移除该格施加的临时状态条目（永久数值改动不动）
+                    oc.cardInstance.RemoveStatusBySource("02310"); // 聚光灯
+                    oc.cardInstance.RemoveStatusBySource("01338"); // 深海恶物
+                    oc.cardInstance.RemoveStatusBySource("01525"); // 熔能铁匠
                     oc.UpdateValues();
                 }
                 if (hasPlague)
@@ -1965,6 +1969,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                         nc.cardInstance.currentAttack += slotTempAttackBoost;
                     nc.cardInstance.currentAttack = Mathf.Max(0, nc.cardInstance.currentAttack - deepSeaAttackDebuff);
                     nc.cardInstance.currentTier += spotlightTierBoost;
+                    // 4.2 格子级状态：新占位卡进场 → 若该格有此状态则补记（与上面数值迁移对齐）
+                    if (slotTempAttackBoost != 0) nc.cardInstance.AddStatus(false, "攻击力临时+2", "01525");
+                    if (deepSeaAttackDebuff > 0 || deepSeaHealthDebuff) nc.cardInstance.AddStatus(true, "攻击力-1；每阶段开始扣1生命值", "01338");
+                    if (hasSpotlight) nc.cardInstance.AddStatus(false, "阶位+2；每阶段开始恢复2生命值", "02310");
                     nc.UpdateValues();
                 }
             }
@@ -3570,6 +3578,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             if (ci != null)
             {
                 ci.currentAttack = Mathf.Max(0, ci.currentAttack - 1);
+                // 4.2 深海恶物：给已占位卡记 debuff（换卡时随 setter 转移）
+                ci.AddStatus(true, "攻击力-1；每阶段开始扣1生命值", "01338");
                 slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
             }
         }

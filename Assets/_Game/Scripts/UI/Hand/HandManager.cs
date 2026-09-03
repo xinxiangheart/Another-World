@@ -2002,6 +2002,8 @@ public class HandManager : MonoBehaviour
                     if (ci != null)
                     {
                         ci.currentTier += 2;
+                        // 4.2 聚光灯：给已占位卡记状态（换卡时随 setter 转移）
+                        ci.AddStatus(false, "阶位+2；每阶段开始恢复2生命值", "02310");
                         selectedSlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
                     }
                 }
