@@ -19,6 +19,11 @@ public class EffectContext
     /// <summary>效果来源单位（进场/退场为自身，抛置为被抛的牌）。</summary>
     public CardInstance source;
 
+    /// <summary>复制进场溯源源：原卡 handler 用 originalTD 分发（source 保持 null），
+    /// 但伤害溯源需指向复制者（01511 学者 giver）。不改 source——否则 EffectDispatcher 用
+    /// ctx.TemplateID(=source?.templateID) 查 handler 会跑到学者自己 → 递归。</summary>
+    public CardInstance traceSource;
+
     /// <summary>来源所在槽位（进场/退场时有效）。</summary>
     public BoardSlot sourceSlot;
 

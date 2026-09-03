@@ -1286,7 +1286,8 @@ public class BattleManager : MonoBehaviour
         return evt;
     }
 
-    IEnumerator ResolveRevengeEffect(string effect, GameObject deadCard, List<GameObject> targets)
+    IEnumerator ResolveRevengeEffect(string effect, GameObject deadCard, List<GameObject> targets,
+        int traitIndex = -1, string traitText = null)
     {
         Debug.Log($"ResolveRevengeEffect: effect={effect}");
 
@@ -1299,7 +1300,8 @@ public class BattleManager : MonoBehaviour
                 Card3DInstance tInst = target.GetComponent<Card3DInstance>();
                 if (tInst != null)
                 {
-                    DamagePipeline.Process(new DamageInput(null, tInst.cardInstance, revengeDmg, deadCard, DamagePhase.Battle));
+                    DamagePipeline.Process(new DamageInput(null, tInst.cardInstance, revengeDmg, deadCard, DamagePhase.Battle,
+                        traitIndex: traitIndex, traitText: traitText));
                     tInst.UpdateValues();
                 }
             }
@@ -1397,14 +1399,14 @@ public class BattleManager : MonoBehaviour
         var bm = FindObjectOfType<BoardManager>();
         var bmInstance = BattleManager.Instance;
         int safety = 0;
-        var batch = new List<(int deadSlotID, string effect, List<string> sourceIDs, string deadInstanceID)>();
+        var batch = new List<(int deadSlotID, string effect, List<string> sourceIDs, string deadInstanceID, int revTraitIndex, string revTraitText)>();
         while (BoardSlot.pendingRevenges.Count > 0 && safety++ < 20)
         {
             batch.Clear();
             batch.AddRange(BoardSlot.pendingRevenges);
             BoardSlot.pendingRevenges.Clear();
 
-            foreach (var (deadSlotID, effect, sourceIDs, deadInstanceID) in batch)
+            foreach (var (deadSlotID, effect, sourceIDs, deadInstanceID, revTraitIndex, revTraitText) in batch)
             {
                 // 对方摸两张牌——始终用 deadSlotID 的对手（与 sourceIDs 是否为空无关）
                 if (effect.Contains("对方摸两张牌"))
@@ -1572,7 +1574,7 @@ public class BattleManager : MonoBehaviour
                 if (targets.Count == 0) continue;
 
                 yield return bmInstance.StartCoroutine(
-                    bmInstance.ResolveRevengeEffect(effect, null, targets));
+                    bmInstance.ResolveRevengeEffect(effect, null, targets, revTraitIndex, revTraitText));
             }
 
             // 反伤造成新死亡 → 递归

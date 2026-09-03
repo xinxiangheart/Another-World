@@ -107,13 +107,15 @@ public static class EnterHandlers
 
     static void Handle03504(EffectContext ctx)
     {
-        int idx = ctx.source != null ? ctx.source.GetTraitIndexByKeyword("对对方全体造成1伤害") : -1;
-        AoeEnemy1(ctx.source, ctx.sourceSlot, idx, idx > 0 ? ctx.source.GetTraitByIndex(idx) : null);
+        var src = ctx.traceSource ?? ctx.source; // 复制进场溯源：优先 traceSource（学者），否则源卡
+        int idx = src != null ? src.GetTraitIndexByKeyword("对对方全体造成1伤害") : -1;
+        AoeEnemy1(ctx.source, ctx.sourceSlot, idx, idx > 0 ? src.GetTraitByIndex(idx) : null);
     }
     static void Handle03506(EffectContext ctx)
     {
-        int idx = ctx.source != null ? ctx.source.GetTraitIndexByKeyword("对对方全体造成1伤害") : -1;
-        AoeEnemy1(ctx.source, ctx.sourceSlot, idx, idx > 0 ? ctx.source.GetTraitByIndex(idx) : null);
+        var src = ctx.traceSource ?? ctx.source; // 复制进场溯源：优先 traceSource（学者），否则源卡
+        int idx = src != null ? src.GetTraitIndexByKeyword("对对方全体造成1伤害") : -1;
+        AoeEnemy1(ctx.source, ctx.sourceSlot, idx, idx > 0 ? src.GetTraitByIndex(idx) : null);
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -229,8 +231,9 @@ public static class EnterHandlers
         var slot = ctx.sourceSlot;
         bool done = false;
         // 特性级溯源：佣兵"进场：对对方一召唤物造成1伤害"在可见特性中的序号+文本
-        int srcIdx = ctx.source != null ? ctx.source.GetTraitIndexByKeyword("对对方一召唤物造成1伤害") : -1;
-        string srcText = srcIdx > 0 ? ctx.source.GetTraitByIndex(srcIdx) : null;
+        var src = ctx.traceSource ?? ctx.source; // 复制进场溯源：优先 traceSource（学者）
+        int srcIdx = src != null ? src.GetTraitIndexByKeyword("对对方一召唤物造成1伤害") : -1;
+        string srcText = srcIdx > 0 ? src.GetTraitByIndex(srcIdx) : null;
         SM().BeginSelection(TargetType.SingleEnemy, (targetSlot) =>
         {
             if (targetSlot?.currentCard3D != null)

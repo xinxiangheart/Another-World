@@ -114,9 +114,11 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public static bool isStrengtheningSlot = false;
 
     /// <summary>退场后待处理的反击队列（同时窗口分界线）。
-    /// 存储(死卡槽位ID, 反击效果文本, 伤害来源实例ID列表, 死亡者instanceID)。</summary>
-    public static List<(int deadSlotID, string revengeEffect, List<string> sourceInstanceIDs, string deadInstanceID)> pendingRevenges
-        = new List<(int, string, List<string>, string)>();
+    /// 存储(死卡槽位ID, 反击效果文本, 伤害来源实例ID列表, 死亡者instanceID,
+    /// 反击特性在可见特性中的序号+文本)。</summary>
+    public static List<(int deadSlotID, string revengeEffect, List<string> sourceInstanceIDs,
+        string deadInstanceID, int revTraitIndex, string revTraitText)> pendingRevenges
+        = new List<(int, string, List<string>, string, int, string)>();
 
     /// <summary>[Legacy] 无赖(01309)退场召唤阶段阻塞标记。已由 NestingContext.IsNested + WaitForSimultaneousWindow 替代外部等待链。</summary>
     public static bool _roguePhaseBlock;
@@ -1347,7 +1349,22 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     .FindAll(g => g != null && g.GetComponent<Card3DInstance>()?.cardInstance != null)
                     .ConvertAll(g => g.GetComponent<Card3DInstance>().cardInstance.instanceID);
             }
-            pendingRevenges.Add((s.slotID, ci.revengeEffect, sourceIDs, ci.instanceID));
+            // 特性级溯源：反击特性在死卡可见特性中的序号+文本（结算点死卡已销毁 → 快照时算好）。
+            // 属性"反击"优先；陷阱类特性文本无前缀（如"对击杀它的召唤物造成999伤害"）→ 按体兜底。
+            int revTraitIndex = -1; string revTraitText = null;
+            if (ci != null)
+            {
+                var rvEntries = ci.GetVisibleTraitEntries();
+                for (int re = 0; re < rvEntries.Count; re++)
+                    if (System.Array.IndexOf(rvEntries[re].attributes, "反击") >= 0
+                        || rvEntries[re].text.StartsWith("反击"))
+                    { revTraitIndex = re + 1; revTraitText = rvEntries[re].text; break; }
+                if (revTraitIndex < 0)
+                    for (int re2 = 0; re2 < rvEntries.Count; re2++)
+                        if (rvEntries[re2].text.Contains("对击杀"))
+                        { revTraitIndex = re2 + 1; revTraitText = rvEntries[re2].text; break; }
+            }
+            pendingRevenges.Add((s.slotID, ci.revengeEffect, sourceIDs, ci.instanceID, revTraitIndex, revTraitText));
             ci.revengeSnapshotIDs = sourceIDs;
         }
 
@@ -4964,8 +4981,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         var mySlot = FindSlotOf(giver);
         if (mySlot == null) yield break;
 
-        // 统一走 EffectDispatcher——不传 source=giver，TemplateID 落到 originalTD.templateID
-        var effectCtx = new EffectContext { template = originalTD, sourceSlot = mySlot, trigger = Trigger.Enter };
+        // 统一走 EffectDispatcher——不传 source=giver（TemplateID 落到 originalTD.templateID），
+        // 只给 traceSource=giver：原卡 handler 伤害溯源能取到学者已复制的进场特性索引/文本
+        var effectCtx = new EffectContext { template = originalTD, sourceSlot = mySlot, trigger = Trigger.Enter, traceSource = giver };
         if (EffectDispatcher.Dispatch(Trigger.Enter, effectCtx) && effectCtx.StartedCoroutine != null)
             yield return effectCtx.StartedCoroutine;
         yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
