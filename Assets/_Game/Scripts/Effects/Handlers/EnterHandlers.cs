@@ -107,13 +107,13 @@ public static class EnterHandlers
 
     static void Handle03504(EffectContext ctx)
     {
-        int idx = ctx.source != null ? ctx.source.GetTraitIndexByKeyword("进场") : -1;
-        AoeEnemy1(ctx.source, ctx.sourceSlot, idx, "进场");
+        int idx = ctx.source != null ? ctx.source.GetTraitIndexByKeyword("对对方全体造成1伤害") : -1;
+        AoeEnemy1(ctx.source, ctx.sourceSlot, idx, idx > 0 ? ctx.source.GetTraitByIndex(idx) : null);
     }
     static void Handle03506(EffectContext ctx)
     {
-        int idx = ctx.source != null ? ctx.source.GetTraitIndexByKeyword("进场") : -1;
-        AoeEnemy1(ctx.source, ctx.sourceSlot, idx, "进场");
+        int idx = ctx.source != null ? ctx.source.GetTraitIndexByKeyword("对对方全体造成1伤害") : -1;
+        AoeEnemy1(ctx.source, ctx.sourceSlot, idx, idx > 0 ? ctx.source.GetTraitByIndex(idx) : null);
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -228,6 +228,9 @@ public static class EnterHandlers
         yield return null; // 等一帧让父协程恢复
         var slot = ctx.sourceSlot;
         bool done = false;
+        // 特性级溯源：佣兵"进场：对对方一召唤物造成1伤害"在可见特性中的序号+文本
+        int srcIdx = ctx.source != null ? ctx.source.GetTraitIndexByKeyword("对对方一召唤物造成1伤害") : -1;
+        string srcText = srcIdx > 0 ? ctx.source.GetTraitByIndex(srcIdx) : null;
         SM().BeginSelection(TargetType.SingleEnemy, (targetSlot) =>
         {
             if (targetSlot?.currentCard3D != null)
@@ -235,7 +238,7 @@ public static class EnterHandlers
                 var t3d = targetSlot.currentCard3D.GetComponent<Card3DInstance>();
                 if (t3d != null)
                 {
-                    BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, 1, slot.currentCard3D);
+                    BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, 1, slot.currentCard3D, srcIdx, srcText);
                     t3d.UpdateValues();
                     if (NetworkClient.isConnected && !NetworkServer.active)
                         NetworkPlayer.Local?.CmdApplyDamageToCard(targetSlot.slotID, 1);

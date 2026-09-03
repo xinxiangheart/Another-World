@@ -387,6 +387,9 @@ public static class DeathHandlers
         {
             // 使用退场卡牌所在半场动态计算对方半场
             BoardManager.GetEnemySideRange(ctx.SourceSlotID, out int start, out int end);
+            // 特性级溯源：断罪者"退场：对对方全体造成1伤害"在可见特性中的序号+文本
+            int srcIdx = ctx.source != null ? ctx.source.GetTraitIndexByKeyword("对对方全体造成1伤害") : -1;
+            string srcText = srcIdx > 0 ? ctx.source.GetTraitByIndex(srcIdx) : null;
             for (int i = start; i <= end; i++)
             {
                 var es = bm.GetSlot(i);
@@ -395,7 +398,7 @@ public static class DeathHandlers
                     var ei = es.currentCard3D.GetComponent<Card3DInstance>();
                     if (ei?.cardInstance != null)
                     {
-                        BattleManager.Instance.ApplyDamageToMinionPublic(ei.cardInstance, 1, null);
+                        BattleManager.Instance.ApplyDamageToMinionPublic(ei.cardInstance, 1, null, srcIdx, srcText);
                         ei.UpdateValues();
                     }
                 }
@@ -514,6 +517,10 @@ public static class DeathHandlers
 
     static void Handle01347Exit(EffectContext ctx)
     {
+        // 特性级溯源：荣誉侍者"退场：对对方一召唤物造成2伤害"序号+文本。
+        // 伤害在选中协程落地时源卡可能已销毁 → 在入口（源卡存活）先算好捕获。
+        int exitIdx = ctx.source != null ? ctx.source.GetTraitIndexByKeyword("对对方一召唤物造成2伤害") : -1;
+        string exitText = exitIdx > 0 ? ctx.source.GetTraitByIndex(exitIdx) : null;
         // 按死亡卡所属玩家动态确定"敌方半场"
         BoardManager.GetEnemySideRange(ctx.sourceSlot.slotID, out int enemyStart, out int enemyEnd);
         bool hasEnemy = false;
@@ -522,10 +529,10 @@ public static class DeathHandlers
             if (bmCheck?.GetSlot(i)?.currentCard3D != null) { hasEnemy = true; break; }
         if (!hasEnemy) return;
 
-        ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(Handle01347ExitCoroutine(ctx));
+        ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(Handle01347ExitCoroutine(ctx, exitIdx, exitText));
     }
 
-    static System.Collections.IEnumerator Handle01347ExitCoroutine(EffectContext ctx)
+    static System.Collections.IEnumerator Handle01347ExitCoroutine(EffectContext ctx, int exitIdx, string exitText)
     {
         NestingContext.Enter("01347_Exit");
 
@@ -554,7 +561,7 @@ public static class DeathHandlers
                     var t3d = target.currentCard3D.GetComponent<Card3DInstance>();
                     if (t3d?.cardInstance != null)
                     {
-                        BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, 2, null);
+                        BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, 2, null, exitIdx, exitText);
                         t3d.UpdateValues();
                     }
                 }
@@ -577,7 +584,7 @@ public static class DeathHandlers
                         var t3d = target.currentCard3D.GetComponent<Card3DInstance>();
                         if (t3d?.cardInstance != null)
                         {
-                            BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, 2, null);
+                            BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, 2, null, exitIdx, exitText);
                             t3d.UpdateValues();
                         }
                     }

@@ -3966,6 +3966,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public IEnumerator TerroristEnterEffect(CardInstance giver)
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
+        // 特性级溯源：恐怖分子"进场：对对方全体召唤物造成1伤害…"序号+文本（连锁复触发同源）
+        int terrIdx = giver != null ? giver.GetTraitIndexByKeyword("对对方全体召唤物造成1伤害") : -1;
+        string terrText = terrIdx > 0 ? giver.GetTraitByIndex(terrIdx) : null;
         List<GameObject> diedThisRound = new List<GameObject>();
 
                 // 清理重定向标记
@@ -3990,7 +3993,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 Card3DInstance ei = s.currentCard3D.GetComponent<Card3DInstance>();
                 if (ei?.cardInstance != null)
                 {
-                    BattleManager.Instance?.ApplyDamageToMinionPublic(ei.cardInstance, 1, null);
+                    BattleManager.Instance?.ApplyDamageToMinionPublic(ei.cardInstance, 1, null, terrIdx, terrText);
                     ei.UpdateValues();
                     if (NetworkClient.isConnected && !NetworkServer.active)
                         NetworkPlayer.Local?.CmdApplyDamageToCard(i, 1);
@@ -4040,7 +4043,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     Card3DInstance ei = s.currentCard3D.GetComponent<Card3DInstance>();
                     if (ei?.cardInstance != null)
                     {
-                        BattleManager.Instance?.ApplyDamageToMinionPublic(ei.cardInstance, 1, null);
+                        BattleManager.Instance?.ApplyDamageToMinionPublic(ei.cardInstance, 1, null, terrIdx, terrText);
                         ei.UpdateValues();
                         if (NetworkClient.isConnected && !NetworkServer.active)
                             NetworkPlayer.Local?.CmdApplyDamageToCard(i, 1);
@@ -5008,7 +5011,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                             Card3DInstance t3d = target.currentCard3D.GetComponent<Card3DInstance>();
                             if (t3d?.cardInstance != null)
                             {
-                                BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, ci.currentAttack, null);
+                                // 特性级溯源：学者复制的"抛置：…攻击力数值的伤害"在学者可见特性中的序号+文本
+                                int cdIdx = ci.GetTraitIndexByKeyword("攻击力数值的伤害");
+                                string cdText = cdIdx > 0 ? ci.GetTraitByIndex(cdIdx) : null;
+                                BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, ci.currentAttack, null, cdIdx, cdText);
                                 t3d.UpdateValues();
                                 if (NetworkClient.isConnected && !NetworkServer.active)
                                     NetworkPlayer.Local?.CmdApplyDamageToCard(target.slotID, ci.currentAttack);
@@ -5030,7 +5036,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                             Card3DInstance t3d = target.currentCard3D.GetComponent<Card3DInstance>();
                             if (t3d?.cardInstance != null)
                             {
-                                BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, 1, null);
+                                // 特性级溯源：学者复制的"抛置：对对方一召唤物造成1伤害"在学者可见特性中的序号+文本
+                                int cdIdx = ci.GetTraitIndexByKeyword("对对方一召唤物造成1伤害");
+                                string cdText = cdIdx > 0 ? ci.GetTraitByIndex(cdIdx) : null;
+                                BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, 1, null, cdIdx, cdText);
                                 t3d.UpdateValues();
                                 if (NetworkClient.isConnected && !NetworkServer.active)
                                     NetworkPlayer.Local?.CmdApplyDamageToCard(target.slotID, 1);

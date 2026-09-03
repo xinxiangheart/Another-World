@@ -72,6 +72,9 @@ public static class DiscardHandlers
     static void Handle01136(EffectContext ctx)
     {
         int discardSlotID = ctx.discardSlotID;
+        // 特性级溯源：难民"抛置：对对方一召唤物造成1伤害"在可见特性中的序号+文本
+        int srcIdx = ctx.source != null ? ctx.source.GetTraitIndexByKeyword("对对方一召唤物造成1伤害") : -1;
+        string srcText = srcIdx > 0 ? ctx.source.GetTraitByIndex(srcIdx) : null;
         bool hasEnemy = false;
         var bm = BM();
         BoardManager.GetEnemySideRange(discardSlotID, out int es, out int ee);
@@ -86,7 +89,7 @@ public static class DiscardHandlers
                     var t3d = target.currentCard3D.GetComponent<Card3DInstance>();
                     if (t3d?.cardInstance != null)
                     {
-                        BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, 1, null);
+                        BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, 1, null, srcIdx, srcText);
                         t3d.UpdateValues();
                         if (NetworkClient.isConnected && !NetworkServer.active)
                             NetworkPlayer.Local?.CmdApplyDamageToCard(target.slotID, 1);
@@ -128,6 +131,9 @@ public static class DiscardHandlers
     static void Handle01343(EffectContext ctx)
     {
         int mySlot = ctx.discardSlotID;
+        // 特性级溯源：不稳定实验品"抛置：对对方一召唤物造成攻击力数值的伤害"序号+文本
+        int srcIdx = ctx.source != null ? ctx.source.GetTraitIndexByKeyword("攻击力数值的伤害") : -1;
+        string srcText = srcIdx > 0 ? ctx.source.GetTraitByIndex(srcIdx) : null;
         bool hasEnemy = false;
         var bm = BM();
         BoardManager.GetEnemySideRange(mySlot, out int es2, out int ee2);
@@ -142,7 +148,7 @@ public static class DiscardHandlers
                     var t3d = target.currentCard3D.GetComponent<Card3DInstance>();
                     if (t3d?.cardInstance != null)
                     {
-                        BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, ctx.savedAttack, null);
+                        BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, ctx.savedAttack, null, srcIdx, srcText);
                         t3d.UpdateValues();
                         if (NetworkClient.isConnected && !NetworkServer.active)
                             NetworkPlayer.Local?.CmdApplyDamageToCard(target.slotID, ctx.savedAttack);

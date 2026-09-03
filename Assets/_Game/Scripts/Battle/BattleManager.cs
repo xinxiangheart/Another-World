@@ -621,6 +621,15 @@ public class BattleManager : MonoBehaviour
             if (ci == null || !ci.HasFirstStrike || ci.silencedThisPhase) continue;
             Debug.Log($"[FS-dmg] slot={i} tid={ci.templateID} hasFS={ci.hasFirstStrike} silenced={GlobalEventManager.Instance?.IsFullySilenced(ci)}");
 
+            // 特性级溯源（先手）：取本卡可见特性中"先手"属性的序号+文本（特性文本前缀存储有无皆可靠）
+            int fsIdx = -1; string fsText = null;
+            if (ci != null)
+            {
+                var fsEntries = ci.GetVisibleTraitEntries();
+                for (int fe = 0; fe < fsEntries.Count; fe++)
+                    if (System.Array.IndexOf(fsEntries[fe].attributes, "先手") >= 0) { fsIdx = fe + 1; fsText = fsEntries[fe].text; break; }
+            }
+
         // 检查对方是否有合法目标
             if (ci.templateID == "03506")
             {
@@ -634,8 +643,7 @@ public class BattleManager : MonoBehaviour
                     {
                         Card3DInstance targetInst = targetSlot.currentCard3D.GetComponent<Card3DInstance>();
                         int hpBefore = targetInst?.cardInstance?.currentHealth ?? -1;
-                        ApplyDamageToMinionPublic(targetInst.cardInstance, 2, slot.currentCard3D,
-                            ci.GetTraitIndexByKeyword("先手"), "先手"); // 特性级溯源
+                        ApplyDamageToMinionPublic(targetInst.cardInstance, 2, slot.currentCard3D, fsIdx, fsText); // 特性级溯源
                         int hpAfter = targetInst?.cardInstance?.currentHealth ?? -1;
                         Debug.Log($"[FS-03506] target slot={id} tid={targetInst?.cardInstance?.templateID} hp {hpBefore}→{hpAfter}");
                         targetInst.UpdateValues();
@@ -656,7 +664,7 @@ public class BattleManager : MonoBehaviour
                     {
                         Card3DInstance targetInst = targetSlot.currentCard3D.GetComponent<Card3DInstance>();
                         int hpBefore = targetInst?.cardInstance?.currentHealth ?? -1;
-                        ApplyDamageToMinionPublic(targetInst.cardInstance, 2, slot.currentCard3D);
+                        ApplyDamageToMinionPublic(targetInst.cardInstance, 2, slot.currentCard3D, fsIdx, fsText);
                         int hpAfter = targetInst?.cardInstance?.currentHealth ?? -1;
                         Debug.Log($"[FS-03513] target slot={id} tid={targetInst?.cardInstance?.templateID} hp {hpBefore}→{hpAfter}");
                         targetInst.UpdateValues();
@@ -675,7 +683,7 @@ public class BattleManager : MonoBehaviour
                         Card3DInstance targetInst = targetSlot.currentCard3D.GetComponent<Card3DInstance>();
                         if (targetInst?.cardInstance != null)
                         {
-                            ApplyDamageToMinion(targetInst.cardInstance, 1, slot.currentCard3D);
+                            ApplyDamageToMinion(targetInst.cardInstance, 1, slot.currentCard3D, fsIdx, fsText);
                             targetInst.UpdateValues();
                         }
                     }
@@ -694,7 +702,7 @@ public class BattleManager : MonoBehaviour
                         Card3DInstance targetInst = targetSlot.currentCard3D.GetComponent<Card3DInstance>();
                         if (targetInst?.cardInstance != null)
                         {
-                            ApplyDamageToMinion(targetInst.cardInstance, 1, slot.currentCard3D);
+                            ApplyDamageToMinion(targetInst.cardInstance, 1, slot.currentCard3D, fsIdx, fsText);
                             targetInst.UpdateValues();
                         }
                     }
@@ -713,7 +721,7 @@ public class BattleManager : MonoBehaviour
                         Card3DInstance targetInst = targetSlot.currentCard3D.GetComponent<Card3DInstance>();
                         if (targetInst?.cardInstance != null)
                         {
-                            ApplyDamageToMinion(targetInst.cardInstance, 1, slot.currentCard3D);
+                            ApplyDamageToMinion(targetInst.cardInstance, 1, slot.currentCard3D, fsIdx, fsText);
                             targetInst.UpdateValues();
                         }
                     }
@@ -731,6 +739,9 @@ public class BattleManager : MonoBehaviour
             {
                 int myStart = i >= 6 ? 0 : 6;
                 int[] frontRow = { myStart, myStart + 1, myStart + 2 };
+                // 特性级溯源：授予先手在可见特性中的序号+文本（按体片段定位，避免命中宿主固有先手）
+                int gIdx = ci.GetTraitIndexByKeyword("对对方前排召唤物造成1伤害");
+                string gText = gIdx > 0 ? ci.GetTraitByIndex(gIdx) : null;
                 foreach (int id in frontRow)
                 {
                     BoardSlot targetSlot = allSlots[id];
@@ -739,7 +750,7 @@ public class BattleManager : MonoBehaviour
                         Card3DInstance ti = targetSlot.currentCard3D.GetComponent<Card3DInstance>();
                         if (ti?.cardInstance != null)
                         {
-                            ApplyDamageToMinion(ti.cardInstance, 1, slot.currentCard3D);
+                            ApplyDamageToMinion(ti.cardInstance, 1, slot.currentCard3D, gIdx, gText);
                             ti.UpdateValues();
                         }
                     }
@@ -749,6 +760,9 @@ public class BattleManager : MonoBehaviour
             if (ci.grantedTraitTexts.Exists(t => t.Contains("先手：对对方前排召唤物造成2伤害，对后排造成1伤害")))
             {
                 int myStart = i >= 6 ? 0 : 6;
+                // 特性级溯源：授予先手在可见特性中的序号+文本（按体片段定位）
+                int gIdx = ci.GetTraitIndexByKeyword("对后排造成1伤害");
+                string gText = gIdx > 0 ? ci.GetTraitByIndex(gIdx) : null;
                 for (int j = myStart; j < myStart + 6; j++)
                 {
                     BoardSlot targetSlot = allSlots[j];
@@ -758,7 +772,7 @@ public class BattleManager : MonoBehaviour
                         if (ti?.cardInstance != null)
                         {
                             int dmg = (j - myStart) < 3 ? 2 : 1;
-                            ApplyDamageToMinion(ti.cardInstance, dmg, slot.currentCard3D);
+                            ApplyDamageToMinion(ti.cardInstance, dmg, slot.currentCard3D, gIdx, gText);
                             ti.UpdateValues();
                         }
                     }
@@ -1200,7 +1214,9 @@ public class BattleManager : MonoBehaviour
             }
             else if (attackerInst.templateID == "03014")
             {
-                // 死光：对方全场 2 伤害
+                // 死光：对方全场 2 伤害。特性级溯源：取"空打时对对方全体造成2伤害"序号+文本
+                int emptyIdx = attackerInst.GetTraitIndexByKeyword("空打时");
+                string emptyText = emptyIdx > 0 ? attackerInst.GetTraitByIndex(emptyIdx) : null;
                 for (int j = defenderHalfStart; j <= defenderHalfEnd; j++)
                 {
                     BoardSlot es = FindObjectOfType<BoardManager>()?.GetSlot(j);
@@ -1209,7 +1225,7 @@ public class BattleManager : MonoBehaviour
                         Card3DInstance e3d = es.currentCard3D.GetComponent<Card3DInstance>();
                         if (e3d?.cardInstance != null)
                         {
-                            ApplyDamageToMinionPublic(e3d.cardInstance, 2, attackerCard);
+                            ApplyDamageToMinionPublic(e3d.cardInstance, 2, attackerCard, emptyIdx, emptyText);
                             e3d.UpdateValues();
                         }
                     }
@@ -1260,7 +1276,8 @@ public class BattleManager : MonoBehaviour
             evt.onImpact = () =>
             {
                 if (defenderInst != null)
-                    DamagePipeline.Process(new DamageInput(attackerInst, defenderInst, damage, defenderCard, DamagePhase.Battle,
+                    // sourceObject = 攻击方模型（原误传 defenderCard，导致攻击方 instanceID 进不了目标来源列表）
+                    DamagePipeline.Process(new DamageInput(attackerInst, defenderInst, damage, attackerCard, DamagePhase.Battle,
                         isDirectAttack: true));
                 AudioManager.Instance?.Play(SoundEffectType.Attack, 0.4f, 1.2f);
             };
