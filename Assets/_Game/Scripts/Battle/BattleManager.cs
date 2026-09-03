@@ -1249,23 +1249,6 @@ public class BattleManager : MonoBehaviour
         return evt;
     }
 
-    bool HasBreakerOnSide(int slotID)
-    {
-        BoardManager.GetSideRange(slotID, out int brS, out int brE);
-        BoardManager bm = FindObjectOfType<BoardManager>();
-        if (bm == null) return false;
-        for (int i = brS; i <= brE; i++)
-        {
-            BoardSlot s = bm.GetSlot(i);
-            if (s?.currentCard3D == null) continue;
-            CardInstance ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-            if (ci != null && ci.templateID == "01328"
-                && (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(ci)))
-                return true;
-        }
-        return false;
-    }
-
     IEnumerator ResolveRevengeEffect(string effect, GameObject deadCard, List<GameObject> targets)
     {
         Debug.Log($"ResolveRevengeEffect: effect={effect}");

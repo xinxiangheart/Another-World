@@ -425,8 +425,7 @@ public static class DamagePipeline
             defenderGO = GetGameObjectOf(def);
             if (defenderGO != null)
                 defenderGO.GetComponent<DamageSourceMarker>()
-                    ?.RegisterDamage(ctx.input.sourceObject, actual,
-                        ctx.input.traitIndex, ctx.input.traitText, ctx.input.effectText);
+                    ?.RegisterDamage(ctx.input.sourceObject, actual);
         }
         // ── 来源记录回退：无 sourceObject 时直接用 CardInstance ──
         // 大量伤害路径（法术、抛置、进场/退场 handler 等）不传 sourceObject，
