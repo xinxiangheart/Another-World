@@ -404,6 +404,10 @@ public partial class TurnManager : MonoBehaviour
                 {
                     ci.currentHealth -= ci.currentAttack;
                     if (ci.currentHealth < 0) ci.currentHealth = 0;
+                    // 自伤来源：补自身 instanceID（非敌方，不进 enemyDamageSourceIDs）
+                    if (ci.damageSourceInstanceIDs == null) ci.damageSourceInstanceIDs = new System.Collections.Generic.List<string>();
+                    if (!ci.damageSourceInstanceIDs.Contains(ci.instanceID))
+                        ci.damageSourceInstanceIDs.Add(ci.instanceID);
                     slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
                     ci.overclocked = false;
                     Debug.Log($"超频惩罚：{ci.instanceID} 扣除{ci.currentAttack}生命值");

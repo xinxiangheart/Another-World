@@ -526,6 +526,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public int deepSeaAttackDebuff; // 格子攻击力减益
     public bool deepSeaHealthDebuff; // 格子每阶段扣血标记
     public bool deepSeaMarked;        // 深海恶物蓝色高亮标记（纯视觉）
+    /// <summary>深海恶物 debuff 来源（施加者 01338 的 instanceID）；空=无来源（用于每阶段扣血归因）</summary>
+    public string deepSeaSourceInstanceID;
     /// <summary>本槽位上最后一次 HandleDeath 触发时间（秒）。EnsureCard 检查此时间戳防止从过期同步数据重建已死亡模型。</summary>
     public float lastHandleDeathTime = -1f;
     public static int ignoreNextClickSlot = -1;
@@ -1545,6 +1547,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     if (bmG != null)
                     {
                         BoardManager.GetSideRange(slotID, out int gs, out int ge);
+                        // 来源 = 触发退场的死亡卡（ci）。模型尽量取所在槽（HandleDeath 未销毁前），取不到用 null，
+                        // 管线在无 sourceObject 时回退 RecordDamageSource(attacker=ci) 仍记录来源。
+                        GameObject dyingModel = bmG.GetSlot(slotID)?.currentCard3D;
                         for (int i = gs; i <= ge; i++)
                         {
                             var si = bmG.GetSlot(i);
@@ -1553,9 +1558,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                                 var tci = si.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
                                 if (tci != null)
                                 {
-                                    tci.currentHealth -= 1;
+                                    // 走 DamagePipeline：护盾吸收/死亡归因/浮字统一处理
+                                    DamagePipeline.Process(new DamageInput(
+                                        attacker: ci, defender: tci, baseDamage: 1, sourceObject: dyingModel));
                                     si.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
-                                    DamagePipeline.ShowFloaterAt(tci, 1, FloaterType.Damage);
                                 }
                             }
                         }
