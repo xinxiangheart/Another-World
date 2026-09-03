@@ -1023,6 +1023,52 @@ public class CardInstance : MonoBehaviour
         => string.IsNullOrEmpty(templateID) ? ""
          : CardDatabase.Instance?.GetTemplate(templateID)?.cardName ?? templateID;
 
+    // ═══════════════════ 附着物反向引用（4.5，方案A：只读查询，复用 attachedModels）═══════════════════
+    // 附着物关系键是 hostSlotID（宿主所在槽）；attachedModels 即板级权威附件集合。
+    // 宿主反向知道"谁附着在我身上" = 扫 attachedModels 中 hostSlotID == 自己当前槽 的附着物。
+    // 不加独立字段、不加同步状态——宿主换位/重建/跨端天然自一致。
+
+    /// <summary>本卡作为宿主时，返回附着在它身上的附着物 CardInstance 列表（无宿主/附着中/不在场 → 空）。</summary>
+    public List<CardInstance> GetHostedAttachments()
+    {
+        var result = new List<CardInstance>();
+        int hostSlot = FindHostSlotIndex();
+        if (hostSlot < 0) return result;
+        BoardManager bm = UnityEngine.Object.FindObjectOfType<BoardManager>();
+        if (bm == null) return result;
+        foreach (GameObject obj in bm.attachedModels)
+        {
+            if (obj == null) continue;
+            var aci = obj.GetComponent<Card3DInstance>()?.cardInstance;
+            if (aci != null && aci.isAttached && aci.hostSlotID == hostSlot)
+                result.Add(aci);
+        }
+        return result;
+    }
+
+    /// <summary>宿主附着物 instanceID 列表（等价于 GetHostedAttachments 取 instanceID）。</summary>
+    public List<string> GetHostedAttachmentInstanceIDs()
+    {
+        var ids = new List<string>();
+        foreach (var a in GetHostedAttachments())
+            if (a != null && !string.IsNullOrEmpty(a.instanceID)) ids.Add(a.instanceID);
+        return ids;
+    }
+
+    /// <summary>本卡当前占据的槽位号；附着中（无独立槽）或不在场返回 -1。</summary>
+    int FindHostSlotIndex()
+    {
+        if (isAttached) return -1; // 附着物作为附着体无独立宿主槽
+        BoardManager bm = UnityEngine.Object.FindObjectOfType<BoardManager>();
+        if (bm == null) return -1;
+        for (int i = 0; i < 12; i++)
+        {
+            var c3d = bm.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>();
+            if (c3d?.cardInstance == this) return i;
+        }
+        return -1;
+    }
+
     public int Attack
     {
         get
