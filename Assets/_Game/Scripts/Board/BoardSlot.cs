@@ -1973,6 +1973,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     if (slotTempAttackBoost != 0) nc.cardInstance.AddStatus(false, "攻击力临时+2", "01525");
                     if (deepSeaAttackDebuff > 0 || deepSeaHealthDebuff) nc.cardInstance.AddStatus(true, "攻击力-1；每阶段开始扣1生命值", "01338");
                     if (hasSpotlight) nc.cardInstance.AddStatus(false, "阶位+2；每阶段开始恢复2生命值", "02310");
+                    GlobalEventManager.Instance?.RefreshAuraStatusForCard(nc.cardInstance); // 4.2 光环受害者状态：新占位卡现算（对位骇客/法官/萨满）
                     nc.UpdateValues();
                 }
             }
@@ -3597,6 +3598,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
 
         GlobalEventManager.Instance.RegisterAura(new FanaticShamanAura { source = giver });
+        GlobalEventManager.Instance?.RefreshAuraStatusesForBoard(); // 4.2 狂热萨满进场：给当前对方目标补受害者状态
 
         foreach (BoardSlot s in allies)
         {

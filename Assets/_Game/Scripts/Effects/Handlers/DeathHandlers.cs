@@ -37,6 +37,7 @@ public static class DeathHandlers
         RegisterBoth("01520", Handle01520);
         RegisterBoth("01528", Handle01528);
         RegisterBoth("03511", Handle03511);
+        RegisterBoth("01501", Handle01501); // 4.2 深渊皇帝退场：清渊卡上的事件+1+1状态（进场静态+1+1 数值不清）
 
         // ── 2. 回手型（Exit/ActiveExit 都触发） ─────────────────────────
 
@@ -97,6 +98,32 @@ public static class DeathHandlers
     static NetworkPlayer NP(EffectContext ctx) => BoardManager.GetOwnerPlayer(ctx.sourceSlot?.slotID ?? -1);
     static HandManager HM() => UnityEngine.Object.FindObjectOfType<HandManager>();
 
+    /// <summary>光环源当前所在槽（附着取 hostSlotID）。</summary>
+    static int SourceSlotID(EffectContext ctx)
+    {
+        if (ctx.source != null && ctx.source.isAttached) return ctx.source.hostSlotID;
+        return ctx.sourceSlot?.slotID ?? -1;
+    }
+    /// <summary>移除源卡对半场所有卡的某来源状态（法官/萨满退场用）。</summary>
+    static void RemoveOpponentHalfStatus(string templateID, int sourceSlot)
+    {
+        var bm = BM(); if (bm == null || sourceSlot < 0) return;
+        int start = sourceSlot >= 6 ? 0 : 6, end = sourceSlot >= 6 ? 5 : 11;
+        for (int i = start; i <= end; i++)
+        {
+            var ci = bm.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+            ci?.RemoveStatusBySource(templateID);
+        }
+    }
+    /// <summary>移除源卡对位单槽卡的某来源状态（能量骇客退场用）。</summary>
+    static void RemoveOppositeSlotStatus(string templateID, int sourceSlot)
+    {
+        var bm = BM(); if (bm == null || sourceSlot < 0) return;
+        int opp = sourceSlot < 6 ? sourceSlot + 6 : sourceSlot - 6;
+        var ci = bm.GetSlot(opp)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+        ci?.RemoveStatusBySource(templateID);
+    }
+
     // ═══════════════════════════════════════════════════════════════════
     // 1. 光环注销型
     // ═══════════════════════════════════════════════════════════════════
@@ -134,17 +161,32 @@ public static class DeathHandlers
 
     static void Handle01323(EffectContext ctx)
     {
+        RemoveOpponentHalfStatus("01323", SourceSlotID(ctx)); // 4.2 法官退场：移除其受害者标签
         GlobalEventManager.Instance?.UnregisterAuraOfSource(ctx.source);
     }
 
     static void Handle01335(EffectContext ctx)
     {
+        RemoveOppositeSlotStatus("01335", SourceSlotID(ctx)); // 4.2 能量骇客退场：移除对位受害者标签
         GlobalEventManager.Instance?.UnregisterAuraOfSource(ctx.source);
     }
 
     static void Handle01515(EffectContext ctx)
     {
+        RemoveOpponentHalfStatus("01515", SourceSlotID(ctx)); // 4.2 狂热萨满退场：移除其受害者标签
         GlobalEventManager.Instance?.UnregisterAuraOfSource(ctx.source);
+    }
+
+    static void Handle01501(EffectContext ctx)
+    {
+        // 4.2 深渊皇帝退场：清己方半场渊卡上的"每使对方召唤物退场时+1+1"状态（不动数值）
+        var bm = BM();
+        if (bm != null && BoardManager.GetSideRangeOf(ctx.source, out int s0, out int e0))
+            for (int i = s0; i <= e0; i++)
+            {
+                var ci = bm.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                ci?.RemoveStatusBySource("01501");
+            }
     }
 
     static void Handle01517(EffectContext ctx)

@@ -160,6 +160,7 @@ public static class EnterHandlers
     static void Handle01323(EffectContext ctx)
     {
         GlobalEventManager.Instance.RegisterAura(new JudgeAura { source = ctx.source });
+        GlobalEventManager.Instance?.RefreshAuraStatusesForBoard(); // 4.2 法官进场：给当前对方目标补受害者状态
         ctx.sourceSlot.CleanupAfterPlacement();
     }
 
@@ -175,6 +176,7 @@ public static class EnterHandlers
                 { mySlot = i; break; }
         if (mySlot >= 0)
             GlobalEventManager.Instance.RegisterAura(new EnergyHackerAura { source = ctx.source, hostSlotID = mySlot, mySlotID = mySlot });
+        GlobalEventManager.Instance?.RefreshAuraStatusesForBoard(); // 4.2 能量骇客进场：给对位目标补受害者状态
         ctx.sourceSlot.CleanupAfterPlacement();
     }
 

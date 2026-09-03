@@ -84,6 +84,8 @@ public static class GlobalDeathEventHandler
                                 sourceCI.currentMaxHealth += 1;
                             }
                             sourceCI.currentAttack += 1;
+                            // 4.2 深渊皇帝：事件+1+1 记来源状态（源=皇帝；皇帝退场时 DeathHandlers 清 RemoveStatusBySource("01501")）
+                            sourceCI.AddStatus(false, "每使对方召唤物退场时+1+1", emperor);
                             UpdateDisplay(bm, sourceCI);
                         }
                     }
