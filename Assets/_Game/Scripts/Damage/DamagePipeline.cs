@@ -50,6 +50,8 @@ public struct DamageInput
     public string traitText;
     /// <summary>效果级溯源：造成伤害的法术效果描述（CardData.effect）。非法术=null。</summary>
     public string effectText;
+    /// <summary>效果级溯源：造成伤害的法术模板ID（CardData.templateID）。非法术=null。</summary>
+    public string spellTemplateID;
     /// <summary>普通对位攻击（召唤物直接撞击目标）：已有飞卡动画，不播伤害粒子，直接弹数字。</summary>
     public bool isDirectAttack;
 
@@ -57,7 +59,7 @@ public struct DamageInput
         GameObject sourceObject = null, DamagePhase phase = DamagePhase.Battle,
         int attackerSlotTempAttackBoost = 0, BoardSlot attackerSlot = null,
         int traitIndex = -1, string traitText = null, string effectText = null,
-        bool isDirectAttack = false)
+        string spellTemplateID = null, bool isDirectAttack = false)
     {
         this.attacker = attacker;
         this.defender = defender;
@@ -69,6 +71,7 @@ public struct DamageInput
         this.traitIndex = traitIndex;
         this.traitText = traitText;
         this.effectText = effectText;
+        this.spellTemplateID = spellTemplateID;
         this.isDirectAttack = isDirectAttack;
     }
 }

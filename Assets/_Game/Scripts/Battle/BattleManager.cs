@@ -1793,7 +1793,8 @@ public class BattleManager : MonoBehaviour
         return false;
     }
     void ApplyDamageToMinion(CardInstance target, int damage, GameObject source,
-        int traitIndex = -1, string traitText = null, string effectText = null)
+        int traitIndex = -1, string traitText = null, string effectText = null,
+        string spellTemplateID = null)
     {
         if (target == null) return;
 
@@ -1807,7 +1808,8 @@ public class BattleManager : MonoBehaviour
             phase: DamagePhase.Battle,
             traitIndex: traitIndex,
             traitText: traitText,
-            effectText: effectText
+            effectText: effectText,
+            spellTemplateID: spellTemplateID
         ));
         // 护盾吸收/领主重定向/追随者挡死/祭司复活 → DamagePipeline 内全处理。
         // 调用方后续读 target.currentHealth 即可判断生死。
@@ -1900,7 +1902,8 @@ public class BattleManager : MonoBehaviour
         return null;
     }
     public void ApplyDamageToMinionPublic(CardInstance target, int damage, GameObject source,
-        int traitIndex = -1, string traitText = null, string effectText = null)
+        int traitIndex = -1, string traitText = null, string effectText = null,
+        string spellTemplateID = null)
     {
         // Pure client: route through server-authoritative command
         if (NetworkClient.isConnected && !NetworkServer.active)
@@ -1921,7 +1924,7 @@ public class BattleManager : MonoBehaviour
             }
             return;
         }
-        ApplyDamageToMinion(target, damage, source, traitIndex, traitText, effectText);
+        ApplyDamageToMinion(target, damage, source, traitIndex, traitText, effectText, spellTemplateID);
     }
     public IEnumerator WaitForSelection(Action<Action> selection)
     {
