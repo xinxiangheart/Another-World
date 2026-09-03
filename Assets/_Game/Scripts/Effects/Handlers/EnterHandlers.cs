@@ -133,6 +133,8 @@ public static class EnterHandlers
                 var targetCI = targetSlot.currentCard3D.GetComponent<Card3DInstance>().cardInstance;
                 targetCI.silencedThisPhase = true;
                 targetCI.ApplySilenceToTraits(); // 特性组同步沉默（BlockAll）
+                // 4.2 缄默神官：记录阶段级沉默来源（阶段边界清 silencedThisPhase 时清除；勿在神官退场时移除）
+                targetCI.AddStatus(true, "本阶段无法攻击，无法发挥特性", ctx.source);
                 Debug.Log($"[03501] 沉默目标: slot={targetSlot.slotID} tid={targetCI.templateID} instID={targetCI.instanceID}");
                 targetSlot.currentCard3D.GetComponent<Card3DInstance>().UpdateValues();
                 TurnManager.SyncMyBoardToOpponent();
@@ -364,6 +366,8 @@ public static class EnterHandlers
                 {
                     targetCI.hasLifePriestBlessing = true;
                     targetCI.lifePriestBlessingSource = ctx.source;
+                    // 4.2 生命祭司：记录祝福状态（复活触发或目标离场时清除，不因祭司离场移除）
+                    targetCI.AddStatus(false, "生命值≤0时立刻回满并+3+3（祝福）", ctx.source);
                     // 同步到服务器：服务器侧 BattleCoroutine 的 DamagePipeline 需要祝福信息
                     if (NetworkClient.isConnected && !NetworkServer.active)
                         NetworkPlayer.Local?.CmdBlessTarget(ctx.source.instanceID, targetCI.instanceID);

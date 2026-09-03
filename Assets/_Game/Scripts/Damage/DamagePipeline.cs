@@ -320,6 +320,7 @@ public static class DamagePipeline
                 int healthBeforeRevive = def.currentHealth;
                 def.hasLifePriestBlessing = false;
                 def.lifePriestBlessingSource = null;
+                def.RemoveStatusBySource("01507"); // 4.2 生命祭司：祝福已触发复活 → 状态移除
                 def.currentHealth = def.currentMaxHealth;
                 def.currentMaxHealth += 3;
                 def.currentHealth += 3;

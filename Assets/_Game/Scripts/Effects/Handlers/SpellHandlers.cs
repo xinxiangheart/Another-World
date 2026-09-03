@@ -398,7 +398,13 @@ public static class SpellHandlers
         if (ts?.currentCard3D != null)
         {
             var t3d = ts.currentCard3D.GetComponent<Card3DInstance>();
-            if (t3d?.cardInstance != null) t3d.cardInstance.overclocked = true;
+            if (t3d?.cardInstance != null)
+            {
+                t3d.cardInstance.overclocked = true;
+                // 4.2 超频：记录来源状态（buff + 下阶段自伤预告），下阶段自伤结算后整源清除
+                t3d.cardInstance.AddStatus(false, "本次攻击回合攻击伤害×2", "02215");
+                t3d.cardInstance.AddStatus(true, "下阶段开始扣除攻击力数值的生命值", "02215");
+            }
         }
         Cleanup();
     }

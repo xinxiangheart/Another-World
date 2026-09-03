@@ -933,11 +933,17 @@ public class CardInstance : MonoBehaviour
     /// source 为 null 时按纯文本记录（无来源，仅显示，不清除/不走来源离场清理）。</summary>
     public void AddStatus(bool isDebuff, string description, CardInstance source)
     {
+        AddStatus(isDebuff, description, source != null ? source.templateID : "");
+    }
+
+    /// <summary>按来源模板ID记录状态（法术/无实例来源用：源卡不在场也能记，且可按ID精准移除）。sourceID 空 = 纯文本无来源。</summary>
+    public void AddStatus(bool isDebuff, string description, string sourceTemplateID)
+    {
         if (activeStatuses == null) activeStatuses = new List<ActiveStatus>();
         if (string.IsNullOrEmpty(description)) return;
 
-        string srcID = source != null ? source.templateID : "";
-        string srcName = source != null ? GetCardName(source.templateID) : "";
+        string srcID = sourceTemplateID ?? "";
+        string srcName = string.IsNullOrEmpty(srcID) ? "" : GetCardName(srcID);
         foreach (var a in activeStatuses)
             if (a != null && a.sourceID == srcID && a.description == description)
                 return; // 同来源同描述已存在 → 不重复

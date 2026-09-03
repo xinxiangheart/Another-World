@@ -197,9 +197,13 @@ public partial class TurnManager : MonoBehaviour
             var ci = c3d.cardInstance;
             if (ci.templateID == "01531")
                 ci._outlawPlayerDamageThisTurn = false;
+            bool wasSilenced = ci.silencedThisPhase;
+            bool wasPoisoned = ci.poisoned;
             ci.silencedThisPhase = false;
             ci.ApplySilenceToTraits(); // 阶段边界：特性组解除沉默（UnblockAll）
             ci.poisoned = false;
+            if (wasSilenced) ci.RemoveStatusBySource("03501"); // 4.2 神官阶段沉默到期
+            if (wasPoisoned) ci.RemoveStatusBySource("03502"); // 4.2 毒巫阶段中毒到期
             ci.enemyDamageSourceIDs.Clear();
             ci.damageSourceInstanceIDs.Clear();
             ci.ironSmithOneCostConsumedCount = 0;
@@ -412,6 +416,7 @@ public partial class TurnManager : MonoBehaviour
                         ci.damageSourceInstanceIDs.Add(ci.instanceID);
                     slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
                     ci.overclocked = false;
+                    ci.RemoveStatusBySource("02215"); // 4.2 超频：buff+自伤预告 到期整源清除
                     Debug.Log($"超频惩罚：{ci.instanceID} 扣除{ci.currentAttack}生命值");
                 }
             }

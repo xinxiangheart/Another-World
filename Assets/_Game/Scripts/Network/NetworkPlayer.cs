@@ -2469,6 +2469,8 @@ public class NetworkPlayer : NetworkBehaviour
         if (ti?.cardInstance == null) return;
         ti.cardInstance.RemoveShield();
         ti.cardInstance.poisoned = true;
+        // 4.2 毒巫（远程/Cmd 服务端路径）：同上记录来源状态
+        ti.cardInstance.AddStatus(true, "无法获得护盾；受到伤害×2（本阶段）", "03502");
         if (ti.cardInstance.summonType == SummonType.ChosenOne)
         {
             NetworkPlayer owner = BoardManager.GetOwnerPlayer(serverSlot);
@@ -2491,6 +2493,8 @@ public class NetworkPlayer : NetworkBehaviour
         if (ti?.cardInstance == null) return;
         ti.cardInstance.originalAttackBeforeDebuff = ti.cardInstance.currentAttack;
         ti.cardInstance.currentAttack = 1;
+        // 4.2 弱化棱晶（Cmd 远端路径）：记录目标 debuff
+        ti.cardInstance.AddStatus(true, "本次攻击回合攻击力临时变为1", "01318");
         ti.UpdateValues();
         BoardSyncManager.MarkDirty();
     }
@@ -2524,6 +2528,8 @@ public class NetworkPlayer : NetworkBehaviour
         int hp = ti.cardInstance.currentHealth - ti.cardInstance.tempHealthBoost;
         if (atk > hp) ti.cardInstance.AddTempHealth(atk - hp);
         else if (hp > atk) ti.cardInstance.AddTempAttack(hp - atk);
+        // 4.2 阴阳（Cmd 远端路径）：记录目标临时平衡状态
+        ti.cardInstance.AddStatus(false, "攻击/生命较低值临时等于较高值", "03012");
         ti.UpdateValues();
         BoardSyncManager.MarkDirty();
     }
@@ -2671,6 +2677,7 @@ public class NetworkPlayer : NetworkBehaviour
         {
             target.hasLifePriestBlessing = true;
             target.lifePriestBlessingSource = priest;
+            target.AddStatus(false, "生命值≤0时立刻回满并+3+3（祝福）", priest);
         }
     }
 

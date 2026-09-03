@@ -520,6 +520,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 {
                     rci.tempAttackBoost = 0;
                     rci.originalAttackBeforeDebuff = 0;
+                    rci.RemoveStatusBySource("01318"); // 4.2 弱化棱晶 远端镜像同点清除
                     bmRefresh.GetSlot(ri)?.currentCard3D?.GetComponent<Card3DInstance>()?.UpdateValues();
                 }
             }
@@ -1442,6 +1443,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         c3d.cardInstance.deathGeneration = c3d.cardInstance.placementGeneration;
         c3d.cardInstance.hasLifePriestBlessing = false;
         c3d.cardInstance.lifePriestBlessingSource = null;
+        c3d.cardInstance.RemoveStatusBySource("01507"); // 4.2 生命祭司：被祝福者离场 → 状态移除
         string templateID = c3d.cardInstance.templateID;
         bool isActiveExit = c3d.cardInstance.isActiveExit;  
                 // 清理重定向标记

@@ -364,6 +364,8 @@ public class BattleManager : MonoBehaviour
                             int hp = tci.currentHealth - tci.tempHealthBoost;
                             if (atk > hp) tci.AddTempHealth(atk - hp);
                             else if (hp > atk) tci.AddTempAttack(hp - atk);
+                            // 4.2 阴阳：记录目标临时平衡状态（战斗末 temp 清零处同步清除）
+                            tci.AddStatus(false, "攻击/生命较低值临时等于较高值", ci);
                             t3d.UpdateValues();
                         }
                     }
@@ -556,6 +558,8 @@ public class BattleManager : MonoBehaviour
                         {
                             ti.cardInstance.RemoveShield();
                             ti.cardInstance.poisoned = true;
+                            // 4.2 毒巫：记录来源状态（阶段边界清 poisoned 时同步清除）
+                            ti.cardInstance.AddStatus(true, "无法获得护盾；受到伤害×2（本阶段）", "03502");
                             if (ti.cardInstance.summonType == SummonType.ChosenOne)
                             {
                                 if (targetSlot.slotID >= 6)
@@ -592,6 +596,8 @@ public class BattleManager : MonoBehaviour
                         {
                             targetCI.originalAttackBeforeDebuff = targetCI.currentAttack;
                             targetCI.currentAttack = 1;
+                            // 4.2 弱化棱晶：记录目标 debuff（攻击力恢复处同步清除）
+                            targetCI.AddStatus(true, "本次攻击回合攻击力临时变为1", ci);
                             targetSlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
                         }
                     }
@@ -955,6 +961,7 @@ public class BattleManager : MonoBehaviour
             {
                 ci.currentAttack = ci.originalAttackBeforeDebuff;
                 ci.originalAttackBeforeDebuff = 0;
+                ci.RemoveStatusBySource("01318"); // 4.2 弱化棱晶：攻击恢复 → 状态到期
                 slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
             }
         }
@@ -1723,6 +1730,7 @@ public class BattleManager : MonoBehaviour
             }
 
         // 检查对方是否有合法目标
+            bool hadTempBoost = ci.tempHealthBoost > 0 || ci.tempAttackBoost > 0;
             if (ci.tempHealthBoost > 0)
             {
                 ci.currentHealth -= ci.tempHealthBoost;
@@ -1733,12 +1741,14 @@ public class BattleManager : MonoBehaviour
             ci.currentAttack -= ci.tempAttackBoost;
             ci.tempAttackBoost = 0;
             ci.tempHealthBoost = 0;
+            if (hadTempBoost) ci.RemoveStatusBySource("03012"); // 4.2 阴阳：临时平衡到期
             // 兜底恢复 originalAttackBeforeDebuff（弱化棱晶等，远程先手路径可能未在
             // MinionAttacksCoroutine 中恢复——服务器端未追踪该字段）
             if (ci.originalAttackBeforeDebuff > 0)
             {
                 ci.currentAttack = ci.originalAttackBeforeDebuff;
                 ci.originalAttackBeforeDebuff = 0;
+                ci.RemoveStatusBySource("01318"); // 4.2 弱化棱晶（兜底恢复同点清除）
             }
             c3d?.UpdateValues();
         }
