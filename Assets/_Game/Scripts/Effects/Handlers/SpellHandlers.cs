@@ -496,7 +496,7 @@ public static class SpellHandlers
                     var ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
                     if (ci != null && !ci.isAttached)
                     {
-                        ci.GrantShield(true, false, false);
+                        ci.GrantShield(true, false, false, "02402");
                         if (!ci.cannotHealOrGainMaxHP)
                         { ci.currentHealth += 1; ci.currentMaxHealth += 1; DamagePipeline.ShowFloaterAt(ci, 1, FloaterType.Heal); }
                         s.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();

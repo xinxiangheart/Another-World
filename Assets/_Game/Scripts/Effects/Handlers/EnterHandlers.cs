@@ -395,7 +395,7 @@ public static class EnterHandlers
 
     static void Handle01516(EffectContext ctx)
     {
-        ctx.source.GrantShield(false, false, true);
+        ctx.source.GrantShield(false, false, true, ctx.source.templateID); // 01516 自身盾
         ctx.sourceSlot.CleanupAfterPlacement();
     }
 

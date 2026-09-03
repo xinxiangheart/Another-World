@@ -681,7 +681,7 @@ public class NetworkPlayer : NetworkBehaviour
                             }
 
                             // 01309: 进场护盾（攻击回合开始消失）
-                            if (ci.templateID == "01309") ci.GrantShield(false, true, false);
+                            if (ci.templateID == "01309") ci.GrantShield(false, true, false, "01309");
 
                             c3d.cardInstance = ci;
                             c3d.UpdateValues();
@@ -1490,7 +1490,7 @@ public class NetworkPlayer : NetworkBehaviour
             }
 
             // 01309: 进场护盾（攻击回合开始消失）
-            if (ci.templateID == "01309") ci.GrantShield(false, true, false);
+            if (ci.templateID == "01309") ci.GrantShield(false, true, false, "01309");
 
             c3d.cardInstance = ci;
             c3d.UpdateValues();
@@ -2509,7 +2509,7 @@ public class NetworkPlayer : NetworkBehaviour
         if (ts?.currentCard3D == null) return;
         var ti = ts.currentCard3D.GetComponent<Card3DInstance>();
         if (ti?.cardInstance == null || ti.cardInstance.hasShield || ti.cardInstance.isAttached) return;
-        ti.cardInstance.GrantShield(false, false, true);
+        ti.cardInstance.GrantShield(false, false, true, "01519");
         ti.UpdateValues();
         BoardSyncManager.MarkDirty();
     }

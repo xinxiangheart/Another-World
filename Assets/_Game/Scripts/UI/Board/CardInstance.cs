@@ -140,6 +140,8 @@ public class CardInstance : MonoBehaviour
     public bool shieldIsPermanent;        // 永久持有（不被顶替，不受时间限制）
     public bool shieldEndAtBattleStart;   // 攻击回合开始消失
     public bool shieldEndAtBattleEnd;     // 攻击回合结束消失
+    /// <summary>护盾来源 templateID（4.7 护盾 AddStatus 记录）；随 GrantShield/RemoveShield 维护。</summary>
+    public string shieldSourceTemplateID = "";
     public bool isRevenge;
     // 附着系统
     public bool canAttach;          // 是否拥有附着特性（从模板读取）
@@ -207,16 +209,40 @@ public class CardInstance : MonoBehaviour
         giveableDeathTraits?.Clear();
     }
     public void GrantShield(bool isPermanent, bool endAtBattleStart, bool endAtBattleEnd)
+        => GrantShield(isPermanent, endAtBattleStart, endAtBattleEnd, null);
+
+    /// <summary>赋予护盾。sourceTemplateID = 施加者 templateID（4.7，self 盾传自身）。护盾消失（RemoveShield）时清来源状态。</summary>
+    public void GrantShield(bool isPermanent, bool endAtBattleStart, bool endAtBattleEnd, string sourceTemplateID)
     {
         if (poisoned) return;
         // 已有永久护盾，不能被非永久护盾顶替
         if (hasShield && shieldIsPermanent && !isPermanent)
             return;
+        // 4.7 更换护盾：先清旧来源状态
+        if (!string.IsNullOrEmpty(shieldSourceTemplateID))
+            RemoveStatusBySource(shieldSourceTemplateID);
+        shieldSourceTemplateID = "";
 
         hasShield = true;
         shieldIsPermanent = isPermanent;
         shieldEndAtBattleStart = endAtBattleStart;
         shieldEndAtBattleEnd = endAtBattleEnd;
+
+        // 4.7 护盾 AddStatus：只接 永久/攻击回合 两型（第三类 all-false 描述为空 → 不接）
+        string desc = ShieldStatusDescription();
+        if (!string.IsNullOrEmpty(desc) && !string.IsNullOrEmpty(sourceTemplateID))
+        {
+            shieldSourceTemplateID = sourceTemplateID;
+            AddStatus(false, desc, sourceTemplateID);
+        }
+    }
+
+    /// <summary>护盾来源状态描述：永久→「护盾」；攻击回合开始/结束消→「护盾（至本次攻击回合结束）」；其余(本阶段类)空=暂不接。</summary>
+    string ShieldStatusDescription()
+    {
+        if (shieldIsPermanent) return "护盾";
+        if (shieldEndAtBattleStart || shieldEndAtBattleEnd) return "护盾（至本次攻击回合结束）";
+        return "";
     }
 
     // 移除护盾
@@ -226,6 +252,10 @@ public class CardInstance : MonoBehaviour
         shieldIsPermanent = false;
         shieldEndAtBattleStart = false;
         shieldEndAtBattleEnd = false;
+        // 4.7 护盾消失（被格挡/到期/拆盾）：清来源状态
+        if (!string.IsNullOrEmpty(shieldSourceTemplateID))
+            RemoveStatusBySource(shieldSourceTemplateID);
+        shieldSourceTemplateID = "";
     }
 
     // ================= Buff/Debuff 动态状态（光环/效果等授予） =================

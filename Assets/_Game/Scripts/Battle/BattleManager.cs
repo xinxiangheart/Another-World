@@ -375,7 +375,7 @@ public class BattleManager : MonoBehaviour
             }
             if (ci.templateID == "01512")
             {
-                ci.GrantShield(false, false, true);
+                ci.GrantShield(false, false, true, ci.templateID); // 01512 自身盾
                 slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
             }
         // 检查对方是否有合法目标
@@ -396,7 +396,7 @@ public class BattleManager : MonoBehaviour
                         {
                             Card3DInstance t3d = targetSlot.currentCard3D.GetComponent<Card3DInstance>();
                             if (t3d?.cardInstance != null)
-                            { t3d.cardInstance.GrantShield(false, false, true); t3d.UpdateValues(); }
+                            { t3d.cardInstance.GrantShield(false, false, true, "01115"); t3d.UpdateValues(); }
                         }
                         shieldDone = true;
                     });
@@ -462,7 +462,7 @@ public class BattleManager : MonoBehaviour
                         CardInstance c = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
                         if (c != null)
                         {
-                            c.GrantShield(false, false, true);
+                            c.GrantShield(false, false, true, "01519");
                             s.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
                                 Debug.Log($"守护骑士选择给槽位{s.slotID}附加护盾");
                         }
@@ -498,7 +498,7 @@ public class BattleManager : MonoBehaviour
                             CardInstance c = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
                             if (c != null)
                             {
-                                c.GrantShield(false, false, true);
+                                c.GrantShield(false, false, true, "01519");
                                 s.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
                                 s.SetHighlightColor(s.GetNormalColor());
                                 Debug.Log($"守护骑士选择给槽位{s.slotID}附加护盾");
@@ -521,7 +521,7 @@ public class BattleManager : MonoBehaviour
                     if (!ci.damageSourceInstanceIDs.Contains(ci.instanceID))
                         ci.damageSourceInstanceIDs.Add(ci.instanceID);
                     DamagePipeline.ShowFloaterAt(ci, 2, FloaterType.Damage, null, -1, true); // 自伤特殊轨迹（亡命之徒先手自伤）
-                    ci.GrantShield(true, false, false);
+                    ci.GrantShield(true, false, false, "01531");
                     slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
                 }
                 ci.hasFirstStrike = false;

@@ -673,7 +673,7 @@ public static class DeathHandlers
                     var ti = target.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
                     if (ti != null)
                     {
-                        ti.GrantShield(true, false, false);
+                        ti.GrantShield(true, false, false, "01107");
                         target.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
                         TurnManager.SyncMyBoardToOpponent();
                     }

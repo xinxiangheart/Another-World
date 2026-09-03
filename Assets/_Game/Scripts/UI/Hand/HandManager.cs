@@ -1529,7 +1529,7 @@ public class HandManager : MonoBehaviour
             CardInstance placedCI = slot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
             if (placedCI != null)
             {
-                placedCI.GrantShield(false, true, false);
+                placedCI.GrantShield(false, true, false, "01309");
             }
         }
         // X数值同步
