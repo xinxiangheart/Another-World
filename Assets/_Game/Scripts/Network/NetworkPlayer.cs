@@ -1061,7 +1061,7 @@ public class NetworkPlayer : NetworkBehaviour
             if (fci != null && fci.templateID == "03027") { coreOnField = true; break; }
         }
         if (!coreOnField) return;
-        ci.GivePrefix("灵能");
+        ci.GivePrefix("灵能", "03027");
         ci.GetComponent<CardDisplay2D>()?.Refresh();
         if (NetworkClient.isConnected)
             CmdSetHandCardPrefix(ci.instanceID, "灵能");

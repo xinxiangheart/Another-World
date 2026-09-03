@@ -1099,7 +1099,7 @@ public class HandManager : MonoBehaviour
                     // 添加机械前缀（不重复）
                     if (!hostCard.prefixes.Contains("机械"))
                     {
-                        hostCard.GivePrefix("机械");
+                        hostCard.GivePrefix("机械", "01119");
                     }
 
                     // 统计其他机械单位数量（不含宿主自己）
@@ -1409,7 +1409,7 @@ public class HandManager : MonoBehaviour
                 CardInstance ci = coreSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
                 if (ci != null && !ci.prefixes.Contains("灵能"))
                 {
-                        ci.GivePrefix("灵能");
+                        ci.GivePrefix("灵能", "03027");
                     coreSlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
                 }
             }
@@ -1423,7 +1423,7 @@ public class HandManager : MonoBehaviour
                     CardData cd = CardDatabase.Instance?.GetTemplate(ci.templateID);
                     if (cd != null && cd.cardType == CardType.Summon && !ci.prefixes.Contains("灵能"))
                     {
-                        ci.GivePrefix("灵能");
+                        ci.GivePrefix("灵能", "03027");
                         CardDisplay2D d2d = handCard.GetComponent<CardDisplay2D>();
                         d2d?.Refresh();
                         // 同步手牌前缀到服务器（打出时 ConsumeHandPrefixOverride 注入）
@@ -1441,7 +1441,7 @@ public class HandManager : MonoBehaviour
                 CardInstance placedCI = slot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
                 if (placedCI != null && !placedCI.prefixes.Contains("灵能"))
                 {
-                    placedCI.GivePrefix("灵能");
+                    placedCI.GivePrefix("灵能", "03027");
                     slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
                     // 场上随从前缀通过 SyncNow 同步
                 }
@@ -2194,7 +2194,7 @@ public class HandManager : MonoBehaviour
                 CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
                 if (ci != null && !ci.prefixes.Contains("灵能"))
                 {
-                        ci.GivePrefix("灵能");
+                        ci.GivePrefix("灵能", "03027");
                     slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
                 }
             }
@@ -2208,7 +2208,7 @@ public class HandManager : MonoBehaviour
                     CardData cd = CardDatabase.Instance?.GetTemplate(ci.templateID);
                     if (cd != null && cd.cardType == CardType.Summon && !ci.prefixes.Contains("灵能"))
                     {
-                        ci.GivePrefix("灵能");
+                        ci.GivePrefix("灵能", "03027");
                         CardDisplay2D d2d = handCard.GetComponent<CardDisplay2D>();
                         d2d?.Refresh();
                         if (NetworkClient.isConnected)

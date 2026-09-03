@@ -18,6 +18,8 @@ public class CardInstance : MonoBehaviour
     public string prefixes = "";
     /// <summary>最近一次被赋予的新前缀（卡名变色规则1：以最后一次赋予的为准）。空=未赋予过。</summary>
     public string lastGivenPrefix = "";
+    /// <summary>前缀 → 赋予者 templateID（4.6 来源记录）。只记来源、不加同步；空=未知/未赋予。不随区转移/模型重建复制。</summary>
+    readonly Dictionary<string, string> _prefixSourceByPrefix = new Dictionary<string, string>();
 
     [Header("特性标记")]
     public bool hasOnEnter;
@@ -1116,8 +1118,10 @@ public class CardInstance : MonoBehaviour
     static readonly Color AttackHighColor = new Color(1.00f, 0.84f, 0.00f); // 攻击高于基础 → 金
     static readonly Color AttackLowColor  = new Color(0.60f, 0.60f, 0.60f); // 攻击低于基础 → 灰
 
-    /// <summary>赋予一个新前缀（规则1）：已有则不变色；追加到 prefixes 并记录为最后一次赋予（卡名变色以它为准）。</summary>
-    public void GivePrefix(string prefix)
+    /// <summary>赋予一个新前缀（规则1）：已有则不变色；追加到 prefixes 并记录为最后一次赋予（卡名变色以它为准）。sourceID=赋予者 templateID（4.6，只记来源不接 AddStatus）；空=未知。</summary>
+    public void GivePrefix(string prefix) => GivePrefix(prefix, null);
+
+    public void GivePrefix(string prefix, string sourceTemplateID)
     {
         if (string.IsNullOrEmpty(prefix) || prefix == "无") return;
         string p = prefix.Trim();
@@ -1127,7 +1131,16 @@ public class CardInstance : MonoBehaviour
         else
             prefixes = prefixes + " " + p;
         lastGivenPrefix = p; // 新前缀 → 以最后一次赋予的为准
+        if (!string.IsNullOrEmpty(sourceTemplateID))
+            _prefixSourceByPrefix[p] = sourceTemplateID; // 4.6 前缀赋予者来源记录
         RefreshDisplay();
+    }
+
+    /// <summary>某前缀的赋予者来源 templateID；未赋予过/未知返回空串。</summary>
+    public string GetPrefixSource(string prefix)
+    {
+        if (string.IsNullOrEmpty(prefix)) return "";
+        return _prefixSourceByPrefix.TryGetValue(prefix, out var s) ? s : "";
     }
 
     /// <summary>规则1：卡名颜色。新前缀赋予 → 前缀对应色；未赋予过 → 默认白。</summary>

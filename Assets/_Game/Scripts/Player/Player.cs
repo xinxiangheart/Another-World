@@ -414,7 +414,7 @@ public class Player : MonoBehaviour
 
         if (coreOnField)
         {
-            ci.GivePrefix("灵能");
+            ci.GivePrefix("灵能", "03027");
             CardDisplay2D d2d = ci.GetComponent<CardDisplay2D>();
             d2d?.Refresh();
             // 同步手牌前缀到服务器（打出时 ConsumeHandPrefixOverride 注入）

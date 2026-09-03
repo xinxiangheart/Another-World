@@ -2850,7 +2850,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         if (ci == null) { Card3DInstance c3d = target.GetComponent<Card3DInstance>(); if (c3d != null) ci = c3d.cardInstance; }
         if (ci != null && !ci.prefixes.Contains("渊"))
         {
-            ci.GivePrefix("渊");
+            ci.GivePrefix("渊", "01501");
             Card3DInstance c3d = target.GetComponent<Card3DInstance>();
             c3d?.UpdateValues();
             CardDisplay2D d2d = target.GetComponent<CardDisplay2D>();
@@ -3098,7 +3098,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             {
                 if (!ci.prefixes.Contains("血歌"))
                 {
-                    ci.GivePrefix("血歌");
+                    ci.GivePrefix("血歌", "01533");
                     CardDisplay2D d2d = card.GetComponent<CardDisplay2D>();
                     d2d?.Refresh();
                     TurnManager.SyncMyBoardToOpponent();
@@ -3117,7 +3117,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 Card3DInstance c3d = targetSlot.currentCard3D.GetComponent<Card3DInstance>();
                 if (c3d?.cardInstance != null && !c3d.cardInstance.prefixes.Contains("血歌"))
                 {
-                    c3d.cardInstance.GivePrefix("血歌");
+                    c3d.cardInstance.GivePrefix("血歌", "01533");
                     c3d.UpdateValues();
                     TurnManager.SyncMyBoardToOpponent();
                 }
@@ -3902,7 +3902,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         if (ci == null) { Card3DInstance c3d = target.GetComponent<Card3DInstance>(); if (c3d != null) ci = c3d.cardInstance; }
         if (ci != null && !ci.prefixes.Contains("机械"))
         {
-            ci.GivePrefix("机械");
+            ci.GivePrefix("机械", "01119");
             Card3DInstance c3d = target.GetComponent<Card3DInstance>();
             c3d?.UpdateValues();
             CardDisplay2D d2d = target.GetComponent<CardDisplay2D>();
