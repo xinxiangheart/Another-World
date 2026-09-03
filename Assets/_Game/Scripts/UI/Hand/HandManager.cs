@@ -1368,6 +1368,8 @@ public class HandManager : MonoBehaviour
                 if (hero3D?.cardInstance != null)
                 {
                     hero3D.cardInstance.currentTier += 1;
+                    // 4.4 神官阶位+1：后置 Hero 进场时记来源（source=缄默神官，string 模板ID）
+                    hero3D.cardInstance.AddStatus(false, "阶位临时+1", "03501");
                     hero3D.UpdateValues();
                     // Sync the tier buff to opponent
                     if (NetworkClient.isConnected)
@@ -1387,6 +1389,8 @@ public class HandManager : MonoBehaviour
                 if (ci != null && ci.summonType == SummonType.Hero)
                 {
                     ci.currentTier += 1;
+                    // 4.4 神官阶位+1：目标 Hero 记来源（神官退场还原处 RemoveStatusBySource 清除）
+                    ci.AddStatus(false, "阶位临时+1", sourceInstance);
                     s.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
                 }
             }
@@ -1996,6 +2000,7 @@ public class HandManager : MonoBehaviour
             {
                 selectedSlot.hasSpotlight = true;
                 selectedSlot.spotlightTierBoost = 2;
+                selectedSlot.spotlightSourceTemplateID = "02310"; // 4.3 聚光灯来源（法术离场记模板ID）
                 if (selectedSlot.currentCard3D != null)
                 {
                     CardInstance ci = selectedSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;

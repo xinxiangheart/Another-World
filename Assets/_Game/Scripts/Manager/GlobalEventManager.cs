@@ -184,20 +184,18 @@ public class GlobalEventManager : MonoBehaviour
     bool IsUnderEnergyHacker(CardInstance ci)
     {
         if (ci == null || ci.templateID == "01335") return false;
-        int slot = GetSlotOf(ci);
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return false;
+        int slot = GetSlotOf(ci, bm);
         if (slot < 0) return false;
         int oppSlot = slot < 6 ? slot + 6 : slot - 6;
-        BoardManager bm = FindObjectOfType<BoardManager>();
-        CardInstance opp = bm?.GetSlot(oppSlot)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+        CardInstance opp = bm.GetSlot(oppSlot)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
         if (opp != null && opp.templateID == "01335" && !opp.silencedThisPhase) return true;
-        if (bm != null)
+        foreach (GameObject obj in bm.attachedModels)
         {
-            foreach (GameObject obj in bm.attachedModels)
-            {
-                var aci = obj?.GetComponent<Card3DInstance>()?.cardInstance;
-                if (aci != null && aci.templateID == "01335" && aci.hostSlotID == oppSlot && !aci.silencedThisPhase)
-                    return true;
-            }
+            var aci = obj?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (aci != null && aci.templateID == "01335" && aci.hostSlotID == oppSlot && !aci.silencedThisPhase)
+                return true;
         }
         return false;
     }

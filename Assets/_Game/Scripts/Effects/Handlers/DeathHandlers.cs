@@ -148,6 +148,7 @@ public static class DeathHandlers
                 {
                     if (aci.summonType == SummonType.Hero)
                         aci.currentTier = Mathf.Max(aci.baseTier, aci.currentTier - 1);
+                    aci.RemoveStatusBySource("03501"); // 4.4 神官退场：清己方英雄的"阶位临时+1"来源状态
                     ally.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
                 }
             }

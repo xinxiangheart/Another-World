@@ -2634,6 +2634,9 @@ public class NetworkPlayer : NetworkBehaviour
             {
                 ci.prisonMySlot = myPrisonSlot;
                 ci.prisonEnemySlot = enemyPrisonSlot;
+                // 4.3 服务端补齐囚牢来源（本地 PrisonEnterEffect 已记，此处补远端镜像）
+                bm.GetSlot(myPrisonSlot).prisonSourceInstanceID = instanceID;
+                bm.GetSlot(enemyPrisonSlot).prisonSourceInstanceID = instanceID;
                 return;
             }
         }
@@ -2644,7 +2647,7 @@ public class NetworkPlayer : NetworkBehaviour
     /// 远端上报的敌方格子视角与服务器相反，需要镜像映射后应用。
     /// </summary>
     [Command]
-    public void CmdBlockSlot(int reportedEnemySlot)
+    public void CmdBlockSlot(int reportedEnemySlot, string blockerInstanceID)
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
         if (bm == null) return;
@@ -2655,6 +2658,7 @@ public class NetworkPlayer : NetworkBehaviour
         {
             target.isBlocked = true;
             target.permaBlocked = true;
+            target.blockSourceInstanceID = blockerInstanceID ?? ""; // 4.3 封锁者来源（远端镜像）
             target.SyncVisual();
             BoardSyncManager.MarkDirty();
         }

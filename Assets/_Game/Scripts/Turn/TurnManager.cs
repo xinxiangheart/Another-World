@@ -1009,7 +1009,7 @@ public partial class TurnManager : MonoBehaviour
             // 每消耗3个召唤物，强化一个槽位
             if (ironSmithInst.ironSmithTotalConsumedCount % 3 == 0)
             {
-                yield return StartCoroutine(StrengthenSlot());
+                yield return StartCoroutine(StrengthenSlot(ironSmithInst));
             }
 
             // 1费召唤物：本阶段最多弹出2次继续弹窗
@@ -1041,7 +1041,7 @@ public partial class TurnManager : MonoBehaviour
         ConfirmQueueManager.ExitSelectionMode();
         onComplete();
     }
-    IEnumerator StrengthenSlot()
+    IEnumerator StrengthenSlot(CardInstance source)
     {
         BoardSlot.isStrengtheningSlot = true;
         bool done = false;
@@ -1050,6 +1050,8 @@ public partial class TurnManager : MonoBehaviour
             if (target != null && !target.isBlocked)
             {
                 target.slotTempAttackBoost += 2;
+                // 4.3 铁匠强化记施加者（来源=触发强化的熔能铁匠 01525 实例）
+                target.slotTempAttackBoostSourceInstanceID = source?.instanceID ?? "";
                 if (target.currentCard3D != null)
                 {
                     Card3DInstance c3d = target.currentCard3D.GetComponent<Card3DInstance>();

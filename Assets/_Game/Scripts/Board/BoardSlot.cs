@@ -24,6 +24,14 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public bool hasPlague;
     /// <summary>瘟疫(02408)来源 templateID（施法法术离场，用模板ID记录）；空=无来源。用于扣血归因。</summary>
     public string plagueSourceTemplateID;
+    /// <summary>聚光灯(02310 法术)来源 templateID；空=无。法术离场记模板ID（同 plague）。4.3 来源记录。</summary>
+    public string spotlightSourceTemplateID;
+    /// <summary>熔能铁匠(01525)强化来源 instanceID；空=无。4.3 来源记录。</summary>
+    public string slotTempAttackBoostSourceInstanceID;
+    /// <summary>囚牢(01331)来源 instanceID；空=无。4.3 来源记录。</summary>
+    public string prisonSourceInstanceID;
+    /// <summary>封锁者(01505)来源 instanceID；空=无。4.3 来源记录。</summary>
+    public string blockSourceInstanceID;
     public static bool isTargetingMode
     {
         get => SelectionManager.Instance != null && SelectionManager.Instance.IsSelecting;
@@ -2735,10 +2743,12 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         myPrison.prisonBlocked = true;
         myPrison.prisonAllowYuan = true;
         myPrison.slotImage.color = new Color(0.6f, 0.2f, 0.8f);
+        myPrison.prisonSourceInstanceID = giver.instanceID; // 4.3 囚牢来源
 
         enemyPrison.prisonBlocked = true;
         enemyPrison.prisonAllowYuan = false;
         enemyPrison.slotImage.color = new Color(0.6f, 0.2f, 0.8f);
+        enemyPrison.prisonSourceInstanceID = giver.instanceID; // 4.3 囚牢来源
 
         giver.prisonMySlot = myPrison.slotID;
         giver.prisonEnemySlot = enemyPrison.slotID;
@@ -2958,6 +2968,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         {
             target.isBlocked = true;
             target.permaBlocked = true;
+            target.blockSourceInstanceID = giver.instanceID; // 4.3 封锁者来源
             target.SyncVisual();
             Debug.Log($"封锁者永久封锁槽位{target.slotID}");
             // Sync slot block to opponent
@@ -2965,7 +2976,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             {
                 // 01331 模式：远程客户端需显式告知服务器锁定敌方格子——CmdReportAllSlots 不覆盖 enemy slot flags
                 if (!NetworkServer.active)
-                    NetworkPlayer.Local?.CmdBlockSlot(target.slotID);
+                    NetworkPlayer.Local?.CmdBlockSlot(target.slotID, giver.instanceID);
                 else
                     BoardSyncManager.MarkDirty();
             }
