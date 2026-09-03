@@ -830,8 +830,7 @@ public class NetworkPlayer : NetworkBehaviour
         string sourceTemplateID = null, string sourceInstanceID = null, string sourceName = null)
         => ApplyTakeDamage(this, amount, sourceTemplateID, sourceInstanceID, sourceName);
     [Command]
-    void CmdTakeDamage(int amount,
-        string sourceTemplateID = null, string sourceInstanceID = null, string sourceName = null)
+    void CmdTakeDamage(int amount, string sourceTemplateID, string sourceInstanceID, string sourceName)
         => ApplyTakeDamage(this, amount, sourceTemplateID, sourceInstanceID, sourceName);
     public void Heal(int amount) => ApplyHeal(this, amount);
     [Command] void CmdHeal(int amount) => ApplyHeal(this, amount);
