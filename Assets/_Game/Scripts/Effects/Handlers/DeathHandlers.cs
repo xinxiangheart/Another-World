@@ -292,7 +292,7 @@ public static class DeathHandlers
                         }
                     break;
                 case "退场：己方玩家扣一血":
-                    NP(ctx).TakeDamage(1);
+                    NP(ctx).TakeDamage(1, ctx.source?.templateID, ctx.source?.instanceID); // 01117 giveable 退场自伤
                     break;
             }
         }

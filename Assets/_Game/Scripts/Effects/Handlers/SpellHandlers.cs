@@ -107,7 +107,7 @@ public static class SpellHandlers
 
     static void Handle02006(EffectContext ctx)
     {
-        NetworkPlayer.Remote?.TakeDamage(1);
+        NetworkPlayer.Remote?.TakeDamage(1, ctx.template?.templateID, null, ctx.template?.cardName); // 法术直打玩家
         Cleanup();
     }
 
@@ -333,7 +333,7 @@ public static class SpellHandlers
 
     static void Handle02209(EffectContext ctx)
     {
-        NetworkPlayer.Local.TakeDamage(3);
+        NetworkPlayer.Local.TakeDamage(3, ctx.template?.templateID, null, ctx.template?.cardName); // 法术自伤
         DamageFX.Request(DamageFX.GetPlayerWorldPos(false), 3, FloaterType.Damage, DamageFxSource.Self, 0, -1, true); // 英雄自伤特殊轨迹
         NetworkPlayer.Local.AddEnergy(5);
         Cleanup();
@@ -543,7 +543,7 @@ public static class SpellHandlers
 
     static void Handle02508(EffectContext ctx)
     {
-        NetworkPlayer.Local.TakeDamage(2);
+        NetworkPlayer.Local.TakeDamage(2, ctx.template?.templateID, null, ctx.template?.cardName); // 法术自伤
         DamageFX.Request(DamageFX.GetPlayerWorldPos(false), 2, FloaterType.Damage, DamageFxSource.Self, 0, -1, true); // 英雄自伤特殊轨迹
         TimeWarpManager.Instance.Activate();
         Cleanup();

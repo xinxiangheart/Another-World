@@ -2519,7 +2519,7 @@ public class HandManager : MonoBehaviour
     }
    public IEnumerator DoorEffect()
     {
-        NetworkPlayer.Local.TakeDamage(1);
+        NetworkPlayer.Local.TakeDamage(1, "02501"); // 传送门自伤，来源=法术02501
         DamageFX.Request(DamageFX.GetPlayerWorldPos(false), 1, FloaterType.Damage, DamageFxSource.Self, 0, -1, true); // 英雄自伤特殊轨迹
         NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
 

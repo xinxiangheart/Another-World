@@ -729,10 +729,11 @@ public class BattleManager : MonoBehaviour
             }
             if (ci.templateID == "03020")
             {
+                // 玩家伤害来源=石头人(03020)召唤物
                 if (i >= 6)
-                    NetworkPlayer.Remote.TakeDamage(1);
+                    NetworkPlayer.Remote.TakeDamage(1, "03020", ci.instanceID);
                 else
-                    NetworkPlayer.Local.TakeDamage(1);
+                    NetworkPlayer.Local.TakeDamage(1, "03020", ci.instanceID);
             }
             // 麻烦制造者赋予的先手：扣对方玩家1生命值
             if (ci.grantedTraitTexts.Exists(t => t.Contains("先手：对对方前排召唤物造成1伤害")))
@@ -781,10 +782,11 @@ public class BattleManager : MonoBehaviour
             // 麻烦制造者赋予的先手：扣对方玩家1生命值
             if (ci.HasFirstStrike && ci.grantedTraitTexts.Contains("先手：扣己方玩家1生命值"))
             {
+                // 玩家自伤来源=该随从（携带 01308 授予的"扣己方玩家"先手）
                 if (slot.slotID >= 6)
-                    NetworkPlayer.Local.TakeDamage(1);
+                    NetworkPlayer.Local.TakeDamage(1, ci.templateID, ci.instanceID);
                 else
-                    NetworkPlayer.Remote.TakeDamage(1);
+                    NetworkPlayer.Remote.TakeDamage(1, ci.templateID, ci.instanceID);
             }
         }
 
@@ -1181,7 +1183,7 @@ public class BattleManager : MonoBehaviour
         if (!attackerSilenced && attackerInst.templateID == "01531" && targetInst != null
             && !attackerInst._outlawPlayerDamageThisTurn)
         {
-            defenderOwner?.TakeDamage(2);
+            defenderOwner?.TakeDamage(2, attackerInst.templateID, attackerInst.instanceID); // 亡命之徒打玩家
             attackerInst._outlawPlayerDamageThisTurn = true;
         }
 
@@ -1672,13 +1674,13 @@ public class BattleManager : MonoBehaviour
             if (pendingDamageToMe > pendingDamageToEnemy)
             {
                 int finalDamage = pendingDamageToMe - pendingDamageToEnemy;
-                NetworkPlayer.Local?.TakeDamage(finalDamage);
+                NetworkPlayer.Local?.TakeDamage(finalDamage, null, null, "战斗汇总(召唤物组/存活差)");
                 Debug.Log($"[Battle] FinalDamage: local takes {finalDamage}");
             }
             else if (pendingDamageToEnemy > pendingDamageToMe)
             {
                 int finalDamage = pendingDamageToEnemy - pendingDamageToMe;
-                NetworkPlayer.Remote?.TakeDamage(finalDamage);
+                NetworkPlayer.Remote?.TakeDamage(finalDamage, null, null, "战斗汇总(召唤物组/存活差)");
                 Debug.Log($"[Battle] FinalDamage: remote takes {finalDamage}");
             }
         }
@@ -2050,7 +2052,7 @@ public class BattleManager : MonoBehaviour
                         yield return ActionQueueManager.WaitForDrain();
 
                         if (targetCI.currentHealth <= 0)
-                            BoardManager.GetOpponentPlayer(swordSlot.slotID)?.TakeDamage(2);
+                            BoardManager.GetOpponentPlayer(swordSlot.slotID)?.TakeDamage(2, sword.templateID, sword.instanceID); // 执行之剑打玩家
                     }
                 }
                 BoardSyncManager.MarkDirty();
@@ -2074,7 +2076,7 @@ public class BattleManager : MonoBehaviour
                     yield return ActionQueueManager.WaitForDrain();
 
                     if (aiTargetCI.currentHealth <= 0)
-                        BoardManager.GetOpponentPlayer(swordSlot.slotID)?.TakeDamage(2);
+                        BoardManager.GetOpponentPlayer(swordSlot.slotID)?.TakeDamage(2, sword.templateID, sword.instanceID); // 执行之剑打玩家
                     break;
                 }
                 BoardSyncManager.MarkDirty();
@@ -2103,7 +2105,7 @@ public class BattleManager : MonoBehaviour
 
                 if (targetCI.currentHealth <= 0)
                 {
-                    BoardManager.GetOpponentPlayer(swordSlot.slotID)?.TakeDamage(2);
+                    BoardManager.GetOpponentPlayer(swordSlot.slotID)?.TakeDamage(2, sword.templateID, sword.instanceID); // 执行之剑打玩家
                 }
             }
         }

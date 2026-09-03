@@ -500,7 +500,7 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
                             CardInstance cardInst = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
                             if (cardInst != null && cardInst.templateID == "03503")
                             {
-                                NetworkPlayer.Local.TakeDamage(1);
+                                NetworkPlayer.Local.TakeDamage(1, cardInst.templateID, cardInst.instanceID); // 智者(03503)惩罚
                                 Debug.Log("智者效果：对方打出邪恶法术，扣1血");
                             }
                         }

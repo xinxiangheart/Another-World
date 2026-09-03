@@ -805,8 +805,34 @@ public class NetworkPlayer : NetworkBehaviour
         Heal(amount);
     }
 
-    public void TakeDamage(int amount) => ApplyTakeDamage(this, amount);
-    [Command] void CmdTakeDamage(int amount) => ApplyTakeDamage(this, amount);
+    // ── 玩家伤害来源记录（溯源显示用）────────────────────────────
+    /// <summary>最近一次该玩家受到伤害的来源（模板ID/实例ID/名称，可为空）。Host 权威侧记录，远程显示需另行同步。</summary>
+    public string lastDmgTemplateID;
+    public string lastDmgInstanceID;
+    public string lastDmgName;
+    /// <summary>最近若干次玩家伤害来源滚动记录（头插，截断8条）。</summary>
+    public readonly List<(int amount, string templateID, string instanceID, string name)> playerDamageSourceLog
+        = new List<(int, string, string, string)>();
+    const int PlayerDamageLogCap = 8;
+
+    /// <summary>记录最近一次玩家伤害来源（谁打了该玩家）。</summary>
+    public void RecordPlayerDamageSource(int amount, string templateID, string instanceID, string name)
+    {
+        lastDmgTemplateID = templateID;
+        lastDmgInstanceID = instanceID;
+        lastDmgName = name;
+        playerDamageSourceLog.Insert(0, (amount, templateID, instanceID, name));
+        if (playerDamageSourceLog.Count > PlayerDamageLogCap)
+            playerDamageSourceLog.RemoveRange(PlayerDamageLogCap, playerDamageSourceLog.Count - PlayerDamageLogCap);
+    }
+
+    public void TakeDamage(int amount,
+        string sourceTemplateID = null, string sourceInstanceID = null, string sourceName = null)
+        => ApplyTakeDamage(this, amount, sourceTemplateID, sourceInstanceID, sourceName);
+    [Command]
+    void CmdTakeDamage(int amount,
+        string sourceTemplateID = null, string sourceInstanceID = null, string sourceName = null)
+        => ApplyTakeDamage(this, amount, sourceTemplateID, sourceInstanceID, sourceName);
     public void Heal(int amount) => ApplyHeal(this, amount);
     [Command] void CmdHeal(int amount) => ApplyHeal(this, amount);
     public void AddEnergy(int amount) => ApplyAddEnergy(this, amount);
@@ -1824,19 +1850,21 @@ public class NetworkPlayer : NetworkBehaviour
     // ── 共用副作用方法 —— Player 和 NetworkPlayer 统一入口 ──────────────────
     // 消除双玩家类不一致：所有 TakeDamage/Heal/AddEnergy 经同一入口发全局事件。
 
-    /// <summary>对指定玩家对象权威扣血，触发 GlobalEventManager.OnPlayerDamaged。</summary>
-    public static void ApplyTakeDamage(NetworkPlayer np, int amount)
+    /// <summary>对指定玩家对象权威扣血，触发 GlobalEventManager.OnPlayerDamaged。来源参数（可空）用于溯源记录。</summary>
+    public static void ApplyTakeDamage(NetworkPlayer np, int amount,
+        string sourceTemplateID = null, string sourceInstanceID = null, string sourceName = null)
     {
         if (np == null) return;
         if (NetworkServer.active)
         {
             np.currentHealth -= amount;
+            np.RecordPlayerDamageSource(amount, sourceTemplateID, sourceInstanceID, sourceName);
             GlobalEventManager.Instance?.TriggerPlayerDamaged(amount);
             np.RefreshUI();
         }
         else if (np.isLocalPlayer)
         {
-            np.CmdTakeDamage(amount);
+            np.CmdTakeDamage(amount, sourceTemplateID, sourceInstanceID, sourceName);
         }
         else
         {

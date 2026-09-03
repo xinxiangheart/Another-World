@@ -1588,7 +1588,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     CheckAndHandleDeaths();
                     break;
                 case "退场：己方玩家扣一血":
-                    traitOwner?.TakeDamage(1);
+                    traitOwner?.TakeDamage(1, ci.templateID, ci.instanceID); // granted 退场自伤（来源=死卡）
                     break;
                 default:
                     Debug.LogWarning($"[BoardSlot] ProcessGrantedDeathTraits 未处理的 trait: {trait}");
@@ -3403,7 +3403,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                         }
                         break;
                     case "退场：己方玩家扣一血":
-                        traitOwner?.TakeDamage(1);
+                        traitOwner?.TakeDamage(1, data.templateID, data.instanceID); // giveable 退场自伤（来源=死卡）
                         break;
                     default:
                         Debug.LogWarning($"[BoardSlot] HandleDeath(giveableDeathTraits) 未处理的 trait: {trait}");
