@@ -646,6 +646,20 @@ public class CardInstance : MonoBehaviour
 
         traits?.RefreshGranted(); // 特性组同步授予移除
     }
+
+    /// <summary>按来源 templateID 移除全部由该来源授予的特性（5.x，01336 修正者附着授予用）。
+    /// 附着授予只在宿主仍被该附着物附着时有意义——宿主离场回手等场景须清掉，防幻影特性重打。
+    /// 逐条走 RemoveGrantedTrait：同步 grantedTraitTexts/grantedTraits、复位 hasX 到模板原始值、特性组 RefreshGranted。</summary>
+    public void RemoveGrantedTraitsBySource(string sourceTemplateID)
+    {
+        if (string.IsNullOrEmpty(sourceTemplateID) || grantedTraits == null) return;
+        var texts = new List<string>();
+        foreach (var g in grantedTraits)
+            if (g != null && g.sourceTemplateID == sourceTemplateID && !string.IsNullOrEmpty(g.text))
+                texts.Add(g.text);
+        foreach (var t in texts)
+            RemoveGrantedTrait(t);
+    }
     /// <summary>
     /// 刷新该实例的2D/3D显示
     /// </summary>

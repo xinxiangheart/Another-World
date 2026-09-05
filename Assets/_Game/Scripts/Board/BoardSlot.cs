@@ -532,6 +532,15 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     bmRefresh.GetSlot(ri)?.currentCard3D?.GetComponent<Card3DInstance>()?.UpdateValues();
                 }
             }
+        // 5.x 先手重装（本侧作用域）：本轮被消耗的先手单位清零——RunRemoteFirstStrikes 每 FS 阶段执行一次，
+        // 覆盖远端玩家本地消耗（01312/03012/01519/01318/03502）无阶段边界 reset 的情况。下轮守卫从 _firstStrikeConsumed=false 开始。
+        var bmRearm = FindObjectOfType<BoardManager>();
+        if (bmRearm != null)
+            for (int rj = 6; rj <= 11; rj++)
+            {
+                var rcj = bmRearm.GetSlot(rj)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                if (rcj != null && rcj._firstStrikeConsumed) rcj._firstStrikeConsumed = false;
+            }
         NetworkPlayer.Local?.CmdRemoteFirstStrikeDone();
     }
     public bool prisonBlocked;      // 囚牢封锁

@@ -1218,11 +1218,11 @@ public class HandManager : MonoBehaviour
                 {
                     if (hostCard.prefixes.Contains("灵能"))
                     {
-                        hostCard.GrantTrait("先手：对对方前排召唤物造成2伤害，对后排造成1伤害");
+                        hostCard.GrantTrait("先手：对对方前排召唤物造成2伤害，对后排造成1伤害", null, "01336");
                     }
                     else
                     {
-                        hostCard.GrantTrait("先手：对对方前排召唤物造成1伤害");
+                        hostCard.GrantTrait("先手：对对方前排召唤物造成1伤害", null, "01336");
                     }
                     hostCard.hasFirstStrike = true;
                 }

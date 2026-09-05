@@ -86,6 +86,7 @@ public class EnemyPlayer : MonoBehaviour
         if (inst == null) inst = card.AddComponent<CardInstance>();
 
         inst.CopyFrom(oldInstance);
+        inst.RemoveGrantedTraitsBySource("01336"); // 5.x：01336 修正者附着授予离场即清，防幻影先手特性重打
         inst.handledReturnToHand = false;
 
         if (inst.templateID == "01524")

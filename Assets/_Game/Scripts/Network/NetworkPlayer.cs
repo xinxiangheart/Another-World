@@ -1200,6 +1200,7 @@ public class NetworkPlayer : NetworkBehaviour
         if (inst == null) inst = card.AddComponent<CardInstance>();
 
         inst.CopyFrom(oldInstance);
+        inst.RemoveGrantedTraitsBySource("01336"); // 5.x：01336 修正者附着授予离场即清，防幻影先手特性重打
         inst.currentAttack = Mathf.Max(0, inst.baseAttack);
         inst.currentHealth = Mathf.Max(0, inst.baseHealth);
         inst.currentMaxHealth = Mathf.Max(0, inst.baseMaxHealth);

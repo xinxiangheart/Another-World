@@ -207,9 +207,10 @@ public partial class TurnManager : MonoBehaviour
             ci.enemyDamageSourceIDs.Clear();
             ci.damageSourceInstanceIDs.Clear();
             ci.ironSmithOneCostConsumedCount = 0;
-            if (ci.templateID == "01124" || ci.templateID == "01312" || ci.templateID == "01516" || ci.templateID == "01513"
-                || ci.templateID == "01531")
-                ci._firstStrikeConsumed = false; // 5.x：hasFirstStrike 不再被回合消耗清零，此处改重装瞬态（白名单缺口按确认不动）
+            // 5.x 先手重装（整侧扫描）：凡本回合被消耗(_firstStrikeConsumed=true)的先手单位一律清零，覆盖白名单外
+            // 远端消耗单位（03012/01519/01318/03502 等）；host/AI 服务端本地消耗也在本循环作用域内。
+            if (ci._firstStrikeConsumed)
+                ci._firstStrikeConsumed = false;
             if (ci.templateID == "01511")
             {
                 ci.mindScholarTriggeredKeys?.Clear();
