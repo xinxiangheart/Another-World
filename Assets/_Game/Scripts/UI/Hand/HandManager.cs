@@ -417,6 +417,8 @@ public class HandManager : MonoBehaviour
                     cardInst.totalDamageTaken = owner.outlawNestTotalDamage;
             }
             instance3D.cardInstance = cardInst;
+            // 商人/收割者"召唤费用-1"场上固化（仅权威侧：host/离线/server 落板一次，随 activeStatuses 同步）
+            if (NetworkServer.active) CardInstance.ApplyCostDiscountStatus(cardInst, slot);
         }
 
         slot.SetCard(model);

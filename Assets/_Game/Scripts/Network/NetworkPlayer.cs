@@ -696,6 +696,8 @@ public class NetworkPlayer : NetworkBehaviour
                                 if (hmX != null) hmX.UpdateXValues(ci);
                                 c3d.UpdateValues();
                             }
+                            // 商人/收割者"召唤费用-1"场上固化（server 权威模型；上方已注册 aura，随 activeStatuses 同步）
+                            CardInstance.ApplyCostDiscountStatus(ci, slot);
                         }
                         slot.SetCard(model);
                         // 非Token卡 → 玩家放置，禁止过期SyncNow覆盖
@@ -1204,6 +1206,9 @@ public class NetworkPlayer : NetworkBehaviour
 
         inst.CopyFrom(oldInstance);
         inst.RemoveGrantedTraitsBySource("01336"); // 5.x：01336 修正者附着授予离场即清，防幻影先手特性重打
+        // 商人/收割者"召唤费用-1"来源状态：回手即清（回手后重判，来源在场才重新打标 flag；手牌不携带 AddStatus）
+        inst.RemoveStatusBySource("01520");
+        inst.RemoveStatusBySource("01528");
         inst.currentAttack = Mathf.Max(0, inst.baseAttack);
         inst.currentHealth = Mathf.Max(0, inst.baseHealth);
         inst.currentMaxHealth = Mathf.Max(0, inst.baseMaxHealth);

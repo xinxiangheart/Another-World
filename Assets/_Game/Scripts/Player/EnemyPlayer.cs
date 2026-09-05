@@ -87,6 +87,9 @@ public class EnemyPlayer : MonoBehaviour
 
         inst.CopyFrom(oldInstance);
         inst.RemoveGrantedTraitsBySource("01336"); // 5.x：01336 修正者附着授予离场即清，防幻影先手特性重打
+        // 商人/收割者"召唤费用-1"来源状态：回手即清（手牌不携带 AddStatus，来源是否在场由 flag 另判）
+        inst.RemoveStatusBySource("01520");
+        inst.RemoveStatusBySource("01528");
         inst.handledReturnToHand = false;
 
         if (inst.templateID == "01524")

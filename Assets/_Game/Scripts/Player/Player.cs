@@ -146,6 +146,9 @@ public class Player : MonoBehaviour
 
         inst.CopyFrom(oldInstance);
         inst.RemoveGrantedTraitsBySource("01336"); // 5.x：01336 修正者附着授予离场即清，防幻影先手特性重打
+        // 商人/收割者"召唤费用-1"来源状态：回手即清（回手后重判，来源在场才重新打标 flag；手牌不携带 AddStatus）
+        inst.RemoveStatusBySource("01520");
+        inst.RemoveStatusBySource("01528");
         inst.currentAttack = Mathf.Max(0, inst.baseAttack);
         inst.currentHealth = Mathf.Max(0, inst.baseHealth);
         inst.currentMaxHealth = Mathf.Max(0, inst.baseMaxHealth);

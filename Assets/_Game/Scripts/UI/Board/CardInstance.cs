@@ -1046,6 +1046,33 @@ public class CardInstance : MonoBehaviour
         activeStatuses.RemoveAll(a => a == null || a.sourceID == sourceID);
     }
 
+    /// <summary>为板面召唤物登记"召唤费用-1"来源状态（01520 神秘商人 / 01528 能量收割者）——
+    /// 手牌打出的减费在场上固化为来源状态（悬停可溯）。在【权威落板实例】上调用一次：之后随 activeStatuses
+    /// (proto field22) 同步传播、退场/来源离场不清（与 currentCost 场上锁定同范式）。回手由
+    /// AddCardToHandFromInstance 处 RemoveStatusBySource("01520"/"01528") 清除。</summary>
+    public static void ApplyCostDiscountStatus(CardInstance ci, BoardSlot slot)
+    {
+        if (ci == null || slot == null) return;
+        var td = CardDatabase.Instance?.GetTemplate(ci.templateID);
+        if (td == null || td.cardType != CardType.Summon) return;
+        if (ci.currentCost >= td.baseCost) return; // 仅实际打折(费用-1/-2)的手牌召唤物登记；效果召唤 token 不打折不挂
+
+        int sideStart = slot.slotID >= 6 ? 6 : 0; // 卡拥有者半场
+        bool isLingNeng = ci.prefixes != null && ci.prefixes.Contains("灵能");
+        var bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return;
+        bool merchant = false, reaper = false;
+        for (int i = sideStart; i < sideStart + 6; i++)
+        {
+            var o = bm.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (o == null || o.isDead || o.isAttached) continue;
+            if (o.templateID == "01520") merchant = true;
+            else if (o.templateID == "01528") reaper = true;
+        }
+        if (merchant) ci.AddStatus(false, "召唤费用-1", "01520");
+        if (reaper && isLingNeng) ci.AddStatus(false, "召唤费用-1", "01528");
+    }
+
     /// <summary>序列化 activeStatuses → ";;" 分隔，每项 "isDebuff~description~sourceName~sourceID"。</summary>
     public string SerializeActiveStatuses()
     {
