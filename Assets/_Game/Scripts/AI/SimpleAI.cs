@@ -346,7 +346,7 @@ public class SimpleAI : MonoBehaviour
         for (int s = 0; s <= 5; s++)
         {
             CardInstance ci = bm.GetSlot(s)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
-            if (ci != null && ci.hasActiveExit) return true;
+            if (ci != null && ci.HasActiveExit) return true; // 5.x 特性组：被沉默/被禁的主动退场不计
         }
         return false;
     }
@@ -359,7 +359,7 @@ public class SimpleAI : MonoBehaviour
         for (int s = 0; s <= 5; s++)
         {
             CardInstance ci = bm.GetSlot(s)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
-            if (ci != null && ci.hasOnDeath) return true;
+            if (ci != null && ci.HasOnDeath) return true; // 5.x 特性组：被沉默/被禁的退场亡语不计
         }
         return false;
     }

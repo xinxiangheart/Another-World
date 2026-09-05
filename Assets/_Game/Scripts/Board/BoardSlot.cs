@@ -1348,7 +1348,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             var ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
             if (ci == null || ci.currentHealth > 0) continue;
             if (ci._enterEffectRunning) continue; // 进场中，不参与死亡/反击
-            if (!ci.hasRevenge || string.IsNullOrEmpty(ci.revengeEffect)) continue;
+            if (!ci.HasRevenge || string.IsNullOrEmpty(ci.revengeEffect)) continue; // 5.x 特性组：武装(未抑制)且反击类激活才收集
 
             var sourceIDs = new List<string>();
             var marker = s.currentCard3D.GetComponent<DamageSourceMarker>();
@@ -1500,7 +1500,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 if (c3dAtt?.cardInstance != null && c3dAtt.cardInstance.templateID == "01131"
                     && c3dAtt.cardInstance.hostSlotID == slotID)
                 {
-                    bool canConvert = c3d.cardInstance.hasActiveExit;
+                    bool canConvert = c3d.cardInstance.HasActiveExit; // 5.x 特性组：守卫/禁制已在上方清零武装态，此处只再叠加沉默/禁制维度
                     if (canConvert && (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(c3dAtt.cardInstance)))
                     {
                         c3d.cardInstance.isActiveExit = true;
@@ -2315,7 +2315,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         // 修复 traitKey：hasFirstStrike→先手、hasOnDeath→退场、hasRevenge→反击
         List<(string key, CardData.TraitEntry entry)> traits = new List<(string, CardData.TraitEntry)>();
         var revenge = ResolveSourceTrait(target, "反击");
-        if (target.hasRevenge && revenge != null) traits.Add(("反击", revenge));
+        // 5.x 复制拥有判断并入组 presence（数据一致；ResolveSourceTrait 已要求条目存在，无行为差）。保留 raw 判定作 traits 为空兜底
+        if (target.hasRevenge && (target.traits == null || target.traits.HasClass("反击")) && revenge != null) traits.Add(("反击", revenge));
         var firstStrike = ResolveSourceTrait(target, "先手");
         if (target.hasFirstStrike && firstStrike != null) traits.Add(("先手", firstStrike));
         var death = ResolveSourceTrait(target, "退场");

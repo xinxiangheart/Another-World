@@ -181,10 +181,18 @@ public class CardInstance : MonoBehaviour
     public string debuffText;
     public System.Action<int> _disasterWalkerHandler;
     // 受沉默控制的特性属性
-    public bool HasOnEnter => hasOnEnter && !IsSilenced();
-    public bool HasOnDeath => hasOnDeath && !IsSilenced();
-    public bool HasActiveExit => hasActiveExit && !IsSilenced();
-    public bool HasRevenge => hasRevenge && !IsSilenced();
+    /// <summary>进场（5.x 已迁特性组）：hasOnEnter 保留数据拥有；特性组 HasActiveClass("进场") 叠加激活（未沉默/未单条禁）。
+    /// 进场效果分发门在 template（放置瞬间/召唤路径用 template.hasOnEnter + StartOnEnterEffect:1106 的 IsTraitBlocked 现查），本属性只供"按实例现态判断进场能力"的侧方判断（投机者 01125、AI 评分）使用——被沉默/被禁的进场特性不计。</summary>
+    public bool HasOnEnter => hasOnEnter && (traits != null ? traits.HasActiveClass("进场") : true) && !IsSilenced();
+    /// <summary>退场亡语（5.x 已迁特性组）：hasOnDeath 兼任"武装/瞬态抑制"——死亡时刻 守墓人01330/法官01323 禁退场时清 false（GlobalDeathEventHandler:26-27、BoardSlot:1480-1490），此处必须保留该判定。
+    /// 特性组 HasActiveClass("退场") 叠加拥有+激活（未沉默/未单条禁）。旧 bool 并行保留。</summary>
+    public bool HasOnDeath => hasOnDeath && (traits != null ? traits.HasActiveClass("退场") : true) && !IsSilenced();
+    /// <summary>主动退场（5.x 已迁特性组）：同上，hasActiveExit 保留武装瞬态（守墓人/法官成对清零 + 未弃之人:1507 清 hasOnDeath 时自身不受清）。特性组查"主动退场"类。</summary>
+    public bool HasActiveExit => hasActiveExit && (traits != null ? traits.HasActiveClass("主动退场") : true) && !IsSilenced();
+    /// <summary>反击（5.x 已迁特性组）：hasRevenge 仍作"武装/瞬态抑制"标志——抛置/变形/战斗消耗等清零处写 false 抑制本次死亡不反伤，此处必须保留该判定。
+    /// 特性组 HasActiveClass("反击") 叠加拥有+激活（未沉默 BlockAll/未单条禁），新增"被沉默/被禁的反击不触发"（与死亡类效果被沉默一致）。
+    /// 旧 hasRevenge bool 并行保留（图标/数据传播/复制拥有用）。</summary>
+    public bool HasRevenge => hasRevenge && (traits != null ? traits.HasActiveClass("反击") : true) && !IsSilenced();
     /// <summary>抛置（5.x 已迁特性组）：拥有抛置类特性且激活（未沉默/未单条禁）。旧 hasDiscard bool 并行保留（图标/数据传播用）。
     /// 特性组 HasActiveClass 已含 BlockAll(沉默) 与单条禁；外层叠加实时全沉默查询，与旧语义（hasDiscard && !IsSilenced）完全等价。
     /// 光环"禁抛置"（萨满01515）为持续现查，不在此属性，由抛置动作入口另判 IsTraitBlocked("抛置")。</summary>
