@@ -54,12 +54,14 @@ public struct DamageInput
     public string spellTemplateID;
     /// <summary>普通对位攻击（召唤物直接撞击目标）：已有飞卡动画，不播伤害粒子，直接弹数字。</summary>
     public bool isDirectAttack;
+    /// <summary>法伤来源标记：Phase==Spell 且来自"对方"(施法者与防守方异侧)。由法伤调用点按目标槽判定传入。非法术恒 false。</summary>
+    public bool fromEnemySpell;
 
     public DamageInput(CardInstance attacker, CardInstance defender, int baseDamage,
         GameObject sourceObject = null, DamagePhase phase = DamagePhase.Battle,
         int attackerSlotTempAttackBoost = 0, BoardSlot attackerSlot = null,
         int traitIndex = -1, string traitText = null, string effectText = null,
-        string spellTemplateID = null, bool isDirectAttack = false)
+        string spellTemplateID = null, bool isDirectAttack = false, bool fromEnemySpell = false)
     {
         this.attacker = attacker;
         this.defender = defender;
@@ -73,6 +75,7 @@ public struct DamageInput
         this.effectText = effectText;
         this.spellTemplateID = spellTemplateID;
         this.isDirectAttack = isDirectAttack;
+        this.fromEnemySpell = fromEnemySpell;
     }
 }
 
@@ -93,6 +96,10 @@ public class DamageContext
     public CardInstance Defender => input.defender;
     public int BaseDamage => input.baseDamage;
     public DamagePhase Phase => input.phase;
+    /// <summary>法伤来自"对方"（入口已按施法者侧判定）。非 Spell 恒 false。</summary>
+    public bool FromEnemySpell => input.fromEnemySpell;
+    /// <summary>是否"敌方一张法术牌"造成的伤害（Phase==Spell 且来自对方）——征服者免疫等读取用。</summary>
+    public bool IsEnemySpellDamage => input.phase == DamagePhase.Spell && input.fromEnemySpell;
 
     public DamageContext(DamageInput input)
     {

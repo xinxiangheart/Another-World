@@ -245,9 +245,12 @@ public class SimpleAI : MonoBehaviour
         if (td == null) return;
 
         var capturedTarget = target;
+        // 进 RunAsLocal 前快照 AI 是否主机侧——AI 是 Remote 对象 → false（法伤侧判定用）
+        bool casterHostSide = _ai == NetworkPlayer.Local;
         _ai.RunAsLocal(() =>
         {
             var ctx = EffectContext.ForSpell(td, capturedTarget);
+            ctx.spellCasterIsHost = casterHostSide;
             EffectDispatcher.Dispatch(Trigger.Spell, ctx);
             BoardSlot.CheckAndHandleDeaths();
             BoardSyncManager.MarkDirty();

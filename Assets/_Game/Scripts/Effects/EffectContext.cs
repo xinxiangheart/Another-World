@@ -33,6 +33,10 @@ public class EffectContext
     /// <summary>目标槽位（法术/需选择的效果，由选择结果填入）。</summary>
     public BoardSlot targetSlot;
 
+    /// <summary>法术施法者是否主机侧(6-11 半场)。建 Spell ctx 时快照（进 RunAsLocal 前、未换 Local/Remote 定格）——
+    /// 供法术伤害"是否来自对方"侧判定：(目标槽>=6) != 本值。非法术恒 false 无意义。</summary>
+    public bool spellCasterIsHost;
+
     /// <summary>本次退场是否为主动退场（抛置/牺牲）。</summary>
     public bool isActiveExit;
 

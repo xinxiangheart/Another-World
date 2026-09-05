@@ -170,7 +170,9 @@ public static class SpellHandlers
                 // 法术级溯源：效果描述 + 法术模板ID。ctx.source 对法术恒 null，须用 ctx.template（ForSpell 传入的法术 CardData）
                 string effectText = ctx.template?.effect;
                 string spellID = ctx.template?.templateID;
-                BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, 3, null, -1, null, effectText, spellID);
+                // 法伤来源标记（征服者免疫第一步）：目标槽在 6-11 ⇔ 施法者主机侧，异侧=来自对方
+                BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, 3, null, -1, null, effectText, spellID,
+                    (ts.slotID >= 6) != ctx.spellCasterIsHost);
                 t3d.UpdateValues();
             }
         }
@@ -191,9 +193,10 @@ public static class SpellHandlers
             var t3d = ts.currentCard3D.GetComponent<Card3DInstance>();
             if (t3d?.cardInstance != null && t3d.cardInstance.currentHealth >= 4)
             {
-                // 法术级溯源：效果描述 + 法术模板ID（血拼 02110）
+                // 法术级溯源：效果描述 + 法术模板ID（血拼 02110）+ 法伤来源标记
                 BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, 4, null,
-                    -1, null, ctx.template?.effect, ctx.template?.templateID);
+                    -1, null, ctx.template?.effect, ctx.template?.templateID,
+                    (ts.slotID >= 6) != ctx.spellCasterIsHost);
                 t3d.UpdateValues();
                 NetworkPlayer.Local.AddEnergy(4);
                 BoardSlot.CheckAndHandleDeaths();
@@ -380,9 +383,10 @@ public static class SpellHandlers
                     if (t3d?.cardInstance != null)
                     {
                         int dmg = c == 1 ? 3 : 2;
-                        // 法术级溯源：效果描述 + 法术模板ID（穿膛之刺 02214）
+                        // 法术级溯源：效果描述 + 法术模板ID（穿膛之刺 02214）+ 法伤来源标记（逐格）
                         BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, dmg, null,
-                            -1, null, ctx.template?.effect, ctx.template?.templateID);
+                            -1, null, ctx.template?.effect, ctx.template?.templateID,
+                            (rs + c >= 6) != ctx.spellCasterIsHost);
                         t3d.UpdateValues();
                     }
                 }
@@ -438,9 +442,10 @@ public static class SpellHandlers
                     if (c3d?.cardInstance != null)
                     {
                         if (c3d.cardInstance.hasShield) c3d.cardInstance.RemoveShield();
-                        // 法术级溯源：效果描述 + 法术模板ID（箭雨 02303）
+                        // 法术级溯源：效果描述 + 法术模板ID（箭雨 02303）+ 法伤来源标记（逐格）
                         BattleManager.Instance.ApplyDamageToMinionPublic(c3d.cardInstance, 2, null,
-                            -1, null, ctx.template?.effect, ctx.template?.templateID);
+                            -1, null, ctx.template?.effect, ctx.template?.templateID,
+                            (i >= 6) != ctx.spellCasterIsHost);
                         c3d.UpdateValues();
                     }
                 }

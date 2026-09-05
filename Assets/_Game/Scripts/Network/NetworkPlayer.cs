@@ -552,6 +552,8 @@ public class NetworkPlayer : NetworkBehaviour
     [Command]
     public void CmdResolveSpell(string templateID, int clientSlotID)
     {
+        // 进 RunAsLocal 前快照施法者是否主机侧(6-11)——彼时未换 Local/Remote，判定稳定（法伤侧判定用）
+        bool casterHostSide = this == NetworkPlayer.Local;
         int serverSlot = clientSlotID < 0 ? -1
             : (isLocalPlayer ? clientSlotID : BoardSlot.MirrorSlot(clientSlotID));
         RunAsLocal(() =>
@@ -562,6 +564,7 @@ public class NetworkPlayer : NetworkBehaviour
             if (template != null)
             {
                 var spellCtx = EffectContext.ForSpell(template, targetSlot);
+                spellCtx.spellCasterIsHost = casterHostSide;
                 EffectDispatcher.Dispatch(Trigger.Spell, spellCtx);
             }
             BoardSlot.CheckAndHandleDeaths();

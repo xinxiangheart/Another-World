@@ -1806,22 +1806,24 @@ public class BattleManager : MonoBehaviour
     }
     void ApplyDamageToMinion(CardInstance target, int damage, GameObject source,
         int traitIndex = -1, string traitText = null, string effectText = null,
-        string spellTemplateID = null)
+        string spellTemplateID = null, bool fromEnemySpell = false)
     {
         if (target == null) return;
 
         // ── Step D6: 统一走 DamagePipeline 五阶段 ───────────────────
+        // 法伤来源标记（征服者免疫第一步）：带法术模板ID → phase=Spell，并透传"是否来自对方"(调用点按目标槽判)
         CardInstance sourceCI = source?.GetComponent<Card3DInstance>()?.cardInstance;
         DamagePipeline.Process(new DamageInput(
             attacker: sourceCI,
             defender: target,
             baseDamage: damage,
             sourceObject: source,
-            phase: DamagePhase.Battle,
+            phase: spellTemplateID != null ? DamagePhase.Spell : DamagePhase.Battle,
             traitIndex: traitIndex,
             traitText: traitText,
             effectText: effectText,
-            spellTemplateID: spellTemplateID
+            spellTemplateID: spellTemplateID,
+            fromEnemySpell: fromEnemySpell
         ));
         // 护盾吸收/领主重定向/追随者挡死/祭司复活 → DamagePipeline 内全处理。
         // 调用方后续读 target.currentHealth 即可判断生死。
@@ -1915,7 +1917,7 @@ public class BattleManager : MonoBehaviour
     }
     public void ApplyDamageToMinionPublic(CardInstance target, int damage, GameObject source,
         int traitIndex = -1, string traitText = null, string effectText = null,
-        string spellTemplateID = null)
+        string spellTemplateID = null, bool fromEnemySpell = false)
     {
         // Pure client: route through server-authoritative command
         if (NetworkClient.isConnected && !NetworkServer.active)
@@ -1936,7 +1938,7 @@ public class BattleManager : MonoBehaviour
             }
             return;
         }
-        ApplyDamageToMinion(target, damage, source, traitIndex, traitText, effectText, spellTemplateID);
+        ApplyDamageToMinion(target, damage, source, traitIndex, traitText, effectText, spellTemplateID, fromEnemySpell);
     }
     public IEnumerator WaitForSelection(Action<Action> selection)
     {

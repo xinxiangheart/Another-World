@@ -483,6 +483,7 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
         else
         {
             var spellCtx = EffectContext.ForSpell(template, targetSlot);
+            spellCtx.spellCasterIsHost = NetworkServer.active; // 本地/离线=主机侧(6-11)；远程客户端本地放→false（法伤侧判定用）
             EffectDispatcher.Dispatch(Trigger.Spell, spellCtx);
             SpellPending = spellCtx.StartedCoroutine;
 
