@@ -375,16 +375,14 @@ public class CardDisplay2DNew : MonoBehaviour
         if (inst == null) return;
 
         Vector2 size = GetIconRowSize(traitTestSprite, traitIconSize);
-        // 完全沉默 → 特性全部失效，统一隐藏（沉默图标由状态排显示）
-        if (IsFullySilenced(inst)) return;
-
-        if (inst.hasFirstStrike)  AddRowIcon(traitIconsArea, "trait_firststrike", traitFirstStrikeSprite, traitIconPath + "trait_firststrike", size);
-        if (inst.hasOnEnter)      AddRowIcon(traitIconsArea, "trait_onenter", traitOnEnterSprite, traitIconPath + "trait_onenter", size);
-        if (inst.hasOnDeath)      AddRowIcon(traitIconsArea, "trait_deathrattle", traitDeathrattleSprite, traitIconPath + "trait_deathrattle", size);
-        if (inst.hasActiveExit)   AddRowIcon(traitIconsArea, "trait_activeexit", traitActiveExitSprite, traitIconPath + "trait_activeexit", size);
-        if (inst.hasRevenge)      AddRowIcon(traitIconsArea, "trait_revenge", traitRevengeSprite, traitIconPath + "trait_revenge", size);
-        if (inst.hasDiscard)      AddRowIcon(traitIconsArea, "trait_discard", traitDiscardSprite, traitIconPath + "trait_discard", size);
-        if (inst.canAttach)       AddRowIcon(traitIconsArea, "trait_attach", traitAttachSprite, traitIconPath + "trait_attach", size);
+        // 6.x 置灰保留：特性被禁（完全沉默 BlockAll / 光环类禁）→ 对应图标灰显而非整排隐藏，解除恢复彩色
+        if (inst.hasFirstStrike)  AddRowIcon(traitIconsArea, "trait_firststrike", traitFirstStrikeSprite, traitIconPath + "trait_firststrike", size, TraitBanQuery.ClassBlocked(inst, "先手"));
+        if (inst.hasOnEnter)      AddRowIcon(traitIconsArea, "trait_onenter", traitOnEnterSprite, traitIconPath + "trait_onenter", size, TraitBanQuery.ClassBlocked(inst, "进场"));
+        if (inst.hasOnDeath)      AddRowIcon(traitIconsArea, "trait_deathrattle", traitDeathrattleSprite, traitIconPath + "trait_deathrattle", size, TraitBanQuery.ClassBlocked(inst, "退场"));
+        if (inst.hasActiveExit)   AddRowIcon(traitIconsArea, "trait_activeexit", traitActiveExitSprite, traitIconPath + "trait_activeexit", size, TraitBanQuery.ClassBlocked(inst, "主动退场"));
+        if (inst.hasRevenge)      AddRowIcon(traitIconsArea, "trait_revenge", traitRevengeSprite, traitIconPath + "trait_revenge", size, TraitBanQuery.ClassBlocked(inst, "反击"));
+        if (inst.hasDiscard)      AddRowIcon(traitIconsArea, "trait_discard", traitDiscardSprite, traitIconPath + "trait_discard", size, TraitBanQuery.ClassBlocked(inst, "抛置"));
+        if (inst.canAttach)       AddRowIcon(traitIconsArea, "trait_attach", traitAttachSprite, traitIconPath + "trait_attach", size, TraitBanQuery.ClassBlocked(inst, "附着"));
         // 攻击前后排是目标选择逻辑（非图标）、光环是状态（非特性）——均不显示特性图标
     }
 
@@ -561,8 +559,9 @@ public class CardDisplay2DNew : MonoBehaviour
     }
 #endif
 
-    /// <summary>在指定排容器内创建一个图标（直接 Sprite → 路径 → 占位）。固定尺寸，不随数量拉伸。</summary>
-    void AddRowIcon(RectTransform area, string key, Sprite direct, string path, Vector2 size)
+    /// <summary>在指定排容器内创建一个图标（直接 Sprite → 路径 → 占位）。固定尺寸，不随数量拉伸。
+    /// blocked=true 时图标置灰（6.x：特性被禁）——白底彩图乘法着灰。</summary>
+    void AddRowIcon(RectTransform area, string key, Sprite direct, string path, Vector2 size, bool blocked = false)
     {
         var go = new GameObject(key, typeof(RectTransform), typeof(Image), typeof(LayoutElement));
         go.transform.SetParent(area, false);
@@ -571,7 +570,9 @@ public class CardDisplay2DNew : MonoBehaviour
         var le = go.GetComponent<LayoutElement>();
         le.preferredWidth = size.x;
         le.preferredHeight = size.y;
-        SetImageSprite(go.GetComponent<Image>(), direct, path);
+        var img = go.GetComponent<Image>();
+        SetImageSprite(img, direct, path);
+        img.color = blocked ? TraitBanQuery.BlockedTint : Color.white;
     }
 
     // ================= 资源加载（直接 Sprite 优先 → 路径 → 占位） =================

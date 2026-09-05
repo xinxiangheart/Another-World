@@ -147,19 +147,22 @@ public class GlobalEventManager : MonoBehaviour
     // 三张"封锁/沉默"光环不给受害者写字段，靠持续查询（IsTraitBlocked/IsFullySilenced）生效。
     // 受害者的 activeStatuses 标签用"中央 Refresh"按板面现算——谓词与查询同源，去重幂等，各端可跑。
 
-    /// <summary>按当前板面重算一张卡的三个封锁/沉默光环受害者状态。</summary>
+    /// <summary>按当前板面重算一张卡的三个封锁/沉默光环受害者状态。
+    /// 任一状态变化 → 刷新该卡 2D/3D 显示（6.x：特性图标置灰/恢复实时跟板面）。</summary>
     public void RefreshAuraStatusForCard(CardInstance ci)
     {
         if (ci == null) return;
-        SyncAuraStatus(ci, "01323",
+        bool changed = false;
+        changed |= SyncAuraStatus(ci, "01323",
             IsTraitBlockedByBoardState(ci, "退场"),
             "无法触发退场（含主动退场）"); // 法官：禁对方退场（含主动退场，与 BoardSlot 同清 hasOnDeath+hasActiveExit 一致）
-        SyncAuraStatus(ci, "01515",
+        changed |= SyncAuraStatus(ci, "01515",
             IsTraitBlockedByBoardState(ci, "进场") || IsTraitBlockedByBoardState(ci, "抛置"),
             "无法触发进场和抛置特性"); // 狂热萨满：禁对方进场/抛置
-        SyncAuraStatus(ci, "01335",
+        changed |= SyncAuraStatus(ci, "01335",
             IsUnderEnergyHacker(ci),
             "无法触发任何特性（能量骇客封锁）"); // 能量骇客：对位完全沉默
+        if (changed) ci.RefreshDisplay();
     }
 
     /// <summary>全板 12 槽重算光环受害者状态（阶段边界/光环源进场时调用）。</summary>
@@ -174,10 +177,14 @@ public class GlobalEventManager : MonoBehaviour
         }
     }
 
-    static void SyncAuraStatus(CardInstance ci, string sourceID, bool active, string description)
+    static bool SyncAuraStatus(CardInstance ci, string sourceID, bool active, string description)
     {
+        bool exists = ci.activeStatuses != null
+            && ci.activeStatuses.Exists(a => a != null && a.sourceID == sourceID);
+        if (active == exists) return false; // 状态未翻转 → 无变化（去重幂等）
         if (active) ci.AddStatus(true, description, sourceID);
         else ci.RemoveStatusBySource(sourceID);
+        return true;
     }
 
     /// <summary>能量骇客对位判定：独立占位或附着（hostSlotID 动态）都要算。补 IsSilencedByEnergyHacker 漏附着的情况。</summary>

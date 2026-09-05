@@ -84,6 +84,12 @@ public class Test1Panel : MonoBehaviour
                             $"特性: {traits}";
         }
 
+        // 6.1/6.4 状态区：本卡被施加的来源状态（描述 + 来源卡名）。仅目标有来源状态记录时出现；
+        // 手牌/图鉴预览无板面状态 → 恒空，此区不出现（2D 手牌不显示状态 Tag 规则一致）。
+        string statusText = BuildStatusText(instance);
+        if (statusText.Length > 0)
+            infoText.text += "\n" + statusText;
+
         // 显示附着物信息
         if (!instance.isAttached)
         {
@@ -133,10 +139,40 @@ public class Test1Panel : MonoBehaviour
         // 特性条目化：固有（跳过"赋予"标记）+ 获得的赋予特性，统一编号排序
         var entries = ci.GetVisibleTraitEntries();
         if (entries.Count == 0) return "无";
+        // 6.3 禁制原因：完全沉默整卡原因优先；否则按条目属性类查光环禁制（法官/萨满）原因，附在行尾
+        bool fullySilenced = TraitBanQuery.IsFullySilenced(ci);
         var lines = new List<string>();
         for (int i = 0; i < entries.Count; i++)
-            lines.Add(CardInstance.FormatTraitEntry(i + 1, entries[i]));
+        {
+            string s = CardInstance.FormatTraitEntry(i + 1, entries[i]);
+            string reason = "";
+            if (fullySilenced) reason = TraitBanQuery.FullSilenceReason(ci);
+            else if (entries[i].attributes != null)
+                foreach (var a in entries[i].attributes)
+                {
+                    string r = TraitBanQuery.ClassBanReason(ci, a);
+                    if (r.Length > 0) { reason = r; break; }
+                }
+            if (reason.Length > 0) s += "\n　" + reason;
+            lines.Add(s);
+        }
         return string.Join("\n", lines);
     }
+
+    /// <summary>状态区文本：本卡被施加的每条来源状态 → "· 描述（来源：卡名）"。无状态返回空串。</summary>
+    static string BuildStatusText(CardInstance ci)
+    {
+        if (ci == null || ci.activeStatuses == null || ci.activeStatuses.Count == 0) return "";
+        var lines = new List<string>();
+        foreach (var a in ci.activeStatuses)
+        {
+            if (a == null) continue;
+            string text = TraitBanQuery.StatusWithSource(a);
+            if (text == null) continue;
+            lines.Add("· " + text.Replace("\n", " / "));
+        }
+        return lines.Count > 0 ? "状态：\n" + string.Join("\n", lines) : "";
+    }
+
     public void Hide() => panelRoot.SetActive(false);
 }

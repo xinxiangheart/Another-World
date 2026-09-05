@@ -104,7 +104,7 @@ public static class DeathHandlers
         if (ctx.source != null && ctx.source.isAttached) return ctx.source.hostSlotID;
         return ctx.sourceSlot?.slotID ?? -1;
     }
-    /// <summary>移除源卡对半场所有卡的某来源状态（法官/萨满退场用）。</summary>
+    /// <summary>移除源卡对半场所有卡的某来源状态（法官/萨满退场用）。移除后刷新显示（6.x：图标置灰/恢复跟板面）。</summary>
     static void RemoveOpponentHalfStatus(string templateID, int sourceSlot)
     {
         var bm = BM(); if (bm == null || sourceSlot < 0) return;
@@ -112,16 +112,24 @@ public static class DeathHandlers
         for (int i = start; i <= end; i++)
         {
             var ci = bm.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
-            ci?.RemoveStatusBySource(templateID);
+            if (ci != null)
+            {
+                ci.RemoveStatusBySource(templateID);
+                ci.RefreshDisplay();
+            }
         }
     }
-    /// <summary>移除源卡对位单槽卡的某来源状态（能量骇客退场用）。</summary>
+    /// <summary>移除源卡对位单槽卡的某来源状态（能量骇客退场用）。移除后刷新显示。</summary>
     static void RemoveOppositeSlotStatus(string templateID, int sourceSlot)
     {
         var bm = BM(); if (bm == null || sourceSlot < 0) return;
         int opp = sourceSlot < 6 ? sourceSlot + 6 : sourceSlot - 6;
         var ci = bm.GetSlot(opp)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
-        ci?.RemoveStatusBySource(templateID);
+        if (ci != null)
+        {
+            ci.RemoveStatusBySource(templateID);
+            ci.RefreshDisplay();
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════

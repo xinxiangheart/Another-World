@@ -12,9 +12,10 @@ using UnityEngine;
 //   - 每列超 max*PerColumn 自动分新列（特性新列再向左、状态新列再向右）。
 //
 // 内容：
-//   - 特性：CardInstance.GetVisibleTraitEntries() → "属性：文本"；完全沉默时空列。
+//   - 特性：CardInstance.GetVisibleTraitEntries() → "属性：文本"；被禁条目（完全沉默 BlockAll / 光环类禁）
+//     行尾附禁制原因并整行置灰；完全沉默也照常列出（"置灰保留"，与卡面特性图标对齐）。
 //   - 状态：仅显示"目标实际受到的、有来源记录的状态"：
-//     ① ci.activeStatuses（AddStatus 登记的目标侧状态来源记录）→ 每条一个标签（description）；
+//     ① ci.activeStatuses（AddStatus 登记的目标侧状态来源记录）→ 每条一个标签（描述 + 来源卡名）；
 //     ② 01525 格子强化动态条 = 攻击力临时+{slot.slotTempAttackBoost}（槽位真源，目标实际受到的加成）。
 //     CardData.buffText/debuffText 是"本卡给予别人状态时的描述"，不是自己身上的状态 → 自己悬停时绝不读取。
 //
@@ -184,20 +185,22 @@ public class HoverTagSystem : MonoBehaviour
 
     // ═══════════════════ 单侧列布局 ═══════════════════
 
-    void BuildSide(List<string> texts, bool isLeft, int maxPerColumn, float cardHalfW)
+    void BuildSide(List<(string text, bool blocked)> items, bool isLeft, int maxPerColumn, float cardHalfW)
     {
         int perCol = Mathf.Max(1, maxPerColumn);
-        int columnCount = Mathf.CeilToInt((float)texts.Count / perCol);
+        int columnCount = Mathf.CeilToInt((float)items.Count / perCol);
 
         // ① 实例化所有标签并测量尺寸（GetSize 为局域单位）。
         var sizes = new List<Vector2>();
-        foreach (var t in texts)
+        foreach (var item in items)
         {
             GameObject go = Instantiate(_prefab, tagLayer, false);
             go.name = isLeft ? "TraitTag" : "StatusTag";
             var label = go.GetComponent<HoverTagLabel>();
             if (label == null) label = go.AddComponent<HoverTagLabel>();
-            if (!label.SetText(t)) { Object.Destroy(go); continue; }
+            if (!label.SetText(item.text)) { Object.Destroy(go); continue; }
+            if (item.blocked && label.labelText != null)
+                label.labelText.color = TraitBanQuery.BlockedTint; // 6.3 被禁特性行置灰
             _tags.Add(label);
             sizes.Add(label.GetSize());
         }
@@ -281,12 +284,13 @@ public class HoverTagSystem : MonoBehaviour
 
     // ═══════════════════ 内容生成 ═══════════════════
 
-    /// <summary>左列特性文本：GetVisibleTraitEntries → "属性：文本"（无编号、无赋予标注）。</summary>
-    static List<string> BuildTraitTexts(CardInstance ci)
+    /// <summary>左列特性文本：GetVisibleTraitEntries → "属性：文本"（无编号、无赋予标注）。
+    /// 6.x 置灰保留：完全沉默不再空列；被禁（完全沉默 BlockAll / 光环类禁）条目行尾附原因并标记 blocked（置灰）。</summary>
+    static List<(string, bool)> BuildTraitTexts(CardInstance ci)
     {
-        var outList = new List<string>();
+        var outList = new List<(string, bool)>();
         if (ci == null) return outList;
-        if (IsFullySilenced(ci)) return outList; // 完全沉默 → 特性失效，空列（对齐图标侧）
+        bool fullySilenced = TraitBanQuery.IsFullySilenced(ci);
 
         var entries = ci.GetVisibleTraitEntries();
         foreach (var e in entries)
@@ -299,49 +303,48 @@ public class HoverTagSystem : MonoBehaviour
             string line = (e.attributes != null && e.attributes.Length > 0)
                 ? string.Join("、", e.attributes) + "：" + cleaned
                 : cleaned;
-            if (!string.IsNullOrEmpty(line)) outList.Add(line);
+            if (string.IsNullOrEmpty(line)) continue;
+
+            // 被禁 → 行尾附原因：完全沉默给整卡原因；否则按属性类查光环禁制（法官/萨满）原因。
+            string reason = "";
+            if (fullySilenced) reason = TraitBanQuery.FullSilenceReason(ci);
+            else if (e.attributes != null)
+                foreach (var a in e.attributes)
+                {
+                    string r = TraitBanQuery.ClassBanReason(ci, a);
+                    if (r.Length > 0) { reason = r; break; }
+                }
+            if (reason.Length > 0) line += "\n" + reason;
+            outList.Add((line, reason.Length > 0));
         }
         return outList;
     }
 
-    /// <summary>右列状态文本：目标实际受到的、有来源记录的状态。
+    /// <summary>右列状态文本：目标实际受到的、有来源记录的状态（6.1/6.4：每条附来源卡名）。
     /// 数据源 = 目标自己记录的 activeStatuses（AddStatus 写入，来源卡施加时登记）+ 01525 槽位强化真源。
+    /// description 内部可能含 \n 多条 → 保留在单标签内多行（来源跟在描述末尾）。
     /// 注意：CardData.buffText/debuffText 是"本卡给予别人状态时的描述"，不是自己身上的状态，故不在此读取。</summary>
-    List<string> BuildStatusTexts(CardInstance ci)
+    List<(string, bool)> BuildStatusTexts(CardInstance ci)
     {
-        var outList = new List<string>();
+        var outList = new List<(string, bool)>();
         if (ci == null) return outList;
 
-        // ① 目标侧来源记录：本卡被施加的每条状态 = 一个标签（description；可含 \n 多条则拆开）。
+        // ① 目标侧来源记录：本卡被施加的每条状态 = 一个标签（描述 + 来源，StatusWithSource）。
         if (ci.activeStatuses != null)
             foreach (var a in ci.activeStatuses)
             {
                 if (a == null) continue;
-                foreach (var line in SplitStatusText(a.description))
-                    outList.Add(line);
+                string text = TraitBanQuery.StatusWithSource(a);
+                if (text != null) outList.Add((text, false));
             }
 
         // ② 01525 格子强化：反查所在槽位现读 slotTempAttackBoost——这是目标实际受到的临时攻击加成
         //    （槽位持久真源，非本卡 CardData 描述），叠加天然正确：+2 → +4 → +6 …
         BoardSlot slot = FindSlotOfAnchor();
         if (slot != null && slot.slotTempAttackBoost > 0)
-            outList.Add($"攻击力临时+{slot.slotTempAttackBoost}");
+            outList.Add(($"攻击力临时+{slot.slotTempAttackBoost}", false));
 
         return outList;
-    }
-
-    /// <summary>把可能含 \n 多条的状态描述拆成多个独立标签文本（trim、跳过空段）。
-    /// activeStatuses.description 一条可含多条 buff/debuff 时按 \n 拆分显示。</summary>
-    static List<string> SplitStatusText(string raw)
-    {
-        var list = new List<string>();
-        if (string.IsNullOrEmpty(raw)) return list;
-        foreach (var seg in raw.Split('\n'))
-        {
-            string s = seg.Trim();
-            if (s.Length > 0) list.Add(s);
-        }
-        return list;
     }
 
     /// <summary>按悬停 3D 模型反查 BoardSlot（Card3DHover.GetMySlot 同款）。附着卡匹配不到 → null。</summary>
@@ -356,12 +359,5 @@ public class HoverTagSystem : MonoBehaviour
             if (slots[i] != null && slots[i].currentCard3D == _anchor.gameObject)
                 return slots[i];
         return null;
-    }
-
-    static bool IsFullySilenced(CardInstance inst)
-    {
-        if (inst == null) return false;
-        if (inst.silencedThisPhase) return true;
-        return GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(inst);
     }
 }

@@ -200,10 +200,14 @@ public partial class TurnManager : MonoBehaviour
             bool wasSilenced = ci.silencedThisPhase;
             bool wasPoisoned = ci.poisoned;
             ci.silencedThisPhase = false;
-            ci.ApplySilenceToTraits(); // 阶段边界：特性组解除沉默（UnblockAll）
+            ci.ApplySilenceToTraits(); // 阶段边界：特性组解除沉默（UnblockAll）→ 翻转时自刷显示（图标恢复）
             ci.poisoned = false;
             if (wasSilenced) ci.RemoveStatusBySource("03501"); // 4.2 神官阶段沉默到期
-            if (wasPoisoned) ci.RemoveStatusBySource("03502"); // 4.2 毒巫阶段中毒到期
+            if (wasPoisoned)
+            {
+                ci.RemoveStatusBySource("03502"); // 4.2 毒巫阶段中毒到期
+                ci.RefreshDisplay(); // 6.x：中毒图标消失
+            }
             ci.enemyDamageSourceIDs.Clear();
             ci.damageSourceInstanceIDs.Clear();
             ci.ironSmithOneCostConsumedCount = 0;

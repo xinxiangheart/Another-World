@@ -90,7 +90,9 @@ public class CardIcons3D : MonoBehaviour
 
         // ── 三排图标（各自清除重建；预览数组优先，未拖入走动态路径加载；居中排列，间距可调）──
         PopulateRow(prefixIconsRow, previewPrefixIcons, BuildPrefixEntries(_inst), GetRowSpacing(prefixRowSpacing));
-        PopulateRow(traitIconsRow,  previewTraitIcons,  BuildTraitEntries(_inst),  GetRowSpacing(traitRowSpacing));
+        // 6.x 特性图标置灰：被禁（完全沉默 BlockAll / 光环类禁）的 key 集合传入，命中即灰显而非隐藏
+        var blockedTraitKeys = ComputeBlockedTraitKeys(_inst);
+        PopulateRow(traitIconsRow,  previewTraitIcons,  BuildTraitEntries(_inst),  GetRowSpacing(traitRowSpacing), blockedTraitKeys);
         PopulateRow(statusIconsRow, previewStatusIcons, BuildStatusEntries(_inst), GetRowSpacing(statusRowSpacing));
     }
 
@@ -126,7 +128,8 @@ public class CardIcons3D : MonoBehaviour
     /// <summary>填充一排图标（对齐 2D HLG 关闭 Child Force Expand：不拉伸、不占满）：
     /// 预览数组优先 → 无则动态条目（直接 sprite → 路径）。
     /// 以中心为原点向两边居中，相邻图标中心间距 = spacing（可调）。</summary>
-    void PopulateRow(Transform row, Sprite[] preview, List<(string key, Sprite direct, string path)> entries, float spacing)
+    void PopulateRow(Transform row, Sprite[] preview, List<(string key, Sprite direct, string path)> entries, float spacing,
+        HashSet<string> grayKeys = null)
     {
         if (row == null) return;
         ClearChildren(row);
@@ -139,7 +142,7 @@ public class CardIcons3D : MonoBehaviour
             for (int i = 0; i < n; i++)
             {
                 if (preview[i] == null) continue;
-                x = PlaceIcon(row, "icon_preview_" + i, preview[i], x, spacing);
+                x = PlaceIcon(row, "icon_preview_" + i, preview[i], x, spacing, false);
             }
             return;
         }
@@ -149,7 +152,8 @@ public class CardIcons3D : MonoBehaviour
         foreach (var e in entries)
         {
             Sprite s = e.direct != null ? e.direct : LoadSprite(e.path);
-            dx = PlaceIcon(row, "icon_" + e.key, s != null ? s : GetPlaceholder(), dx, spacing);
+            bool gray = grayKeys != null && grayKeys.Contains(e.key); // 6.x 特性被禁 → 置灰
+            dx = PlaceIcon(row, "icon_" + e.key, s != null ? s : GetPlaceholder(), dx, spacing, gray);
         }
     }
 
@@ -161,8 +165,9 @@ public class CardIcons3D : MonoBehaviour
         return c;
     }
 
-    /// <summary>在 x 处放置一个图标（identity 朝向，卡根 Y180 后世界法线朝相机），返回下一个 x（间距 spacing）。</summary>
-    float PlaceIcon(Transform row, string name, Sprite s, float x, float spacing)
+    /// <summary>在 x 处放置一个图标（identity 朝向，卡根 Y180 后世界法线朝相机），返回下一个 x（间距 spacing）。
+    /// blocked=true 置灰（6.x：特性被禁）。</summary>
+    float PlaceIcon(Transform row, string name, Sprite s, float x, float spacing, bool blocked)
     {
         var go = new GameObject(name, typeof(SpriteRenderer));
         go.transform.SetParent(row, false);
@@ -171,6 +176,7 @@ public class CardIcons3D : MonoBehaviour
         var sr = go.GetComponent<SpriteRenderer>();
         sr.sprite = s;
         ApplyIconMaterial(sr); // 写深度材质，防止被槽位 UI 嵌入遮挡
+        sr.color = blocked ? TraitBanQuery.BlockedTint : Color.white; // 6.x 乘法着灰（白=原色）
         SetFixedSize(sr, rowIconSize); // 保持各自比例、统一边长，不拉伸
         return x + spacing;
     }
@@ -265,7 +271,8 @@ public class CardIcons3D : MonoBehaviour
     List<(string, Sprite, string)> BuildTraitEntries(CardInstance inst)
     {
         var list = new List<(string, Sprite, string)>();
-        if (inst == null || IsFullySilenced(inst)) return list;
+        if (inst == null) return list;
+        // 6.x 置灰保留：完全沉默不再整排隐藏——图标仍建，置灰交给 ComputeBlockedTraitKeys/PopulateRow
         if (inst.hasFirstStrike) list.Add(("firststrike", traitFirstStrikeSprite, traitIconPath + "trait_firststrike"));
         if (inst.hasOnEnter)     list.Add(("onenter",     traitOnEnterSprite,     traitIconPath + "trait_onenter"));
         if (inst.hasOnDeath)     list.Add(("deathrattle", traitDeathrattleSprite, traitIconPath + "trait_deathrattle"));
@@ -274,6 +281,26 @@ public class CardIcons3D : MonoBehaviour
         if (inst.hasDiscard)     list.Add(("discard",     traitDiscardSprite,     traitIconPath + "trait_discard"));
         if (inst.canAttach)      list.Add(("attach",      traitAttachSprite,      traitIconPath + "trait_attach"));
         return list;
+    }
+
+    /// <summary>特性排被禁图标 key 集合（与 BuildTraitEntries 同源 7 bool）：类被禁（含完全沉默）→ 该 key 置灰。
+    /// 与 2D CardDisplay2DNew 的类映射保持一致。</summary>
+    static HashSet<string> ComputeBlockedTraitKeys(CardInstance inst)
+    {
+        var set = new HashSet<string>();
+        if (inst == null) return set;
+        void AddIfBlocked(bool present, string key, string cls)
+        {
+            if (present && TraitBanQuery.ClassBlocked(inst, cls)) set.Add(key);
+        }
+        AddIfBlocked(inst.hasFirstStrike, "firststrike", "先手");
+        AddIfBlocked(inst.hasOnEnter,     "onenter",     "进场");
+        AddIfBlocked(inst.hasOnDeath,     "deathrattle", "退场");
+        AddIfBlocked(inst.hasActiveExit,  "activeexit",  "主动退场");
+        AddIfBlocked(inst.hasRevenge,     "revenge",     "反击");
+        AddIfBlocked(inst.hasDiscard,     "discard",     "抛置");
+        AddIfBlocked(inst.canAttach,      "attach",      "附着");
+        return set;
     }
 
     List<(string, Sprite, string)> BuildStatusEntries(CardInstance inst)

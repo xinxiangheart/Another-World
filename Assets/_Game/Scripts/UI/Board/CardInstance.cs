@@ -895,6 +895,7 @@ public class CardInstance : MonoBehaviour
         _silenceAppliedToTraits = want;
         if (want) traits.BlockAll(this);       // 沉默 → 禁所有发送（CanSend/IsTraitActive 失效）
         else traits.UnblockAll(this);          // 解除 → 恢复
+        RefreshDisplay();                      // 6.x：沉默/解除翻转 → 卡面特性图标置灰/恢复
     }
 
     /// <summary>格式化一条特性条目为 "N：属性1、属性2：xxx" / "N：xxx" / "N（赋予）（属性）：xxx"。</summary>

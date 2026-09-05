@@ -75,6 +75,7 @@ public class FanaticShamanAura : AuraBase
         if (GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(source))
             return false;
         int targetSlot = GetSlotOf(target);
+        if (targetSlot < 0) return false; // 非板面目标（手牌等）不受光环禁——避免表现层图标误灰
         int sourceSlot = GetSlotOf(source);
         // 基于光环来源槽位动态判断对方半场——替代硬编码 targetSlot >= 6
         bool isEnemy = BoardManager.IsAllySide(sourceSlot) != BoardManager.IsAllySide(targetSlot);
@@ -93,6 +94,7 @@ public class JudgeAura : AuraBase
         if (GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(source))
             return false;
         int targetSlot = GetSlotOf(target);
+        if (targetSlot < 0) return false; // 非板面目标（手牌等）不受光环禁——避免表现层图标误灰
         int sourceSlot = GetSlotOf(source);
         // 基于光环来源槽位动态判断对方半场——替代硬编码 targetSlot >= 6
         bool isEnemy = BoardManager.IsAllySide(sourceSlot) != BoardManager.IsAllySide(targetSlot);
