@@ -197,7 +197,7 @@ public class Card3DHover : MonoBehaviour
         cardInstance.isActiveExit = false;
         cardInstance.hasRevenge = false;
 
-        bool shouldTriggerDiscard = cardInstance.hasDiscard;
+        bool shouldTriggerDiscard = cardInstance.HasDiscard; // 5.x 特性组：抛置类激活才触发抛置效果
 
         cardInstance.savedAttackForDiscard = cardInstance.currentAttack;
         cardInstance.savedTotalDamage = cardInstance.totalDamageTaken;

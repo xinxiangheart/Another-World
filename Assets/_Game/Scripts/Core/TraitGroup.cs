@@ -69,6 +69,7 @@ public class TraitGroup
                     {
                         traitId = RuntimeTrait.BuildUniqueId(attrs, e.text, tg.traits),
                         text = e.text,
+                        attributes = attrs,
                         sourceTemplateID = null, // 固有
                     };
                     // 固有禁疗注册（03026/01531）：文本含"无法…恢复生命值"的常驻特性 → 拦截 Healed。
@@ -79,6 +80,11 @@ public class TraitGroup
                     // 特性被禁/沉默 → 拦截失效 → 恢复可被反制。
                     if (IsInherentCounterImmune(ci.templateID, e.text))
                         rt.receiveBlocks |= EffectCategory.Countered;
+                    // 固有敌方法术免疫预留（征服者01508）：文本含"不受对方非反制" → receiveBlocks |= SpellTargeted。
+                    // 数据注明"（未实现）"，当前无任何 CanReceive(SpellTargeted) 消费 → 纯预留、零行为变化。
+                    // 特性被禁/沉默 → 拦截失效（免疫解除）。未来接"敌方法术不可选中"时须补 side-aware（仅对方法术）。
+                    if (IsInherentEnemySpellImmune(ci.templateID, e.text))
+                        rt.receiveBlocks |= EffectCategory.SpellTargeted;
                     tg.traits.Add(rt);
                 }
         }
@@ -118,6 +124,17 @@ public class TraitGroup
         return text.Contains("不会触发反制牌") || text.Contains("不触发反制牌");
     }
 
+    /// <summary>固有"敌方法术免疫"识别（预留）：仅 01508（征服者）迁入特性组。
+    /// 判定 = 模板ID白名单 + 常驻文本含"不受对方非反制"。数据注明"（未实现）" → 只注册不接行为。
+    /// 预留 receiveBlocks=SpellTargeted；接入敌方法术不可选中的门控时，需侧判定（仅对方法术）再加到判断点。</summary>
+    static bool IsInherentEnemySpellImmune(string templateID, string text)
+    {
+        if (templateID != "01508") return false;
+        if (string.IsNullOrEmpty(text)) return false;
+        // 征服者 01508 常驻文本："不受对方非反制卡牌法术影响（未实现）"
+        return text.Contains("不受对方非反制");
+    }
+
     /// <summary>重建授予 RuntimeTrait（移除旧授予 + 从 owner.grantedTraits 重加）。</summary>
     public void RefreshGranted()
     {
@@ -133,6 +150,7 @@ public class TraitGroup
             {
                 traitId = RuntimeTrait.BuildUniqueId(attrs, g.text, traits),
                 text = g.text,
+                attributes = attrs,
                 sourceTemplateID = g.sourceTemplateID ?? "",
             });
         }
@@ -153,6 +171,38 @@ public class TraitGroup
         if (!HasTrait(traitId)) return false;
         if (_blockAllCount > 0) return false;  // 沉默禁所有发送
         return !(_blockedTraits.TryGetValue(traitId, out int c) && c > 0);
+    }
+
+    /// <summary>是否拥有某属性类的特性（数据存在，无视禁制/沉默）。attributes 含 attr 即算。
+    /// 多属性条目（如同时 退场+主动退场）也算；文本无前缀、仅条目 isX 标记的情况也正确覆盖。</summary>
+    public bool HasClass(string attr)
+    {
+        for (int i = 0; i < traits.Count; i++)
+        {
+            var t = traits[i];
+            if (t == null || t.attributes == null) continue;
+            for (int a = 0; a < t.attributes.Length; a++)
+                if (t.attributes[a] == attr) return true;
+        }
+        return false;
+    }
+
+    /// <summary>是否拥有某属性类且至少一条激活（未沉默 BlockAll、未被单条禁）。
+    /// 供"能触发该类行为"判断用；光环关键字禁制（如萨满禁抛置）不在特性组内，由调用方再 && !IsTraitBlocked 组合。</summary>
+    public bool HasActiveClass(string attr)
+    {
+        if (_blockAllCount > 0) return false; // 沉默禁所有发送
+        for (int i = 0; i < traits.Count; i++)
+        {
+            var t = traits[i];
+            if (t == null || t.attributes == null) continue;
+            bool match = false;
+            for (int a = 0; a < t.attributes.Length; a++)
+                if (t.attributes[a] == attr) { match = true; break; }
+            if (!match) continue;
+            if (IsTraitActive(t.traitId)) return true;
+        }
+        return false;
     }
 
     /// <summary>发送侧：此卡能否发动 c 类行为（沉默 BlockAll 或该类被禁 → 否）。</summary>

@@ -15,6 +15,10 @@ public class RuntimeTrait
 {
     public string traitId;          // 唯一标识（属性优先级 + ":" + 文本；冲突 #N）
     public string text;             // 特性文本
+    /// <summary>属性类集合（进场/先手/反击/退场/主动退场/抛置/附着/赋予；多属性可同存）。
+    /// 固有来自模板 TraitEntry.GetAttributes()，授予来自 grantedTraits.attributes（空则文本前缀兜底）。
+    /// 5.x 起按此做 per-class 拥有/激活查询（HasClass/HasActiveClass），不靠文本前缀（多属性/无前缀条目会漏判）。</summary>
+    public string[] attributes;
     public string sourceTemplateID; // null=固有（模板自带）；非空=授予来源（供 RefreshGranted 区分/移除）
     public bool isPersistent;       // 常驻？人工声明，默认 false（一次性不重结算）
     public bool hasTargets;         // 有作用目标？人工声明，默认 false

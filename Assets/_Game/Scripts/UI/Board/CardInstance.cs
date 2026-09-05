@@ -185,7 +185,10 @@ public class CardInstance : MonoBehaviour
     public bool HasOnDeath => hasOnDeath && !IsSilenced();
     public bool HasActiveExit => hasActiveExit && !IsSilenced();
     public bool HasRevenge => hasRevenge && !IsSilenced();
-    public bool HasDiscard => hasDiscard && !IsSilenced();
+    /// <summary>抛置（5.x 已迁特性组）：拥有抛置类特性且激活（未沉默/未单条禁）。旧 hasDiscard bool 并行保留（图标/数据传播用）。
+    /// 特性组 HasActiveClass 已含 BlockAll(沉默) 与单条禁；外层叠加实时全沉默查询，与旧语义（hasDiscard && !IsSilenced）完全等价。
+    /// 光环"禁抛置"（萨满01515）为持续现查，不在此属性，由抛置动作入口另判 IsTraitBlocked("抛置")。</summary>
+    public bool HasDiscard => (traits != null ? traits.HasActiveClass("抛置") : hasDiscard) && !IsSilenced();
     public bool HasFirstStrike => hasFirstStrike && !IsSilenced();
     public bool HasShield() => hasShield;
     public int prisonMySlot = -1;
