@@ -20,11 +20,12 @@ public class RuntimeTrait
     /// 5.x 起按此做 per-class 拥有/激活查询（HasClass/HasActiveClass），不靠文本前缀（多属性/无前缀条目会漏判）。</summary>
     public string[] attributes;
     public string sourceTemplateID; // null=固有（模板自带）；非空=授予来源（供 RefreshGranted 区分/移除）
-    public bool isPersistent;       // 常驻？人工声明，默认 false（一次性不重结算）
+    public bool isPersistent;       // 常驻？7.x：仅 5 张持续附着卡(01327/03001/01129/01131/01510) 由整卡白名单标记
     public bool hasTargets;         // 有作用目标？人工声明，默认 false
     public EffectCategory receiveBlocks; // 常驻生效时拦截的接收类别（如禁疗 → Healed）；特性被禁则恢复可接收
-    public Action applyEffect;      // 生效方法（空=零变化；未迁移特性为空）
-    public Action removeEffect;     // 失效方法（空=零变化）
+    public Action applyEffect;      // 生效方法（恢复/重结算时调用）。7.x：5 张持续附着卡事件驱动+附着烘焙、
+                                    // 无派生值可重算 → 保留空=正确语义；勿塞效果防双触发。接入入口 TraitGroup.ApplyPersistent/RecalcPersistent
+    public Action removeEffect;     // 失效方法（被禁时调用）。同上，空=设计；将来有真·派生值特性再注册
 
     /// <summary>属性优先级：进场 > 先手 > 反击 > 退场 > 主动退场 > 抛置 > 附着 > 赋予。</summary>
     public static readonly string[] AttributePriority =

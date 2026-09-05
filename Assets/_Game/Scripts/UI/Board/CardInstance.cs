@@ -916,6 +916,19 @@ public class CardInstance : MonoBehaviour
         return $"{n}：{attrPart}{cleaned}";
     }
 
+    // ═══════════════════ 持久特性调用便捷入口（7.x，转发 TraitGroup）═══════════════════
+
+    /// <summary>按 traitId 查 RuntimeTrait（转发特性组；traits==null → null）。</summary>
+    public RuntimeTrait FindTraitById(string traitId) => traits?.FindTraitById(traitId);
+    /// <summary>按 traits 列表索引取 RuntimeTrait（0 基；转发特性组）。注意与可见条目显示序号不对齐。</summary>
+    public RuntimeTrait GetTraitAt(int index) => traits?.GetTraitAt(index);
+    /// <summary>显式 apply 一条持久特性（生效/重结算；转发特性组）。返回是否已调用。</summary>
+    public bool ApplyPersistentTrait(string traitId) => traits != null && traits.ApplyPersistent(traitId);
+    /// <summary>显式 remove 一条持久特性（失效；转发特性组）。返回是否已调用。</summary>
+    public bool RemovePersistentTrait(string traitId) => traits != null && traits.RemovePersistent(traitId);
+    /// <summary>单条持久特性重算（激活→apply / 被禁→remove；转发特性组）。返回是否已处理。</summary>
+    public bool RecalcPersistentTrait(string traitId) => traits != null && traits.RecalcPersistent(traitId);
+
     // ═══════════════════ granted traits 同步序列化 ═══════════════════
 
     /// <summary>序列化 grantedTraits → ";;" 分隔，每项 "text~属性1、属性2~源templateID"；旧纯文本 grantedTraitTexts 兜底。</summary>

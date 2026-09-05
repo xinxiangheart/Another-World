@@ -85,9 +85,11 @@ public class TraitGroup
                     // 特性被禁/沉默 → 拦截失效（免疫解除）。未来接"敌方法术不可选中"时须补 side-aware（仅对方法术）。
                     if (IsInherentEnemySpellImmune(ci.templateID, e.text))
                         rt.receiveBlocks |= EffectCategory.SpellTargeted;
-                    // 5.x 持续附着效果声明（01327/03001/01129/01131/01510）：isPersistent=true 纯声明。
-                    // 持续效果均为离散事件/实时查询且事件点已带 IsFullySilenced 门 → 沉默即停、解除自动恢复，
-                    // applyEffect/removeEffect 留空（零行为）。如需 apply/remove 挂接再补。
+                    // 5.x/7.x 持续附着效果声明（01327/03001/01129/01131/01510）：isPersistent=true 纯声明。
+                    // 持续效果均为"附着时一次性烘焙宿主数值 + 离散事件/实时查询"，事件点已带 IsFullySilenced 门
+                    // → 沉默即停、解除自动恢复；无 trait 级派生值可重算 → applyEffect/removeEffect 保留空=设计
+                    // （勿在此塞效果，会与附着烘焙/事件点双触发，且烘焙不可回滚）。框架入口见 ApplyPersistent/
+                    // RemovePersistent/RecalcPersistent（7.x）。
                     if (IsInherentPersistentAttach(ci.templateID))
                         rt.isPersistent = true;
                     tg.traits.Add(rt);
@@ -252,6 +254,63 @@ public class TraitGroup
         return false;
     }
 
+    // ═══════════════════ 持久特性：按 traitId/索引定位 + 单条 apply/remove/重算（7.x）═══════════════════
+    // 说明：5 张持续附着卡(01327/03001/01129/01131/01510) 的效果是"附着时一次性烘焙宿主数值 + 阶段/回合/死亡
+    // 事件点现扫 attachedModels 带实时沉默门"，无 trait 级派生值可重算 → applyEffect/removeEffect 保持空=设计。
+    // 本区接口供"真正有派生值/订阅需随激活态重结算"的持久特性接入；find 不校验 owner 是否被光环类禁
+    // （aura 全沉默走 GlobalEventManager.IsFullySilenced，调用方需要时自并）。
+
+    /// <summary>按 traitId 查 RuntimeTrait。找不到/空 → null。</summary>
+    public RuntimeTrait FindTraitById(string traitId)
+    {
+        if (string.IsNullOrEmpty(traitId)) return null;
+        for (int i = 0; i < traits.Count; i++)
+        {
+            var t = traits[i];
+            if (t != null && t.traitId == traitId) return t;
+        }
+        return null;
+    }
+
+    /// <summary>按 traits 列表索引取 RuntimeTrait（0 基）。越界/空 → null。
+    /// ⚠ traits 序 = 固有模板条目(同序) + RefreshGranted 尾部追加授予 + 召唤物伪特性("攻击/攻击前后排限制")，
+    /// 与 CardInstance.GetVisibleTraitEntries 的显示序号**不对齐**——稳定定位用 traitId（含剥离前缀后全文）。</summary>
+    public RuntimeTrait GetTraitAt(int index)
+    {
+        if (index < 0 || index >= traits.Count) return null;
+        return traits[index];
+    }
+
+    /// <summary>显式调用一条持久特性的 applyEffect（生效/重结算；不校验激活态，调用方自判）。
+    /// 未找到或非 isPersistent → false。</summary>
+    public bool ApplyPersistent(string traitId)
+    {
+        var t = FindTraitById(traitId);
+        if (t == null || !t.isPersistent) return false;
+        t.applyEffect?.Invoke();
+        return true;
+    }
+
+    /// <summary>显式调用一条持久特性的 removeEffect（失效；不校验激活态）。未找到或非 isPersistent → false。</summary>
+    public bool RemovePersistent(string traitId)
+    {
+        var t = FindTraitById(traitId);
+        if (t == null || !t.isPersistent) return false;
+        t.removeEffect?.Invoke();
+        return true;
+    }
+
+    /// <summary>单条持久特性重算（同 RecalculatePersistentTraits 对单条语义）：
+    /// 激活(IsTraitActive=未 BlockAll/未单条禁) → applyEffect；被禁 → removeEffect。未找到或非 isPersistent → false。</summary>
+    public bool RecalcPersistent(string traitId)
+    {
+        var t = FindTraitById(traitId);
+        if (t == null || !t.isPersistent) return false;
+        if (IsTraitActive(t.traitId)) t.applyEffect?.Invoke();
+        else t.removeEffect?.Invoke();
+        return true;
+    }
+
     // ═══════════════════ 禁制（计数式）═══════════════════
 
     /// <summary>沉默：禁所有发送（只禁发送侧，CanReceive 独立）。lifecycle 默认 Permanent。</summary>
@@ -395,16 +454,18 @@ public class TraitGroup
         RecalculateAttributes();
     }
 
-    /// <summary>重结算（只针对常驻特性 isPersistent=true）：被禁→removeEffect 还原；恢复→applyEffect 重新生效。
-    /// 未迁移特性的 apply/remove 为空 → 无操作（零行为变化）。</summary>
+    /// <summary>重结算全部持久特性（isPersistent=true）：激活 → applyEffect；被禁 → removeEffect。
+    /// ⚠ 运行时只在 BlockAll/UnblockAll（silencedThisPhase 翻转，经 CardInstance.ApplySilenceToTraits）时触发——
+    /// BlockCategory/BlockTrait/TickLifecycle 等单条禁框架未接线。
+    /// 7.x：5 张持续附着卡为事件驱动+附着烘焙、无数值派生 → apply/remove 空=设计（勿塞效果，防双触发/不可回滚）。
+    /// 单条重算用 RecalcPersistent(traitId)（7.x 接口）。</summary>
     void RecalculatePersistentTraits()
     {
         for (int i = 0; i < traits.Count; i++)
         {
             RuntimeTrait t = traits[i];
             if (t == null || !t.isPersistent) continue;
-            if (IsTraitActive(t.traitId)) t.applyEffect?.Invoke();
-            else t.removeEffect?.Invoke();
+            RecalcPersistent(t.traitId); // 激活→apply / 被禁→remove，语义统一
         }
     }
 
