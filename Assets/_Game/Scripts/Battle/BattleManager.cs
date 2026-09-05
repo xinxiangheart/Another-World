@@ -235,7 +235,7 @@ public class BattleManager : MonoBehaviour
                 }
 
         // 检查对方是否有合法目标
-                ci.hasFirstStrike = false;
+                ci._firstStrikeConsumed = true; // 5.x 先手消耗瞬态（01124 舞者换位后）
 
                 if (mySlot.currentCard3D != null)
                     BoardManager.SyncAttachedModels(mySlot);
@@ -311,7 +311,7 @@ public class BattleManager : MonoBehaviour
                     int slotA = mySlot;
                     int slotB = targetSlot.slotID;
                     BoardManager.SwapCards(slotA, slotB);
-                    ci.hasFirstStrike = false;
+                    ci._firstStrikeConsumed = true; // 5.x 先手消耗瞬态（交互换位后）
 
                     // 通知远端客户端同步交换结果（服务端 6-11 → 远端视角 0-5，AI 无连接跳过）
                     if (Mirror.NetworkServer.active && NetworkPlayer.Remote != null
@@ -524,7 +524,7 @@ public class BattleManager : MonoBehaviour
                     ci.GrantShield(true, false, false, "01531");
                     slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
                 }
-                ci.hasFirstStrike = false;
+                ci._firstStrikeConsumed = true; // 5.x 先手消耗瞬态（01531 亡命之徒先手动作后）
             }
         }
 
@@ -624,7 +624,7 @@ public class BattleManager : MonoBehaviour
             BoardSlot slot = allSlots[i];
             if (slot?.currentCard3D == null) continue;
             CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-            if (ci == null || !ci.HasFirstStrike || ci.silencedThisPhase) continue;
+            if (ci == null || !ci.HasFirstStrike) continue; // 沉默已含在属性 IsSilenced 内
             Debug.Log($"[FS-dmg] slot={i} tid={ci.templateID} hasFS={ci.hasFirstStrike} silenced={GlobalEventManager.Instance?.IsFullySilenced(ci)}");
 
             // 特性级溯源（先手）：取本卡可见特性中"先手"属性的序号+文本（特性文本前缀存储有无皆可靠）
@@ -1995,7 +1995,7 @@ public class BattleManager : MonoBehaviour
         SelectionManager.Instance.ForceEndAll();
         BoardSlot.isStrengtheningSlot = false;
         ConfirmSelectionButton.Instance.Hide();
-        ci.hasFirstStrike = false;
+        ci._firstStrikeConsumed = true; // 5.x 先手消耗瞬态（交互确认完成后）
     }
   
     CardInstance FindLordOnField()

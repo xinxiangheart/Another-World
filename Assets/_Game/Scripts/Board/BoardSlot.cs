@@ -289,7 +289,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             BoardSlot slot = bm.GetSlot(i);
             if (slot?.currentCard3D == null) continue;
             CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-            if (ci == null || !ci.hasFirstStrike) continue;
+            if (ci == null || !ci.HasFirstStrike) continue; // 5.x 特性组+瞬态
 
             // 排队——等前一个交互弹窗完成
             yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
@@ -336,7 +336,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
                     int slotA = mySlot;
                     int slotB = ts.slotID;
-                    ci.hasFirstStrike = false;
+                    ci._firstStrikeConsumed = true; // 5.x 先手消耗瞬态（远端换位后）
                     // SwapCardsSafe：纯客户端本地移动 + 服务端权威，Host 避免双换位
                     NetworkPlayer.SwapCardsSafe(slotA, slotB);
                     break;
@@ -365,7 +365,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     BoardSlot.isStrengtheningSlot = false;
                     BoardSlot.extraTargetFilter = null;
                     cb.Hide();
-                    ci.hasFirstStrike = false;
+                    ci._firstStrikeConsumed = true; // 5.x 先手消耗瞬态
                     break;
                 }
                 case "01516":
@@ -390,7 +390,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     sel16.ForceEndAll();
                     BoardSlot.isStrengtheningSlot = false;
                     cb16.Hide();
-                    ci.hasFirstStrike = false;
+                    ci._firstStrikeConsumed = true; // 5.x 先手消耗瞬态
                     break;
                 }
                 // 非交换先手 → buff/debuff/伤害由第2/3轮分别处理
@@ -417,7 +417,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             BoardSlot slot2 = bm.GetSlot(i2);
             if (slot2?.currentCard3D == null) continue;
             CardInstance ci2 = slot2.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-            if (ci2 == null || !ci2.hasFirstStrike) continue;
+            if (ci2 == null || !ci2.HasFirstStrike) continue; // 5.x 特性组+瞬态
 
             yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
             yield return null;
@@ -434,7 +434,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                         selDone = true;
                     });
                     while (!selDone) yield return null;
-                    ci2.hasFirstStrike = false;
+                    ci2._firstStrikeConsumed = true; // 5.x 先手消耗瞬态（03012 阴阳）
                     break;
                 }
                 case "01519": // 守护骑士：给友方上护盾 → Cmd 委托服务端处理
@@ -460,7 +460,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                         yield return new WaitUntil(() => !sel19.IsSelecting);
                         BoardSlot.isStrengtheningSlot = false;
                     }
-                    ci2.hasFirstStrike = false;
+                    ci2._firstStrikeConsumed = true; // 5.x 先手消耗瞬态（01519）
                     break;
                 }
                 case "01531": // 亡命之徒：由服务端 FirstStrikeCoroutine 权威处理，远端不再重复执行
@@ -474,7 +474,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             BoardSlot slot3 = bm.GetSlot(i3);
             if (slot3?.currentCard3D == null) continue;
             CardInstance ci3 = slot3.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-            if (ci3 == null || !ci3.hasFirstStrike) continue;
+            if (ci3 == null || !ci3.HasFirstStrike) continue; // 5.x 特性组+瞬态
 
             yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
             yield return null;
@@ -491,7 +491,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                         dd = true;
                     });
                     yield return new WaitUntil(() => dd);
-                    ci3.hasFirstStrike = false;
+                    ci3._firstStrikeConsumed = true; // 5.x 先手消耗瞬态（01318）
                     break;
                 }
                 case "03502": // 毒巫：清护盾+中毒 → Cmd 委托服务端处理
@@ -507,7 +507,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                         dd = true;
                     });
                     while (!dd) yield return null;
-                    ci3.hasFirstStrike = false;
+                    ci3._firstStrikeConsumed = true; // 5.x 先手消耗瞬态（03502）
                     break;
                 }
             }

@@ -122,6 +122,18 @@ public static class DeathPipeline
 
             foreach (GameObject fairy in fairies)
             {
+                CardInstance fairyCIg = fairy.GetComponent<Card3DInstance>()?.cardInstance;
+                // 5.x 01510 转移沉默门：古老精灵(01510)自身被完全沉默 → 不转移再附，随宿主退场销毁。
+                // 复用下方"无他友销毁"语义（两端一致：服务端销毁不发重附 RPC；纯客户端本地同步销毁）。
+                if (fairyCIg != null && GlobalEventManager.Instance != null
+                    && GlobalEventManager.Instance.IsFullySilenced(fairyCIg))
+                {
+                    bm.attachedModels.Remove(fairy);
+                    fairyCIg.isActiveExit = true;
+                    Object.Destroy(fairy);
+                    continue;
+                }
+
                 bool isPureClient = NetworkClient.isConnected && !NetworkServer.active;
 
                 bool hasOtherAlly = false;

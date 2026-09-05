@@ -24,6 +24,9 @@ public class CardInstance : MonoBehaviour
     [Header("特性标记")]
     public bool hasOnEnter;
     public bool hasFirstStrike;
+    /// <summary>本回合先手动作是否已消耗（5.x 拆出的瞬态字段，替代旧"先手消耗清 hasFirstStrike=false"写法）。
+    /// 只本侧战斗结算写/读；不同步、不随 CopyFrom 复制（重建即默认 false=未消耗）。</summary>
+    [System.NonSerialized] public bool _firstStrikeConsumed;
     public bool hasOnDeath;
     public bool hasActiveExit;
     public bool hasRevenge;
@@ -197,7 +200,13 @@ public class CardInstance : MonoBehaviour
     /// 特性组 HasActiveClass 已含 BlockAll(沉默) 与单条禁；外层叠加实时全沉默查询，与旧语义（hasDiscard && !IsSilenced）完全等价。
     /// 光环"禁抛置"（萨满01515）为持续现查，不在此属性，由抛置动作入口另判 IsTraitBlocked("抛置")。</summary>
     public bool HasDiscard => (traits != null ? traits.HasActiveClass("抛置") : hasDiscard) && !IsSilenced();
-    public bool HasFirstStrike => hasFirstStrike && !IsSilenced();
+    /// <summary>先手（5.x 已迁特性组）：hasFirstStrike=数据拥有（不再被回合消耗清零）；_firstStrikeConsumed=本回合已行动瞬态（战斗清零点置 true、TurnManager 回合边界置 false）。
+    /// 特性组 HasActiveClass("先手") 叠加激活（未沉默/未单条禁）。旧 bool 并行保留（图标/数据/同步用）。</summary>
+    public bool HasFirstStrike => hasFirstStrike && !_firstStrikeConsumed
+        && (traits != null ? traits.HasActiveClass("先手") : true) && !IsSilenced();
+    /// <summary>附着动作门（5.x）：canAttach 数据 only，**不加 IsSilenced**——附着动作不受沉默影响，仍可附到宿主。
+    /// 附着效果（瞬间 buff/持续行为）是否受沉默由各自效果门/事件门判定，与动作门分离。</summary>
+    public bool CanAttach => canAttach;
     public bool HasShield() => hasShield;
     public int prisonMySlot = -1;
     public int prisonEnemySlot = -1;

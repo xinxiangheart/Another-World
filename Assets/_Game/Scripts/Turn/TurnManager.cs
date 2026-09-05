@@ -209,7 +209,7 @@ public partial class TurnManager : MonoBehaviour
             ci.ironSmithOneCostConsumedCount = 0;
             if (ci.templateID == "01124" || ci.templateID == "01312" || ci.templateID == "01516" || ci.templateID == "01513"
                 || ci.templateID == "01531")
-                ci.hasFirstStrike = true;
+                ci._firstStrikeConsumed = false; // 5.x：hasFirstStrike 不再被回合消耗清零，此处改重装瞬态（白名单缺口按确认不动）
             if (ci.templateID == "01511")
             {
                 ci.mindScholarTriggeredKeys?.Clear();

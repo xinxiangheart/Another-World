@@ -85,6 +85,11 @@ public class TraitGroup
                     // 特性被禁/沉默 → 拦截失效（免疫解除）。未来接"敌方法术不可选中"时须补 side-aware（仅对方法术）。
                     if (IsInherentEnemySpellImmune(ci.templateID, e.text))
                         rt.receiveBlocks |= EffectCategory.SpellTargeted;
+                    // 5.x 持续附着效果声明（01327/03001/01129/01131/01510）：isPersistent=true 纯声明。
+                    // 持续效果均为离散事件/实时查询且事件点已带 IsFullySilenced 门 → 沉默即停、解除自动恢复，
+                    // applyEffect/removeEffect 留空（零行为）。如需 apply/remove 挂接再补。
+                    if (IsInherentPersistentAttach(ci.templateID))
+                        rt.isPersistent = true;
                     tg.traits.Add(rt);
                 }
         }
@@ -133,6 +138,15 @@ public class TraitGroup
         if (string.IsNullOrEmpty(text)) return false;
         // 征服者 01508 常驻文本："不受对方非反制卡牌法术影响（未实现）"
         return text.Contains("不受对方非反制");
+    }
+
+    /// <summary>持续附着效果模板（5.x 纯声明标记）：01327 阴影聚合体(宿主模式)/03001 追随者(每阶段+0+1)/
+    /// 01129 滋养者(回合开始回宿主)/01131 未弃之人(退场转化)/01510 古老精灵(宿主退场转移)。
+    /// 各持续效果已在事件点带实时沉默门 → isPersistent 仅文档化，apply/remove 留空。</summary>
+    static bool IsInherentPersistentAttach(string templateID)
+    {
+        return templateID == "01327" || templateID == "03001" || templateID == "01129"
+            || templateID == "01131" || templateID == "01510";
     }
 
     /// <summary>重建授予 RuntimeTrait（移除旧授予 + 从 owner.grantedTraits 重加）。</summary>
