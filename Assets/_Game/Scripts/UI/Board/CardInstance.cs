@@ -92,7 +92,6 @@ public class CardInstance : MonoBehaviour
     public int _conquerorTotalDamageThisBattle;
     public bool _conquerorPendingCheck;
     public GameObject _conquerorTargetEnemyCard;
-    public bool immuneToEnemySpell;
     /// <summary>记录此卡被放置到槽位的时间（用于同步保护）。后续由 placementGeneration 替代。</summary>
     [System.NonSerialized] public float _placedAtTime = -999f;
     /// <summary>卡牌放置的单调递增世代号。用于替代时间窗口去重（如 EnsureCard 2s 保护）。</summary>
@@ -371,8 +370,6 @@ public class CardInstance : MonoBehaviour
             ignoreAllCounters = true;
         if (templateID == "01339")
             isWatcher = true;
-        if (templateID == "01508")
-            immuneToEnemySpell = true;
         if (templateID == "01514")
             braveTemplateID = "01514";
         if (templateID == "01510")

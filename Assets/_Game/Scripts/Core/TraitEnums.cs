@@ -6,7 +6,7 @@
 // EffectCategory（接收方）：这卡能被怎样 → CanReceive(EffectCategory) 门控（位标志，支持组合禁）
 //
 // 与旧散落 bool 的关系：发送类 bool（hasOnEnter/hasFirstStrike/canAttach/attacksFrontRow…）
-// 后续归入 TraitCategory 门控；接收类 bool（cannotHeal/immuneToEnemySpell/ignoreAllCounters…）
+// 后续归入 TraitCategory 门控；接收类 bool（cannotHeal/ignoreAllCounters…）
 // 归入 EffectCategory。旧 bool 并行保留、只读不写，特性组判断优先。
 // ============================================================================
 
