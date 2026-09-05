@@ -396,11 +396,23 @@ public class CardDisplay2DNew : MonoBehaviour
         if (inst == null) return;
 
         Vector2 size = GetIconRowSize(statusTestSprite, statusIconSize);
+        int costDelta = GetCostDelta(inst); // 召唤物费用变化：<0 减费→增益 / >0 加费→减益 / 0 不显示
         if (inst.hasShield)    AddRowIcon(statusIconsArea, "status_shield", statusShieldSprite, statusIconPath + "status_shield", size);
-        if (IsBuffed(inst))    AddRowIcon(statusIconsArea, "status_buff", statusBuffSprite, statusIconPath + "status_buff", size);
-        // 中毒/沉默/其他减益 → 统一一个负面减益图标（仅状态类；特性禁制是规则失效不是状态，不显示）
-        if (inst.poisoned || IsFullySilenced(inst) || IsDebuffed(inst))
+        if (IsBuffed(inst) || costDelta < 0)
+            AddRowIcon(statusIconsArea, "status_buff", statusBuffSprite, statusIconPath + "status_buff", size);
+        // 中毒/沉默/其他减益 / 费用高于基础 → 统一一个负面减益图标（仅状态类；特性禁制是规则失效不是状态，不显示）
+        if (inst.poisoned || IsFullySilenced(inst) || IsDebuffed(inst) || costDelta > 0)
             AddRowIcon(statusIconsArea, "status_debuff", statusDebuffSprite, statusIconPath + "status_debuff", size);
+    }
+
+    /// <summary>费用差异（仅召唤物）：实际显示费用(GetDisplayCost，含减费光环/场上锁定 currentCost) − 模板基础费。
+    /// 费用恢复 baseCost 时归 0 → 图标消失。</summary>
+    static int GetCostDelta(CardInstance inst)
+    {
+        if (inst == null) return 0;
+        var t = CardDatabase.Instance?.GetTemplate(inst.templateID);
+        if (t == null || t.cardType != CardType.Summon) return 0; // 法术不适用
+        return inst.GetDisplayCost() - t.baseCost;
     }
 
     /// <summary>增益：贤者/皇帝 buff，或临时攻击/生命为正。</summary>

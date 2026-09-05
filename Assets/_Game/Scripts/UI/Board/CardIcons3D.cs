@@ -307,12 +307,24 @@ public class CardIcons3D : MonoBehaviour
     {
         var list = new List<(string, Sprite, string)>();
         if (inst == null) return list;
+        int costDelta = GetCostDelta(inst); // 召唤物费用变化：<0 减费→增益 / >0 加费→减益 / 0 不显示
         if (inst.hasShield) list.Add(("shield", statusShieldSprite, statusIconPath + "Shield"));
-        if (IsBuffed(inst)) list.Add(("buff",   statusBuffSprite,   statusIconPath + "Buff"));
-        // 减益图标：仅状态类（中毒/沉默/临时减攻/攻击压制）；特性禁制(HasActiveBlock)是规则失效不是状态，不显示
-        if (inst.poisoned || IsFullySilenced(inst) || IsDebuffed(inst))
+        if (IsBuffed(inst) || costDelta < 0)
+            list.Add(("buff",   statusBuffSprite,   statusIconPath + "Buff"));
+        // 减益图标：中毒/沉默/临时减攻/攻击压制 / 费用高于基础；特性禁制(HasActiveBlock)是规则失效不是状态，不显示
+        if (inst.poisoned || IsFullySilenced(inst) || IsDebuffed(inst) || costDelta > 0)
             list.Add(("debuff", statusDebuffSprite, statusIconPath + "DeBuff"));
         return list;
+    }
+
+    /// <summary>费用差异（仅召唤物）：实际显示费用(GetDisplayCost，含减费光环/场上锁定 currentCost) − 模板基础费。
+    /// 费用恢复 baseCost 时归 0 → 图标消失。</summary>
+    static int GetCostDelta(CardInstance inst)
+    {
+        if (inst == null) return 0;
+        var t = CardDatabase.Instance?.GetTemplate(inst.templateID);
+        if (t == null || t.cardType != CardType.Summon) return 0; // 法术不适用
+        return inst.GetDisplayCost() - t.baseCost;
     }
 
     // ================= 映射与状态 =================
