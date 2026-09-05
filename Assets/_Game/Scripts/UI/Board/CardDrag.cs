@@ -560,6 +560,19 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
         }
     }
 
+    /// <summary>预检：槽位能否作为"法术目标"。己方(6-11)放行；敌方(0-5)的免疫卡(征服者01508)不可选——
+    /// 排除后仍无目标 → HasValidTarget 返 false → 空发退费（征服者免疫残余UX修复）。</summary>
+    bool HasValidSpellTarget(BoardSlot slot)
+    {
+        if (slot == null || slot.isBlocked || !slot.hasCard) return false;
+        if (slot.slotID < 6)
+        {
+            CardInstance ci = slot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci != null && ci.ImmuneToEnemySpells) return false;
+        }
+        return true;
+    }
+
     bool HasValidTarget(TargetType type)
     {
         Debug.Log($"HasValidTarget 被调用：type={type}");
@@ -571,8 +584,7 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
             case TargetType.SingleEnemy:
                 for (int id = 0; id <= 5; id++)
                 {
-                    BoardSlot slot = bm.GetSlot(id);
-                    if (slot != null && !slot.isBlocked && slot.hasCard)
+                    if (HasValidSpellTarget(bm.GetSlot(id)))
                         return true;
                 }
                 return false;
@@ -582,38 +594,34 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
                 {
                     BoardSlot slot = bm.GetSlot(id);
                     Debug.Log($"检查槽位{id}：slot={slot != null}, hasCard={slot?.hasCard}, isBlocked={slot?.isBlocked}");
-                    if (slot != null && !slot.isBlocked && slot.hasCard)
+                    if (HasValidSpellTarget(slot))
                         return true;
                 }
                 return false;
             case TargetType.EnemyAnyRow:
                 for (int id = 0; id <= 5; id++)
                 {
-                    BoardSlot slot = bm.GetSlot(id);
-                    if (slot != null && !slot.isBlocked && slot.hasCard) return true;
+                    if (HasValidSpellTarget(bm.GetSlot(id))) return true;
                 }
                 return false;
             case TargetType.AllyAnyRow:
                 for (int id = 6; id <= 11; id++)
                 {
-                    BoardSlot slot = bm.GetSlot(id);
-                    if (slot != null && !slot.isBlocked && slot.hasCard) return true;
+                    if (HasValidSpellTarget(bm.GetSlot(id))) return true;
                 }
                 return false;
             case TargetType.AllMinions:
                 for (int id = 0; id <= 11; id++)
                 {
-                    BoardSlot slot = bm.GetSlot(id);
-                    if (slot != null && !slot.isBlocked && slot.hasCard)
+                    if (HasValidSpellTarget(bm.GetSlot(id)))
                         return true;
                 }
                 return false;
             case TargetType.SingleAny:
-                // 任意目标：敌方(0-5)或己方(6-11)任一召唤物可施放
+                // 任意目标：敌方(0-5)或己方(6-11)任一召唤物可施放（敌方免疫卡排除）
                 for (int id = 0; id <= 11; id++)
                 {
-                    BoardSlot slot = bm.GetSlot(id);
-                    if (slot != null && !slot.isBlocked && slot.hasCard)
+                    if (HasValidSpellTarget(bm.GetSlot(id)))
                         return true;
                 }
                 return false;
@@ -622,8 +630,7 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
                 int[] ids = GetTargetSlots(type, -1);
                 foreach (int id in ids)
                 {
-                    BoardSlot slot = bm.GetSlot(id);
-                    if (slot != null && !slot.isBlocked && slot.hasCard)
+                    if (HasValidSpellTarget(bm.GetSlot(id)))
                         return true;
                 }
                 return false;
