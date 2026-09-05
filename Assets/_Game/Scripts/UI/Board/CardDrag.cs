@@ -370,6 +370,15 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
                         return ci != null && !ci.isAttached;
                     };
                 }
+                // 征服者免疫关卡1：对方法术选目标排除敌方免疫卡(01508)。人类 UI 敌方半场=0-5；叠加既有 per-spell 过滤。
+                var immuneBaseFilter = BoardSlot.extraTargetFilter;
+                BoardSlot.extraTargetFilter = (slot) =>
+                {
+                    if (immuneBaseFilter != null && !immuneBaseFilter(slot)) return false;
+                    CardInstance cc = slot?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                    if (cc != null && cc.ImmuneToEnemySpells && slot.slotID < 6) return false;
+                    return true;
+                };
                 SelectionManager.Instance.BeginOpenSelection((TargetType)template.targetType, (slot) =>
                 {
                     CardView cv = GetComponent<CardView>();

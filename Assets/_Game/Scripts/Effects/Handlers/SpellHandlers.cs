@@ -265,11 +265,21 @@ public static class SpellHandlers
         HM().StartCoroutine(HM().GreatEvolutionEffect());
     }
 
+    /// <summary>征服者(01508)免疫·关卡3守卫：目标在敌方半场且为免疫卡 → 敌方法术不作用，返回 true（调用方直接 Cleanup 跳过）。</summary>
+    static bool IsEnemySpellImmuneBlocked(EffectContext ctx, BoardSlot ts)
+    {
+        if (ctx == null || ts == null) return false;
+        var ci = ts.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+        if (ci == null || !ci.ImmuneToEnemySpells) return false;
+        return (ts.slotID >= 6) != ctx.spellCasterIsHost; // 异侧=对方法术
+    }
+
     static void Handle02204(EffectContext ctx)
     {
         var ts = ctx.targetSlot;
         if (ts?.currentCard3D != null)
         {
+            if (IsEnemySpellImmuneBlocked(ctx, ts)) { Cleanup(); return; }
             var t3d = ts.currentCard3D.GetComponent<Card3DInstance>();
             var ci = t3d?.cardInstance;
             if (ci != null)
@@ -314,6 +324,7 @@ public static class SpellHandlers
         if (ts?.currentCard3D == null) { Cleanup(); return; }
         var t3d = ts.currentCard3D.GetComponent<Card3DInstance>();
         if (t3d?.cardInstance == null || t3d.cardInstance.isAttached) { Cleanup(); return; }
+        if (IsEnemySpellImmuneBlocked(ctx, ts)) { Cleanup(); return; } // 征服者免疫：敌方法术不变形
         var newTD = CardDatabase.Instance?.GetTemplate(targetID);
         if (newTD?.prefab3D == null) { Cleanup(); return; }
 
@@ -352,6 +363,7 @@ public static class SpellHandlers
         var ts = ctx.targetSlot;
         if (ts?.currentCard3D != null)
         {
+            if (IsEnemySpellImmuneBlocked(ctx, ts)) { Cleanup(); return; }
             var t3d = ts.currentCard3D.GetComponent<Card3DInstance>();
             var ci = t3d?.cardInstance;
             if (ci != null && ci.currentAttack > 1)
@@ -401,6 +413,7 @@ public static class SpellHandlers
         var ts = ctx.targetSlot;
         if (ts?.currentCard3D != null)
         {
+            if (IsEnemySpellImmuneBlocked(ctx, ts)) { Cleanup(); return; }
             var t3d = ts.currentCard3D.GetComponent<Card3DInstance>();
             if (t3d?.cardInstance != null)
             {
@@ -441,6 +454,8 @@ public static class SpellHandlers
                     var c3d = s.currentCard3D.GetComponent<Card3DInstance>();
                     if (c3d?.cardInstance != null)
                     {
+                        // 征服者免疫：对方法术 AOE 扫不到（不破盾），伤害由 DamagePipeline 关卡2 兜底
+                        if (c3d.cardInstance.ImmuneToEnemySpells && (i >= 6) != ctx.spellCasterIsHost) continue;
                         if (c3d.cardInstance.hasShield) c3d.cardInstance.RemoveShield();
                         // 法术级溯源：效果描述 + 法术模板ID（箭雨 02303）+ 法伤来源标记（逐格）
                         BattleManager.Instance.ApplyDamageToMinionPublic(c3d.cardInstance, 2, null,

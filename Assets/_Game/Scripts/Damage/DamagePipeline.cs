@@ -132,6 +132,8 @@ public static class DamagePipeline
         if (ctx.Defender.isAttached) return new DamageResult();
         // 阴影聚合体(01327)：宿主不再受伤——伤害直接避免，不参与任何伤害计算
         if (HasShadowAggregate(ctx.Defender)) return new DamageResult();
+        // 征服者(01508)敌方法术免疫（第二步关卡2）：对方法术伤害免疫卡无效（单体/AOE 逐目标统一在此空返回）
+        if (ctx.IsEnemySpellDamage && ctx.Defender.ImmuneToEnemySpells) return new DamageResult();
 
         // ── S1 攻击方增益 ───────────────────────────────────────────
         ctx.damage = Stage1_Give(ctx);

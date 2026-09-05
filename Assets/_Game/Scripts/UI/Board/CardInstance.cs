@@ -207,6 +207,9 @@ public class CardInstance : MonoBehaviour
     /// 附着效果（瞬间 buff/持续行为）是否受沉默由各自效果门/事件门判定，与动作门分离。</summary>
     public bool CanAttach => canAttach;
     public bool HasShield() => hasShield;
+    /// <summary>征服者(01508)敌方法术免疫（第二步三关卡共用谓词）：本模板且未被完全沉默。
+    /// 全沉默（神官/能量骇客）时免疫关闭 → 敌方法术可作用。判定在调用方再叠加"异侧=对方法术"。</summary>
+    public bool ImmuneToEnemySpells => templateID == "01508" && !IsSilenced();
     public int prisonMySlot = -1;
     public int prisonEnemySlot = -1;
     bool IsSilenced()

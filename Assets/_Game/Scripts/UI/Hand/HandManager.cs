@@ -2634,26 +2634,35 @@ public class HandManager : MonoBehaviour
         CardDisplayPanel.Instance.multiSelect = false;
         CardDrag.CleanupSpellResources();
     }
+    /// 瘟疫(02408)选敌守卫：排除敌方免疫卡(征服者01508)（第二步关卡3）。true=允许。
+    static bool PlagueExcludeImmuneFilter(BoardSlot s)
+    {
+        if (s?.currentCard3D == null) return true;
+        var ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+        return ci == null || !ci.ImmuneToEnemySpells;
+    }
+
     public IEnumerator PlagueEffect()
     {
-        // 第一次：隐藏手牌
+        // 第一次：隐藏手牌（征服者免疫：瘟疫不可选中敌方免疫卡01508）
+        BoardSlot.extraTargetFilter = PlagueExcludeImmuneFilter;
         BoardSlot first = null;
         bool firstDone = false;
         SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (s) =>
         {
-            if (s != null && !s.isBlocked) { first = s; firstDone = true; }
+            if (s != null && !s.isBlocked && PlagueExcludeImmuneFilter(s)) { first = s; firstDone = true; }
         });
         BoardSlot.isStrengtheningSlot = true;
         yield return new WaitUntil(() => firstDone);
-        if (first == null) { CardDrag.CleanupSpellResources(); yield break; }
+        if (first == null) { BoardSlot.extraTargetFilter = null; CardDrag.CleanupSpellResources(); yield break; }
 
-        // 第二次：隐藏手牌
+        // 第二次：隐藏手牌（同样排除免疫卡 + 不重复选同一格）
         BoardSlot second = null;
         bool secondDone = false;
-        BoardSlot.extraTargetFilter = (s) => s != first;
+        BoardSlot.extraTargetFilter = (s) => s != first && PlagueExcludeImmuneFilter(s);
         SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (s) =>
         {
-            if (s != null && !s.isBlocked && s != first) { second = s; secondDone = true; }
+            if (s != null && !s.isBlocked && s != first && PlagueExcludeImmuneFilter(s)) { second = s; secondDone = true; }
         });
         BoardSlot.isStrengtheningSlot = true;
         yield return new WaitUntil(() => secondDone);
