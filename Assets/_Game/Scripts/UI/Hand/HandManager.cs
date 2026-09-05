@@ -1010,11 +1010,15 @@ public class HandManager : MonoBehaviour
         // 附着动画：从下一个附着牌理论位置滑入自己理论位置（约0.5s，仅表现，不影响附着逻辑）
         instance3D?.PlayAttachSlideIn(GetAttachWorldPos(hostSlot.slotID, attachOrder + 1), attachPos);
 
-        // 附着瞬间效果沉默门（5.x）：附着体被完全沉默 → 跳过一次性增益（附着动作不受影响）。
-        // 从手牌附着（卡未沉默）实际不触发；对已在场可独立附着物被沉默后再附才会真正跳过。双方各自本地 PlaceAttachedCard → 天然对称。
-        bool attachEffectSilenced = instance3D != null && instance3D.cardInstance != null
-            && GlobalEventManager.Instance != null
-            && GlobalEventManager.Instance.IsFullySilenced(instance3D.cardInstance);
+        // 附着瞬间效果沉默门（5.x/B1）：附着体被完全沉默 → 跳过一次性增益（附着动作不受影响）。
+        // 旧实现对新拷贝判 IsFullySilenced，但拷贝在 bm.attachedModels.Add(下方) 前不可定位 → 恒 false 死门。
+        // 改为几何判定：目标宿主槽被能量骇客(01335)对位压制（新附着体落该槽即全沉默），或源实例已在场且被沉默
+        // （保留"已在场可独立附着物被沉默后再附"语义）。双方各自本地 PlaceAttachedCard → 天然对称。
+        bool attachEffectSilenced = hostSlot != null && GlobalEventManager.Instance != null
+            && GlobalEventManager.Instance.IsSlotHackedByEnergyHacker(hostSlot.slotID);
+        if (!attachEffectSilenced && sourceInstance != null && GlobalEventManager.Instance != null
+            && GlobalEventManager.Instance.IsFullySilenced(sourceInstance))
+            attachEffectSilenced = true;
 
         // 解析附着特性文本，给宿主加增益
         if (!string.IsNullOrEmpty(template.traits) && !attachEffectSilenced)

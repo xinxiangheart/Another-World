@@ -104,22 +104,41 @@ public class GlobalEventManager : MonoBehaviour
         return false;
     }
 
-    /// <summary>兜底：检查是否被能量骇客(01335)对位压制（递归安全：仅检查silencedThisPhase）</summary>
+    /// <summary>几何谓词：某槽位(0-11)是否被能量骇客(01335)对位压制——对位槽上有活跃骇客即 true
+    /// （独立占位或附着均算；骇客自身未被阶段沉默 silencedThisPhase）。
+    /// 递归安全：只查骇客 silencedThisPhase，不查 IsFullySilenced(hacker)。B1/B2 与 IsSilencedByEnergyHacker/
+    /// IsUnderEnergyHacker 共用，双端按同步板面对称判定。</summary>
+    public bool IsSlotHackedByEnergyHacker(int slotID)
+    {
+        if (slotID < 0 || slotID > 11) return false;
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return false;
+        int oppSlot = slotID < 6 ? slotID + 6 : slotID - 6;
+
+        CardInstance opp = bm.GetSlot(oppSlot)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+        if (opp != null && opp.templateID == "01335" && !opp.silencedThisPhase) return true;
+        // 骇客附着在宿主上：按 hostSlotID 认
+        if (bm.attachedModels != null)
+        {
+            foreach (GameObject obj in bm.attachedModels)
+            {
+                var aci = obj?.GetComponent<Card3DInstance>()?.cardInstance;
+                if (aci != null && aci.templateID == "01335" && aci.hostSlotID == oppSlot && !aci.silencedThisPhase)
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>兜底：检查某卡是否被能量骇客(01335)对位压制。附着物经 GetSlotOf 按宿主槽定位（B2）。</summary>
     bool IsSilencedByEnergyHacker(CardInstance ci)
     {
-        if (ci.templateID == "01335") return false;
+        if (ci == null || ci.templateID == "01335") return false;
         BoardManager bm = FindObjectOfType<BoardManager>();
         if (bm == null) return false;
         int slot = GetSlotOf(ci, bm);
         if (slot < 0) return false;
-
-        int oppSlot = slot < 6 ? slot + 6 : slot - 6;
-        CardInstance opp = bm.GetSlot(oppSlot)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
-        if (opp == null || opp.templateID != "01335") return false;
-        if (opp.silencedThisPhase) return false;
-        // 能量骇客附着时检查实际槽位
-        if (opp.isAttached && opp.hostSlotID != oppSlot) return false;
-        return true;
+        return IsSlotHackedByEnergyHacker(slot);
     }
 
     int GetSlotOf(CardInstance ci, BoardManager bm)
@@ -128,6 +147,15 @@ public class GlobalEventManager : MonoBehaviour
         {
             if (bm.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance == ci)
                 return i;
+        }
+        // B2：附着物按宿主槽定位（对齐 AuraBase.GetSlotOf）——附着卡可被对位骇客/法官/萨满按宿主半场判定
+        if (bm.attachedModels != null)
+        {
+            foreach (GameObject obj in bm.attachedModels)
+            {
+                var c3d = obj?.GetComponent<Card3DInstance>();
+                if (c3d?.cardInstance == ci) return c3d.cardInstance.hostSlotID;
+            }
         }
         return -1;
     }
@@ -187,25 +215,8 @@ public class GlobalEventManager : MonoBehaviour
         return true;
     }
 
-    /// <summary>能量骇客对位判定：独立占位或附着（hostSlotID 动态）都要算。补 IsSilencedByEnergyHacker 漏附着的情况。</summary>
-    bool IsUnderEnergyHacker(CardInstance ci)
-    {
-        if (ci == null || ci.templateID == "01335") return false;
-        BoardManager bm = FindObjectOfType<BoardManager>();
-        if (bm == null) return false;
-        int slot = GetSlotOf(ci, bm);
-        if (slot < 0) return false;
-        int oppSlot = slot < 6 ? slot + 6 : slot - 6;
-        CardInstance opp = bm.GetSlot(oppSlot)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
-        if (opp != null && opp.templateID == "01335" && !opp.silencedThisPhase) return true;
-        foreach (GameObject obj in bm.attachedModels)
-        {
-            var aci = obj?.GetComponent<Card3DInstance>()?.cardInstance;
-            if (aci != null && aci.templateID == "01335" && aci.hostSlotID == oppSlot && !aci.silencedThisPhase)
-                return true;
-        }
-        return false;
-    }
+    /// <summary>能量骇客对位判定（01335 受害者状态用）。与 IsSilencedByEnergyHacker 统一语义（B2），不再各自维护。</summary>
+    bool IsUnderEnergyHacker(CardInstance ci) => IsSilencedByEnergyHacker(ci);
     /// <summary>己方玩家受到伤害时触发，参数为伤害量</summary>
     public event Action<int> OnPlayerDamaged;
     public void TriggerPlayerDamaged(int amount)

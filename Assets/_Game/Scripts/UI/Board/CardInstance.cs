@@ -705,7 +705,9 @@ public class CardInstance : MonoBehaviour
         // 应用治疗修正
         amount = Mathf.RoundToInt(amount * healModifier);
         if (amount <= 0) return;
-        if (templateID == "01512") amount = Mathf.Min(amount, 1);
+        // 01512 万象镜面：单次治疗≤1。与扣血 clamp(DamagePipeline Stage4) 对称——被全沉默时失去该特判（B3）
+        if (templateID == "01512" && (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(this)))
+            amount = Mathf.Min(amount, 1);
         int actualHeal = Mathf.Min(currentMaxHealth - currentHealth, amount);
         currentHealth += actualHeal;
         if (actualHeal > 0) DamagePipeline.ShowFloaterAt(this, actualHeal, FloaterType.Heal);
