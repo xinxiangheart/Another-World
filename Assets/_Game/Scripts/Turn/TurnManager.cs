@@ -1085,27 +1085,25 @@ public partial class TurnManager : MonoBehaviour
     IEnumerator RebelSelectCard(CardInstance rebelCI, BoardSlot rebelSlot, Card3DInstance rebel3D, List<GameObject> validCards, Action onComplete)
     {
         CardInstance selectedCard = null;
+        HandManager rebelHm = FindObjectOfType<HandManager>();
+        List<CardInstance> candidates = new List<CardInstance>();
+        foreach (var go in validCards) { var c = go?.GetComponent<CardInstance>(); if (c != null) candidates.Add(c); }
+
         bool selectionDone = false;
+        CardDisplayPanel.Instance.multiSelect = false;
+        CardDisplayPanel.Instance.ShowWithCallback(candidates, ci => true, () => selectionDone = true, "消耗");
+        float rbDeadline = Time.time + 30f;
+        while (!selectionDone && Time.time < rbDeadline) yield return null;
+        if (!selectionDone) { rebelHm?.EndHandSelectionCleanup(); ConfirmQueueManager.ExitSelectionMode(); onComplete(); yield break; }
 
-        foreach (GameObject card in validCards)
-        {
-            CardClickHandler handler = card.GetComponent<CardClickHandler>();
-            if (handler == null) handler = card.AddComponent<CardClickHandler>();
-            handler.onClick = () => { selectedCard = card.GetComponent<CardInstance>(); selectionDone = true; };
-        }
-
-        yield return new WaitUntil(() => selectionDone);
-
-        foreach (GameObject card in validCards)
-        {
-            CardClickHandler handler = card.GetComponent<CardClickHandler>();
-            if (handler != null) Destroy(handler);
-        }
-
-        ConfirmQueueManager.RestoreAllHandCards();
+        CardInstance chosen = CardDisplayPanel.Instance.GetSelectedCard();
+        selectedCard = chosen != null
+            ? rebelHm?.ResolveHandCardByInstanceID(chosen.instanceID)?.GetComponent<CardInstance>()
+            : null;
+        rebelHm?.EndHandSelectionCleanup();
         ConfirmQueueManager.ExitSelectionMode();
+        if (selectedCard == null) { onComplete(); yield break; }
 
-        if (selectedCard != null)
         {
             int tier = selectedCard.currentTier;
             bool isYuan = selectedCard.prefixes.Contains("渊");
@@ -1489,23 +1487,22 @@ public partial class TurnManager : MonoBehaviour
         }
 
         GameObject selected = null;
+        HandManager swordHm = FindObjectOfType<HandManager>();
+        List<CardInstance> candidates = new List<CardInstance>();
+        foreach (var go in validCards) { var c = go?.GetComponent<CardInstance>(); if (c != null) candidates.Add(c); }
+
         bool selectionDone = false;
+        CardDisplayPanel.Instance.multiSelect = false;
+        CardDisplayPanel.Instance.ShowWithCallback(candidates, ci => true, () => selectionDone = true, "消耗");
+        float swDeadline = Time.time + 30f;
+        while (!selectionDone && Time.time < swDeadline) yield return null;
+        if (!selectionDone) { swordHm?.EndHandSelectionCleanup(); ConfirmQueueManager.ExitSelectionMode(); done(); yield break; }
 
-        foreach (GameObject card in validCards)
-        {
-            CardClickHandler h = card.GetComponent<CardClickHandler>() ?? card.AddComponent<CardClickHandler>();
-            h.onClick = () => { selected = card; selectionDone = true; };
-        }
-
-        yield return new WaitUntil(() => selectionDone);
-
-        foreach (GameObject card in validCards)
-        {
-            CardClickHandler h = card.GetComponent<CardClickHandler>();
-            if (h != null) Destroy(h);
-        }
-        ConfirmQueueManager.RestoreAllHandCards();
+        CardInstance chosen = CardDisplayPanel.Instance.GetSelectedCard();
+        selected = chosen != null ? swordHm?.ResolveHandCardByInstanceID(chosen.instanceID) : null;
+        swordHm?.EndHandSelectionCleanup();
         ConfirmQueueManager.ExitSelectionMode();
+        if (selected == null) { done(); yield break; }
 
         if (selected != null)
         {
