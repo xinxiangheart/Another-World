@@ -1008,7 +1008,7 @@ public class NetworkPlayer : NetworkBehaviour
             return null;
         }
 
-        GameObject prefab = GetCardPrefab(data.cardType);
+        GameObject prefab = GetCardPrefab(data.cardType, data);
         if (prefab == null)
         {
             Debug.LogError($"[NetworkPlayer] DrawCard: prefab is null for cardType={data.cardType}");
@@ -1093,7 +1093,7 @@ public class NetworkPlayer : NetworkBehaviour
             return;
         }
 
-        GameObject prefab = GetCardPrefab(data.cardType);
+        GameObject prefab = GetCardPrefab(data.cardType, data);
         if (prefab == null)
         {
             Debug.LogError($"[NetworkPlayer] DrawCardWithoutLimit: prefab is null");
@@ -1288,7 +1288,7 @@ public class NetworkPlayer : NetworkBehaviour
 
         int maxSize = target.maxHandSize;
         Transform targetHandArea = target.handArea;
-        GameObject prefab = target.GetCardPrefab(template.cardType);
+        GameObject prefab = target.GetCardPrefab(template.cardType, template);
 
         if (prefab == null)
         {
@@ -3017,7 +3017,7 @@ public class NetworkPlayer : NetworkBehaviour
         if (template == null) return;
         handCards.RemoveAll(c => c == null);
         if (handCards.Count >= maxHandSize) return;
-        GameObject prefab = GetCardPrefab(template.cardType);
+        GameObject prefab = GetCardPrefab(template.cardType, template);
         if (prefab == null) return;
         GameObject card = Instantiate(prefab, handArea);
         Player.Scale2DCard(card);
