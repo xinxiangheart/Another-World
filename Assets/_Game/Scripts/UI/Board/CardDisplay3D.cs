@@ -40,6 +40,8 @@ public class CardDisplay3D : MonoBehaviour
 
     MaterialPropertyBlock _mpb;
     bool _artInitialized;
+    string _lastAttackText;
+    string _lastHealthText;
 
     void Awake()
     {
@@ -309,11 +311,34 @@ public class CardDisplay3D : MonoBehaviour
         // 费用文字跟随正反面：ShowFront(UIComponents 激活)时显示，ShowBack 时随整组隐藏 —— 不在此强制隐藏
         if (costText != null) costText.text = instance.GetDisplayCost().ToString();
 
-        if (attackText != null) attackText.text = instance.Attack.ToString();
+        // ── 攻击/生命数值变化 → 该 Text 弹跳（纯表现）。法术牌隐藏攻/血不弹；
+        //    召唤期/首刷经 Card3DInstance.ElementBounceAllowed 抑制；无 FX(旧卡)跳过 ──
+        bool bounceText = c3d != null && c3d.ElementBounceAllowed
+            && (template == null || template.cardType != CardType.Spell);
+        CardFaceBounceFX bounceFx = bounceText ? GetComponent<CardFaceBounceFX>() : null;
+        if (attackText != null)
+        {
+            string atk = instance.Attack.ToString();
+            bool atkChanged = _lastAttackText != null && _lastAttackText != atk;
+            _lastAttackText = atk;
+            attackText.text = atk;
+            if (atkChanged && bounceFx != null)
+            {
+                bounceFx.EnsureElement("atk", attackText.transform);
+                bounceFx.Bounce("atk", attackText.transform, true);
+            }
+        }
         if (healthText != null)
         {
-
-            healthText.text = instance.currentHealth.ToString();
+            string hp = instance.currentHealth.ToString();
+            bool hpChanged = _lastHealthText != null && _lastHealthText != hp;
+            _lastHealthText = hp;
+            healthText.text = hp;
+            if (hpChanged && bounceFx != null)
+            {
+                bounceFx.EnsureElement("hp", healthText.transform);
+                bounceFx.Bounce("hp", healthText.transform, true);
+            }
         }
 
         // 召唤物文字动态变色（2D/3D 通用，只作用文本；法术不适用）。规则见 CardInstance.Get*Color()。

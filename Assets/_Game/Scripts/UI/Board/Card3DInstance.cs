@@ -13,10 +13,18 @@ public class Card3DInstance : MonoBehaviour
         // 攻击动画组件（飞向/击中/返回）
         if (GetComponent<Card3DAttackAnimator>() == null)
             gameObject.AddComponent<Card3DAttackAnimator>();
+        // 数值/图标弹跳（纯表现）——自动挂，无元素触发时自然空转
+        if (GetComponent<CardFaceBounceFX>() == null)
+            gameObject.AddComponent<CardFaceBounceFX>();
     }
+
+    /// <summary>元素弹跳是否允许：已过首次刷新(armed)且不在召唤动画中。</summary>
+    public bool ElementBounceAllowed => _bounceArmed && !_summonAnimating;
 
     public void UpdateValues()
     {
+        // 首刷即武装：进场那次 UpdateValues 本身不弹（无前值/召唤期），此后数值真变化才弹
+        _bounceArmed = true;
         CardDisplay3D display = GetComponent<CardDisplay3D>();
         if (display != null) display.Refresh();
         // 新 3D 卡图标（费用/类型/攻/血 + 三排）随同一触发点刷新；旧卡无此组件则跳过
@@ -49,6 +57,7 @@ public class Card3DInstance : MonoBehaviour
 
     Coroutine _summonRoutine;
     bool _summonAnimating;
+    bool _bounceArmed; // 首刷后置 true；供 ElementBounceAllowed（抑制进场/召唤期弹跳）
     Vector3 _summonBaseScale = Vector3.one;
 
     /// <summary>生成入口统一调用：实例化后立即触发召唤动画（同步把可见正面容器缩到 0，避免先以完整尺寸闪现一帧）。</summary>

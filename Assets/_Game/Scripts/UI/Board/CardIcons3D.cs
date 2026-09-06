@@ -72,6 +72,8 @@ public class CardIcons3D : MonoBehaviour
 
     CardInstance _inst;
     static Sprite _placeholder;
+    // 每排上次签名（key -> 灰显），用于弹跳"新增/灰翻转"变化检测（纯表现）
+    readonly Dictionary<string, Dictionary<string, bool>> _lastRowSig = new Dictionary<string, Dictionary<string, bool>>();
 
     public void RefreshWithInstance(CardInstance inst) { _inst = inst; Refresh(); }
 
@@ -89,11 +91,90 @@ public class CardIcons3D : MonoBehaviour
         SetCornerIcon(attackIcon, PickSprite(attackIconSprite, attackIconPath), !isSpell);
 
         // ── 三排图标（各自清除重建；预览数组优先，未拖入走动态路径加载；居中排列，间距可调）──
-        PopulateRow(prefixIconsRow, previewPrefixIcons, BuildPrefixEntries(_inst), GetRowSpacing(prefixRowSpacing));
+        // 弹跳：仅 FX 存在且非召唤期/首刷时，对新出现/变化(灰翻转)图标播放放大→缩回（纯表现）
+        bool bounceAllowed = false;
+        CardFaceBounceFX fx = GetComponent<CardFaceBounceFX>();
+        if (fx != null)
+        {
+            Card3DInstance c3d = GetComponent<Card3DInstance>();
+            bounceAllowed = c3d != null && c3d.ElementBounceAllowed;
+        }
+        RebuildRow(prefixIconsRow, "prefix", previewPrefixIcons, BuildPrefixEntries(_inst), GetRowSpacing(prefixRowSpacing), null, bounceAllowed, fx);
         // 6.x 特性图标置灰：被禁（完全沉默 BlockAll / 光环类禁）的 key 集合传入，命中即灰显而非隐藏
         var blockedTraitKeys = ComputeBlockedTraitKeys(_inst);
-        PopulateRow(traitIconsRow,  previewTraitIcons,  BuildTraitEntries(_inst),  GetRowSpacing(traitRowSpacing), blockedTraitKeys);
-        PopulateRow(statusIconsRow, previewStatusIcons, BuildStatusEntries(_inst), GetRowSpacing(statusRowSpacing));
+        RebuildRow(traitIconsRow, "trait", previewTraitIcons, BuildTraitEntries(_inst), GetRowSpacing(traitRowSpacing), blockedTraitKeys, bounceAllowed, fx);
+        RebuildRow(statusIconsRow, "status", previewStatusIcons, BuildStatusEntries(_inst), GetRowSpacing(statusRowSpacing), null, bounceAllowed, fx);
+    }
+
+    /// <summary>行元素弹跳 id（跨重建持久）：rowId.key；预览图标返回 null（不弹）。</summary>
+    static string ElementId(string rowId, string childName)
+    {
+        if (childName == null) return null;
+        if (!childName.StartsWith("icon_") || childName.StartsWith("icon_preview")) return null;
+        return rowId + "." + childName.Substring("icon_".Length);
+    }
+
+    /// <summary>重建一排并弹跳变化/新出现图标：先 Cancel 旧动画(保留倍率)，PopulateRow 重建，
+    /// 再对新增/灰翻转图标 force 弹跳；被无关刷新打断的进行中动画(倍率&gt;1)续弹。
+    /// 抑制期(bounceAllowed=false)或预览模式仅重建不弹。纯表现，不改签名/判定逻辑。</summary>
+    void RebuildRow(Transform row, string rowId, Sprite[] preview,
+        List<(string key, Sprite direct, string path)> entries, float spacing,
+        HashSet<string> grayKeys, bool bounceAllowed, CardFaceBounceFX fx)
+    {
+        if (row == null) return;
+
+        // 本次签名：key -> 灰显
+        Dictionary<string, bool> newSig = new Dictionary<string, bool>();
+        if (entries != null)
+            foreach (var e in entries)
+                newSig[e.key] = grayKeys != null && grayKeys.Contains(e.key);
+
+        Dictionary<string, bool> oldSig;
+        bool firstMount = !_lastRowSig.ContainsKey(rowId); // 该排首次构建=卡初始展示，不弹
+        _lastRowSig.TryGetValue(rowId, out oldSig);
+        if (oldSig == null) oldSig = new Dictionary<string, bool>();
+
+        // 旧子物体若在动画中：按名字取 id 并 Cancel（倍率留 _mult 供续弹）；已消失 key 遗忘状态
+        if (fx != null)
+        {
+            for (int i = 0; i < row.childCount; i++)
+            {
+                string id = ElementId(rowId, row.GetChild(i).name);
+                if (id != null) fx.Cancel(id);
+            }
+            foreach (var kv in oldSig)
+                if (!newSig.ContainsKey(kv.Key)) fx.Drop(rowId + "." + kv.Key);
+        }
+
+        PopulateRow(row, preview, entries, spacing, grayKeys);
+        _lastRowSig[rowId] = newSig;
+
+        // 首建(初始展示)/抑制期/预览模式均不弹
+        if (firstMount || !bounceAllowed || fx == null) return;
+        // ClearChildren 用 Destroy（帧末才移除）→ 重建后旧子物体仍驻留；新建的在末尾，
+        // 反向取每 key 最新子物体，确保弹在新建图标上而非将死的旧图标
+        Dictionary<string, Transform> newest = new Dictionary<string, Transform>();
+        for (int i = row.childCount - 1; i >= 0; i--)
+        {
+            Transform c = row.GetChild(i);
+            if (ElementId(rowId, c.name) == null) continue;
+            string key = c.name.Substring("icon_".Length);
+            if (!newest.ContainsKey(key)) newest[key] = c;
+        }
+        foreach (var kv in newest)
+        {
+            string key = kv.Key;
+            Transform c = kv.Value;
+            string id = rowId + "." + key;
+            bool newGray = grayKeys != null && grayKeys.Contains(key);
+            bool changed;
+            bool oldGray;
+            if (!oldSig.TryGetValue(key, out oldGray)) changed = true;
+            else changed = oldGray != newGray;
+            fx.EnsureElement(id, c);
+            if (changed) fx.Bounce(id, c, true);
+            else if (fx.CurrentMult(id) > 1.001f) fx.Bounce(id, c, false); // 无关刷新打断 → 从中断倍率续弹
+        }
     }
 
     // ================= 角标图标 =================
