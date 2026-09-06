@@ -2803,77 +2803,88 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
 
         HandManager hm = FindObjectOfType<HandManager>();
-        hm?.ShowAllCards();
+        // giver 半场（进场仍占位）
+        int giverSlot = -1;
+        BoardManager bm0 = FindObjectOfType<BoardManager>();
+        if (bm0 != null)
+            for (int i = 0; i < 12; i++)
+                if (bm0.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance == giver) { giverSlot = i; break; }
+        int sideStart = (giverSlot < 0 || giverSlot >= 6) ? 6 : 0; // 找不到按 Host 半场兜底
 
-        string layerId = SelectionManager.Instance.BeginOpenSelection(TargetType.SingleAlly, null);
-
-        List<GameObject> spellCards = new List<GameObject>();
-        foreach (GameObject card in NetworkPlayer.Local.handCards)
+        if (sideStart >= 6)
         {
-            CardInstance ci = card?.GetComponent<CardInstance>();
-            if (ci != null && CardDatabase.Instance?.GetTemplate(ci.templateID)?.cardType == CardType.Spell)
+            // Host/本机：01349 收藏家式弹窗（手牌召唤物 + 己方 6-11 场上召唤物）
+            List<CardInstance> candidates = hm != null ? hm.BuildHandPlusFieldCardList(
+                ci => CardDatabase.Instance?.GetTemplate(ci.templateID)?.cardType == CardType.Summon)
+                : new List<CardInstance>();
+            if (candidates.Count == 0) { CleanupAfterPlacement(); yield break; }
+
+            CardDisplayPanel.Instance.multiSelect = false;
+            bool confirmed = false;
+            CardDisplayPanel.Instance.ShowWithCallback(candidates, ci => true, () => confirmed = true, "选择");
+            float emDl = Time.time + 30f;
+            while (!confirmed && Time.time < emDl) yield return null;
+            if (!confirmed) { hm?.EndHandSelectionCleanup(); CleanupAfterPlacement(); yield break; }
+            CardInstance chosen = CardDisplayPanel.Instance.GetSelectedCard();
+            string iid = chosen != null ? chosen.instanceID : null;
+            hm?.EndHandSelectionCleanup();
+            if (!string.IsNullOrEmpty(iid)) ApplyEmperorPrefixById(iid, null);
+        }
+        else
+        {
+            NetworkPlayer owner = giverSlot >= 0 ? BoardManager.GetOwnerPlayer(giverSlot) : NetworkPlayer.Local;
+            if (owner != null && owner.connectionToClient != null)
             {
-                card.SetActive(false);
-                spellCards.Add(card);
+                // Remote 远端人类：通用远端 CardDisplayPanel 弹窗（选手牌+其己方场上）
+                int pickId = NetworkPlayer.StartRemoteCardPick(owner, NetworkPlayer.RemoteCardPickKind.Summon);
+                yield return NetworkPlayer.WaitForClientSelection(pickId);
+                string iid = NetworkPlayer.GetSelectionInstID(pickId);
+                if (!string.IsNullOrEmpty(iid)) ApplyEmperorPrefixById(iid, owner);
+            }
+            else
+            {
+                // AI（无连接）：自动给 0-5 半场第一个未带渊召唤物
+                if (bm0 != null)
+                    for (int i = 0; i <= 5; i++)
+                    {
+                        BoardSlot s = bm0.GetSlot(i);
+                        CardInstance ci = s?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                        if (ci != null && !ci.prefixes.Contains("渊"))
+                        {
+                            ci.GivePrefix("渊", "01501");
+                            s.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+                            break;
+                        }
+                    }
             }
         }
-
-        List<GameObject> handSummons = new List<GameObject>();
-        foreach (GameObject card in NetworkPlayer.Local.handCards)
-        {
-            CardInstance ci = card?.GetComponent<CardInstance>();
-            if (ci != null && CardDatabase.Instance?.GetTemplate(ci.templateID)?.cardType == CardType.Summon)
-            {
-                handSummons.Add(card);
-                CardClickHandler h = card.GetComponent<CardClickHandler>() ?? card.AddComponent<CardClickHandler>();
-                h.onClick = () =>
-                {
-                    SelectionManager.Instance.ForceEndAll();
-                    CleanupEmperorUI(spellCards, handSummons);
-                    ApplyEmperorPrefix(card);
-                    CleanupAfterPlacement();
-                };
-            }
-        }
-
-        BoardSlot.onTargetSelected = (targetSlot) =>
-        {
-            if (targetSlot?.currentCard3D != null)
-            {
-                SelectionManager.Instance.ForceEndAll();
-                CleanupEmperorUI(spellCards, handSummons);
-                ApplyEmperorPrefix(targetSlot.currentCard3D);
-                CleanupAfterPlacement();
-            }
-        };
+        CleanupAfterPlacement();
     }
 
-    void CleanupEmperorUI(List<GameObject> hiddenSpells, List<GameObject> handSummons)
+    /// <summary>按 iid 对真身加渊前缀：场上(任意半场,服务器权威模型)→Sync；手牌→远端 TargetGiveHandPrefix / Host 本地直改。
+    /// remoteOwner==null = Host/本机（本地手牌可直改 + CmdSetHandCardPrefix）。</summary>
+    void ApplyEmperorPrefixById(string iid, NetworkPlayer remoteOwner)
     {
-        foreach (GameObject card in hiddenSpells) if (card != null) card.SetActive(true);
-        foreach (GameObject card in handSummons)
+        HandManager hm = FindObjectOfType<HandManager>();
+        Card3DInstance c3d = hm?.ResolveFieldCardByInstanceID(iid);
+        if (c3d?.cardInstance != null)
         {
-            if (card == null) continue;
-            CardClickHandler h = card.GetComponent<CardClickHandler>();
-            if (h != null) Destroy(h);
+            CardInstance ci = c3d.cardInstance;
+            if (!ci.prefixes.Contains("渊")) { ci.GivePrefix("渊", "01501"); c3d.UpdateValues(); TurnManager.SyncMyBoardToOpponent(); }
+            return;
         }
-    }
-
-    void ApplyEmperorPrefix(GameObject target)
-    {
-        if (target == null) return;
-        CardInstance ci = target.GetComponent<CardInstance>();
-        if (ci == null) { Card3DInstance c3d = target.GetComponent<Card3DInstance>(); if (c3d != null) ci = c3d.cardInstance; }
-        if (ci != null && !ci.prefixes.Contains("渊"))
+        if (remoteOwner != null && remoteOwner.connectionToClient != null)
         {
-            ci.GivePrefix("渊", "01501");
-            Card3DInstance c3d = target.GetComponent<Card3DInstance>();
-            c3d?.UpdateValues();
-            CardDisplay2D d2d = target.GetComponent<CardDisplay2D>();
-            d2d?.Refresh();
-            // 前缀修改同步到对方
-            TurnManager.SyncMyBoardToOpponent();
+            remoteOwner.TargetGiveHandPrefix(remoteOwner.connectionToClient, iid, "渊", "01501");
+            return;
         }
+        // Host/本机手牌
+        GameObject handCard = hm?.ResolveHandCardByInstanceID(iid);
+        CardInstance hci = handCard?.GetComponent<CardInstance>();
+        if (hci == null) return;
+        if (!hci.prefixes.Contains("渊")) hci.GivePrefix("渊", "01501");
+        handCard.GetComponent<CardDisplay2D>()?.Refresh();
+        if (NetworkClient.isConnected) NetworkPlayer.Local?.CmdSetHandCardPrefix(iid, "渊");
     }
     public void SetHighlightColor(Color color)
     {

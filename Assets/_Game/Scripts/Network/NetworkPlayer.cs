@@ -533,6 +533,86 @@ public class NetworkPlayer : NetworkBehaviour
         return "";
     }
 
+    // ── 通用远端 CardDisplayPanel 弹窗（01349 收藏家模式；01501 皇帝 / 后续 01525 复用）──
+
+    public enum RemoteCardPickKind { Summon, Spell, Any }
+
+    static bool RemoteKindOk(RemoteCardPickKind kind, CardData td)
+    {
+        if (td == null) return false;
+        switch (kind)
+        {
+            case RemoteCardPickKind.Summon: return td.cardType == CardType.Summon;
+            case RemoteCardPickKind.Spell:  return td.cardType == CardType.Spell;
+            default: return true;
+        }
+    }
+
+    /// <summary>服务端启动"远端 CardDisplayPanel 弹窗"（远端选手牌 + 己方场上，01349 同款）。
+    /// 返回 selectionId；用 WaitForClientSelection + GetSelectionInstID 取结果（""=未选/超时）。</summary>
+    public static int StartRemoteCardPick(NetworkPlayer target, RemoteCardPickKind kind)
+    {
+        int id = System.Threading.Interlocked.Increment(ref _nextSelectionId);
+        if (target != null && target.connectionToClient != null)
+            target.TargetRemoteCardPick(target.connectionToClient, id, kind);
+        return id;
+    }
+
+    /// <summary>远端：弹自己的 手牌+己方场上 混合 CardDisplayPanel，选一张回传 instanceID。</summary>
+    [TargetRpc]
+    void TargetRemoteCardPick(NetworkConnectionToClient _, int selectionId, RemoteCardPickKind kind)
+    {
+        HandManager hm = FindObjectOfType<HandManager>();
+        System.Func<CardInstance, bool> f = ci => RemoteKindOk(kind, CardDatabase.Instance?.GetTemplate(ci.templateID));
+        List<CardInstance> list = hm != null ? hm.BuildHandPlusFieldCardList(f) : new List<CardInstance>();
+        if (list.Count == 0) { CmdRemoteCardPickResult(selectionId, ""); return; }
+
+        bool replied = false;
+        System.Action Reply = () =>
+        {
+            if (replied) return; replied = true;
+            CardInstance sel = CardDisplayPanel.Instance != null ? CardDisplayPanel.Instance.GetSelectedCard() : null;
+            CmdRemoteCardPickResult(selectionId, sel != null ? sel.instanceID : "");
+            if (CardDisplayPanel.Instance != null)
+            {
+                CardDisplayPanel.Instance.Hide();
+                CardDisplayPanel.Instance.multiSelect = false;
+            }
+            if (hm != null) hm.EndHandSelectionCleanup();
+        };
+        CardDisplayPanel.Instance.multiSelect = false;
+        CardDisplayPanel.Instance.ShowWithCallback(list, f, Reply, "选择");
+        StartCoroutine(RemoteCardPickTimeout(selectionId, Reply));
+    }
+
+    IEnumerator RemoteCardPickTimeout(int selectionId, System.Action reply)
+    {
+        yield return new WaitForSeconds(30f);
+        reply();
+    }
+
+    /// <summary>远端选完回传 instanceID（服务端 _pendingSelections 兜底 30s）。</summary>
+    [Command]
+    void CmdRemoteCardPickResult(int selectionId, string instanceID)
+    {
+        if (_pendingSelections.ContainsKey(selectionId))
+            _pendingSelections[selectionId] = (-1, instanceID, true);
+    }
+
+    /// <summary>服务端给指定远端客户端的手牌加前缀（远端本地 GivePrefix + 刷新 + CmdSetHandCardPrefix 同步追踪）。</summary>
+    [TargetRpc]
+    public void TargetGiveHandPrefix(NetworkConnectionToClient _, string instanceID, string prefix, string sourceID)
+    {
+        HandManager hm = FindObjectOfType<HandManager>();
+        GameObject handCard = hm?.ResolveHandCardByInstanceID(instanceID);
+        CardInstance ci = handCard?.GetComponent<CardInstance>();
+        if (ci == null) return;
+        if (!ci.prefixes.Contains(prefix)) ci.GivePrefix(prefix, sourceID);
+        handCard.GetComponent<CardDisplay2D>()?.Refresh();
+        if (NetworkClient.isConnected && NetworkPlayer.Local != null)
+            NetworkPlayer.Local.CmdSetHandCardPrefix(instanceID, prefix);
+    }
+
     /// <summary>启动面板委托：给指定客户端弹面板，分配 selectionId 并返回。</summary>
     public static int StartClientSelection(NetworkPlayer client, TargetType targetType)
     {
