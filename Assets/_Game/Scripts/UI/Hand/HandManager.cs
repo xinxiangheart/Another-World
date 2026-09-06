@@ -134,6 +134,12 @@ public class HandManager : MonoBehaviour
             }
             handCards[i].gameObject.SetActive(true);
         }
+        // 仅当手牌是被真 HideAllCards 隐藏(标志置位)才恢复按钮；预览式/鼠标通道的 ShowAllCards 不清标志、不碰按钮
+        if (_handCardsHidden)
+        {
+            _handCardsHidden = false;
+            SetTurnButtonsVisible(true);
+        }
         MarkBoundsDirty();
     }
 
@@ -695,17 +701,40 @@ public class HandManager : MonoBehaviour
         return new Vector3(basePos.x - 0.25f - attachOrder * 0.25f, basePos.y, basePos.z + 0.1f + attachOrder * 0.05f); // 附着-宿主及附着-附着 X 间隔均0.25
     }
 
+    bool _handCardsHidden; // 真手牌隐藏标志：置位才隐藏/恢复抽牌与结束回合按钮（预览/射线通道不置位）
+
     public void HideAllCards()
     {
         foreach (CardView cv in handCards)
             if (cv != null) cv.gameObject.SetActive(false);
+        // 隐藏手牌 → 同步隐藏抽牌/结束回合按钮，防误触（幂等）
+        if (!_handCardsHidden)
+        {
+            _handCardsHidden = true;
+            SetTurnButtonsVisible(false);
+        }
         MarkBoundsDirty();
+    }
+
+    EndTurnButton _endBtnCache;
+    DrawCardUI _drawUiCache;
+
+    /// <summary>抽牌与结束回合按钮显隐（手牌隐藏期间防误触）。只切 activeSelf；各自 interactable/回合门逻辑不受影响。
+    /// 必须缓存引用：FindObjectOfType 不命中已隐藏(inactive)的对象——首次调用(隐藏)时对象仍激活即可缓存，此后直接 SetActive 恢复。</summary>
+    void SetTurnButtonsVisible(bool visible)
+    {
+        if (_endBtnCache == null) _endBtnCache = FindObjectOfType<EndTurnButton>();
+        if (_drawUiCache == null) _drawUiCache = FindObjectOfType<DrawCardUI>();
+        if (_endBtnCache != null) _endBtnCache.gameObject.SetActive(visible);
+        if (_drawUiCache != null) _drawUiCache.gameObject.SetActive(visible);
     }
 
     public void SetHandAreaRaycast(bool enabled)
     {
         _handAreaVisible = enabled;
         _canvasGroup.interactable = enabled;
+        // ⚠ 不要在此切按钮显隐：本方法被悬停/鼠标离开(OnMouseExit)等"预览/交互锁定"通道高频调用，
+        // 会错误地在鼠标离开卡牌时恢复按钮。按钮显隐只由真手牌隐藏标志(HideAllCards/ShowAllCards)驱动。
         if (!enabled)
             _canvasGroup.blocksRaycasts = false;
         else
