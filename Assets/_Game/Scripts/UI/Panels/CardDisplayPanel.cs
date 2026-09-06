@@ -13,6 +13,9 @@ public class CardDisplayPanel : MonoBehaviour
     public float cardSpacing = 25f, rowSpacing = 25f, startX = -172f, startY = 282f;
 
     public bool multiSelect = false;
+    public int maxSelect = 0;              // 多选上限（0=不限；达到上限后点选未选卡无效，02111/02307 弃/留 N 用）
+    public bool confirmWhenEmpty = false;  // 多选且为 true：允许 0 张确认（确认键常显，02111 换洗保0全弃用）
+    public bool confirmWhenFull = false;   // 多选且为 true：必须选满 maxSelect 才显示确认键（02307 很多牌弃4用）
     public bool showBack;        // 无畏者等：显示卡牌背面而非正面
     public string backLabel = "反制牌"; // 背面标题（可为召唤物自定义）
     public bool enableCostCheck;
@@ -135,6 +138,14 @@ public class CardDisplayPanel : MonoBehaviour
 
         panelRoot.SetActive(true);
         panelRoot.transform.SetAsLastSibling();
+
+        // 多选 + confirmWhenEmpty：确认键常显，允许 0 张确认（onOk 在 ShowWithCallback 中随后赋值，
+        // 闭包延迟读取字段，按钮回调时已就绪）。02111 换洗(全弃)/02307(弃0) 反选场景。
+        if (multiSelect && confirmWhenEmpty)
+        {
+            var csb = ConfirmSelectionButton.Instance;
+            if (csb) csb.Show(() => { onOk?.Invoke(); Hide(); });
+        }
     }
 
     public void ShowWithCallback(List<CardInstance> list, Func<CardInstance, bool> f, Action ok, string txt = "确认")
@@ -184,6 +195,7 @@ public class CardDisplayPanel : MonoBehaviour
             }
             else
             {
+                if (maxSelect > 0 && selectedCards.Count >= maxSelect) return; // 已达上限，忽略点选未选卡
                 selectedCards.Add(ci);
                 go.transform.localScale = baseScale * 1.15f;
             }
@@ -201,7 +213,7 @@ public class CardDisplayPanel : MonoBehaviour
                     showConfirm = false;
             }
 
-            if (showConfirm && selectedCards.Count > 0)
+            if (showConfirm && ShouldShowConfirmButton())
             {
                 var csb = ConfirmSelectionButton.Instance;
                 if (csb)
@@ -263,6 +275,9 @@ public class CardDisplayPanel : MonoBehaviour
     {
         showBack = false;
         enableCostCheck = false;
+        maxSelect = 0;
+        confirmWhenEmpty = false;
+        confirmWhenFull = false;
         panelRoot.SetActive(false);
         var csb = ConfirmSelectionButton.Instance;
         if (csb) csb.Hide();
@@ -291,4 +306,12 @@ public class CardDisplayPanel : MonoBehaviour
 
     public CardInstance GetSelectedCard() => selected;
     public List<CardInstance> GetSelectedCards() => selectedCards;
+
+    /// <summary>多选确认键显隐策略：confirmWhenFull→选满 maxSelect；confirmWhenEmpty→0 张也显示；否则默认 ≥1 张。</summary>
+    bool ShouldShowConfirmButton()
+    {
+        if (confirmWhenFull) return maxSelect > 0 && selectedCards.Count >= maxSelect;
+        if (confirmWhenEmpty) return true;
+        return selectedCards.Count > 0;
+    }
 }

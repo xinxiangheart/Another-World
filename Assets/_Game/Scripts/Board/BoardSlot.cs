@@ -2068,7 +2068,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         yield return null;
 
         // 万人迷归本机处理（本机=拥有者）。离线 AI 中万人迷在 AI 半场(0-5)→非本机拥有，跳过，
-        // 避免从宿主手牌误召唤（同谜语人/学徒处理）。
+        // 避免从宿主手牌误召唤（同谜语人 01321/学徒 01329 处理）。
         if (SimpleAI.IsAIMatch && slotID < 6) { CleanupAfterPlacement(); yield break; }
 
         NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
@@ -2113,11 +2113,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             // Use the standard PlaceCardToSlot flow for attach cards —
             // this handles attach/independent/replace correctly.
             NetworkPlayer.Local.handCards.Remove(selectedCard);
-            HandManager hm = FindObjectOfType<HandManager>();
             hm?.HideOtherCards(null);    // show all cards; cardToPlace gameobject stays visible
             hm?.SetHandAreaRaycast(false);
             FindObjectOfType<CardDrag>()?.SetButtonsInteractable(false);
-            hm.PlaceCardToSlot(null, selectedCard);
+            hm?.PlaceCardToSlot(null, selectedCard);
             // PlaceCardToSlot starts an async callback flow (StartAttachSelect or direct placement).
             // Wait for it to finish.
             yield return new WaitWhile(() => BoardSlot.isPlacingCard || BoardSlot.isAttachSelectMode);

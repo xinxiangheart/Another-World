@@ -1845,31 +1845,33 @@ public class HandManager : MonoBehaviour
         player.handCards.RemoveAll(c => c == null);
         if (player.handCards.Count == 0) { CardDrag.CleanupSpellResources(); yield break; }
 
-        SelectionManager.Instance.BeginOpenSelection(TargetType.None, null);
-        int maxKeep = 4;
-        List<GameObject> kept = new List<GameObject>();
-        Dictionary<GameObject, Vector3> orig = new Dictionary<GameObject, Vector3>();
-        var valid = ConfirmQueueManager.FilterHandCards(ci => true);
-        foreach (GameObject card in valid)
-        {
-            CardView cv = card.GetComponent<CardView>();
-            if (cv != null) orig[card] = cv.targetPos;
-            CardClickHandler h = card.GetComponent<CardClickHandler>();
-            if (h == null) h = card.AddComponent<CardClickHandler>();
-            h.onClick = () =>
-            {
-                if (kept.Contains(card)) { kept.Remove(card); if (cv != null && orig.ContainsKey(card)) cv.targetPos = orig[card]; }
-                else if (kept.Count < maxKeep) { kept.Add(card); if (cv != null && orig.ContainsKey(card)) cv.targetPos = orig[card] + new Vector3(0, 30, 0); }
-            };
-        }
+        // 反选语义：多选“保留”的（≤4），其余弃掉并摸等量（CardDisplayPanel 收藏家式多选）
+        List<CardInstance> candidates = BuildHandCardList(ci => true);
+        if (candidates.Count == 0) { CardDrag.CleanupSpellResources(); yield break; }
 
         bool confirmed = false;
-        ConfirmSelectionButton.Instance.transform.SetAsLastSibling();
-        ConfirmSelectionButton.Instance.Show(() => confirmed = true);
-        yield return new WaitUntil(() => confirmed);
+        CardDisplayPanel.Instance.multiSelect = true;
+        CardDisplayPanel.Instance.maxSelect = 4;           // 最多保留 4
+        CardDisplayPanel.Instance.confirmWhenEmpty = true; // 允许保留 0（全弃重摸）
+        CardDisplayPanel.Instance.ShowWithCallback(candidates, ci => true, () => confirmed = true, "保留最多4张");
+        float cleanseDeadline = Time.time + 30f;
+        while (!confirmed && Time.time < cleanseDeadline) yield return null;
+        List<CardInstance> chosen = CardDisplayPanel.Instance.GetSelectedCards();
+        EndHandSelectionCleanup();
+        if (!confirmed) { CardDrag.CleanupSpellResources(); yield break; }
+
+        // 选中 = 保留清单；其余手牌弃掉并摸等量（iid 回找真身）
+        HashSet<string> keepIids = new HashSet<string>();
+        foreach (var c in chosen) if (c != null && !string.IsNullOrEmpty(c.instanceID)) keepIids.Add(c.instanceID);
 
         List<GameObject> toRemove = new List<GameObject>();
-        foreach (GameObject card in player.handCards) { if (card != null && !kept.Contains(card)) toRemove.Add(card); }
+        foreach (GameObject card in player.handCards)
+        {
+            if (card == null) continue;
+            CardInstance ci = card.GetComponent<CardInstance>();
+            if (ci != null && keepIids.Contains(ci.instanceID)) continue; // 保留
+            toRemove.Add(card);
+        }
         int discard = 0;
         foreach (GameObject card in toRemove)
         {
@@ -1877,13 +1879,6 @@ public class HandManager : MonoBehaviour
             if (ci != null && NetworkClient.isConnected) NetworkPlayer.Local?.CmdDiscardCard(ci.instanceID);
             player.handCards.Remove(card); Destroy(card); discard++;
         }
-        foreach (GameObject card in valid) { if (card == null) continue; CardClickHandler h = card.GetComponent<CardClickHandler>(); if (h != null) Destroy(h); }
-
-        ConfirmQueueManager.RestoreAllHandCards();
-        ConfirmQueueManager.ExitSelectionMode();
-        ConfirmSelectionButton.Instance.Hide();
-        SelectionManager.Instance.ForceEndAll();
-
         for (int i = 0; i < discard; i++) player.DrawCard();
         RefreshLayout(true);
         CardDrag.CleanupSpellResources();
@@ -1930,42 +1925,39 @@ public class HandManager : MonoBehaviour
             yield break;
         }
 
-        SelectionManager.Instance.BeginOpenSelection(TargetType.None, null);
-        int maxDiscard = 4;
-        List<GameObject> selectedCards = new List<GameObject>();
-        Dictionary<GameObject, Vector3> origPos = new Dictionary<GameObject, Vector3>();
-
-        var validCards = ConfirmQueueManager.FilterHandCards(ci => true);
-        foreach (GameObject card in validCards)
-        {
-            CardView cv = card.GetComponent<CardView>();
-            if (cv != null) origPos[card] = cv.targetPos;
-
-            CardClickHandler h = card.GetComponent<CardClickHandler>();
-            if (h == null) h = card.AddComponent<CardClickHandler>();
-            h.onClick = () =>
-            {
-                if (selectedCards.Contains(card))
-                {
-                    selectedCards.Remove(card);
-                    if (cv != null && origPos.ContainsKey(card)) cv.targetPos = origPos[card];
-                }
-                else if (selectedCards.Count < maxDiscard)
-                {
-                    selectedCards.Add(card);
-                    if (cv != null && origPos.ContainsKey(card)) cv.targetPos = origPos[card] + new Vector3(0, 30, 0);
-                }
-            };
-        }
+        // 反选语义：多选“要弃的”（≤4），每弃一张 baseCost=5 的牌 +1 能量（CardDisplayPanel 收藏家式多选）
+        List<CardInstance> candidates = BuildHandCardList(ci => true);
+        if (candidates.Count == 0) { CardDrag.CleanupSpellResources(); yield break; }
 
         bool confirmed = false;
-        ConfirmSelectionButton.Instance.transform.SetAsLastSibling();
-        ConfirmSelectionButton.Instance.Show(() => confirmed = true);
-        yield return new WaitUntil(() => confirmed);
+        CardDisplayPanel.Instance.multiSelect = true;
+        // 弃牌数 = min(4, 手牌数)：手牌充足时须弃满 4 张才能确认（confirmWhenFull）；
+        // 手牌不足 4 张时不足全弃（不卡死面板）
+        CardDisplayPanel.Instance.maxSelect = Mathf.Min(4, candidates.Count);
+        CardDisplayPanel.Instance.confirmWhenFull = true;
+        CardDisplayPanel.Instance.ShowWithCallback(candidates, ci => true, () => confirmed = true, "弃4张");
+        float manyDeadline = Time.time + 30f;
+        while (!confirmed && Time.time < manyDeadline) yield return null;
+        List<CardInstance> chosen = CardDisplayPanel.Instance.GetSelectedCards();
+        EndHandSelectionCleanup();
+        if (!confirmed) { CardDrag.CleanupSpellResources(); yield break; }
+
+        // 选中 = 弃牌清单（iid 回找真身）
+        HashSet<string> discardIids = new HashSet<string>();
+        foreach (var c in chosen) if (c != null && !string.IsNullOrEmpty(c.instanceID)) discardIids.Add(c.instanceID);
+
+        List<GameObject> toRemove = new List<GameObject>();
+        foreach (GameObject card in player.handCards)
+        {
+            if (card == null) continue;
+            CardInstance ci = card.GetComponent<CardInstance>();
+            if (ci == null || !discardIids.Contains(ci.instanceID)) continue;
+            toRemove.Add(card);
+        }
 
         // 3. 弃掉选中的牌，计算能量
         int energyGain = 0;
-        foreach (GameObject card in selectedCards)
+        foreach (GameObject card in toRemove)
         {
             if (card == null) continue;
             CardInstance ci = card.GetComponent<CardInstance>();
@@ -1982,16 +1974,6 @@ public class HandManager : MonoBehaviour
         player.AddEnergy(energyGain);
 
         // 4. 清理
-        foreach (GameObject card in validCards)
-        {
-            if (card == null) continue;
-            CardClickHandler h = card.GetComponent<CardClickHandler>();
-            if (h != null) Destroy(h);
-        }
-        ConfirmQueueManager.RestoreAllHandCards();
-        ConfirmQueueManager.ExitSelectionMode();
-        ConfirmSelectionButton.Instance.Hide();
-        SelectionManager.Instance.ForceEndAll();
         RefreshLayout(true);
         CardDrag.CleanupSpellResources();
     }
