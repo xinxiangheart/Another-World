@@ -39,7 +39,8 @@ public class CardDisplay2DSpell : CardDisplay2D
     public Sprite[] prefixArtSprites;
 
     [Header("资源路径（相对 Assets/_Game/Resources/）")]
-    public string costFramePath = "Cards/SummonCard_{0}";
+    [Tooltip("法术卡费用卡框（SpellCard_0..5；与召唤的 SummonCard 卡框不同）")]
+    public string costFramePath = "Cards/Back And Front/Spell/SpellCard_{0}";
     public string cardBackPath = "Cards/Back";
     public string energyIconPath = "UI/Energy";
     public string prefixArtBGPath = "Icons/Prefixes/prefixbg_{0}";

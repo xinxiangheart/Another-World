@@ -304,7 +304,7 @@ MonoBehaviour:
   - {fileID: 21300000, guid: 5d8e080f8e8792049a049d343f80ac0a, type: 3}
   - {fileID: 21300000, guid: 833d5a95703bd754685dbed99d980ecf, type: 3}
   - {fileID: 21300000, guid: 145199175b8ee374fbcd65030f622c35, type: 3}
-  costFramePath: Cards/SummonCard_{0}
+  costFramePath: Cards/Back And Front/Spell/SpellCard_{0}
   cardBackPath: Cards/Back
   energyIconPath: UI/Energy
   prefixArtBGPath: Icons/Prefixes/prefixbg_{0}
