@@ -88,12 +88,8 @@ public class CardDisplay2D : MonoBehaviour
         if (costText != null) costText.gameObject.SetActive(false);
         if (effectText != null) effectText.gameObject.SetActive(false);
 
-        // 按卡牌类型取背面贴图
-        Sprite backSprite = null;
-        if (template != null)
-            backSprite = template.cardType == CardType.Spell
-                ? template.spellCardBackSprite2D
-                : template.summonCardBackSprite2D;
+        // 背面贴图：统一取通用 2D 卡背（cardSprite2D/卡背字段已移除，改路径加载）
+        Sprite backSprite = Resources.Load<Sprite>("Cards/Back");
 
         if (backSprite != null)
         {

@@ -52,11 +52,14 @@ public class CardData : ScriptableObject
     public SpellType spellType;
     [TextArea] public string effect;
 
-    [Header("表现层")]
-    public Sprite cardSprite2D;
-    public Sprite spellCardBackSprite2D;   // 法术/反制牌 2D 背面
-    public Sprite summonCardBackSprite2D;  // 召唤物 2D 背面 — 后续隐藏召唤物弹窗用
+    [Header("表现层（预制体引用）")]
+    [Tooltip("2D 召唤物预制体（Card00_New_2D）。仅归档/审计；运行时手牌仍走 Player.cardPrefab2D")]
+    public GameObject card2DPrefab;
+    [Tooltip("2D 法术预制体（SpellCard00_New_2D）。仅归档/审计；运行时手牌仍走 Player.spellCardPrefab2D")]
+    public GameObject spell2DPrefab;
+    [Tooltip("3D 召唤物预制体（场上模型，Card00_New_3D）")]
     public GameObject prefab3D;
+    [Tooltip("3D 法术预制体（反制/计数模型，SpellCard00_3D）")]
     public GameObject spellPrefab3D;
 
     [Header("Buff/Debuff 持续状态")]

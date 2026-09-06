@@ -335,8 +335,13 @@ MonoBehaviour:
   - {fileID: 21300000, guid: 3b8eeb1c3c4846942a38815c5bdf3b74, type: 3}
   cardBackSprite: {fileID: 21300000, guid: 468bd93a970628e44b93e60d932bfe6a, type: 3}
   energyIconSprite: {fileID: 21300000, guid: f24750ce63a8be0499b101b577faaac9, type: 3}
-  defaultPrefixArtSprite: {fileID: 0}
-  prefixArtSprites: []
+  defaultPrefixArtSprite: {fileID: 21300000, guid: b7e7d2b8f09570042b3d43a492a159ac, type: 3}
+  prefixArtSprites:
+  - {fileID: 21300000, guid: 03f7426fabfe62344b15e5381a36d784, type: 3}
+  - {fileID: 21300000, guid: fb81b43c3f16e894f90fb8b11fb14441, type: 3}
+  - {fileID: 21300000, guid: 5d8e080f8e8792049a049d343f80ac0a, type: 3}
+  - {fileID: 21300000, guid: 833d5a95703bd754685dbed99d980ecf, type: 3}
+  - {fileID: 21300000, guid: 145199175b8ee374fbcd65030f622c35, type: 3}
   costFramePath: Cards/SummonCard_{0}
   cardBackPath: Cards/Back
   energyIconPath: UI/Energy

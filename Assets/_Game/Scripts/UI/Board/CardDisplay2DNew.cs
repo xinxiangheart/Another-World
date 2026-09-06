@@ -627,11 +627,7 @@ public class CardDisplay2DNew : MonoBehaviour
     {
         if (template == null || string.IsNullOrEmpty(template.templateID)) return null;
 
-        // ① 模板已拖入真实卡面 → 直接使用（新加载方式）
-        if (template.cardSprite2D != null && !IsLegacyPlaceholder(template.cardSprite2D))
-            return template.cardSprite2D;
-
-        // ② 新路径加载
+        // 卡面统一走镜像 Cards/ 目录路径加载（cardSprite2D 字段已移除）
         string tid = template.templateID;
         var candidates = new List<string>();
         if (template.cardType == CardType.Spell)
@@ -667,13 +663,6 @@ public class CardDisplay2DNew : MonoBehaviour
     {
         list.Add("Cards/" + sub + "/" + prefix + "_{" + tid + "}");
         list.Add("Cards/" + sub + "/" + prefix + "_" + tid);
-    }
-
-    /// <summary>旧占位卡面（Card000_Front / CardSpell000_Front）——全卡共用，视为未分配真实卡面，跳过走路径加载。</summary>
-    static bool IsLegacyPlaceholder(Sprite s)
-    {
-        if (s == null) return false;
-        return s.name == "Card000_Front" || s.name == "CardSpell000_Front";
     }
 
     Sprite LoadSprite(string artRelativePath)

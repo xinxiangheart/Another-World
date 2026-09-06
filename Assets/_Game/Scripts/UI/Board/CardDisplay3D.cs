@@ -177,8 +177,7 @@ public class CardDisplay3D : MonoBehaviour
     /// <summary>卡面 Sprite：真实 cardSprite2D → {tid}_Front → 镜像 Cards/Summon 目录（含法术 Normal/Special）→ null（调用方隐藏 CardArt 露出前缀背景）。</summary>
     Sprite ResolveArtSprite(CardData template)
     {
-        if (template != null && template.cardSprite2D != null && !IsLegacyPlaceholder(template.cardSprite2D))
-            return template.cardSprite2D;
+        // 卡面统一路径加载（cardSprite2D 字段已移除）
         if (template == null || string.IsNullOrEmpty(template.templateID))
             return null;
 
@@ -212,8 +211,7 @@ public class CardDisplay3D : MonoBehaviour
     /// <summary>卡面原画解析：真实 cardSprite2D → {tid}_Front → 镜像 Cards/Summon 目录（含法术 Normal/Special）→ 白。</summary>
     Texture2D ResolveArtTexture(CardData template)
     {
-        if (template != null && template.cardSprite2D != null && !IsLegacyPlaceholder(template.cardSprite2D))
-            return template.cardSprite2D.texture;
+        // 卡面统一路径加载（cardSprite2D 字段已移除）
         if (template == null || string.IsNullOrEmpty(template.templateID))
             return Texture2D.whiteTexture;
 

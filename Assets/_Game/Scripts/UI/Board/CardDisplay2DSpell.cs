@@ -163,12 +163,10 @@ public class CardDisplay2DSpell : CardDisplay2D
         }
     }
 
-    /// <summary>法术原画：模板 cardSprite2D（真实图）→ 路径 Spell/{Normal|Special}/{cost}/SpellCard_{id}（兼容花括号/无）。</summary>
+    /// <summary>法术原画：路径 Spell/{Normal|Special}/{cost}/SpellCard_{id}（兼容花括号/无；cardSprite2D 字段已移除）。</summary>
     Sprite GetSpellArt(CardData template)
     {
         if (template == null || string.IsNullOrEmpty(template.templateID)) return null;
-        if (template.cardSprite2D != null && !IsLegacyPlaceholder(template.cardSprite2D))
-            return template.cardSprite2D;
 
         string tid = template.templateID;
         int cost = Mathf.Clamp(template.baseCost, 0, 5);
@@ -179,12 +177,6 @@ public class CardDisplay2DSpell : CardDisplay2D
             if (s != null && s != GetPlaceholder()) return s;
         }
         return null;
-    }
-
-    static bool IsLegacyPlaceholder(Sprite s)
-    {
-        if (s == null) return false;
-        return s.name == "Card000_Front" || s.name == "CardSpell000_Front";
     }
 
     // ================= 资源加载 =================

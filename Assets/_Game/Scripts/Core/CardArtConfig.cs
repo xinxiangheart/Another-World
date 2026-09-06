@@ -54,10 +54,8 @@ public class CardArtConfig : ScriptableObject
         var cfg = Instance;
         Texture2D bg    = cfg != null ? GetBackground(cfg, template, instance).texture : Texture2D.whiteTexture;
         Texture2D border = cfg != null ? GetBorder(cfg, instance).texture : Texture2D.whiteTexture;
-        // 卡面：cardSprite2D 仍指向旧占位图(Card000_Front/CardSpell000_Front)时视为未分配 → 白色（露出底图/边框），
-        // 与 CardDisplay2DNew 隐藏卡面层的行为对齐
-        Texture2D art = (template.cardSprite2D != null && !IsLegacyPlaceholder(template.cardSprite2D))
-            ? template.cardSprite2D.texture : Texture2D.whiteTexture;
+        // 卡面：cardSprite2D 字段已移除 → 白色（露出底图/边框；卡面统一由 CardDisplay3D/2D 路径加载）
+        Texture2D art = Texture2D.whiteTexture;
         return (bg, border, art);
     }
 
