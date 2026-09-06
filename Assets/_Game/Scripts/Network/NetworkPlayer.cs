@@ -551,17 +551,18 @@ public class NetworkPlayer : NetworkBehaviour
     /// <summary>服务端启动"远端 CardDisplayPanel 弹窗"（远端选手牌 + 己方场上，01349 同款）。
     /// allowedBaseCosts：非空则仅列 baseCost 属于其中的卡（如 01525 铁匠 {1,3,5}）；null=不限。
     /// 返回 selectionId；用 WaitForClientSelection + GetSelectionInstID 取结果（""=未选/超时）。</summary>
-    public static int StartRemoteCardPick(NetworkPlayer target, RemoteCardPickKind kind, int[] allowedBaseCosts = null)
+    public static int StartRemoteCardPick(NetworkPlayer target, RemoteCardPickKind kind, int[] allowedBaseCosts = null, string excludePrefix = null)
     {
         int id = System.Threading.Interlocked.Increment(ref _nextSelectionId);
         if (target != null && target.connectionToClient != null)
-            target.TargetRemoteCardPick(target.connectionToClient, id, kind, allowedBaseCosts ?? new int[0]);
+            target.TargetRemoteCardPick(target.connectionToClient, id, kind, allowedBaseCosts ?? new int[0], excludePrefix ?? "");
         return id;
     }
 
-    /// <summary>远端：弹自己的 手牌+己方场上 混合 CardDisplayPanel，选一张回传 instanceID。</summary>
+    /// <summary>远端：弹自己的 手牌+己方场上 混合 CardDisplayPanel，选一张回传 instanceID。
+    /// excludePrefix：非空则排除已带该前缀的召唤物（防重复附着）。</summary>
     [TargetRpc]
-    void TargetRemoteCardPick(NetworkConnectionToClient _, int selectionId, RemoteCardPickKind kind, int[] allowedBaseCosts)
+    void TargetRemoteCardPick(NetworkConnectionToClient _, int selectionId, RemoteCardPickKind kind, int[] allowedBaseCosts, string excludePrefix)
     {
         HandManager hm = FindObjectOfType<HandManager>();
         System.Func<CardInstance, bool> f = ci =>
@@ -575,6 +576,7 @@ public class NetworkPlayer : NetworkBehaviour
                     if (td.baseCost == allowedBaseCosts[i]) { ok = true; break; }
                 if (!ok) return false;
             }
+            if (!string.IsNullOrEmpty(excludePrefix) && ci.prefixes != null && ci.prefixes.Contains(excludePrefix)) return false;
             return true;
         };
         List<CardInstance> list = hm != null ? hm.BuildHandPlusFieldCardList(f) : new List<CardInstance>();

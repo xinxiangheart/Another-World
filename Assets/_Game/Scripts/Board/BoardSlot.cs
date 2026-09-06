@@ -1791,60 +1791,74 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public IEnumerator ReformerEnterEffect(CardInstance giver)
     {
         yield return null;
-      
-        SelectionManager.Instance.BeginOpenSelection(TargetType.SingleAlly, null);
-
-        List<GameObject> spellCards = new List<GameObject>();
-        List<GameObject> handSummons = new List<GameObject>();
-
-        foreach (GameObject card in NetworkPlayer.Local.handCards)
-        {
-            if (card == null) continue;
-            CardInstance ci = card.GetComponent<CardInstance>();
-            if (ci == null) continue;
-            CardData t = CardDatabase.Instance?.GetTemplate(ci.templateID);
-            if (t == null) continue;
-            if (t.cardType == CardType.Spell) { card.SetActive(false); spellCards.Add(card); }
-            else if (t.cardType == CardType.Summon)
-            {
-                handSummons.Add(card);
-                CardClickHandler handler = card.GetComponent<CardClickHandler>();
-                if (handler == null) handler = card.AddComponent<CardClickHandler>();
-                handler.onClick = () =>
-                {
-                    SelectionManager.Instance.ForceEndAll();
-                    CleanupReformerUI(spellCards, handSummons);
-                    ApplyReformerEffect(card);
-                    CleanupAfterPlacement();
-                   
-                };
-            }
-        }
-
-        BoardSlot.onTargetSelected = (targetSlot) =>
-        {
-            if (targetSlot?.currentCard3D != null)
-            {
-                SelectionManager.Instance.ForceEndAll();
-                CleanupReformerUI(spellCards, handSummons);
-                ApplyReformerEffect(targetSlot.currentCard3D);
-                CleanupAfterPlacement();
-
-            }
-        };
-
-        // AI 放改革者（AI 半场 0-5）→ 自动选第一个己方召唤物转化，无 UI 交互
+        // AI 半场(0-5)：沿用原自动逻辑（auto 选第一个槽应用，无 UI）
         if (SimpleAI.IsAIMatch && slotID < 6)
         {
             BoardManager rbm = FindObjectOfType<BoardManager>();
             BoardSlot autoReform = null;
             for (int ri = 6; ri <= 11; ri++)
                 if (rbm?.GetSlot(ri)?.currentCard3D != null) { autoReform = rbm.GetSlot(ri); break; }
-            if (autoReform != null)
-                BoardSlot.onTargetSelected?.Invoke(autoReform);
-            else
-                SelectionManager.Instance.ForceEndAll();
+            if (autoReform?.currentCard3D != null) ApplyReformerEffect(autoReform.currentCard3D);
+            CleanupAfterPlacement();
+            yield break;
         }
+
+        int sideStart = slotID >= 6 ? 6 : 0;
+        NetworkPlayer owner = BoardManager.GetOwnerPlayer(slotID);
+
+        if (sideStart >= 6)
+        {
+            // Host/本机：收藏家弹窗（手牌 + 己方 6-11 场上召唤物）
+            HandManager hm = FindObjectOfType<HandManager>();
+            List<CardInstance> candidates = hm != null ? hm.BuildHandPlusFieldCardList(
+                ci => CardDatabase.Instance?.GetTemplate(ci.templateID)?.cardType == CardType.Summon)
+                : new List<CardInstance>();
+            if (candidates.Count == 0) { CleanupAfterPlacement(); yield break; }
+
+            CardDisplayPanel.Instance.multiSelect = false;
+            bool confirmed = false;
+            CardDisplayPanel.Instance.ShowWithCallback(candidates, ci => true, () => confirmed = true, "选择");
+            float rfDeadline = Time.time + 30f;
+            while (!confirmed && Time.time < rfDeadline) yield return null;
+            if (!confirmed) { hm?.EndHandSelectionCleanup(); CleanupAfterPlacement(); yield break; }
+            CardInstance chosen = CardDisplayPanel.Instance.GetSelectedCard();
+            string iid = chosen != null ? chosen.instanceID : null;
+            hm?.EndHandSelectionCleanup();
+            if (!string.IsNullOrEmpty(iid)) ApplyReformerPrefixById(iid, null);
+        }
+        else if (owner != null && owner.connectionToClient != null)
+        {
+            // Remote 远端人类：通用远端 CardDisplayPanel 弹窗
+            int pickId = NetworkPlayer.StartRemoteCardPick(owner, NetworkPlayer.RemoteCardPickKind.Summon, null, "灵能");
+            yield return NetworkPlayer.WaitForClientSelection(pickId);
+            string iid = NetworkPlayer.GetSelectionInstID(pickId);
+            if (!string.IsNullOrEmpty(iid)) ApplyReformerPrefixById(iid, owner);
+        }
+        CleanupAfterPlacement();
+    }
+
+    /// <summary>按 iid 对真身加灵能前缀：场上(任意半场,服务器权威)→Sync；手牌→远端 TargetGiveHandPrefix / Host 本地直改。</summary>
+    void ApplyReformerPrefixById(string iid, NetworkPlayer remoteOwner)
+    {
+        HandManager hm = FindObjectOfType<HandManager>();
+        Card3DInstance c3d = hm?.ResolveFieldCardByInstanceID(iid);
+        if (c3d?.cardInstance != null)
+        {
+            CardInstance ci = c3d.cardInstance;
+            if (!ci.prefixes.Contains("灵能")) { ci.GivePrefix("灵能", "01127"); c3d.UpdateValues(); TurnManager.SyncMyBoardToOpponent(); }
+            return;
+        }
+        if (remoteOwner != null && remoteOwner.connectionToClient != null)
+        {
+            remoteOwner.TargetGiveHandPrefix(remoteOwner.connectionToClient, iid, "灵能", "01127");
+            return;
+        }
+        GameObject handCard = hm?.ResolveHandCardByInstanceID(iid);
+        CardInstance hci = handCard?.GetComponent<CardInstance>();
+        if (hci == null) return;
+        if (!hci.prefixes.Contains("灵能")) hci.GivePrefix("灵能", "01127");
+        handCard.GetComponent<CardDisplay2D>()?.Refresh();
+        if (NetworkClient.isConnected) NetworkPlayer.Local?.CmdSetHandCardPrefix(iid, "灵能");
     }
 
     void CleanupReformerUI(List<GameObject> hiddenSpells, List<GameObject> handSummons)
@@ -2813,9 +2827,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         if (sideStart >= 6)
         {
-            // Host/本机：01349 收藏家式弹窗（手牌召唤物 + 己方 6-11 场上召唤物）
+            // Host/本机：01349 收藏家式弹窗（手牌召唤物 + 己方 6-11 场上召唤物；排除已带渊）
             List<CardInstance> candidates = hm != null ? hm.BuildHandPlusFieldCardList(
-                ci => CardDatabase.Instance?.GetTemplate(ci.templateID)?.cardType == CardType.Summon)
+                ci => CardDatabase.Instance?.GetTemplate(ci.templateID)?.cardType == CardType.Summon
+                    && (ci.prefixes == null || !ci.prefixes.Contains("渊")))
                 : new List<CardInstance>();
             if (candidates.Count == 0) { CleanupAfterPlacement(); yield break; }
 
@@ -2836,7 +2851,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             if (owner != null && owner.connectionToClient != null)
             {
                 // Remote 远端人类：通用远端 CardDisplayPanel 弹窗（选手牌+其己方场上）
-                int pickId = NetworkPlayer.StartRemoteCardPick(owner, NetworkPlayer.RemoteCardPickKind.Summon);
+                int pickId = NetworkPlayer.StartRemoteCardPick(owner, NetworkPlayer.RemoteCardPickKind.Summon, null, "渊");
                 yield return NetworkPlayer.WaitForClientSelection(pickId);
                 string iid = NetworkPlayer.GetSelectionInstID(pickId);
                 if (!string.IsNullOrEmpty(iid)) ApplyEmperorPrefixById(iid, owner);
