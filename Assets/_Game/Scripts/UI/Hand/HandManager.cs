@@ -718,6 +718,26 @@ public class HandManager : MonoBehaviour
         _boundsDirty = true;
     }
 
+    /// <summary>手牌重排兜底：任何"裸删"（外部 Remove+Destroy 未走 RemoveCard，如弃置/偷牌/换洗/效果消耗手牌）都会在
+    /// handCards 里留下 null → 每帧探测到即清空并 RefreshLayout，杜绝移除后手牌留洞不缩拢。正规 RemoveCard 已即时
+    /// 重排并自清 null，此处不触发。仅对已登记到本列表的可见手牌生效（服务端/AI 追踪列表无 CardView 自然无影响）。</summary>
+    void Update()
+    {
+        if (handCards == null || handCards.Count == 0) return;
+        bool hasNull = false;
+        for (int i = 0; i < handCards.Count; i++)
+        {
+            if (handCards[i] == null) { hasNull = true; break; }
+        }
+        if (hasNull)
+        {
+            handCards.RemoveAll(c => c == null);
+            if (draggingCard != null && draggingCard.gameObject == null) draggingCard = null;
+            RefreshLayout(true);
+            MarkBoundsDirty();
+        }
+    }
+
     void LateUpdate()
     {
         if (_boundsDirty)
