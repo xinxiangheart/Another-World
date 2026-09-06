@@ -433,7 +433,8 @@ public static class DamagePipeline
 
         // ── 实际扣血 ─────────────────────────────────────────────────
         def.currentHealth -= actual;
-        ShowFloaterAt(def, actual, FloaterType.Damage, ctx.Attacker, ctx.input.fxSourceSlotID, false, ctx.input.isDirectAttack);
+        ShowFloaterAt(def, actual, FloaterType.Damage, ctx.Attacker, ctx.input.fxSourceSlotID, false,
+            ctx.input.isDirectAttack, straightFromSlot: ctx.input.fxSourceSlotID >= 0);
 
         // ── DamageSourceMarker(防守方) ──────────────────────────────
         GameObject defenderGO = null;
@@ -726,7 +727,7 @@ public static class DamagePipeline
     /// isDirectAttack=true（普通对位攻击）：不播粒子，直接弹数字（对端攻击动画 PlayAttackLocally 自己弹）。</summary>
     public static void ShowFloaterAt(CardInstance ci, int value, FloaterType type,
         CardInstance attacker = null, int sourceSlotID = -1, bool selfDamage = false,
-        bool isDirectAttack = false)
+        bool isDirectAttack = false, bool straightFromSlot = false)
     {
         if (ci == null) return;
         if (type == FloaterType.Damage)
@@ -753,9 +754,13 @@ public static class DamagePipeline
             }
             else if (sourceSlotID < 0)
                 sourceSide = GetSlotOf(ci) >= 6 ? 1 : 0;       // 无攻击者(效果/AOE)：被伤在己方→来源对方
+            // 非自伤"来源槽"（反击/亡语/主动退场/抛置 fxSourceSlotID）：走 Attacker → 从槽直线飞向目标；
+            // straightFromSlot=false（格子伤害等）仍走 Grid 特殊轨迹。
+            if (straightFromSlot && attacker == null && sourceSlotID >= 0 && !selfDamage)
+                sourceSide = sourceSlotID >= 6 ? 0 : 1;
             DamageFxSource src = selfDamage ? DamageFxSource.Self
                 : attacker != null ? DamageFxSource.Attacker
-                : sourceSlotID >= 0 ? DamageFxSource.Grid
+                : sourceSlotID >= 0 ? (straightFromSlot ? DamageFxSource.Attacker : DamageFxSource.Grid)
                 : DamageFxSource.Spell;
             DamageFX.Request(cardCenter, value, type, src, sourceSide, srcSlot, selfDamage); // 终点=卡牌模型中心
 
