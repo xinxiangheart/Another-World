@@ -106,8 +106,8 @@ public static class Card2DNewPrefabBuilder
     /// 从召唤物 Card00_New_2D 克隆生成独立法术手牌预制体 SpellCard00_New_2D（不改原预制体）。
     /// 去掉：三栏图标（前缀/特性/状态排）、攻击UI+文本、生命UI+文本、类别UI。
     /// 保留：能量UI+文本、卡名、卡框(CostFrameBase)、原画区(PrefixArtBG+CardArt)、卡背、正反面结构。
-    /// 新增：EffectText（TMP，卡面中央偏下）并接线 CardDisplay2DNew.effectText。
-    /// 布局随克隆保留（含原有已摆放尺寸/位置），生成后可在场景微调 EffectText。
+    /// 显示脚本：移除 CardDisplay2DNew(+Compat)，改绑法术专用 CardDisplay2DSpell（继承 CardDisplay2D）。
+    /// 新增：EffectText（TMP，卡面中央偏下）。布局随克隆保留，生成后可在场景微调 EffectText。
     /// </summary>
     [MenuItem("Tools/卡牌/生成新2D法术手牌预制体（克隆召唤物）")]
     public static void CreateSpellPrefab()
@@ -128,21 +128,33 @@ public static class Card2DNewPrefabBuilder
             Transform t = clone.transform.Find("FrontFace/" + n);
             if (t != null) Object.DestroyImmediate(t.gameObject);
         }
-        // 断开对已删元素的显示引用（防序列化悬空）
-        var display = clone.GetComponent<CardDisplay2DNew>();
-        display.prefixIconsArea = null;
-        display.traitIconsArea = null;
-        display.statusIconsArea = null;
-        display.attackIcon = null;
-        display.cardAttackText = null;
-        display.healthIcon = null;
-        display.cardHealthText = null;
-        display.typeIcon = null;
+        // 移除召唤物显示组件，改绑法术专用显示脚本 CardDisplay2DSpell
+        // （继承 CardDisplay2D → 旧 GetComponent<CardDisplay2D>().Refresh 路径直接命中，无需 Compat）
+        var displayNew = clone.GetComponent<CardDisplay2DNew>();
+        if (displayNew != null) Object.DestroyImmediate(displayNew);
+        var compat = clone.GetComponent<CardDisplay2DCompat>();
+        if (compat != null) Object.DestroyImmediate(compat);
 
-        // 新增：效果描述文本（卡面中央偏下；生成后可在场景微调位置/字号）
+        var display = clone.AddComponent<CardDisplay2DSpell>();
         Transform front = clone.transform.Find("FrontFace");
+        Transform back = clone.transform.Find("BackFace");
+        display.frontFace = front != null ? front.gameObject : null;
+        display.backFace = back != null ? back.gameObject : null;
+        display.cardBackImage = back != null ? back.Find("CardBackImage")?.GetComponent<Image>() : null;
+        // 攻击/生命/前缀文本不绑定（法术卡无对应节点）
+        display.prefixText = null;
+        display.attackText = null;
+        display.healthText = null;
         if (front != null)
         {
+            display.nameText = front.Find("NameText")?.GetComponent<TextMeshProUGUI>();
+            display.costText = front.Find("CostText")?.GetComponent<TextMeshProUGUI>();
+            display.costIcon = front.Find("CostIcon")?.GetComponent<Image>();
+            display.costFrame = front.Find("CostFrameBase")?.GetComponent<Image>();
+            display.prefixArtBG = front.Find("ArtworkArea/PrefixArtBG")?.GetComponent<Image>();
+            display.cardArt = front.Find("ArtworkArea/CardArt")?.GetComponent<Image>();
+
+            // 新增：效果描述文本（卡面中央偏下；生成后可在场景微调位置/字号）
             TMP_Text eff = CreateText(front as RectTransform, "EffectText", "", font);
             eff.fontSize = 9f;
             eff.alignment = TextAlignmentOptions.Center;
@@ -150,7 +162,7 @@ public static class Card2DNewPrefabBuilder
             RectTransform effRT = eff.rectTransform;
             effRT.sizeDelta = new Vector2(78f, 42f);
             effRT.anchoredPosition = new Vector2(0f, -20f); // 中央偏下
-            display.effectText = eff;
+            display.effectText = (TextMeshProUGUI)eff;
         }
 
         // 存为新预制体（SaveAsPrefabAsset 自动生成独立 guid/.meta，不改原召唤物预制体）

@@ -11,7 +11,7 @@ public class CardDisplay2D : MonoBehaviour
     public TextMeshProUGUI costText;
     public TextMeshProUGUI effectText;
 
-    private CardInstance instance;
+    protected CardInstance instance; // protected：新法术版 CardDisplay2DSpell 等子类需读取
 
     // 恢复 instance 引用的备用方法
     [System.Obsolete]
@@ -78,8 +78,8 @@ public class CardDisplay2D : MonoBehaviour
         }
     }
 
-    /// <summary>显示2D卡牌背面——无畏者弹窗等隐藏状态展示用。</summary>
-    public void ShowBack(CardData template, string label = "反制牌")
+    /// <summary>显示2D卡牌背面——无畏者弹窗等隐藏状态展示用。virtual：新法术卡 CardDisplay2DSpell 覆写为新卡面翻面。</summary>
+    public virtual void ShowBack(CardData template, string label = "反制牌")
     {
         if (nameText != null) nameText.text = label;
         if (prefixText != null) prefixText.text = "";
