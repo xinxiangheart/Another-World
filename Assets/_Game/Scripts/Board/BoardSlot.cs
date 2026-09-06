@@ -1808,10 +1808,11 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         if (sideStart >= 6)
         {
-            // Host/本机：收藏家弹窗（手牌 + 己方 6-11 场上召唤物）
+            // Host/本机：收藏家弹窗（手牌 + 己方 6-11 场上召唤物；排除已带灵能）
             HandManager hm = FindObjectOfType<HandManager>();
             List<CardInstance> candidates = hm != null ? hm.BuildHandPlusFieldCardList(
-                ci => CardDatabase.Instance?.GetTemplate(ci.templateID)?.cardType == CardType.Summon)
+                ci => CardDatabase.Instance?.GetTemplate(ci.templateID)?.cardType == CardType.Summon
+                    && (ci.prefixes == null || !ci.prefixes.Contains("灵能")))
                 : new List<CardInstance>();
             if (candidates.Count == 0) { CleanupAfterPlacement(); yield break; }
 
@@ -3881,49 +3882,73 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     IEnumerator AmplifierAddMechPrefix(CardInstance giver)
     {
         yield return null;
-        NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
-
-        string layerId = SelectionManager.Instance.BeginOpenSelection(TargetType.SingleAlly, null);
-
-        List<GameObject> spellCards = new List<GameObject>();
-        foreach (GameObject card in NetworkPlayer.Local.handCards)
+        // AI 半场(0-5)：无 UI 自动给第一个己方召唤物（沿用原无 UI 语义，用 6-11 兜底选首个当前槽）
+        if (SimpleAI.IsAIMatch && slotID < 6)
         {
-            CardInstance ci = card?.GetComponent<CardInstance>();
-            if (ci != null && CardDatabase.Instance?.GetTemplate(ci.templateID)?.cardType == CardType.Spell)
-            {
-                card.SetActive(false);
-                spellCards.Add(card);
-            }
+            BoardManager abm = FindObjectOfType<BoardManager>();
+            BoardSlot auto = null;
+            for (int ri = 6; ri <= 11; ri++)
+                if (abm?.GetSlot(ri)?.currentCard3D != null) { auto = abm.GetSlot(ri); break; }
+            if (auto?.currentCard3D != null) ApplyMechPrefix(auto.currentCard3D);
+            CleanupAfterPlacement();
+            yield break;
         }
 
-        List<GameObject> handSummons = new List<GameObject>();
-        foreach (GameObject card in NetworkPlayer.Local.handCards)
+        int sideStart = slotID >= 6 ? 6 : 0;
+        NetworkPlayer owner = BoardManager.GetOwnerPlayer(slotID);
+        if (sideStart >= 6)
         {
-            CardInstance ci = card?.GetComponent<CardInstance>();
-            if (ci != null && CardDatabase.Instance?.GetTemplate(ci.templateID)?.cardType == CardType.Summon)
-            {
-                handSummons.Add(card);
-                CardClickHandler h = card.GetComponent<CardClickHandler>() ?? card.AddComponent<CardClickHandler>();
-                h.onClick = () =>
-                {
-                    SelectionManager.Instance.ForceEndAll();
-                    CleanupPrefixUI(spellCards, handSummons);
-                    ApplyMechPrefix(card);
-                    CleanupAfterPlacement();
-                };
-            }
-        }
+            // Host/本机：收藏家弹窗（手牌 + 己方 6-11 场上召唤物；排除已带机械）
+            HandManager hm = FindObjectOfType<HandManager>();
+            List<CardInstance> candidates = hm != null ? hm.BuildHandPlusFieldCardList(
+                ci => CardDatabase.Instance?.GetTemplate(ci.templateID)?.cardType == CardType.Summon
+                    && (ci.prefixes == null || !ci.prefixes.Contains("机械")))
+                : new List<CardInstance>();
+            if (candidates.Count == 0) { CleanupAfterPlacement(); yield break; }
 
-        BoardSlot.onTargetSelected = (targetSlot) =>
+            CardDisplayPanel.Instance.multiSelect = false;
+            bool confirmed = false;
+            CardDisplayPanel.Instance.ShowWithCallback(candidates, ci => true, () => confirmed = true, "选择");
+            float ampDeadline = Time.time + 30f;
+            while (!confirmed && Time.time < ampDeadline) yield return null;
+            if (!confirmed) { hm?.EndHandSelectionCleanup(); CleanupAfterPlacement(); yield break; }
+            CardInstance chosen = CardDisplayPanel.Instance.GetSelectedCard();
+            string iid = chosen != null ? chosen.instanceID : null;
+            hm?.EndHandSelectionCleanup();
+            if (!string.IsNullOrEmpty(iid)) ApplyMechPrefixById(iid, null);
+        }
+        else if (owner != null && owner.connectionToClient != null)
         {
-            if (targetSlot?.currentCard3D != null)
-            {
-                SelectionManager.Instance.ForceEndAll();
-                CleanupPrefixUI(spellCards, handSummons);
-                ApplyMechPrefix(targetSlot.currentCard3D);
-                CleanupAfterPlacement();
-            }
-        };
+            int pickId = NetworkPlayer.StartRemoteCardPick(owner, NetworkPlayer.RemoteCardPickKind.Summon, null, "机械");
+            yield return NetworkPlayer.WaitForClientSelection(pickId);
+            string iid = NetworkPlayer.GetSelectionInstID(pickId);
+            if (!string.IsNullOrEmpty(iid)) ApplyMechPrefixById(iid, owner);
+        }
+        CleanupAfterPlacement();
+    }
+
+    /// <summary>按 iid 对真身加机械前缀（源 01119）：场上→Sync；手牌→远端 TargetGiveHandPrefix / Host 本地直改。</summary>
+    void ApplyMechPrefixById(string iid, NetworkPlayer remoteOwner)
+    {
+        HandManager hm = FindObjectOfType<HandManager>();
+        Card3DInstance c3d = hm?.ResolveFieldCardByInstanceID(iid);
+        if (c3d?.cardInstance != null)
+        {
+            CardInstance ci = c3d.cardInstance;
+            if (!ci.prefixes.Contains("机械")) { ci.GivePrefix("机械", "01119"); c3d.UpdateValues(); TurnManager.SyncMyBoardToOpponent(); }
+            return;
+        }
+        if (remoteOwner != null && remoteOwner.connectionToClient != null)
+        {
+            remoteOwner.TargetGiveHandPrefix(remoteOwner.connectionToClient, iid, "机械", "01119");
+            return;
+        }
+        GameObject handCard = hm?.ResolveHandCardByInstanceID(iid);
+        CardInstance hci = handCard?.GetComponent<CardInstance>();
+        if (hci == null) return;
+        if (!hci.prefixes.Contains("机械")) hci.GivePrefix("机械", "01119");
+        handCard.GetComponent<CardDisplay2D>()?.Refresh();
+        if (NetworkClient.isConnected) NetworkPlayer.Local?.CmdSetHandCardPrefix(iid, "机械");
     }
 
     void CleanupPrefixUI(List<GameObject> hiddenSpells, List<GameObject> handSummons)

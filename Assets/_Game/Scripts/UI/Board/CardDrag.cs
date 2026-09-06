@@ -712,10 +712,11 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
     {
         yield return null;
         HandManager hm = FindObjectOfType<HandManager>();
-        // 手牌+场上混合弹窗（收藏家 01349 模式）：候选 = 己方召唤物(手牌6? 手牌一律 + 场上6-11)
+        // 手牌+场上混合弹窗（收藏家 01349 模式）：候选 = 己方召唤物(手牌6? 手牌一律 + 场上6-11)；排除已带渊
         List<CardInstance> candidates = hm != null
             ? hm.BuildHandPlusFieldCardList(
-                ci => CardDatabase.Instance?.GetTemplate(ci.templateID)?.cardType == CardType.Summon)
+                ci => CardDatabase.Instance?.GetTemplate(ci.templateID)?.cardType == CardType.Summon
+                    && (ci.prefixes == null || !ci.prefixes.Contains("渊")))
             : new List<CardInstance>();
         if (candidates.Count == 0) { CardDrag.CleanupSpellResources(); yield break; }
 
