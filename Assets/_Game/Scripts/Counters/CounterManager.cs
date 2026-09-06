@@ -549,6 +549,10 @@ public class CounterManager : MonoBehaviour
                 if (toRemove != null)
                 {
                     NetworkPlayer.Remote.handCards.Remove(toRemove);
+                    // 远端同步（02305/02306）：通知 victim(真远端) 本地 UI 删除该手牌并重排；离线 AI 无连接则跳过。
+                    // 与 01316/01347 偷牌同款 RPC：instanceID 与远端本地手牌一致。
+                    if (NetworkPlayer.Remote != null && NetworkPlayer.Remote.connectionToClient != null)
+                        NetworkPlayer.Remote.TargetRemoveHandCard(NetworkPlayer.Remote.connectionToClient, selected.instanceID);
                     CardData template = CardDatabase.Instance?.GetTemplate(selected.templateID);
                     if (template != null)
                         NetworkPlayer.Local.AddCardToHand(template);
