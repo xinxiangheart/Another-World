@@ -1296,7 +1296,7 @@ public class BattleManager : MonoBehaviour
     }
 
     IEnumerator ResolveRevengeEffect(string effect, GameObject deadCard, List<GameObject> targets,
-        int traitIndex = -1, string traitText = null)
+        int traitIndex = -1, string traitText = null, int fxSourceSlotID = -1)
     {
         Debug.Log($"ResolveRevengeEffect: effect={effect}");
 
@@ -1310,7 +1310,7 @@ public class BattleManager : MonoBehaviour
                 if (tInst != null)
                 {
                     DamagePipeline.Process(new DamageInput(null, tInst.cardInstance, revengeDmg, deadCard, DamagePhase.Battle,
-                        traitIndex: traitIndex, traitText: traitText));
+                        traitIndex: traitIndex, traitText: traitText, fxSourceSlotID: fxSourceSlotID));
                     tInst.UpdateValues();
                 }
             }
@@ -1583,7 +1583,7 @@ public class BattleManager : MonoBehaviour
                 if (targets.Count == 0) continue;
 
                 yield return bmInstance.StartCoroutine(
-                    bmInstance.ResolveRevengeEffect(effect, null, targets, revTraitIndex, revTraitText));
+                    bmInstance.ResolveRevengeEffect(effect, null, targets, revTraitIndex, revTraitText, deadSlotID));
             }
 
             // 反伤造成新死亡 → 递归
@@ -1806,7 +1806,7 @@ public class BattleManager : MonoBehaviour
     }
     void ApplyDamageToMinion(CardInstance target, int damage, GameObject source,
         int traitIndex = -1, string traitText = null, string effectText = null,
-        string spellTemplateID = null, bool fromEnemySpell = false)
+        string spellTemplateID = null, bool fromEnemySpell = false, int fxSourceSlotID = -1)
     {
         if (target == null) return;
 
@@ -1823,7 +1823,8 @@ public class BattleManager : MonoBehaviour
             traitText: traitText,
             effectText: effectText,
             spellTemplateID: spellTemplateID,
-            fromEnemySpell: fromEnemySpell
+            fromEnemySpell: fromEnemySpell,
+            fxSourceSlotID: fxSourceSlotID
         ));
         // 护盾吸收/领主重定向/追随者挡死/祭司复活 → DamagePipeline 内全处理。
         // 调用方后续读 target.currentHealth 即可判断生死。
@@ -1917,7 +1918,7 @@ public class BattleManager : MonoBehaviour
     }
     public void ApplyDamageToMinionPublic(CardInstance target, int damage, GameObject source,
         int traitIndex = -1, string traitText = null, string effectText = null,
-        string spellTemplateID = null, bool fromEnemySpell = false)
+        string spellTemplateID = null, bool fromEnemySpell = false, int fxSourceSlotID = -1)
     {
         // Pure client: route through server-authoritative command
         if (NetworkClient.isConnected && !NetworkServer.active)
@@ -1938,7 +1939,7 @@ public class BattleManager : MonoBehaviour
             }
             return;
         }
-        ApplyDamageToMinion(target, damage, source, traitIndex, traitText, effectText, spellTemplateID, fromEnemySpell);
+        ApplyDamageToMinion(target, damage, source, traitIndex, traitText, effectText, spellTemplateID, fromEnemySpell, fxSourceSlotID);
     }
     public IEnumerator WaitForSelection(Action<Action> selection)
     {

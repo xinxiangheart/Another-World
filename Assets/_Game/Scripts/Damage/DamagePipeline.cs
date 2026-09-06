@@ -56,12 +56,15 @@ public struct DamageInput
     public bool isDirectAttack;
     /// <summary>法伤来源标记：Phase==Spell 且来自"对方"(施法者与防守方异侧)。由法伤调用点按目标槽判定传入。非法术恒 false。</summary>
     public bool fromEnemySpell;
+    /// <summary>粒子起点来源槽（亡语/主动退场/抛置/反击等"来源本体已离场"效果用）：≥0 → DamageFxSource.Grid 从该槽原位飞出；-1=默认。</summary>
+    public int fxSourceSlotID;
 
     public DamageInput(CardInstance attacker, CardInstance defender, int baseDamage,
         GameObject sourceObject = null, DamagePhase phase = DamagePhase.Battle,
         int attackerSlotTempAttackBoost = 0, BoardSlot attackerSlot = null,
         int traitIndex = -1, string traitText = null, string effectText = null,
-        string spellTemplateID = null, bool isDirectAttack = false, bool fromEnemySpell = false)
+        string spellTemplateID = null, bool isDirectAttack = false, bool fromEnemySpell = false,
+        int fxSourceSlotID = -1)
     {
         this.attacker = attacker;
         this.defender = defender;
@@ -76,6 +79,7 @@ public struct DamageInput
         this.spellTemplateID = spellTemplateID;
         this.isDirectAttack = isDirectAttack;
         this.fromEnemySpell = fromEnemySpell;
+        this.fxSourceSlotID = fxSourceSlotID;
     }
 }
 
@@ -429,7 +433,7 @@ public static class DamagePipeline
 
         // ── 实际扣血 ─────────────────────────────────────────────────
         def.currentHealth -= actual;
-        ShowFloaterAt(def, actual, FloaterType.Damage, ctx.Attacker, -1, false, ctx.input.isDirectAttack);
+        ShowFloaterAt(def, actual, FloaterType.Damage, ctx.Attacker, ctx.input.fxSourceSlotID, false, ctx.input.isDirectAttack);
 
         // ── DamageSourceMarker(防守方) ──────────────────────────────
         GameObject defenderGO = null;
@@ -789,10 +793,13 @@ public static class DamagePipeline
             if (c3d?.cardInstance == ci && s.currentCard3D != null)
                 return s.currentCard3D.transform.position + Vector3.up * offset;
         }
+        // 本体已离槽（退场/回手/效果中）→ 回退 HandleDeath 记录的退场前站位，避免粒子浮到原点
+        if (ci != null && ci.hasLastBoardPos)
+            return ci.lastBoardPos + Vector3.up * offset;
         return Vector3.zero;
     }
 
-    /// <summary>卡牌 3D 模型中心的世界坐标（粒子终点精确落点）。找不到回退浮字位置。</summary>
+    /// <summary>卡牌 3D 模型中心的世界坐标（粒子终点精确落点）。本体离槽回退退场前记录坐标。</summary>
     static Vector3 GetCardCenterOf(CardInstance ci)
     {
         var bm = UnityEngine.Object.FindObjectOfType<BoardManager>();
@@ -804,6 +811,8 @@ public static class DamagePipeline
             if (c3d?.cardInstance == ci && s.currentCard3D != null)
                 return s.currentCard3D.transform.position; // 模型中心，无偏移
         }
+        if (ci != null && ci.hasLastBoardPos)
+            return ci.lastBoardPos;
         return Vector3.zero;
     }
 

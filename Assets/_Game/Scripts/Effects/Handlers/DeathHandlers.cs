@@ -336,7 +336,7 @@ public static class DeathHandlers
                                 var ca = slot.currentCard3D.GetComponent<Card3DInstance>();
                                 if (ca?.cardInstance != null && ca.cardInstance != ctx.source)
                                 {
-                                    BattleManager.Instance.ApplyDamageToMinionPublic(ca.cardInstance, 1, null);
+                                    BattleManager.Instance.ApplyDamageToMinionPublic(ca.cardInstance, 1, null, -1, null, null, null, false, ctx.SourceSlotID); // fx：亡语本体原位
                                     ca.UpdateValues();
                                 }
                             }
@@ -449,7 +449,7 @@ public static class DeathHandlers
                     var ei = es.currentCard3D.GetComponent<Card3DInstance>();
                     if (ei?.cardInstance != null)
                     {
-                        BattleManager.Instance.ApplyDamageToMinionPublic(ei.cardInstance, 1, null, srcIdx, srcText);
+                        BattleManager.Instance.ApplyDamageToMinionPublic(ei.cardInstance, 1, null, srcIdx, srcText, null, null, false, ctx.SourceSlotID); // fx：亡语本体原位
                         ei.UpdateValues();
                     }
                 }
@@ -612,7 +612,7 @@ public static class DeathHandlers
                     var t3d = target.currentCard3D.GetComponent<Card3DInstance>();
                     if (t3d?.cardInstance != null)
                     {
-                        BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, 2, null, exitIdx, exitText);
+                        BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, 2, null, exitIdx, exitText, null, null, false, ctx.sourceSlot.slotID); // fx：荣誉侍者本体原位
                         t3d.UpdateValues();
                     }
                 }
@@ -635,7 +635,7 @@ public static class DeathHandlers
                         var t3d = target.currentCard3D.GetComponent<Card3DInstance>();
                         if (t3d?.cardInstance != null)
                         {
-                            BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, 2, null, exitIdx, exitText);
+                            BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, 2, null, exitIdx, exitText, null, null, false, ctx.sourceSlot.slotID); // fx：荣誉侍者本体原位
                             t3d.UpdateValues();
                         }
                     }

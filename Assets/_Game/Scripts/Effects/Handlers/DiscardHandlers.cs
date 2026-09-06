@@ -89,7 +89,7 @@ public static class DiscardHandlers
                     var t3d = target.currentCard3D.GetComponent<Card3DInstance>();
                     if (t3d?.cardInstance != null)
                     {
-                        BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, 1, null, srcIdx, srcText);
+                        BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, 1, null, srcIdx, srcText, null, null, false, discardSlotID); // fx：抛置本体原位
                         t3d.UpdateValues();
                         if (NetworkClient.isConnected && !NetworkServer.active)
                             NetworkPlayer.Local?.CmdApplyDamageToCard(target.slotID, 1);
@@ -148,7 +148,7 @@ public static class DiscardHandlers
                     var t3d = target.currentCard3D.GetComponent<Card3DInstance>();
                     if (t3d?.cardInstance != null)
                     {
-                        BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, ctx.savedAttack, null, srcIdx, srcText);
+                        BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, ctx.savedAttack, null, srcIdx, srcText, null, null, false, mySlot); // fx：抛置本体原位
                         t3d.UpdateValues();
                         if (NetworkClient.isConnected && !NetworkServer.active)
                             NetworkPlayer.Local?.CmdApplyDamageToCard(target.slotID, ctx.savedAttack);

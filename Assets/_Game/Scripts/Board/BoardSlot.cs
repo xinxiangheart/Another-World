@@ -1458,6 +1458,12 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         lastHandleDeathTime = Time.time;
         c3d.cardInstance.isDead = true;
         c3d.cardInstance.deathGeneration = c3d.cardInstance.placementGeneration;
+        // 退场前记录原站位世界坐标：清槽/销毁后粒子、浮字、退场效果仍能从本体原位置出发（反击/亡语/主动退场/抛置等）
+        if (!c3d.cardInstance.hasLastBoardPos)
+        {
+            c3d.cardInstance.lastBoardPos = dyingCard.transform.position;
+            c3d.cardInstance.hasLastBoardPos = true;
+        }
         c3d.cardInstance.hasLifePriestBlessing = false;
         c3d.cardInstance.lifePriestBlessingSource = null;
         c3d.cardInstance.RemoveStatusBySource("01507"); // 4.2 生命祭司：被祝福者离场 → 状态移除
@@ -5067,7 +5073,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                                 // 特性级溯源：学者复制的"抛置：…攻击力数值的伤害"在学者可见特性中的序号+文本
                                 int cdIdx = ci.GetTraitIndexByKeyword("攻击力数值的伤害");
                                 string cdText = cdIdx > 0 ? ci.GetTraitByIndex(cdIdx) : null;
-                                BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, ci.currentAttack, null, cdIdx, cdText);
+                                BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, ci.currentAttack, null, cdIdx, cdText, null, null, false, mySlotID); // fx：学者本体原位
                                 t3d.UpdateValues();
                                 if (NetworkClient.isConnected && !NetworkServer.active)
                                     NetworkPlayer.Local?.CmdApplyDamageToCard(target.slotID, ci.currentAttack);
@@ -5092,7 +5098,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                                 // 特性级溯源：学者复制的"抛置：对对方一召唤物造成1伤害"在学者可见特性中的序号+文本
                                 int cdIdx = ci.GetTraitIndexByKeyword("对对方一召唤物造成1伤害");
                                 string cdText = cdIdx > 0 ? ci.GetTraitByIndex(cdIdx) : null;
-                                BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, 1, null, cdIdx, cdText);
+                                BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, 1, null, cdIdx, cdText, null, null, false, mySlotID); // fx：学者本体原位
                                 t3d.UpdateValues();
                                 if (NetworkClient.isConnected && !NetworkServer.active)
                                     NetworkPlayer.Local?.CmdApplyDamageToCard(target.slotID, 1);

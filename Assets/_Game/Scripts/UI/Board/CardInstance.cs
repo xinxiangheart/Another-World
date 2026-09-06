@@ -98,6 +98,9 @@ public class CardInstance : MonoBehaviour
     [System.NonSerialized] public int placementGeneration;
     /// <summary>此卡是否已被 HandleDeath 处理过。用于替代 lastHandleDeathTime 时间窗口。</summary>
     [System.NonSerialized] public bool isDead;
+    /// <summary>退场前最后站位的世界坐标（本体离槽后，粒子/浮字/退场效果据此从原位置出发）。HandleDeath 置位记录。</summary>
+    [System.NonSerialized] public Vector3 lastBoardPos;
+    [System.NonSerialized] public bool hasLastBoardPos;
     /// <summary>死亡时记录的当前世代。用于判断死亡事件是否已被同步处理。</summary>
     [System.NonSerialized] public int deathGeneration;
     /// <summary>最近一次被服务端同步确认的世代号（syncGen/attachGen）。-1=从未被服务端同步确认。
