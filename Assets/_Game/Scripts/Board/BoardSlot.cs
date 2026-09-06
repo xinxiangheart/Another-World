@@ -2913,63 +2913,52 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     }
     public IEnumerator RiddlerDeathEffect(CardInstance giver)
     {
+        // 谜语人退场归本机处理（本机=拥有者，学徒 01329 同款）。
+        // 离线 AI 中谜语人在 AI 半场(0-5)→非本机拥有，跳过，避免误从宿主手牌出反制。
+        if (SimpleAI.IsAIMatch && slotID < 6) yield break;
+
         NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
+        HandManager hm = FindObjectOfType<HandManager>();
 
-                // 清理重定向标记
-        List<GameObject> counterCards = new List<GameObject>();
-        foreach (GameObject card in NetworkPlayer.Local.handCards)
-        {
-            if (card == null) continue;
-            CardInstance ci = card.GetComponent<CardInstance>();
-            if (ci == null) continue;
-            CardData td = CardDatabase.Instance?.GetTemplate(ci.templateID);
-            if (td != null && td.cardType == CardType.Spell && (td.spellType & SpellType.Counter) != 0)
-                counterCards.Add(card);
-        }
-
-        if (counterCards.Count == 0)
-        {
-            Debug.Log("妖精护盾选择前");
-            yield break;
-        }
-
-                // 清理重定向标记
-        ConfirmQueueManager.EnterSelectionMode();
-        var validCards = ConfirmQueueManager.FilterHandCards(ci =>
+        // 候选 = 手牌反制法术（BuildHandCardList 过滤）
+        List<CardInstance> candidates = hm != null ? hm.BuildHandCardList(ci =>
         {
             CardData td = CardDatabase.Instance?.GetTemplate(ci.templateID);
             return td != null && td.cardType == CardType.Spell && (td.spellType & SpellType.Counter) != 0;
-        });
+        }) : new List<CardInstance>();
+        if (candidates.Count == 0) yield break;
 
-        GameObject selectedCard = null;
-        bool done = false;
-        foreach (GameObject card in validCards)
-        {
-            CardClickHandler h = card.GetComponent<CardClickHandler>() ?? card.AddComponent<CardClickHandler>();
-            h.onClick = () => { selectedCard = card; done = true; };
-        }
-        yield return new WaitUntil(() => done);
+        // CardDisplayPanel 弹窗（01349 收藏家式）——替换旧 CardClickHandler 现场点选手牌
+        bool confirmed = false;
+        CardDisplayPanel.Instance.multiSelect = false;
+        CardDisplayPanel.Instance.ShowWithCallback(candidates, ci => true, () => confirmed = true, "选择反制牌");
+        float riddlerDeadline = Time.time + 30f;
+        while (!confirmed && Time.time < riddlerDeadline) yield return null;
+        if (!confirmed) { hm?.EndHandSelectionCleanup(); yield break; }
 
-        foreach (GameObject card in validCards)
-        {
-            CardClickHandler h = card.GetComponent<CardClickHandler>();
-            if (h != null) Destroy(h);
-        }
-        ConfirmQueueManager.RestoreAllHandCards();
-        ConfirmQueueManager.ExitSelectionMode();
+        CardInstance chosen = CardDisplayPanel.Instance.GetSelectedCard();
+        CardInstance selected = chosen != null
+            ? hm?.ResolveHandCardByInstanceID(chosen.instanceID)?.GetComponent<CardInstance>()
+            : null;
+        hm?.EndHandSelectionCleanup();
+        if (selected == null) yield break;
 
-        if (selectedCard != null)
-        {
-                // 清理重定向标记
-            CounterManager.Instance?.PlayCounter(selectedCard, true);
-                // 清理重定向标记
-            var counter = CounterManager.Instance?.myCounters?.LastOrDefault();
-            if (counter != null) counter.noCostOnTrigger = true;
-            NetworkPlayer.Local.handCards.Remove(selectedCard);
-            Destroy(selectedCard);
-            HandManager hm = FindObjectOfType<HandManager>();
-            hm?.RefreshLayout(true);
-        }
+        // 免费打出反制（与旧一致）
+        GameObject selectedGO = selected.gameObject;
+        string templateID = selected.templateID;
+        CounterManager.Instance?.PlayCounter(selectedGO, true);
+        var counter = CounterManager.Instance?.myCounters?.LastOrDefault();
+        if (counter != null) counter.noCostOnTrigger = true;
+        NetworkPlayer.Local.handCards.Remove(selectedGO);
+        Destroy(selectedGO);
+        hm?.RefreshLayout(true);
+
+        // 反制镜像给对方（补齐；同 CardDrag 反制打出分支）——AI 无连接跳过
+        if (NetworkServer.active && NetworkPlayer.Remote != null
+            && NetworkPlayer.Remote.connectionToClient != null)
+            NetworkPlayer.Remote.TargetSpawnCounterCard(NetworkPlayer.Remote.connectionToClient, templateID);
+        else if (NetworkClient.isConnected)
+            NetworkPlayer.Local?.CmdPlayCounter(templateID);
     }
     public IEnumerator BlockerEnterEffect(CardInstance giver)
     {
