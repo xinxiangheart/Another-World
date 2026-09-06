@@ -107,7 +107,9 @@ public static class Card2DNewPrefabBuilder
     /// 去掉：三栏图标（前缀/特性/状态排）、攻击UI+文本、生命UI+文本、类别UI。
     /// 保留：能量UI+文本、卡名、卡框(CostFrameBase)、原画区(PrefixArtBG+CardArt)、卡背、正反面结构。
     /// 显示脚本：移除 CardDisplay2DNew(+Compat)，改绑法术专用 CardDisplay2DSpell（继承 CardDisplay2D）。
-    /// 新增：EffectText（TMP，卡面中央偏下）。布局随克隆保留，生成后可在场景微调 EffectText。
+    /// 新增：EffectText（TMP，卡面中央偏下）。先 UnpackPrefabInstance 完全解包 → 生成的是
+    /// 扁平自包含预制体（非召唤物嵌套变体），卡面/精灵自带、运行时无 stripped 引用问题。
+    /// 布局随克隆保留，生成后可在场景微调 EffectText。
     /// </summary>
     [MenuItem("Tools/卡牌/生成新2D法术手牌预制体（克隆召唤物）")]
     public static void CreateSpellPrefab()
@@ -118,6 +120,9 @@ public static class Card2DNewPrefabBuilder
         if (src == null) { Debug.LogError($"[Card2DNew] 找不到源召唤物预制体: {PrefabPath}"); return; }
 
         GameObject clone = (GameObject)PrefabUtility.InstantiatePrefab(src);
+        // 完全解包成扁平独立对象（不再作为召唤物的嵌套变体）——保存出的 SpellCard00_New_2D
+        // 是自包含预制体：卡面/精灵全部自带，不受 Card00_New_2D 后续改动影响，且运行时无 stripped 引用风险。
+        PrefabUtility.UnpackPrefabInstance(clone, PrefabUnpackMode.OutermostRoot, InteractionMode.AutomatedAction);
         clone.name = "SpellCard00_New_2D";
 
         // 去掉：三栏图标 / 攻击 / 生命 / 类别（保留 能量、卡名、卡框、原画区、卡背）

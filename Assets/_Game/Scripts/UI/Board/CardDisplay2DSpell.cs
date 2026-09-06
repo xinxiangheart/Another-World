@@ -52,7 +52,11 @@ public class CardDisplay2DSpell : CardDisplay2D
 
     void Start()
     {
-        // 兼容未走 RefreshWithInstance 的创建路径：兜底从组件取实例刷一次
+        // 兼容未走 RefreshWithInstance 的创建路径：兜底从组件取实例刷一次；
+        // 显式切正面，避免残留背面/空状态导致只看到预设文字
+        if (frontFace == null) frontFace = transform.Find("FrontFace")?.gameObject;
+        if (backFace == null) backFace = transform.Find("BackFace")?.gameObject;
+        ShowFront();
         if (instance == null) instance = GetComponent<CardInstance>();
         Refresh();
     }

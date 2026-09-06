@@ -1183,11 +1183,16 @@ public class NetworkPlayer : NetworkBehaviour
         }
     }
 
-    GameObject GetCardPrefab(CardType cardType)
+    GameObject GetCardPrefab(CardType cardType, CardData tpl = null)
     {
         if (cardPrefab2D == null) cardPrefab2D = FindObjectOfType<Player>()?.cardPrefab2D;
         if (spellCardPrefab2D == null) spellCardPrefab2D = FindObjectOfType<Player>()?.spellCardPrefab2D;
-        return cardType == CardType.Spell ? spellCardPrefab2D : cardPrefab2D;
+        GameObject p = cardType == CardType.Spell ? spellCardPrefab2D : cardPrefab2D;
+        // 兜底：CardData 表现层归档预制体（迁移后 = Card00_New_2D / SpellCard00_New_2D）。
+        // 某些流程（如 GetCardPanel 在 Player 字段未就位场景）Player 字段为 null 时保底不为空。
+        if (p == null && tpl != null)
+            p = cardType == CardType.Spell ? tpl.spell2DPrefab : tpl.card2DPrefab;
+        return p;
     }
 
     public CardView AddCardToHand(CardData template, string instanceID = null, bool animate = true)
@@ -1208,7 +1213,7 @@ public class NetworkPlayer : NetworkBehaviour
         handCards.RemoveAll(c => c == null);
         if (handCards.Count >= maxHandSize) return null;
 
-        GameObject prefab = GetCardPrefab(template.cardType);
+        GameObject prefab = GetCardPrefab(template.cardType, template);
         if (prefab == null)
         {
             Debug.LogError($"[NetworkPlayer] AddCardToHand: prefab is null for cardType={template.cardType}");

@@ -59,9 +59,6 @@ MonoBehaviour:
   spell2DPrefab: {fileID: 0}
   prefab3D: {fileID: 1094747110808969126, guid: e09968ed5c12f8f4c91568ea8122934f, type: 3}
   spellPrefab3D: {fileID: 1451899876978532017, guid: 433df7af0d0b28b45948cbdf892cd669, type: 3}
-  cardSprite2D: {fileID: 21300000, guid: 5b304bc03b4e1b24bb939969d960fee4, type: 3}
-  spellCardBackSprite2D: {fileID: 0}
-  summonCardBackSprite2D: {fileID: 21300000, guid: dedb5407eb25af146b5304d6186e765c, type: 3}
   hasBuff: 1
   buffText: "\u751F\u547D\u503C<=0\u7684\u77AC\u95F4\u7ACB\u523B\u56DE\u6EE1\u81F3\u4E0A\u9650\uFF0C\u540C\u65F6+3+3\uFF08\u79BB\u5F00\u573A\u5185\u65F6\u795D\u798F\u5931\u6548\uFF09"
   hasDebuff: 0

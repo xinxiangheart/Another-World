@@ -47,12 +47,9 @@ MonoBehaviour:
   spellType: 1
   effect: "1.\u9009\u62E9\u573A\u4E0A\u4EFB\u610F\u4E00\u53EC\u5524\u7269\uFF0C\u672C\u6B21\u653B\u51FB\u56DE\u5408\u653B\u51FB\u4F24\u5BB3\u4FEE\u6B63x2\uFF0C\u5728\u4E0B\u9636\u6BB5\u5F00\u59CB\u6263\u9664\u653B\u51FB\u529B\u6570\u503C\u7684\u751F\u547D\u503C"
   card2DPrefab: {fileID: 0}
-  spell2DPrefab: {fileID: 4217158206317709088, guid: df1255eb9b4377e4b8e9490c535e2bfd, type: 3}
+  spell2DPrefab: {fileID: 1249189968934597795, guid: df1255eb9b4377e4b8e9490c535e2bfd, type: 3}
   prefab3D: {fileID: 0}
   spellPrefab3D: {fileID: 4634673609735818748, guid: fb0d2357614cf934fa98c1d31e9bbab7, type: 3}
-  cardSprite2D: {fileID: 21300000, guid: 0c520a0d75d9aad459733fc5a43addee, type: 3}
-  spellCardBackSprite2D: {fileID: 21300000, guid: 642e7350f6a75884e9b64d9573fcded8, type: 3}
-  summonCardBackSprite2D: {fileID: 0}
   hasBuff: 1
   buffText: "\u672C\u6B21\u653B\u51FB\u56DE\u5408\u653B\u51FB\u4F24\u5BB3\u4FEE\u6B63x2"
   hasDebuff: 1
