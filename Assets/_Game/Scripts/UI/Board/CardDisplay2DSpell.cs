@@ -64,7 +64,7 @@ public class CardDisplay2DSpell : CardDisplay2D
     public override void Refresh()
     {
         if (instance == null) return;
-        CardData template = CardDatabase.Instance?.GetTemplate(instance.templateID);
+        CardData template = FindTemplate(instance.templateID);
         if (template == null) return;
 
         // ── 文本：卡名 / 能量（GetDisplayCost 含减费光环显示折扣）/ 效果描述 ──
@@ -184,6 +184,22 @@ public class CardDisplay2DSpell : CardDisplay2D
     }
 
     // ================= 资源加载 =================
+
+    /// <summary>按 templateID 解析卡模板：CardDatabase → 资源级兜底（总览/编辑器等 DB 未加载场景用，
+    /// 对齐 CardDisplay2DNew.FindTemplate）。</summary>
+    CardData FindTemplate(string tid)
+    {
+        if (string.IsNullOrEmpty(tid)) return null;
+        CardData t = CardDatabase.Instance != null ? CardDatabase.Instance.GetTemplate(tid) : null;
+        if (t != null) return t;
+        foreach (string folder in new[] { "CardData", "ChosenOneData" })
+        {
+            var all = Resources.LoadAll<CardData>(folder);
+            foreach (var c in all)
+                if (c != null && c.templateID == tid) return c;
+        }
+        return null;
+    }
 
     void SetImageSprite(Image img, Sprite direct, string path)
     {

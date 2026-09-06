@@ -10427,8 +10427,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 675, y: 0}
-  m_SizeDelta: {x: 1350, y: 0}
+  m_AnchoredPosition: {x: 725, y: 0}
+  m_SizeDelta: {x: 1450, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1809621142
 MonoBehaviour:
@@ -10451,6 +10451,9 @@ MonoBehaviour:
   startX: 0
   startY: 0
   multiSelect: 0
+  maxSelect: 0
+  confirmWhenEmpty: 0
+  confirmWhenFull: 0
   showBack: 0
   backLabel: "\u53CD\u5236\u724C"
   enableCostCheck: 0
