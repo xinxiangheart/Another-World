@@ -2066,58 +2066,38 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public IEnumerator HeartthrobEnterEffect(CardInstance giver)
     {
         yield return null;
+
+        // 万人迷归本机处理（本机=拥有者）。离线 AI 中万人迷在 AI 半场(0-5)→非本机拥有，跳过，
+        // 避免从宿主手牌误召唤（同谜语人/学徒处理）。
+        if (SimpleAI.IsAIMatch && slotID < 6) { CleanupAfterPlacement(); yield break; }
+
         NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
+        HandManager hm = FindObjectOfType<HandManager>();
 
-        List<GameObject> heroCards = new List<GameObject>();
-        foreach (GameObject card in NetworkPlayer.Local.handCards)
+        // 第一段：选手牌一张 Hero 召唤物 → CardDisplayPanel 弹窗（01349 收藏家式）
+        List<CardInstance> candidates = hm != null ? hm.BuildHandCardList(ci =>
         {
-            if (card == null) continue;
-            CardInstance ci = card.GetComponent<CardInstance>();
-            if (ci == null) continue;
             CardData td = CardDatabase.Instance?.GetTemplate(ci.templateID);
-            if (td != null && td.cardType == CardType.Summon && td.summonType == SummonType.Hero)
-                heroCards.Add(card);
-        }
-
-        if (heroCards.Count == 0)
+            return td != null && td.cardType == CardType.Summon && td.summonType == SummonType.Hero;
+        }) : new List<CardInstance>();
+        if (candidates.Count == 0)
         {
-            Debug.Log("妖精护盾选择前");
             CleanupAfterPlacement();
             yield break;
         }
 
-        ConfirmQueueManager.EnterSelectionMode();
-        var validCards = ConfirmQueueManager.FilterHandCards(ci =>
-        {
-            CardData td = CardDatabase.Instance?.GetTemplate(ci.templateID);
-            return td != null && td.cardType == CardType.Summon && td.summonType == SummonType.Hero;
-        });
-
-        GameObject selectedCard = null;
-        bool cardChosen = false;
-        foreach (GameObject card in validCards)
-        {
-            CardClickHandler h = card.GetComponent<CardClickHandler>() ?? card.AddComponent<CardClickHandler>();
-            h.onClick = () => { selectedCard = card; cardChosen = true; };
-        }
-        // AI 放心弦者 → 自动完成；非 AI 30s 超时
-        if (SimpleAI.IsAIMatch && slotID < 6) cardChosen = true;
+        bool confirmed = false;
+        CardDisplayPanel.Instance.multiSelect = false;
+        CardDisplayPanel.Instance.ShowWithCallback(candidates, ci => true, () => confirmed = true, "选择英雄");
         float heartDeadline = Time.time + 30f;
-        while (!cardChosen && Time.time < heartDeadline)
-            yield return null;
-        if (!cardChosen)
-        {
-            cardChosen = true;
-            Debug.LogWarning("[Effect] 心弦者选牌超时，AI兜底");
-        }
+        while (!confirmed && Time.time < heartDeadline) yield return null;
+        if (!confirmed) { hm?.EndHandSelectionCleanup(); CleanupAfterPlacement(); yield break; }
 
-        foreach (GameObject card in validCards)
-        {
-            CardClickHandler h = card.GetComponent<CardClickHandler>();
-            if (h != null) Destroy(h);
-        }
-        ConfirmQueueManager.RestoreAllHandCards();
-        ConfirmQueueManager.ExitSelectionMode();
+        CardInstance chosen = CardDisplayPanel.Instance.GetSelectedCard();
+        GameObject selectedCard = chosen != null
+            ? hm?.ResolveHandCardByInstanceID(chosen.instanceID)
+            : null;
+        hm?.EndHandSelectionCleanup();
 
         if (selectedCard == null)
         {
@@ -2239,10 +2219,15 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         if (!owner.isLocalPlayer)
         {
-            owner.TargetRogueDeathEffect(owner.connectionToClient, slotID);
-            float t = Time.time;
-            while (!_rogueRpcDone && Time.time - t < 30f) yield return null;
-            _rogueRpcDone = false;
+            // 远程人类拥有者：委托其客户端完整执行选牌+放置（不误用宿主手牌）
+            if (owner.connectionToClient != null)
+            {
+                owner.TargetRogueDeathEffect(owner.connectionToClient, slotID);
+                float t = Time.time;
+                while (!_rogueRpcDone && Time.time - t < 30f) yield return null;
+                _rogueRpcDone = false;
+            }
+            // 离线 AI 拥有者（无连接）：跳过，避免误从宿主手牌召唤（同谜语人处理）
             _roguePhaseBlock = false;
             NestingContext.Exit();
             yield break;
@@ -2288,43 +2273,29 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     IEnumerator RogueDoSummon(NetworkPlayer player)
     {
         player.handCards.RemoveAll(c => c == null);
+        HandManager hm = FindObjectOfType<HandManager>();
 
-        List<GameObject> heroCards = new List<GameObject>();
-        foreach (GameObject card in player.handCards)
-        {
-            if (card == null) continue;
-            CardInstance ci = card.GetComponent<CardInstance>();
-            if (ci == null) continue;
-            CardData td = CardDatabase.Instance?.GetTemplate(ci.templateID);
-            if (td != null && td.cardType == CardType.Summon && td.summonType == SummonType.Hero)
-                heroCards.Add(card);
-        }
-
-        if (heroCards.Count == 0) yield break;
-
-        ConfirmQueueManager.EnterSelectionMode();
-        var validCards = ConfirmQueueManager.FilterHandCards(ci =>
+        // 第一段：选手牌一张 Hero 召唤物 → CardDisplayPanel 弹窗（01349 收藏家式）
+        // 弹窗返回克隆，用 instanceID 回找真身（player 恒为 Local：本地分支/远端委托均传本机）
+        List<CardInstance> candidates = hm != null ? hm.BuildHandCardList(ci =>
         {
             CardData td = CardDatabase.Instance?.GetTemplate(ci.templateID);
             return td != null && td.cardType == CardType.Summon && td.summonType == SummonType.Hero;
-        });
+        }) : new List<CardInstance>();
+        if (candidates.Count == 0) yield break;
 
-        GameObject selectedCard = null;
-        bool done = false;
-        foreach (GameObject card in validCards)
-        {
-            CardClickHandler h = card.GetComponent<CardClickHandler>() ?? card.AddComponent<CardClickHandler>();
-            h.onClick = () => { selectedCard = card; done = true; };
-        }
-        yield return new WaitUntil(() => done);
+        bool confirmed = false;
+        CardDisplayPanel.Instance.multiSelect = false;
+        CardDisplayPanel.Instance.ShowWithCallback(candidates, ci => true, () => confirmed = true, "选择英雄");
+        float rogueDeadline = Time.time + 30f;
+        while (!confirmed && Time.time < rogueDeadline) yield return null;
+        if (!confirmed) { hm?.EndHandSelectionCleanup(); yield break; }
 
-        foreach (GameObject card in validCards)
-        {
-            CardClickHandler h = card.GetComponent<CardClickHandler>();
-            if (h != null) Destroy(h);
-        }
-        ConfirmQueueManager.RestoreAllHandCards();
-        ConfirmQueueManager.ExitSelectionMode();
+        CardInstance chosen = CardDisplayPanel.Instance.GetSelectedCard();
+        GameObject selectedCard = chosen != null
+            ? hm?.ResolveHandCardByInstanceID(chosen.instanceID)
+            : null;
+        hm?.EndHandSelectionCleanup();
 
         if (selectedCard != null)
         {
