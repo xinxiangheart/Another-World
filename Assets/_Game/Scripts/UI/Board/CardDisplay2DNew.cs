@@ -36,6 +36,8 @@ public class CardDisplay2DNew : MonoBehaviour
     public Image prefixArtBG;      // 前缀底图（读取模板前缀 CardData.prefix，非实例）
     public Image cardArt;          // 召唤物原画（按 templateID 加载）
     public TMP_Text cardNameText;
+    [Tooltip("法术效果描述文本（法术卡；召唤物预制体可为 null）")]
+    public TMP_Text effectText;
     public Image costIcon;         // 能量图标
     public TMP_Text cardCostText;
     public Image typeIcon;         // 类型图标
@@ -235,6 +237,9 @@ public class CardDisplay2DNew : MonoBehaviour
         if (cardAttackText != null) cardAttackText.text = _inst.Attack.ToString();
         if (cardHealthText != null) cardHealthText.text = _inst.currentHealth.ToString();
         if (cardNameText != null) cardNameText.text = template != null ? template.cardName : "";
+        // 法术效果描述（法术卡显示；召唤物预制体无 effectText 则跳过）
+        if (effectText != null)
+            effectText.text = (isSpell && template != null) ? (template.effect ?? "") : "";
 
         // 召唤物文字动态变色（2D/3D 通用，只作用文本；法术不适用）。规则见 CardInstance.Get*Color()。
         if (!isSpell)

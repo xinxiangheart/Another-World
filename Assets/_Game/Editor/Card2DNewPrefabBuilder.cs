@@ -14,6 +14,7 @@ public static class Card2DNewPrefabBuilder
 {
     const string FontPath = "Assets/_Game/Fonts/NotoSerifCJKsc-Black SDF.asset";
     const string PrefabPath = "Assets/_Game/Prefabs/Cards/Summon/Card00_New_2D.prefab";
+    const string SpellPrefabPath = "Assets/_Game/Prefabs/Cards/Spell/SpellCard00_New_2D.prefab";
 
     [MenuItem("Tools/卡牌/生成新2D手牌预制体")]
     public static void CreatePrefab()
@@ -99,6 +100,72 @@ public static class Card2DNewPrefabBuilder
 
         AssetDatabase.SaveAssets();
         Debug.Log($"[Card2DNew] 预制体已生成: {PrefabPath}（三排图标位置请在场景中手动摆）");
+    }
+
+    /// <summary>
+    /// 从召唤物 Card00_New_2D 克隆生成独立法术手牌预制体 SpellCard00_New_2D（不改原预制体）。
+    /// 去掉：三栏图标（前缀/特性/状态排）、攻击UI+文本、生命UI+文本、类别UI。
+    /// 保留：能量UI+文本、卡名、卡框(CostFrameBase)、原画区(PrefixArtBG+CardArt)、卡背、正反面结构。
+    /// 新增：EffectText（TMP，卡面中央偏下）并接线 CardDisplay2DNew.effectText。
+    /// 布局随克隆保留（含原有已摆放尺寸/位置），生成后可在场景微调 EffectText。
+    /// </summary>
+    [MenuItem("Tools/卡牌/生成新2D法术手牌预制体（克隆召唤物）")]
+    public static void CreateSpellPrefab()
+    {
+        TMP_FontAsset font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontPath);
+        if (font == null) { Debug.LogError($"[Card2DNew] 找不到字体: {FontPath}"); return; }
+        GameObject src = AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath);
+        if (src == null) { Debug.LogError($"[Card2DNew] 找不到源召唤物预制体: {PrefabPath}"); return; }
+
+        GameObject clone = (GameObject)PrefabUtility.InstantiatePrefab(src);
+        clone.name = "SpellCard00_New_2D";
+
+        // 去掉：三栏图标 / 攻击 / 生命 / 类别（保留 能量、卡名、卡框、原画区、卡背）
+        string[] remove = { "PrefixIconsArea", "TraitIconsArea", "StatusIconsArea",
+                            "AttackIcon", "AttackText", "HealthIcon", "HealthText", "TypeIcon" };
+        foreach (string n in remove)
+        {
+            Transform t = clone.transform.Find("FrontFace/" + n);
+            if (t != null) Object.DestroyImmediate(t.gameObject);
+        }
+        // 断开对已删元素的显示引用（防序列化悬空）
+        var display = clone.GetComponent<CardDisplay2DNew>();
+        display.prefixIconsArea = null;
+        display.traitIconsArea = null;
+        display.statusIconsArea = null;
+        display.attackIcon = null;
+        display.cardAttackText = null;
+        display.healthIcon = null;
+        display.cardHealthText = null;
+        display.typeIcon = null;
+
+        // 新增：效果描述文本（卡面中央偏下；生成后可在场景微调位置/字号）
+        Transform front = clone.transform.Find("FrontFace");
+        if (front != null)
+        {
+            TMP_Text eff = CreateText(front as RectTransform, "EffectText", "", font);
+            eff.fontSize = 9f;
+            eff.alignment = TextAlignmentOptions.Center;
+            eff.enableWordWrapping = true;
+            RectTransform effRT = eff.rectTransform;
+            effRT.sizeDelta = new Vector2(78f, 42f);
+            effRT.anchoredPosition = new Vector2(0f, -20f); // 中央偏下
+            display.effectText = eff;
+        }
+
+        // 存为新预制体（SaveAsPrefabAsset 自动生成独立 guid/.meta，不改原召唤物预制体）
+        string dir = System.IO.Path.GetDirectoryName(SpellPrefabPath);
+        if (!AssetDatabase.IsValidFolder(dir))
+        {
+            string parent = System.IO.Path.GetDirectoryName(dir).Replace('\\', '/');
+            string folder = System.IO.Path.GetFileName(dir);
+            AssetDatabase.CreateFolder(parent, folder);
+        }
+        PrefabUtility.SaveAsPrefabAsset(clone, SpellPrefabPath);
+        Object.DestroyImmediate(clone);
+
+        AssetDatabase.SaveAssets();
+        Debug.Log($"[Card2DNew] 法术手牌预制体已生成: {SpellPrefabPath}（EffectText 位置请在场景中手动微调）");
     }
 
     // ================= 工具 =================
