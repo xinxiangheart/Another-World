@@ -710,105 +710,55 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
     }
     public IEnumerator EmperorsApprovalEffectCoroutine()
     {
-        NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
-        // 不隐藏手牌，直接进入选择模式（手牌和场上都可以选）
-        SelectionManager.Instance.BeginOpenSelection(TargetType.SingleAlly, null);
-
-        List<GameObject> spellCards = new List<GameObject>();
-        foreach (GameObject card in NetworkPlayer.Local.handCards)
-        {
-            CardInstance ci = card?.GetComponent<CardInstance>();
-            if (ci != null)
-            {
-                CardData template = CardDatabase.Instance?.GetTemplate(ci.templateID);
-                if (template?.cardType == CardType.Spell)
-                {
-                    card.SetActive(false);
-                    spellCards.Add(card);
-                }
-            }
-        }
-
-        BoardSlot.currentTargetType = TargetType.SingleAlly;
-        Debug.LogWarning($"[SingleAllyOverride] 02004协程强制 currentTargetType=SingleAlly\n{UnityEngine.StackTraceUtility.ExtractStackTrace()}");
-
-        List<GameObject> handSummons = new List<GameObject>();
-        foreach (GameObject card in NetworkPlayer.Local.handCards)
-        {
-            CardInstance ci = card?.GetComponent<CardInstance>();
-            if (ci != null && CardDatabase.Instance?.GetTemplate(ci.templateID)?.cardType == CardType.Summon)
-            {
-                handSummons.Add(card);
-                CardClickHandler handler = card.GetComponent<CardClickHandler>();
-                if (handler == null) handler = card.AddComponent<CardClickHandler>();
-                handler.onClick = () =>
-                {
-                    SelectionManager.Instance.ForceEndAll();
-                    OnEmperorTargetSelected(card, spellCards, handSummons);
-                };
-            }
-        }
-
-        BoardSlot.onTargetSelected = (targetSlot) =>
-        {
-            if (targetSlot?.currentCard3D != null)
-            {
-                SelectionManager.Instance.ForceEndAll();
-                OnEmperorTargetSelected(targetSlot.currentCard3D, spellCards, handSummons);
-            }
-        };
         yield return null;
-    }
+        HandManager hm = FindObjectOfType<HandManager>();
+        // 手牌+场上混合弹窗（收藏家 01349 模式）：候选 = 己方召唤物(手牌6? 手牌一律 + 场上6-11)
+        List<CardInstance> candidates = hm != null
+            ? hm.BuildHandPlusFieldCardList(
+                ci => CardDatabase.Instance?.GetTemplate(ci.templateID)?.cardType == CardType.Summon)
+            : new List<CardInstance>();
+        if (candidates.Count == 0) { CardDrag.CleanupSpellResources(); yield break; }
 
-    void OnEmperorTargetSelected(GameObject target, List<GameObject> hiddenSpells, List<GameObject> handSummons)
-    {
-        if (target == null) return;
+        CardDisplayPanel.Instance.multiSelect = false;
+        bool confirmed = false;
+        CardDisplayPanel.Instance.ShowWithCallback(candidates, ci => true, () => confirmed = true, "认可");
+        float deadline = Time.time + 30f;
+        while (!confirmed && Time.time < deadline) yield return null;
+        if (!confirmed) { hm?.EndHandSelectionCleanup(); CardDrag.CleanupSpellResources(); yield break; }
 
-        CardInstance targetCI = target.GetComponent<CardInstance>();
-        if (targetCI == null)
-        {
-            Card3DInstance c3d = target.GetComponent<Card3DInstance>();
-            if (c3d != null) targetCI = c3d.cardInstance;
-        }
+        CardInstance chosen = CardDisplayPanel.Instance.GetSelectedCard();
+        string iid = chosen != null ? chosen.instanceID : null;
+        hm?.EndHandSelectionCleanup();
 
-        if (targetCI != null)
-        {
-            if (!targetCI.prefixes.Contains("渊"))
-            {
-                targetCI.GivePrefix("渊");
-            }
-
-            Card3DInstance c3d = target.GetComponent<Card3DInstance>();
-            c3d?.UpdateValues();
-            CardDisplay2D d2d = target.GetComponent<CardDisplay2D>();
-            d2d?.Refresh();
-
-            // 同步前缀——场上随从走板面同步，手牌走 CmdSetHandCardPrefix
-            if (c3d != null)
-            {
-                TurnManager.SyncMyBoardToOpponent();
-            }
-            else if (d2d != null && NetworkClient.isConnected)
-            {
-                NetworkPlayer.Local?.CmdSetHandCardPrefix(targetCI.instanceID, "渊");
-            }
-
-            NetworkPlayer.Local.DrawCard();
-        }
-
-        foreach (GameObject card in hiddenSpells)
-        {
-            if (card != null) card.SetActive(true);
-        }
-
-        foreach (GameObject card in handSummons)
-        {
-            CardClickHandler handler = card.GetComponent<CardClickHandler>();
-            if (handler != null) Destroy(handler);
-        }
-
+        if (!string.IsNullOrEmpty(iid)) ApplyEmperorApproval(iid);
         CardDrag.CleanupSpellResources();
     }
+
+    /// <summary>皇帝认可：按 iid 回扫真身（场上 3D / 手牌 2D），给渊前缀 + 摸1；只同步对应的端。</summary>
+    void ApplyEmperorApproval(string iid)
+    {
+        HandManager hm = FindObjectOfType<HandManager>();
+        Card3DInstance c3d = hm?.ResolveFieldCardByInstanceID(iid);
+        CardInstance targetCI = c3d?.cardInstance;
+        GameObject handCard = null;
+        if (targetCI == null) { handCard = hm?.ResolveHandCardByInstanceID(iid); targetCI = handCard?.GetComponent<CardInstance>(); }
+        if (targetCI == null) return;
+
+        if (!targetCI.prefixes.Contains("渊")) targetCI.GivePrefix("渊");
+
+        if (c3d != null)
+        {
+            c3d.UpdateValues();
+            TurnManager.SyncMyBoardToOpponent(); // 场上走板面同步
+        }
+        else if (handCard != null)
+        {
+            handCard.GetComponent<CardDisplay2D>()?.Refresh();
+            if (NetworkClient.isConnected) NetworkPlayer.Local?.CmdSetHandCardPrefix(targetCI.instanceID, "渊");
+        }
+        NetworkPlayer.Local?.DrawCard();
+    }
+
     public static void ExecuteSpellEffect(CardData template, BoardSlot targetSlot)
     {
         CardDrag cd = FindObjectOfType<CardDrag>();

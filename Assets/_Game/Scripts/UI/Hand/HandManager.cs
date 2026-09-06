@@ -2117,50 +2117,51 @@ public class HandManager : MonoBehaviour
             yield break;
         }
 
-        string layerId = SelectionManager.Instance.BeginOpenSelection(TargetType.SingleAlly, null);
+        // 手牌+场上混合弹窗（01349 收藏家模式）：候选=己方召唤物(手牌 + 场上6-11)
+        HandManager hmx = FindObjectOfType<HandManager>();
+        List<CardInstance> candidates = hmx != null
+            ? hmx.BuildHandPlusFieldCardList(
+                ci => CardDatabase.Instance?.GetTemplate(ci.templateID)?.cardType == CardType.Summon)
+            : new List<CardInstance>();
+        if (candidates.Count == 0) { CardDrag.CleanupSpellResources(); yield break; }
 
-        List<GameObject> spellCards = new List<GameObject>();
-        foreach (GameObject card in NetworkPlayer.Local.handCards)
+        CardDisplayPanel.Instance.multiSelect = false;
+        bool confirmed = false;
+        CardDisplayPanel.Instance.ShowWithCallback(candidates, ci => true, () => confirmed = true, "进化");
+        float evoDeadline = Time.time + 30f;
+        while (!confirmed && Time.time < evoDeadline) yield return null;
+        if (!confirmed) { hmx?.EndHandSelectionCleanup(); CardDrag.CleanupSpellResources(); yield break; }
+
+        CardInstance chosen = CardDisplayPanel.Instance.GetSelectedCard();
+        string iid = chosen != null ? chosen.instanceID : null;
+        hmx?.EndHandSelectionCleanup();
+        if (!string.IsNullOrEmpty(iid)) ApplyEvolutionEffectById(iid);
+        CardDrag.CleanupSpellResources();
+    }
+
+    /// <summary>伟大进化结算（弹窗克隆→按 iid 回扫真身）：场/手牌阶位+3 并只同步对应端。</summary>
+    void ApplyEvolutionEffectById(string iid)
+    {
+        HandManager hmh = FindObjectOfType<HandManager>();
+        Card3DInstance c3d = hmh?.ResolveFieldCardByInstanceID(iid);
+        CardInstance ci = c3d?.cardInstance;
+        GameObject handCard = null;
+        if (ci == null) { handCard = hmh?.ResolveHandCardByInstanceID(iid); ci = handCard?.GetComponent<CardInstance>(); }
+        if (ci == null) return;
+
+        ci.currentTier += 3;
+        ci.baseTier += 3;
+        if (c3d != null)
         {
-            CardInstance ci = card?.GetComponent<CardInstance>();
-            if (ci != null && CardDatabase.Instance?.GetTemplate(ci.templateID)?.cardType == CardType.Spell)
-            {
-                card.SetActive(false);
-                spellCards.Add(card);
-            }
+            c3d.UpdateValues();
+            TurnManager.SyncMyBoardToOpponent(); // 场上阶位走板面同步
         }
-
-        List<GameObject> handSummons = new List<GameObject>();
-        foreach (GameObject card in NetworkPlayer.Local.handCards)
+        else if (handCard != null)
         {
-            CardInstance ci = card?.GetComponent<CardInstance>();
-            if (ci != null && CardDatabase.Instance?.GetTemplate(ci.templateID)?.cardType == CardType.Summon)
-            {
-                handSummons.Add(card);
-                CardClickHandler handler = card.GetComponent<CardClickHandler>();
-                if (handler == null) handler = card.AddComponent<CardClickHandler>();
-                handler.onClick = () =>
-                {
-                    SelectionManager.Instance.EndSelection(layerId);
-                    CleanupEvolutionUI(spellCards, handSummons);
-                    ApplyEvolutionEffect(card);
-                    CardDrag.CleanupSpellResources();
-                };
-            }
+            handCard.GetComponent<CardDisplay2D>()?.Refresh();
+            if (NetworkClient.isConnected) NetworkPlayer.Local?.CmdSetHandCardTier(ci.instanceID, ci.currentTier, ci.baseTier);
         }
-
-        BoardSlot.onTargetSelected = (targetSlot) =>
-        {
-            if (targetSlot?.currentCard3D != null)
-            {
-                SelectionManager.Instance.EndSelection(layerId);
-                CleanupEvolutionUI(spellCards, handSummons);
-                ApplyEvolutionEffect(targetSlot.currentCard3D);
-                CardDrag.CleanupSpellResources();
-            }
-        };
-
-        yield return new WaitUntil(() => !SelectionManager.Instance.IsSelecting);
+        Debug.Log($"伟大进化：{ci.instanceID} 阶位永久+3");
     }
     void CleanupEvolutionUI(List<GameObject> hiddenSpells, List<GameObject> handSummons)
     {
@@ -2289,6 +2290,89 @@ public class HandManager : MonoBehaviour
         };
         yield return new WaitUntil(() => placed);
     }
+    // ═══════════════════ 手牌/手牌+场上 弹窗选择公共助手（01349 收藏家模式复用）═══════════════════
+
+    /// <summary>组装"仅手牌"候选 CardInstance 列表（本地手牌；可选过滤）。供 CardDisplayPanel 弹窗。</summary>
+    public List<CardInstance> BuildHandCardList(System.Func<CardInstance, bool> filter = null)
+    {
+        var list = new List<CardInstance>();
+        if (NetworkPlayer.Local?.handCards == null) return list;
+        foreach (var card in NetworkPlayer.Local.handCards)
+        {
+            if (card == null) continue;
+            var ci = card.GetComponent<CardInstance>();
+            if (ci == null) continue;
+            if (filter != null && !filter(ci)) continue;
+            list.Add(ci);
+        }
+        return list;
+    }
+
+    /// <summary>组装"手牌 + 场上"混合候选列表（side=己方半场起点，默认6；可选过滤作用于两源）。
+    /// 场上以 Card3DInstance.cardInstance 入列，弹窗按模板重建 2D 卡展示。</summary>
+    public List<CardInstance> BuildHandPlusFieldCardList(System.Func<CardInstance, bool> filter = null, int side = 6)
+    {
+        var list = BuildHandCardList(filter);
+        var bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return list;
+        for (int i = side; i < side + 6; i++)
+        {
+            var ci = bm?.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci == null) continue;
+            if (filter != null && !filter(ci)) continue;
+            list.Add(ci);
+        }
+        return list;
+    }
+
+    /// <summary>按 instanceID 回找本地手牌里的真身 GameObject（弹窗返回的是克隆）。找不到 → null。</summary>
+    public GameObject ResolveHandCardByInstanceID(string iid)
+    {
+        if (string.IsNullOrEmpty(iid) || NetworkPlayer.Local?.handCards == null) return null;
+        foreach (var card in NetworkPlayer.Local.handCards)
+        {
+            if (card == null) continue;
+            if (card.GetComponent<CardInstance>()?.instanceID == iid) return card;
+        }
+        return null;
+    }
+
+    /// <summary>按 instanceID 回找 12 槽/附着模型里的场上真身 Card3DInstance。找不到 → null。</summary>
+    public Card3DInstance ResolveFieldCardByInstanceID(string iid)
+    {
+        if (string.IsNullOrEmpty(iid)) return null;
+        var bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return null;
+        for (int i = 0; i < 12; i++)
+        {
+            var c3d = bm?.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>();
+            if (c3d?.cardInstance != null && c3d.cardInstance.instanceID == iid) return c3d;
+        }
+        if (bm.attachedModels != null)
+            foreach (var obj in bm.attachedModels)
+            {
+                var c3d = obj?.GetComponent<Card3DInstance>();
+                if (c3d?.cardInstance != null && c3d.cardInstance.instanceID == iid) return c3d;
+            }
+        return null;
+    }
+
+    /// <summary>弹窗选择结束的通用收尾（01349 同款 7 步：Hide/复位 multiSelect/恢复手牌/射线/重排/按钮/allowDiscard）。</summary>
+    public void EndHandSelectionCleanup()
+    {
+        if (CardDisplayPanel.Instance != null)
+        {
+            CardDisplayPanel.Instance.Hide();
+            CardDisplayPanel.Instance.multiSelect = false;
+        }
+        if (NetworkPlayer.Local?.handCards != null)
+            foreach (var c in NetworkPlayer.Local.handCards) { if (c != null) c.SetActive(true); }
+        SetHandAreaRaycast(true);
+        RefreshLayout(true);
+        FindObjectOfType<CardDrag>()?.SetButtonsInteractable(true);
+        Card3DHover.allowDiscard = true;
+    }
+
     public IEnumerator CollectorEnterEffect(CardInstance giver)
     {
         yield return null;
