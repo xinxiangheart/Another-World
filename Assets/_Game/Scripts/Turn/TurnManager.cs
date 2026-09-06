@@ -211,6 +211,7 @@ public partial class TurnManager : MonoBehaviour
             ci.enemyDamageSourceIDs.Clear();
             ci.damageSourceInstanceIDs.Clear();
             ci.ironSmithOneCostConsumedCount = 0;
+            _ironSmithPromptedPhase = false; // 每阶段复位：铁匠确认提示每阶段只入队一次（防 ProcessPhaseStartTriggers 重复调用弹两次）
             // 5.x 先手重装（整侧扫描）：凡本回合被消耗(_firstStrikeConsumed=true)的先手单位一律清零，覆盖白名单外
             // 远端消耗单位（03012/01519/01318/03502 等）；host/AI 服务端本地消耗也在本循环作用域内。
             if (ci._firstStrikeConsumed)
@@ -920,6 +921,9 @@ public partial class TurnManager : MonoBehaviour
             }
         }
     }
+    static bool _ironSmithPromptedPhase;   // 每阶段铁匠确认提示是否已入队（阶段边界复位；static 因复位在 static 方法内）
+    static bool _smithCompleteNotified;    // IronSmithSelectCard 是否已回调完成（防 done 双触发致队列多跑一轮）
+
     IEnumerator IronSmithSelectCard(Action onComplete)
     {
         CardInstance ironSmithInst = null;
@@ -940,47 +944,48 @@ public partial class TurnManager : MonoBehaviour
 
         if (ironSmithInst == null)
         {
-            onComplete();
+            if (!_smithCompleteNotified) { _smithCompleteNotified = true; onComplete(); }
             yield break;
         }
+        _smithCompleteNotified = false;
 
         bool done = false;
+        bool onlyOneCost = false; // 进入"继续消耗1费"后，本阶段后续只能选基础费用=1
         while (!done)
         {
             ConfirmQueueManager.EnterSelectionMode();
-            var validCards = ConfirmQueueManager.FilterHandCards(ci =>
+            System.Func<CardInstance, bool> costOk = ci =>
             {
-                CardData template = CardDatabase.Instance?.GetTemplate(ci.templateID);
-                if (template == null || template.cardType != CardType.Summon) return false;
-                return template.baseCost == 1 || template.baseCost == 3 || template.baseCost == 5;
-            });
-
-            if (validCards.Count == 0)
+                var td = CardDatabase.Instance?.GetTemplate(ci.templateID);
+                if (td == null || td.cardType != CardType.Summon) return false;
+                if (onlyOneCost) return td.baseCost == 1; // 续选阶段只列1费
+                return td.baseCost == 1 || td.baseCost == 3 || td.baseCost == 5;
+            };
+            HandManager ironHm = FindObjectOfType<HandManager>();
+            List<CardInstance> candidates = ironHm != null ? ironHm.BuildHandCardList(costOk) : new List<CardInstance>();
+            if (candidates.Count == 0)
             {
                 ConfirmQueueManager.ExitSelectionMode();
-                ConfirmQueueManager.RestoreAllHandCards();
                 break;
             }
 
             CardInstance selectedCard = null;
             bool selectionDone = false;
-
-            foreach (GameObject card in validCards)
+            CardDisplayPanel.Instance.multiSelect = false;
+            CardDisplayPanel.Instance.ShowWithCallback(candidates, costOk, () => selectionDone = true, "消耗");
+            float iscDeadline = Time.time + 30f;
+            while (!selectionDone && Time.time < iscDeadline) yield return null;
+            if (!selectionDone)
             {
-                CardClickHandler handler = card.GetComponent<CardClickHandler>();
-                if (handler == null) handler = card.AddComponent<CardClickHandler>();
-                handler.onClick = () => { selectedCard = card.GetComponent<CardInstance>(); selectionDone = true; };
+                ConfirmQueueManager.ExitSelectionMode();
+                ironHm?.EndHandSelectionCleanup();
+                break;
             }
-
-            yield return new WaitUntil(() => selectionDone);
-
-            foreach (GameObject card in validCards)
-            {
-                CardClickHandler handler = card.GetComponent<CardClickHandler>();
-                if (handler != null) Destroy(handler);
-            }
-            ConfirmQueueManager.RestoreAllHandCards();
-
+            CardInstance chosen = CardDisplayPanel.Instance.GetSelectedCard();
+            selectedCard = chosen != null
+                ? ironHm?.ResolveHandCardByInstanceID(chosen.instanceID)?.GetComponent<CardInstance>()
+                : null;
+            ironHm?.EndHandSelectionCleanup();
             if (selectedCard == null)
             {
                 ConfirmQueueManager.ExitSelectionMode();
@@ -1030,7 +1035,8 @@ public partial class TurnManager : MonoBehaviour
                         () => { continueDone = true; }
                     );
                     yield return new WaitUntil(() => continueDone);
-                    if (!continueSelect) done = true;
+                    if (continueSelect) onlyOneCost = true; // 继续 → 之后只能再选1费
+                    else done = true;
                 }
                 else
                 {
@@ -1044,7 +1050,7 @@ public partial class TurnManager : MonoBehaviour
         }
 
         ConfirmQueueManager.ExitSelectionMode();
-        onComplete();
+        if (!_smithCompleteNotified) { _smithCompleteNotified = true; onComplete(); }
     }
     IEnumerator StrengthenSlot(CardInstance source)
     {
@@ -1185,17 +1191,21 @@ public partial class TurnManager : MonoBehaviour
         BoardSlot[] slots = FindObjectOfType<BoardManager>()?.GetAllSlots();
         if (slots == null) return;
 
-        // 01525 铁匠（铁匠）
-        for (int i = 6; i <= 11; i++)
+        // 01525 铁匠（铁匠）——每阶段只入队一次（防 ProcessPhaseStartTriggers 重复调用时同阶段弹两次）
+        if (!_ironSmithPromptedPhase)
         {
-            if (slots[i]?.currentCard3D == null) continue;
-            CardInstance ci = slots[i].currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-            if (ci == null || ci.templateID != "01525") continue;
-            if (!ci.CanTriggerTrait("阶段开始")) continue;
-            ConfirmQueueManager.Instance.EnqueueConfirm("是否对铁匠消耗手牌？",
-                onYes: (done) => { StartCoroutine(IronSmithSelectCard(done)); },
-                onNo: (done) => { done(); });
-            break;
+            for (int i = 6; i <= 11; i++)
+            {
+                if (slots[i]?.currentCard3D == null) continue;
+                CardInstance ci = slots[i].currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                if (ci == null || ci.templateID != "01525") continue;
+                if (!ci.CanTriggerTrait("阶段开始")) continue;
+                _ironSmithPromptedPhase = true;
+                ConfirmQueueManager.Instance.EnqueueConfirm("是否对铁匠消耗手牌？",
+                    onYes: (done) => { StartCoroutine(IronSmithSelectCard(done)); },
+                    onNo: (done) => { done(); });
+                break;
+            }
         }
         // 01535 执行之剑
         for (int i = 6; i <= 11; i++)
