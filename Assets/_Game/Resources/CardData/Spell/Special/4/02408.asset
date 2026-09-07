@@ -49,7 +49,7 @@ MonoBehaviour:
   card2DPrefab: {fileID: 0}
   spell2DPrefab: {fileID: 1249189968934597795, guid: df1255eb9b4377e4b8e9490c535e2bfd, type: 3}
   prefab3D: {fileID: 0}
-  spellPrefab3D: {fileID: 4634673609735818748, guid: fb0d2357614cf934fa98c1d31e9bbab7, type: 3}
+  spellPrefab3D: {fileID: 1468675981441875933, guid: 214f358cda1454a49b8c8d448b5eca35, type: 3}
   hasBuff: 0
   buffText: 
   hasDebuff: 1

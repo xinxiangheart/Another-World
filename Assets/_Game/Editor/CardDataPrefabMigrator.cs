@@ -15,7 +15,7 @@ public static class CardDataPrefabMigrator
     const string Prefab2DSummon = "Assets/_Game/Prefabs/Cards/Summon/Card00_New_2D.prefab";
     const string Prefab2DSpell = "Assets/_Game/Prefabs/Cards/Spell/SpellCard00_New_2D.prefab";
     const string Prefab3DSummon = "Assets/_Game/Prefabs/Cards/Summon/Card00_New_3D.prefab";
-    const string Prefab3DSpell = "Assets/_Game/Prefabs/Cards/Spell/SpellCard00_3D.prefab";
+    const string Prefab3DSpell = "Assets/_Game/Prefabs/Cards/Spell/SpellCard00_New_3D.prefab";
 
     [MenuItem("Tools/卡牌/修复CardData表现层预制体引用")]
     public static void FixAll()
