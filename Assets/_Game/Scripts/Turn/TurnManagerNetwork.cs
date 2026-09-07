@@ -258,6 +258,9 @@ public partial class TurnManager
         }
         ProcessPhaseStartTriggers();
         ProcessPhaseStartDeaths();
+        // 修复：ProcessPhaseStartDeaths 只处理 01101，不是通用 ≤0 清扫。客户端阶段开始的触发器/退场链
+        // 产生的 ≤0 单位在此补一次通用死亡网，避免本地视角偶现"生命≤0 却留场"（服务端由 CmdReportAllSlots 权威兜底）
+        BoardSlot.CheckAndHandleDeaths();
         ReportAllSlots();
         NetworkPlayer.Local?.CmdPhaseStartReady();
     }

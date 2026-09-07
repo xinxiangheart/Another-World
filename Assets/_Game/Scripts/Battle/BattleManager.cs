@@ -73,6 +73,13 @@ public class BattleManager : MonoBehaviour
         Debug.LogWarning("[Battle] FinalDamage START");
         FinalDamage();
         Debug.LogWarning("[Battle] FinalDamage END");
+
+        // 修复：FinalDamage 会统一移除临时生命(tempHealthBoost/阴阳等)。若单位真实血已被
+        // 绕过 temp 池的直接扣血（暴徒/破防者护盾穿透 -2、瘟疫、自伤等）打穿，移除 temp 后
+        // currentHealth 会被压到 ≤0，而整个战斗协程此处之后没有任何死亡扫描 → 偶现 ≤0 留场。
+        BoardSlot.CheckAndHandleDeaths();
+        yield return ActionQueueManager.WaitForDrain();
+
         // StartNewPhase 移至 SafeBattle——确保 BoardSyncManager.MarkDirty()+SyncNow
         // 先于 BroadcastTurnPhase 执行，防止远端在收到恢复后的板面前就上报旧 currentAttack
     }

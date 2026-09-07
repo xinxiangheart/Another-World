@@ -654,14 +654,22 @@ public static class DamagePipeline
         }
     }
 
-    static DamageResult BuildResult(DamageContext ctx) => new DamageResult
+    static DamageResult BuildResult(DamageContext ctx)
     {
-        finalDamage = 0,
-        absorbedDamage = ctx.tempHpAbsorbed > 0 ? ctx.tempHpAbsorbed : (ctx.shieldConsumed ? ctx.damage : 0),
-        lethal = false,
-        redirectedToLord = ctx.redirectedToLord,
-        negatedByFollower = ctx.negatedByFollower,
-    };
+        // 修复：护盾/临时生命满吸收/领主重定向等 "stopped" 早退路径此前恒报 lethal=false，与实际不符——
+        // Stage1 的 01114/01328 护盾穿透 -2、temp 吸收 已在返回前实际扣血；若真实承受单位(原目标 def
+        // 或重定向后的领主)已被扣到 ≤0，本结果应如实上报致死，供调用方据此触发死亡检查。
+        CardInstance taker = ctx.redirectedToLord ? ctx.lordTarget : ctx.Defender;
+        bool realLethal = taker != null && taker.currentHealth <= 0;
+        return new DamageResult
+        {
+            finalDamage = 0,
+            absorbedDamage = ctx.tempHpAbsorbed > 0 ? ctx.tempHpAbsorbed : (ctx.shieldConsumed ? ctx.damage : 0),
+            lethal = realLethal,
+            redirectedToLord = ctx.redirectedToLord,
+            negatedByFollower = ctx.negatedByFollower,
+        };
+    }
 
     /// <summary>从 CardInstance 反查其所在槽位的当前 3D 模型 GameObject。</summary>
     static GameObject GetGameObjectOf(CardInstance ci)

@@ -428,7 +428,6 @@ public partial class TurnManager : MonoBehaviour
                     Debug.Log($"超频惩罚：{ci.instanceID} 扣除{ci.currentAttack}生命值");
                 }
             }
-            BoardSlot.CheckAndHandleDeaths();
         }
         foreach (GameObject card in NetworkPlayer.Local.handCards)
         {
@@ -589,6 +588,13 @@ public partial class TurnManager : MonoBehaviour
                 StartCoroutine(AutoEndEnemyTurn());
             }
         }
+
+        // 修复：把原中段(超频块后)的通用死亡网移到阶段方法尾部。中段网只能收超频自伤产生的 ≤0，
+        // 其后 03009/03010/03011 退场链、ProcessPhaseStartTriggers、TriggerMyTurnStartEffects
+        // 造成的死亡当轮无收网，要等下一阶段才清 → 偶现阶段开始死亡留场。此处补网并排空。
+        // （431 到方法尾之间无 yield，网从"超频后"移到"阶段末尾"时序等价、覆盖更全。）
+        BoardSlot.CheckAndHandleDeaths();
+        yield return ActionQueueManager.WaitForDrain();
     }
 
     /// <param name="skipEnergyCleanup">True when ServerEndTurn already cleaned up the requesting player's energy.</param>

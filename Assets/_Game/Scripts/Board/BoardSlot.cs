@@ -1197,6 +1197,15 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 if (inst != null) inst._enterEffectRunning = false;
                 isPlacingCard = false;
                 cardToPlace = null;
+
+                // 修复：进场标记已清除。死亡扫描(DeathCheckAction)此前会跳过 _enterEffectRunning 的
+                // 进场卡（见 scanDeaths 守卫），故上面 1177 的扫描扫不到"进场效果期间被打到 ≤0"的进场卡
+                // 本身（进场自伤/全场AOE/光环连锁致死等）。此处补扫并排空，兑现"进场效果结束后再判定死亡"。
+                if (inst != null && inst.currentHealth <= 0)
+                {
+                    CheckAndHandleDeaths();
+                    yield return ActionQueueManager.WaitForDrain();
+                }
             }
             yield break;
         }
@@ -1226,7 +1235,16 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         {
             var crd = currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
             // 嵌套内不清 _enterEffectRunning——仅最外层 StartOnEnterEffect 负责清理
-            if (crd != null && !NestingContext.IsNested) crd._enterEffectRunning = false;
+            if (crd != null && !NestingContext.IsNested)
+            {
+                bool wasEnterRunning = crd._enterEffectRunning;
+                crd._enterEffectRunning = false;
+                // 修复：清进场标记后补一次死亡扫描。此前死亡扫描会跳过 _enterEffectRunning 的进场卡；
+                // 若该卡在进场效果窗口内被扣到 ≤0（如血歌光环在敌方随从进场时即造成致死伤害，Aura 扣血
+                // 后不自扫），此清理路径是它"变成可死亡"的契机，须立刻登记扫描（动作异步由队列执行）。
+                if (wasEnterRunning && crd.currentHealth <= 0)
+                    CheckAndHandleDeaths();
+            }
         }
         isPlacingCard = false;
         cardToPlace = null;
