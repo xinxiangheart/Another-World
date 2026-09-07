@@ -278,7 +278,7 @@ public class CardDisplay3D : MonoBehaviour
         return s;
     }
 
-    public void Refresh()
+    public virtual void Refresh()
     {
         Card3DInstance c3d = GetComponent<Card3DInstance>();
         if (c3d == null || c3d.cardInstance == null) return;
