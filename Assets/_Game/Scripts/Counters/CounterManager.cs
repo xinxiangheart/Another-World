@@ -91,7 +91,8 @@ public class CounterManager : MonoBehaviour
         // Copy CardInstance data to 3D model so CardDisplay3D shows real card info
         Card3DInstance c3d = model.GetComponent<Card3DInstance>();
         if (c3d == null) c3d = model.AddComponent<Card3DInstance>();
-        CardInstance copy = model.AddComponent<CardInstance>();
+        CardInstance copy = model.GetComponent<CardInstance>();
+        if (copy == null) copy = model.AddComponent<CardInstance>(); // 新 3D 预制体根已带 CardInstance，勿重复 Add（否则命中空模板）
         // Ensure Card3DHover exists so hover detail panel works for owner
         if (model.GetComponent<Card3DHover>() == null)
             model.AddComponent<Card3DHover>();
@@ -104,6 +105,7 @@ public class CounterManager : MonoBehaviour
         // Re-read cardInstance after late assignment — Start() captured stale prefab data
         Card3DHover hover = model.GetComponent<Card3DHover>();
         if (hover != null) hover.RefreshCardData();
+        Debug.Log($"[PlayCounter-probe] model={model.name} c3dCI={(c3d!=null && c3d.cardInstance!=null)} copyTid={copy?.templateID} prefab={template?.spellPrefab3D?.name}");
     }
     else
     {

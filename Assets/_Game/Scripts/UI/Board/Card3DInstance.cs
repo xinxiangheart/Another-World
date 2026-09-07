@@ -25,6 +25,9 @@ public class Card3DInstance : MonoBehaviour
     {
         // 首刷即武装：进场那次 UpdateValues 本身不弹（无前值/召唤期），此后数值真变化才弹
         _bounceArmed = true;
+        // 晚赋值(cardInstance 在实例化后才 CopyFrom)后让悬停重读实例——否则 Start 已过、详情/悬停拿不到卡
+        Card3DHover hover = GetComponent<Card3DHover>();
+        if (hover != null) hover.RefreshCardData();
         CardDisplay3D display = GetComponent<CardDisplay3D>();
         if (display != null) display.Refresh();
         // 新 3D 卡图标（费用/类型/攻/血 + 三排）随同一触发点刷新；旧卡无此组件则跳过

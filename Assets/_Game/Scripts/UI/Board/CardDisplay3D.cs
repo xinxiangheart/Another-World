@@ -373,8 +373,9 @@ public class CardDisplay3D : MonoBehaviour
         return frontFace;
     }
 
-    /// <summary>正面状态（默认）：显示正面全部组件（UIComponents），隐藏 CardModel 模型盒。不改变比例/位置。</summary>
-    public void ShowFront()
+    /// <summary>正面状态（默认）：显示正面全部组件（UIComponents），隐藏 CardModel 模型盒。不改变比例/位置。
+    /// virtual：3D 法术 CardDisplay3DSpell 显式切容器。</summary>
+    public virtual void ShowFront()
     {
         GameObject f = GetFrontFace();
         if (f != null) f.SetActive(true);
@@ -382,8 +383,9 @@ public class CardDisplay3D : MonoBehaviour
         if (m != null) m.gameObject.SetActive(false); // 正面：隐藏模型盒，卡背随之完全不可见
     }
 
-    /// <summary>背面状态：显示 CardModel 模型盒（SetHidden 已把整体模型翻转使卡背朝相机），隐藏正面全部组件。不改变比例/位置。</summary>
-    public void ShowBack()
+    /// <summary>背面状态：显示 CardModel 模型盒（SetHidden 已把整体模型翻转使卡背朝相机），隐藏正面全部组件。不改变比例/位置。
+    /// virtual：3D 法术 CardDisplay3DSpell 显式切容器。</summary>
+    public virtual void ShowBack()
     {
         GameObject f = GetFrontFace();
         if (f != null) f.SetActive(false);
