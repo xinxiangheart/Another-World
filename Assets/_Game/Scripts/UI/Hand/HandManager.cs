@@ -18,7 +18,7 @@ public class HandManager : MonoBehaviour
     public float pushRatio = 0.7f;
     public float animationSpeed = 15f;
     [Tooltip("悬停卡牌时相邻卡牌的额外水平让位偏移（0=关闭）")]
-    public float hoverSpacingOffset = 12f;
+    public float hoverSpacingOffset = 24f;
 
     private List<CardView> handCards = new List<CardView>();
     private CardView draggingCard;

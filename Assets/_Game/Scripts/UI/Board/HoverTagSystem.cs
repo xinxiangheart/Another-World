@@ -290,6 +290,8 @@ public class HoverTagSystem : MonoBehaviour
     {
         var outList = new List<(string, bool)>();
         if (ci == null) return outList;
+        // 特性栏首行固定显示当前阶位（3D 悬停 Tag 专用）
+        outList.Add(($"当前阶位：{ci.currentTier}", false));
         bool fullySilenced = TraitBanQuery.IsFullySilenced(ci);
 
         var entries = ci.GetVisibleTraitEntries();
