@@ -902,7 +902,15 @@ public partial class TurnManager : MonoBehaviour
                     SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (target) =>
                     {
                         if (target != null && target != teleporterSlot && target.currentCard3D != null)
-                            SwapSlots(teleporterSlot, target);
+                        {
+                            // 与 01312 同款服务端安全换位：服务端 SwapCards + 远端 TargetSwapCards(-6 映射) 同步
+                            int tA = teleporterSlot.slotID, tB = target.slotID;
+                            BoardManager.SwapCards(tA, tB);
+                            if (Mirror.NetworkServer.active && NetworkPlayer.Remote != null
+                                && NetworkPlayer.Remote.connectionToClient != null)
+                                NetworkPlayer.Remote.TargetSwapCards(NetworkPlayer.Remote.connectionToClient, tA - 6, tB - 6);
+                            BoardSyncManager.MarkDirty();
+                        }
                         ConfirmQueueManager.ExitSelectionMode();
                         done();
                     });
@@ -1303,6 +1311,33 @@ public partial class TurnManager : MonoBehaviour
             if (ci == null || ci.templateID != "01526") continue;
             if (!ci.CanTriggerTrait("阶段开始")) continue;
             AIRebelConsume(ai, ci, slot);
+            break;
+        }
+        // 01113 传送阵：AI 回合开始 → 随机与己方一随机召唤物换位（AI 侧 0-5 己方）
+        for (int i = 0; i <= 5; i++)
+        {
+            BoardSlot slot = bm.GetSlot(i);
+            if (slot?.currentCard3D == null) continue;
+            CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci == null || ci.templateID != "01113") continue;
+            if (!ci.CanTriggerTrait("回合开始")) continue;
+
+            var allies01113 = new System.Collections.Generic.List<BoardSlot>();
+            for (int a = 0; a <= 5; a++)
+            {
+                BoardSlot sa = bm.GetSlot(a);
+                if (sa?.currentCard3D != null && sa != slot) allies01113.Add(sa);
+            }
+            if (allies01113.Count > 0)
+            {
+                BoardSlot pick01113 = allies01113[UnityEngine.Random.Range(0, allies01113.Count)];
+                // 同款服务端安全换位（AI 无连接→仅本端 SwapCards；在线有连接→TargetSwapCards 让对端移模型）
+                BoardManager.SwapCards(slot.slotID, pick01113.slotID);
+                if (Mirror.NetworkServer.active && NetworkPlayer.Remote != null
+                    && NetworkPlayer.Remote.connectionToClient != null)
+                    NetworkPlayer.Remote.TargetSwapCards(NetworkPlayer.Remote.connectionToClient, slot.slotID, pick01113.slotID);
+                BoardSyncManager.MarkDirty();
+            }
             break;
         }
     }

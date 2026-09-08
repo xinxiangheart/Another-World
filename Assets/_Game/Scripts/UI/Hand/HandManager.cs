@@ -1223,12 +1223,14 @@ public class HandManager : MonoBehaviour
                         hostCard.GivePrefix("机械", "01119");
                     }
 
-                    // 统计其他机械单位数量（不含宿主自己）
+                    // 统计其他机械单位数量（不含宿主自己）；范围按宿主半场 owner 动态化（AI 0-5 / 玩家 6-11）
                     int mechCount = 0;
                     BoardManager bm2 = FindObjectOfType<BoardManager>();
                     if (bm2 != null)
                     {
-                        for (int i = 6; i <= 11; i++)
+                        int mStart = hostSlot.slotID >= 6 ? 6 : 0;
+                        int mEnd = mStart + 5;
+                        for (int i = mStart; i <= mEnd; i++)
                         {
                             BoardSlot mechSlot = bm2.GetSlot(i);
                             if (mechSlot?.currentCard3D == null) continue;
@@ -1435,6 +1437,20 @@ public class HandManager : MonoBehaviour
             TurnManager.SyncMyBoardToOpponent();
         }
     }
+    /// <summary>AI 直接附着（无 UI 手牌卡对象）：主机/服务器侧把 source 附着到 hostSlot（AI 侧 0-5）。
+    /// 复用 PlaceAttachedCard 完整流程（建附着模型+附着效果如 01112/01119），再同步。</summary>
+    public void AI_PlaceAttach(CardInstance sourceInst, BoardSlot hostSlot)
+    {
+        if (sourceInst == null || hostSlot == null || hostSlot.currentCard3D == null) return;
+        CardData td = CardDatabase.Instance?.GetTemplate(sourceInst.templateID);
+        if (td == null) return;
+        PlaceAttachedCard(null, sourceInst, td, hostSlot, null);
+        BoardSyncManager.MarkDirty();
+        TurnManager.SyncMyBoardToOpponent();
+        if (td.hasOnEnter)
+            hostSlot.StartCoroutine(hostSlot.StartOnEnterEffect(td, sourceInst));
+    }
+
     private void ProcessAuras(BoardSlot slot, CardInstance sourceInstance)
     {
         // 智者自身进场光环

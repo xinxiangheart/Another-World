@@ -338,6 +338,9 @@ public static class EnterHandlers
         var inst = ctx.source;
         if (!slot.HasEnemyTarget() || inst.giveableDeathTraits == null || inst.giveableDeathTraits.Count == 0)
         { slot.CleanupAfterPlacement(); BoardSlot.SyncMistHiderDisplay(); return; }
+        // [AI] 苦难给予者 01117 第一步：卡属 AI 侧 → 玩家方(敌) 5/3/1 费召唤物优先（不弹玩家）
+        if (SimpleAI.IsAIEvaluating || (SimpleAI.IsAIMatch && slot != null && slot.slotID < 6))
+            SimpleAI.SetAIAutoChoice(new[] { 5, 3, 1 });
         SM().BeginSelection(TargetType.SingleEnemy, (targetSlot) =>
         {
             if (targetSlot?.currentCard3D != null)
@@ -345,6 +348,13 @@ public static class EnterHandlers
                 var targetCI = targetSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
                 if (targetCI != null)
                 {
+                    // [AI] 01117 第二步：AI 不弹 SufferingGiverPanel，直接给第一条可给予特性
+                    if (SimpleAI.IsAIEvaluating || (SimpleAI.IsAIMatch && slot != null && slot.slotID < 6))
+                    {
+                        slot.ApplySufferingGiverEffect(inst, targetCI, inst.giveableDeathTraits[0]);
+                        slot.CleanupAfterPlacement();
+                        return;
+                    }
                     SufferingGiverPanel.Instance.Show(
                         new List<string>(inst.giveableDeathTraits),
                         (chosenTrait) =>

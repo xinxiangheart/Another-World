@@ -397,6 +397,9 @@ public class BattleManager : MonoBehaviour
                 for (int j = fsSideStart; j <= fsSideEnd; j++) if (allSlots[j]?.currentCard3D != null && allSlots[j] != slot) { hasAlly = true; break; }
                 if (hasAlly)
                 {
+                    // [AI] 虚伪之火 01115：AI 侧(0-5) → 费用优先 5/3/1 自动给己方召唤物盾（同 01107/01110 模式）
+                    if (SimpleAI.IsAISide(i))
+                        SimpleAI.SetAIAutoChoice(new[] { 5, 3, 1 });
                     SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (targetSlot) =>
                     {
                         if (targetSlot != null && targetSlot.currentCard3D != null && targetSlot != slot)

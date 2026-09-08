@@ -131,6 +131,24 @@ public class SimpleAI : MonoBehaviour
         _playedCard = false;
         if (_ai == null) yield break;
 
+        // 0. 附着专用卡：选 AI 侧宿主直接附着（费用优先 5/3/1，不按普通召唤打）
+        if (TryFindAttachAndHost(out CardInstance aci, out GameObject ago, out BoardSlot aHost))
+        {
+            int acost = aci.currentCost;
+            if (!_ai.UseEnergy(acost)) yield break;
+            CardData atd = CardDatabase.Instance?.GetTemplate(aci.templateID);
+            HandManager ahm = FindObjectOfType<HandManager>();
+            if (atd != null && ahm != null)
+            {
+                ahm.AI_PlaceAttach(aci, aHost);
+                _ai.handCards.Remove(ago);
+                if (ago != null) Destroy(ago);
+                _playedCard = true;
+            }
+            else _ai.AddEnergy(acost);
+            yield break;
+        }
+
         // 1. 优先出评分最高的召唤物（触发进场效果 + 站位决策）
         if (TryFindBestSummon(out CardInstance ci, out GameObject go, out int serverSlot))
         {
@@ -180,6 +198,48 @@ public class SimpleAI : MonoBehaviour
         }
     }
 
+    /// <summary>找一张可打的附着专用卡 + AI 侧(0-5)宿主槽。宿主按费用优先 {5,3,1}（非硬门槛）。
+    /// 无合法宿主或无可打附着卡返回 false。</summary>
+    bool TryFindAttachAndHost(out CardInstance ci, out GameObject go, out BoardSlot host)
+    {
+        ci = null; go = null; host = null;
+        if (_ai == null) return false;
+
+        CardInstance pickCI = null; GameObject pickGO = null;
+        foreach (GameObject card in _ai.handCards)
+        {
+            if (card == null) continue;
+            CardInstance c = card.GetComponent<CardInstance>();
+            if (c == null) continue;
+            CardData td = CardDatabase.Instance?.GetTemplate(c.templateID);
+            if (td == null || td.cardType != CardType.Summon) continue;
+            if (!(td.canAttach && td.baseHealth == 0)) continue; // 仅附着专用
+            if (c.currentCost > _ai.currentEnergy) continue;
+            pickCI = c; pickGO = card;
+            break; // 附着专用卡费用低，取第一张可打的即可
+        }
+        if (pickCI == null) return false;
+
+        // AI 侧宿主（0-5 己方），按宿主 currentCost 费用优先 {5,3,1}（5>3>1，非硬门槛）
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return false;
+        int[] pref = { 5, 3, 1 };
+        int bestRank = int.MaxValue;
+        for (int s = 0; s <= 5; s++)
+        {
+            BoardSlot sl = bm.GetSlot(s);
+            if (sl?.currentCard3D == null) continue;
+            CardInstance hc = sl.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+            if (hc == null) continue;
+            int rank = System.Array.IndexOf(pref, hc.currentCost);
+            if (rank < 0) rank = pref.Length;
+            if (rank < bestRank) { bestRank = rank; host = sl; }
+        }
+        if (host == null) return false;
+        ci = pickCI; go = pickGO;
+        return true;
+    }
+
     /// <summary>选评分最高的召唤物 + 最优站位槽（服务器 0-5）。</summary>
     bool TryFindBestSummon(out CardInstance ci, out GameObject go, out int serverSlot)
     {
@@ -194,6 +254,9 @@ public class SimpleAI : MonoBehaviour
             if (c == null) continue;
             CardData td = CardDatabase.Instance?.GetTemplate(c.templateID);
             if (td == null || td.cardType != CardType.Summon) continue;
+            // 附着专用卡(canAttach && baseHealth==0)：ServerPlayCard 会拒绝建板面模型 → 若按普通召唤打出会白扣费消失。
+            // TODO(附着宿主AI)：直接选 AI 侧宿主(5/3/1)走附着落地后再放行；当前先跳过防误打。
+            if (td.canAttach && td.baseHealth == 0) continue;
             if (c.currentCost > _ai.currentEnergy) continue;
             candidates.Add((c, card, ScoreCard(c)));
         }
