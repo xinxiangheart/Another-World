@@ -69,6 +69,8 @@ public class SimpleAI : MonoBehaviour
             {
                 yield return TryPlayOneCard();
                 if (!_playedCard) break;
+                // AI 思考间隔：两张牌之间停 0.5s，避免连续秒出（模拟人类节奏）
+                yield return new WaitForSeconds(0.5f);
             }
         }
         finally

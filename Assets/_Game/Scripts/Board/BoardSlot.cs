@@ -157,6 +157,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     static System.Collections.IEnumerator AIResolveSelectionCoroutine()
     {
         yield return null; // 延迟一帧
+        yield return new WaitForSeconds(0.5f); // AI 思考间隔：选中目标前停 0.5s，避免瞬间选中（模拟人类思考）
         BoardManager bm = FindObjectOfType<BoardManager>();
         if (bm == null) yield break;
 

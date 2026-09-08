@@ -53,6 +53,18 @@ public class PhaseWheel : MonoBehaviour
     [Tooltip("攻击回合图标（两剑交叉）")]
     public Sprite battleIcon;
 
+    [Header("缩放脉冲动画")]
+    [Tooltip("静止（非转动）时轮盘整体倍率")]
+    public float restScale = 0.8f;
+    [Tooltip("转动时快速放大到的倍率（无论从多大开始，都放大到这个目标）")]
+    public float spinScale = 1f;
+    [Tooltip("放大耗时（秒）")]
+    public float growDuration = 0.12f;
+    [Tooltip("转完缩回 0.8 的耗时（秒）")]
+    public float shrinkDuration = 0.5f;
+    [Tooltip("轮盘根 RectTransform（缩放对象=包含底盘/环/图标/文字等全部美术的根；空=自身 RectTransform）")]
+    public RectTransform animRoot;
+
     static readonly TurnManager.TurnPhase[] ORDER = { TurnManager.TurnPhase.PhaseStart, TurnManager.TurnPhase.MyTurn, TurnManager.TurnPhase.EnemyTurn, TurnManager.TurnPhase.BattlePhase };
     /// <summary>角色 → 世界角度（度）。H1=300(左上), L=240(左下), C=180(正下), R=120(右下), H2=60(右上)。
     /// Left 在左、Right 在右；next 从右侧(120°)滑入中央(180°)，顺时针视觉。</summary>
@@ -65,6 +77,11 @@ public class PhaseWheel : MonoBehaviour
     float _radius;
     /// <summary>物理环 → 内容描述（跟随物理环，旋转时内容不变）。</summary>
     string[] _slotDesc = new string[5];
+
+    // 缩放脉冲动画状态
+    float _hTop;         // pivot 到顶部距离（未缩放 local 高度分量）
+    float _topPinLocalY; // 顶部固定点（parent 局部 Y）
+    Coroutine _scaleAnim;
 
     void LogWheel(string tag)
     {
@@ -91,6 +108,7 @@ public class PhaseWheel : MonoBehaviour
 
     void Start()
     {
+        InitScalePinning();
         var tm = TurnManager.Instance;
         if (tm == null) return;
         bool myFirst = tm.isMyTurnFirst;
@@ -153,7 +171,70 @@ public class PhaseWheel : MonoBehaviour
     public void RotateToPhase(TurnManager.TurnPhase? previous, TurnManager.TurnPhase current, TurnManager.TurnPhase? next)
     {
         if (_rotating || slots == null || slots.Length != 5) { UpdateWheelContents(previous, current, next); return; }
+        BeginScalePulse(); // 真实转动 → 快速放大，旋转后较慢缩回 0.8（可中断重入）
         StartCoroutine(RotateRoutine(previous, current, next));
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // 缩放脉冲：静止 0.8 → 转动快速放大 → 旋转保持大 → 较慢缩回 0.8。
+    // 中断重入：若仍在缩回/放大中途再次触发转动，停止旧协程，从"当前 localScale"起步，
+    // 仍放大到同一目标 spinScale（与从 0.8 开始一致）。顶边贴合：缩放时用位置补偿固定顶边。
+    // ══════════════════════════════════════════════════════════════════
+
+    void InitScalePinning()
+    {
+        if (animRoot == null)
+        {
+            // 缩放对象 = 轮盘美术根（底盘/环/图标/文字等全部子美术随根一起缩放）。
+            // 优先本组件所在 RectTransform；仅当自身不是 UI 容器时才退回 wheelContainer。
+            animRoot = GetComponent<RectTransform>();
+            if (animRoot == null) animRoot = wheelContainer;
+        }
+        if (animRoot == null) return;
+        // pivot 到顶边的未缩放高度分量；顶边固定点 = 当前顶边在 parent 局部 Y
+        _hTop = (1f - animRoot.pivot.y) * animRoot.rect.height;
+        _topPinLocalY = animRoot.localPosition.y + _hTop * animRoot.localScale.y;
+        ApplyScale(restScale); // 静止态收敛到 0.8（幂等），顶边贴合不变
+    }
+
+    void ApplyScale(float s)
+    {
+        if (animRoot == null) return;
+        animRoot.localScale = Vector3.one * s;
+        // 缩放按 pivot 改变 pivot→顶边实际位移(hTop*s)，用位置补偿把顶边钉回 _topPinLocalY
+        var p = animRoot.localPosition;
+        animRoot.localPosition = new Vector3(p.x, _topPinLocalY - _hTop * s, p.z);
+    }
+
+    void BeginScalePulse()
+    {
+        if (animRoot == null) return;
+        if (_scaleAnim != null) StopCoroutine(_scaleAnim);
+        _scaleAnim = StartCoroutine(ScalePulseRoutine());
+    }
+
+    IEnumerator ScalePulseRoutine()
+    {
+        float from = animRoot.localScale.x;          // 中断重入：从当前大小起步
+        yield return ScaleAnim(from, spinScale, growDuration);        // 快速放大到同一目标
+        yield return new WaitForSeconds(rotateDuration);              // 旋转期间保持大
+        yield return ScaleAnim(spinScale, restScale, shrinkDuration); // 较慢缩回 0.8
+        _scaleAnim = null;
+    }
+
+    IEnumerator ScaleAnim(float from, float to, float dur)
+    {
+        if (dur <= 0f) { ApplyScale(to); yield break; }
+        float t = 0f;
+        while (t < dur)
+        {
+            t += Time.deltaTime;
+            float p = Mathf.Clamp01(t / dur);
+            float e = 1f - (1f - p) * (1f - p); // ease-out：放大干脆、缩回收尾更缓
+            ApplyScale(Mathf.Lerp(from, to, e));
+            yield return null;
+        }
+        ApplyScale(to);
     }
 
     IEnumerator RotateRoutine(TurnManager.TurnPhase? previous, TurnManager.TurnPhase current, TurnManager.TurnPhase? next)
