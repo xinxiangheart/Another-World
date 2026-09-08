@@ -92,6 +92,9 @@ public class SimpleAI : MonoBehaviour
                 if (!TryDraw()) break;
             }
 
+            // 1.5 主动抛置决策：满足 ShouldAIDiscard 的抛置卡抛一次（01136 低血打1；01135 不抛）
+            TryAIDiscard();
+
             // 2. 循环出牌，直到能量不足或无可出的牌
             while (_ai.currentEnergy > 0)
             {
@@ -123,6 +126,65 @@ public class SimpleAI : MonoBehaviour
         string iid = data._instanceID ?? CardZoneManager.GenerateInstanceID(data.templateID);
         _ai.AddServerSideCard(data, iid);
         return true;
+    }
+
+    /// <summary>该抛置卡此刻是否倾向"主动抛置"（逐张条件；默认 false，后续逐步补）：
+    /// - 01135 杂耍大师：AI 不倾向触发抛置（换位互动）。
+    /// - 01136 难民：自身生命 ≤ floor(max/2) 时才倾向抛置（打玩家 1 伤，选玩家 5/3/1）。</summary>
+    bool ShouldAIDiscard(CardInstance ci)
+    {
+        if (ci == null) return false;
+        switch (ci.templateID)
+        {
+            case "01135": return false;
+            case "01136": return ci.currentHealth <= Mathf.FloorToInt(ci.currentMaxHealth / 2f);
+            default: return false;
+        }
+    }
+
+    /// <summary>扫 AI 方(0-5)一次：满足抛置决策的抛置卡执行一次主动抛置（每行动期一次）。</summary>
+    void TryAIDiscard()
+    {
+        if (_ai == null) return;
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return;
+        for (int s = 0; s <= 5; s++)
+        {
+            BoardSlot slot = bm.GetSlot(s);
+            if (slot?.currentCard3D == null) continue;
+            CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci == null || !ci.HasDiscard) continue;
+            if (GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsTraitBlocked(ci, "抛置")) continue;
+            if (!ShouldAIDiscard(ci)) continue;
+            PerformAIDiscard(slot, ci);
+            break;
+        }
+    }
+
+    /// <summary>在 AI 方半场执行一次抛置（server-only，无 UI）：HandleDeath + Trigger.Discard 分发。
+    /// 期间置 IsAIEvaluating 并让选择走费用优先（01136 → 玩家 5/3/1）。</summary>
+    void PerformAIDiscard(BoardSlot slot, CardInstance ci)
+    {
+        if (slot == null || ci == null) return;
+        int savedSlotID = slot.slotID;
+        SimpleAI.IsAIEvaluating = true;
+        try
+        {
+            if (ci.templateID == "01136")
+                SimpleAI.SetAIAutoChoice(new[] { 5, 3, 1 }); // 目标=玩家方(6-11) 5/3/1
+            ci.isActiveExit = false;
+            ci.hasRevenge = false;
+            slot.HandleDeath(slot.currentCard3D);
+            // 抛置效果分发（同 Card3DHover.HandleDiscardEffect）
+            var dctx = EffectContext.ForDiscard(ci, savedSlotID);
+            EffectDispatcher.Dispatch(Trigger.Discard, dctx);
+            TurnManager.SyncMyBoardToOpponent();
+        }
+        finally
+        {
+            SimpleAI.IsAIEvaluating = false;
+            SimpleAI.ClearAIAutoChoice();
+        }
     }
 
     /// <summary>出召唤物或法术一张。结果写入 _playedCard。</summary>
@@ -198,14 +260,18 @@ public class SimpleAI : MonoBehaviour
         }
     }
 
-    /// <summary>找一张可打的附着专用卡 + AI 侧(0-5)宿主槽。宿主按费用优先 {5,3,1}（非硬门槛）。
-    /// 无合法宿主或无可打附着卡返回 false。</summary>
+    /// <summary>找一张可打的附着卡 + AI 侧(0-5)宿主槽。
+    /// - 纯附着(01112/01119, baseHealth==0)：宿主按费用优先 {5,3,1}；无宿主则不附(卡留手)。
+    /// - 可独立附着的 01126/01127/01129(canAttach 且 baseHealth>0)：仅当有 **5 费**宿主才附着，
+    ///   否则返回 false → 回落普通召唤分支独立放置。
+    /// 返回 false 时调用方应继续走独立放置/跳过。</summary>
     bool TryFindAttachAndHost(out CardInstance ci, out GameObject go, out BoardSlot host)
     {
         ci = null; go = null; host = null;
         if (_ai == null) return false;
 
         CardInstance pickCI = null; GameObject pickGO = null;
+        bool pureAttach = false;
         foreach (GameObject card in _ai.handCards)
         {
             if (card == null) continue;
@@ -213,29 +279,50 @@ public class SimpleAI : MonoBehaviour
             if (c == null) continue;
             CardData td = CardDatabase.Instance?.GetTemplate(c.templateID);
             if (td == null || td.cardType != CardType.Summon) continue;
-            if (!(td.canAttach && td.baseHealth == 0)) continue; // 仅附着专用
+            if (!td.canAttach) continue;
             if (c.currentCost > _ai.currentEnergy) continue;
-            pickCI = c; pickGO = card;
-            break; // 附着专用卡费用低，取第一张可打的即可
+            // 优先纯附着(无法独立)，其次可独立附着卡
+            bool isPure = td.canAttach && td.baseHealth == 0;
+            if (pickCI == null || (isPure && !pureAttach))
+            {
+                pickCI = c; pickGO = card; pureAttach = isPure;
+            }
         }
         if (pickCI == null) return false;
+        CardData pickTD = CardDatabase.Instance?.GetTemplate(pickCI.templateID);
+        bool pickIsPure = pickTD != null && pickTD.canAttach && pickTD.baseHealth == 0;
 
-        // AI 侧宿主（0-5 己方），按宿主 currentCost 费用优先 {5,3,1}（5>3>1，非硬门槛）
         BoardManager bm = FindObjectOfType<BoardManager>();
         if (bm == null) return false;
-        int[] pref = { 5, 3, 1 };
-        int bestRank = int.MaxValue;
+        // 宿主规则
         for (int s = 0; s <= 5; s++)
         {
             BoardSlot sl = bm.GetSlot(s);
             if (sl?.currentCard3D == null) continue;
             CardInstance hc = sl.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
             if (hc == null) continue;
-            int rank = System.Array.IndexOf(pref, hc.currentCost);
-            if (rank < 0) rank = pref.Length;
-            if (rank < bestRank) { bestRank = rank; host = sl; }
+            if (pickIsPure)
+            {
+                // 纯附着：{5,3,1} 里按优先级挑(取最靠前命中的槽即可；此处顺序扫=5优先再3再1)
+                int[] pref = { 5, 3, 1 };
+                int rank = System.Array.IndexOf(pref, hc.currentCost);
+                if (rank < 0) continue;
+                if (host == null || rank < System.Array.IndexOf(pref,
+                        host.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance?.currentCost ?? -1))
+                    host = sl;
+            }
+            else
+            {
+                // 可独立附着：只要 5 费宿主
+                if (hc.currentCost == 5) { host = sl; break; }
+            }
         }
-        if (host == null) return false;
+        if (host == null)
+        {
+            // 纯附着无宿主 → 卡留手（不误打）；可独立附着无 5 费宿主 → 回落独立放置
+            if (pickIsPure) { ci = pickCI; go = pickGO; return false; }
+            return false;
+        }
         ci = pickCI; go = pickGO;
         return true;
     }

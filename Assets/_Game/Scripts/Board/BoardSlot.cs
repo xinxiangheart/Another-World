@@ -1842,14 +1842,51 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public IEnumerator ReformerEnterEffect(CardInstance giver)
     {
         yield return null;
-        // AI 半场(0-5)：沿用原自动逻辑（auto 选第一个槽应用，无 UI）
+        // AI 半场(0-5)：
+        //   ① 优先 AI 方(0-5) 场上 5/3/1 费 召唤物(未带灵能)加前缀；
+        //   ② 否则 AI 手牌第一个 允许附加灵能前缀 的召唤物。
         if (SimpleAI.IsAIMatch && slotID < 6)
         {
             BoardManager rbm = FindObjectOfType<BoardManager>();
-            BoardSlot autoReform = null;
-            for (int ri = 6; ri <= 11; ri++)
-                if (rbm?.GetSlot(ri)?.currentCard3D != null) { autoReform = rbm.GetSlot(ri); break; }
-            if (autoReform?.currentCard3D != null) ApplyReformerEffect(autoReform.currentCard3D);
+            int[] pref27 = { 5, 3, 1 };
+            int bestRank27 = int.MaxValue;
+            BoardSlot bestField27 = null;
+            for (int rs = 0; rs <= 5; rs++)
+            {
+                BoardSlot sl = rbm?.GetSlot(rs);
+                if (sl?.currentCard3D == null) continue;
+                CardInstance fc = sl.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                if (fc == null) continue;
+                CardData ftd = CardDatabase.Instance?.GetTemplate(fc.templateID);
+                if (ftd == null || ftd.cardType != CardType.Summon) continue;
+                if (fc.prefixes != null && fc.prefixes.Contains("灵能")) continue;
+                int rank = System.Array.IndexOf(pref27, fc.currentCost);
+                if (rank < 0) rank = pref27.Length;
+                if (rank < bestRank27) { bestRank27 = rank; bestField27 = sl; }
+            }
+            if (bestField27?.currentCard3D != null)
+            {
+                ApplyReformerEffect(bestField27.currentCard3D);
+            }
+            else
+            {
+                // AI 手牌兜底（服务端追踪，无客户端）：第一个可加灵能前缀的召唤物
+                NetworkPlayer aiOwner27 = BoardManager.GetOwnerPlayer(slotID);
+                if (aiOwner27 != null)
+                {
+                    foreach (GameObject hc in aiOwner27.handCards)
+                    {
+                        if (hc == null) continue;
+                        CardInstance hci = hc.GetComponent<CardInstance>();
+                        if (hci == null) continue;
+                        CardData htd = CardDatabase.Instance?.GetTemplate(hci.templateID);
+                        if (htd == null || htd.cardType != CardType.Summon) continue;
+                        if (hci.prefixes != null && hci.prefixes.Contains("灵能")) continue;
+                        hci.GivePrefix("灵能", "01127");
+                        break;
+                    }
+                }
+            }
             CleanupAfterPlacement();
             yield break;
         }
