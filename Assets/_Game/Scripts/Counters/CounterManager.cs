@@ -114,6 +114,9 @@ public class CounterManager : MonoBehaviour
         Card3DHover.SetHidden(model, true, false);
     }
 
+    // [打出展示] 反制打出 → 卡背读模型统一隐藏源（非持有方=背、持有方=正），自动跟随隐藏机制
+    PlayRevealManager.Show(template, PlayRevealManager.IsHiddenBack(model));
+
     Debug.Log($"反制牌已生成，己方数量：{myCounters.Count}");
         // 守望者：对方打出反制牌立即触发
         if (!isMine)

@@ -459,6 +459,10 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
 }
   public void ResolveSpellEffect(CardData template, BoardSlot targetSlot)
     {
+        // [打出展示] 法术打出（本地/离线/01329等迭代召唤复用法术）→ 正面（法术无场上模型、无隐藏机制）
+        if (template != null)
+            PlayRevealManager.Show(template, false);
+
         Debug.Log($"ResolveSpellEffect 进入：effect=\"{template.effect}\"");
 
         // 纯客户端：委托服务器权威执行法术效果。

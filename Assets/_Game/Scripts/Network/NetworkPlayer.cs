@@ -798,6 +798,8 @@ public class NetworkPlayer : NetworkBehaviour
                         // 非Token卡 → 玩家放置，禁止过期SyncNow覆盖
                         var placedCI = model.GetComponent<Card3DInstance>()?.cardInstance;
                         if (placedCI != null && !placedCI.templateID.StartsWith("03")) placedCI._hadEnterEffect = true;
+                        // [打出展示] Host 视角看到远程/AI 召唤物落地 → 展示（卡背读模型统一隐藏源）
+                        PlayRevealManager.Show(template, PlayRevealManager.IsHiddenBack(model));
                     }
                 }
             }
@@ -1622,6 +1624,9 @@ public class NetworkPlayer : NetworkBehaviour
         // If opponent has MistHider, immediately hide this new enemy card
         if (Card3DHover.EnemyCardsAreHidden)
             Card3DHover.SetHidden(model, true, false);
+
+        // [打出展示] 纯客户端看到对手(Host)召唤物 → 展示（卡背读模型统一隐藏源，雾隐/隐藏机制自动跟随）
+        PlayRevealManager.Show(template, PlayRevealManager.IsHiddenBack(model));
 
         Debug.Log($"[NetworkPlayer] TargetSpawnCard3D: {templateID} to enemySlot={enemySlot}");
     }

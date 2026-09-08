@@ -71,7 +71,14 @@ public class HoverTagSystem : MonoBehaviour
 
     void Update()
     {
-        if (_anchor != null && tagLayer != null && canvas != null && _tags.Count > 0)
+        if (_tags.Count == 0) return;
+
+        // 兜底：悬停卡退场/销毁/被 SetActive(false)（死亡、回手、弃置等销毁路径 OnMouseExit 不一定触发）
+        // 时主动收起标签。Destroy 后 Unity 重载 == 返回 true；inactive 用 activeInHierarchy 判。
+        bool anchorGone = _anchor == null || !_anchor.gameObject.activeInHierarchy;
+        if (anchorGone) { Hide(); return; }
+
+        if (tagLayer != null && canvas != null)
             ApplyPositions();
     }
 

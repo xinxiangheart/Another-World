@@ -305,6 +305,14 @@ public class HandManager : MonoBehaviour
         if (template?.prefab3D == null) return;
         if (slot == null && !sourceInstance.canAttach) return;
 
+        // [打出展示] 己方真实手牌召唤物落地：仅带 CardView 的真手牌（效果直接生成的 Token 无 CardView，不捕获）→ 正面展示
+        if (cardObject.GetComponent<CardView>() != null
+            && template.cardType == CardType.Summon
+            && !sourceInstance.canAttach)
+        {
+            PlayRevealManager.Show(template, false);
+        }
+
         // ========== 附着牌打出处理 ==========
         if (sourceInstance.canAttach)
         {

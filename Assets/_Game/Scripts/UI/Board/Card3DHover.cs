@@ -15,7 +15,10 @@ public class Card3DHover : MonoBehaviour
     BoardSlot _targetHoverSlot; // 选择模式悬停中的槽位（高亮缓存；OnMouseOver 每帧重申）
     public bool isHidden; // 隐藏（雾隐）态：抑制悬停详情面板(Test1Panel)，但保留选择模式高亮/点击
     bool _hovering;      // 鼠标当前在本卡 collider 上（OnMouseEnter/Exit 维护）
-    bool _detailShown;   // 本卡是否因"悬停+按住右键"显示了 Test1Panel（防每帧重建）
+    bool _detailShown;   // 本卡当前是否显示了 Test1Panel（防每帧重建）
+    float _dwellDetail;  // 悬停停留累计秒（达 hoverDetailDelay 自动显示详情）
+    [Tooltip("鼠标停留多少秒自动显示详情面板(Test1Panel)；右键仍即时显示")]
+    public float hoverDetailDelay = 1f;
     void Start()
     {
         Card3DInstance c3d = GetComponent<Card3DInstance>();
@@ -33,6 +36,7 @@ public class Card3DHover : MonoBehaviour
     {
         Debug.Log($"OnMouseEnter 被调用：hasDiscard={cardInstance?.hasDiscard}, isMyTurn={FindObjectOfType<TurnManager>()?.IsMyTurn()}, isPlacingCard={BoardSlot.isPlacingCard}, isTargetingMode={BoardSlot.isTargetingMode}, isAttachSelectMode={BoardSlot.isAttachSelectMode}");
         _hovering = true;
+        _dwellDetail = 0f; // 新进入：停留计时清零
         _discardHovered = false;
         _discardSlot = null;
         if (CanDiscard())
@@ -129,17 +133,32 @@ public class Card3DHover : MonoBehaviour
         }
 
         _hovering = false;
+        _dwellDetail = 0f; // 离开：取消停留计时
         _detailShown = false;
         Test1Panel.Instance?.Hide();
         HoverTagSystem.Instance?.Hide();
     }
 
-    /// <summary>Test1Panel 触发：悬停 + 按住鼠标右键才显示；右键松开即隐藏。
-    /// OnMouseEnter/OnMouseOver 调用（OnMouseOver 每帧在 collider 上触发，边沿检测避免每帧重建）。</summary>
+    /// <summary>Test1Panel 触发：右键即时显示，或悬停停留 hoverDetailDelay 秒自动显示；离开/条件不满足即隐藏。
+    /// OnMouseEnter/OnMouseOver 调用（OnMouseOver 每帧在 collider 上触发，边沿检测避免每帧重建）。
+    /// 停留计时仅在"非右键显示"时累计；一旦达阈值即持续显示（右键松开也不收回）。</summary>
     void UpdateDetailPanel()
     {
-        bool want = _hovering && !isHidden && cardInstance != null && Input.GetMouseButton(1);
-        if (want && !_detailShown && Test1Panel.Instance != null)
+        bool canDetail = _hovering && !isHidden && cardInstance != null && Test1Panel.Instance != null;
+        bool rightHeld = canDetail && Input.GetMouseButton(1);
+
+        if (canDetail && !rightHeld && hoverDetailDelay > 0f)
+        {
+            _dwellDetail += Time.deltaTime; // 悬停停留计时
+        }
+        else
+        {
+            _dwellDetail = 0f;              // 隐藏卡/右键显示中/离开时清零
+        }
+        bool dwell = canDetail && hoverDetailDelay > 0f && _dwellDetail >= hoverDetailDelay;
+
+        bool want = rightHeld || dwell;
+        if (want && !_detailShown)
         {
             Test1Panel.Instance.Show(cardInstance);
             _detailShown = true;
