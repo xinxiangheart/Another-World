@@ -2438,6 +2438,41 @@ public class NetworkPlayer : NetworkBehaviour
         });
     }
 
+    // ========== 普通退场残影 广播（只同步视觉，不重复结算死亡） ==========
+
+    /// <summary>按 instanceID 在本端棋盘找对应模型（槽位/附着），用于克隆退场残影。</summary>
+    static GameObject FindDeathModelByInstanceID(string instanceID)
+    {
+        if (string.IsNullOrEmpty(instanceID)) return null;
+        BoardManager bm = UnityEngine.Object.FindObjectOfType<BoardManager>();
+        if (bm == null) return null;
+        for (int i = 0; i < 12; i++)
+        {
+            var go = bm.GetSlot(i)?.currentCard3D;
+            var ci = go?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (go != null && ci != null && ci.instanceID == instanceID) return go;
+        }
+        if (bm.attachedModels != null)
+            foreach (var obj in bm.attachedModels)
+            {
+                if (obj == null) continue;
+                var aci = obj.GetComponent<Card3DInstance>()?.cardInstance;
+                if (aci != null && aci.instanceID == instanceID) return obj;
+            }
+        return null;
+    }
+
+    /// <summary>Server → clients：让对端也播放该普通退场残影（仅视觉）。对端按 instanceID 找到自己场上模型克隆。
+    /// 找不到(已被同步移除)则跳过——视觉丢失可接受，不重复结算死亡。isLocalPlayer 跳过主机（主机已本地播过）。</summary>
+    [ClientRpc]
+    public void RpcPlayDeathGhost(string instanceID)
+    {
+        if (isLocalPlayer) return; // 主机/本地已在此前本地播过
+        GameObject model = FindDeathModelByInstanceID(instanceID);
+        if (model != null)
+            CardDeathGhost.Play(model);
+    }
+
     // ========== Damage floater broadcast ==========
 
     /// <summary>Server → clients: show a damage/heal/buff floater above the card in serverSlotID.</summary>
