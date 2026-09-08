@@ -20,6 +20,11 @@ public class HandManager : MonoBehaviour
     [Tooltip("悬停卡牌时相邻卡牌的额外水平让位偏移（0=关闭）")]
     public float hoverSpacingOffset = 24f;
 
+    [Header("非己方回合手牌压暗（对手回合提示）")]
+    [Tooltip("非己方回合且不在选择阶段时，整手缩小倍率")] public float dimScale = 0.7f;
+    [Tooltip("压暗时整手向下偏移（局部单位，负=下移，让手牌部分移出视野）")] public float dimOffsetY = -160f;
+    bool _handDimmed;
+
     private List<CardView> handCards = new List<CardView>();
     private CardView draggingCard;
     private int draggingIndex = -1;
@@ -50,6 +55,9 @@ public class HandManager : MonoBehaviour
             RefreshLayout(true);
             MarkBoundsDirty();
         }
+        // 新入卡若正值"非己方回合压暗"，立即应用同态（缩小/下移/淡灰遮罩）
+        if (_handDimmed && cv != null)
+            cv.SetGroupDim(true, dimScale, dimOffsetY);
     }
 
     public void RemoveCard(CardView cv)
@@ -206,17 +214,24 @@ public class HandManager : MonoBehaviour
 
         int hovIdx = GetHoveredIndex();
 
-        float overlap = Mathf.Lerp(0f, maxOverlapRatio, (float)(count - 1) / 19f);
-        float step = cardWidth * (1f - overlap);
-        float totalW = step * (count - 1) + cardWidth;
+        // 压暗态(dimScale<1)：整手卡面已缩小，间距/让位/弧线须按同一倍率缩放，避免"小卡大间距"。
+        float lay = _handDimmed ? dimScale : 1f;
+        float cardW = cardWidth * lay;
+        float maxW = maxWidth * lay;
+        float hovSpace = hoverSpacingOffset * lay;
+        float arcRadius = radius * lay;
 
-        if (totalW > maxWidth && count > 1)
+        float overlap = Mathf.Lerp(0f, maxOverlapRatio, (float)(count - 1) / 19f);
+        float step = cardW * (1f - overlap);
+        float totalW = step * (count - 1) + cardW;
+
+        if (totalW > maxW && count > 1)
         {
-            step = (maxWidth - cardWidth) / (count - 1);
-            totalW = maxWidth;
+            step = (maxW - cardW) / (count - 1);
+            totalW = maxW;
         }
 
-        float startX = -totalW / 2f + cardWidth / 2f;
+        float startX = -totalW / 2f + cardW / 2f;
 
         for (int i = 0; i < count; i++)
         {
@@ -226,16 +241,16 @@ public class HandManager : MonoBehaviour
             if (draggingCard != null && draggingIndex >= 0 && i >= draggingIndex && cv != draggingCard)
                 x += step * pushRatio;
 
-            // 悬停让位：相邻卡牌向外偏移，给放大卡牌腾空间（越近偏移越大，d=1 全量、d=2 减半）
+            // 悬停让位：相邻卡牌向外偏移，给放大卡牌腾空间（越近偏移越大，d=1 全量、d=2 减半）；程度随 lay 缩放
             if (hovIdx >= 0 && hovIdx != i)
             {
                 int d = Mathf.Abs(i - hovIdx);
                 float falloff = Mathf.Max(0f, 1f - (d - 1) * 0.5f);
-                x += hoverSpacingOffset * falloff * (i < hovIdx ? -1f : 1f);
+                x += hovSpace * falloff * (i < hovIdx ? -1f : 1f);
             }
 
-            float normalizedX = x / (maxWidth / 2f);
-            float arcY = -Mathf.Abs(normalizedX) * radius * 0.02f;
+            float normalizedX = x / (maxW / 2f);
+            float arcY = -Mathf.Abs(normalizedX) * arcRadius * 0.02f;
             Vector3 target = new Vector3(x, arcY, 0);
             float angle = -normalizedX * totalArcAngle * 0.5f;
             Quaternion targetRot = Quaternion.Euler(0, 0, angle);
@@ -272,8 +287,9 @@ public class HandManager : MonoBehaviour
 
     int GetInsertIndex(float localX)
     {
+        float lay = _handDimmed ? dimScale : 1f; // 压暗态插入阈值随卡面缩放
         for (int i = 0; i < handCards.Count; i++)
-            if (handCards[i] != draggingCard && localX < handCards[i].targetPos.x + cardWidth / 2f)
+            if (handCards[i] != draggingCard && localX < handCards[i].targetPos.x + (cardWidth * lay) / 2f)
                 return i;
         return handCards.Count;
     }
@@ -747,11 +763,47 @@ public class HandManager : MonoBehaviour
         _boundsDirty = true;
     }
 
+    // ══════════════════════════════════════════════════════════════
+    // 非己方回合手牌压暗：!IsMyTurn 且 不在选择阶段 → 整手 0.7× + 下移 + 淡灰遮罩
+    // （选择阶段 = SelectionManager.IsSelecting：对手回合弹给我的选择目标面板也恢复）
+    // ══════════════════════════════════════════════════════════════
+    bool ShouldDimHand()
+    {
+        if (TurnManager.Instance == null) return false;
+        if (TurnManager.Instance.IsMyTurn()) return false;
+        if (SelectionManager.Instance != null && SelectionManager.Instance.IsSelecting) return false;
+        return true;
+    }
+
+    void ApplyHandDimToAll(bool dim)
+    {
+        if (handCards == null) return;
+        // 先按新 dim 重算整手间距/位置（RefreshLayout 读到 _handDimmed 会按 dimScale 缩放水平排布），
+        // 再对每张卡做缩放 + 下移 + 遮罩动画，确保缩小时间距同步收紧。
+        RefreshLayout(false);
+        for (int i = 0; i < handCards.Count; i++)
+        {
+            var cv = handCards[i];
+            if (cv == null) continue;
+            cv.SetGroupDim(dim, dim ? dimScale : 1f, dim ? dimOffsetY : 0f);
+        }
+        MarkBoundsDirty();
+    }
+
+    void ReconcileHandDimState()
+    {
+        bool dim = ShouldDimHand();
+        if (dim == _handDimmed) return; // 仅状态变化时生效，避免逐帧干扰卡片动画
+        _handDimmed = dim;
+        ApplyHandDimToAll(dim);
+    }
+
     /// <summary>手牌重排兜底：任何"裸删"（外部 Remove+Destroy 未走 RemoveCard，如弃置/偷牌/换洗/效果消耗手牌）都会在
     /// handCards 里留下 null → 每帧探测到即清空并 RefreshLayout，杜绝移除后手牌留洞不缩拢。正规 RemoveCard 已即时
     /// 重排并自清 null，此处不触发。仅对已登记到本列表的可见手牌生效（服务端/AI 追踪列表无 CardView 自然无影响）。</summary>
     void Update()
     {
+        ReconcileHandDimState(); // 回合/选择状态变化 → 整手压暗或还原（边缘检测）
         if (handCards == null || handCards.Count == 0) return;
         bool hasNull = false;
         for (int i = 0; i < handCards.Count; i++)

@@ -23,6 +23,12 @@ public class CardView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
     /// <summary>当前是否被悬停（HandManager 布局让位用）。</summary>
     public bool IsHovered => _hovered;
 
+    // ── 整手"非己方回合"压暗态（HandManager 统一驱动）─────────────
+    // _dimScale<1 整手缩小（悬停放大仍在此倍率基础上 ×HOVER_SCALE）；_dimOffsetY<0 整手下移，部分移出视野。
+    float _dimScale = 1f;
+    float _dimOffsetY = 0f;
+    Image _dimOverlay; // 淡灰遮罩子图：随卡缩放/位移/悬停，raycast 关闭不挡交互
+
     /// <summary>抽牌入场动画进行中（飞行中的牌不参与 RefreshLayout 的 snap，也不被 Update 的 lerp 覆盖）。</summary>
     [HideInInspector] public bool IsFlying = false;
 
@@ -39,12 +45,67 @@ public class CardView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
         originalScale = transform.localScale;
     }
 
+    // ── 整手压暗目标位/倍率 ──────────────────────────────────────
+    Vector3 DesiredPos()
+    {
+        Vector3 p = new Vector3(targetPos.x, targetPos.y + _dimOffsetY, 0);
+        if (_hovered) p.y += HOVER_RAISE; // 悬停上浮加在压暗后的休息位之上
+        return p;
+    }
+    Vector3 DesiredScale() => originalScale * _dimScale * (_hovered ? HOVER_SCALE : 1f);
+
+    /// <summary>整手压暗/还原（HandManager 统一驱动）。dim=true：倍率 scale(<1 缩小)+下移 offsetY+淡灰遮罩；
+    /// false：还原到 1.0×/原位/彩色。悬停期间的压暗卡仍放大，但保持缩小基数与遮罩。</summary>
+    public void SetGroupDim(bool dim, float scale, float offsetY)
+    {
+        _dimScale = dim ? scale : 1f;
+        _dimOffsetY = dim ? offsetY : 0f;
+        SetDimOverlayActive(dim);
+
+        if (!gameObject.activeInHierarchy)
+        {
+            // 未激活（隐藏/待飞入的牌也在 handCards 列表）：不启协程，直接落缩放；
+            // 重新激活后 CardView.Update 会自动向 DesiredPos(含偏移) 对齐位置。
+            rectTransform.localScale = DesiredScale();
+            handManager?.MarkBoundsDirty();
+            return;
+        }
+        if (IsFlying) return; // 飞行中不抢动画，落位后由 FlyIn 以 originalScale*_dimScale 对齐
+        StopAllCoroutines();
+        StartCoroutine(SmoothTo(DesiredPos(), _hovered ? Quaternion.identity : targetRotation, DesiredScale(), 0.2f));
+        handManager?.MarkBoundsDirty();
+    }
+
+    /// <summary>淡灰遮罩：半透明灰色子图盖住整个卡面（随卡移动/缩放）。raycast=false → 不挡鼠标，悬停照常。</summary>
+    void SetDimOverlayActive(bool on)
+    {
+        if (!on)
+        {
+            if (_dimOverlay != null) _dimOverlay.enabled = false;
+            return;
+        }
+        if (_dimOverlay == null)
+        {
+            var go = new GameObject("DimOverlay", typeof(RectTransform), typeof(Image));
+            go.transform.SetParent(transform, false);
+            _dimOverlay = go.GetComponent<Image>();
+            _dimOverlay.color = new Color(0.6f, 0.6f, 0.66f, 0.28f); // 半透明淡灰：卡面透出，压暗提示而非遮死
+            _dimOverlay.raycastTarget = false;
+            _dimOverlay.rectTransform.anchorMin = Vector2.zero;
+            _dimOverlay.rectTransform.anchorMax = Vector2.one;
+            _dimOverlay.rectTransform.offsetMin = Vector2.zero;
+            _dimOverlay.rectTransform.offsetMax = Vector2.zero;
+        }
+        _dimOverlay.enabled = true;
+        _dimOverlay.rectTransform.SetAsLastSibling();
+    }
+
     void Update()
     {
         if (!IsAnyCardDragging && !IsFlying)
         {
-            // 悬停时保持"放大+上浮"状态（不向基础位置回拉）；移开后回到 targetPos/targetRotation
-            Vector3 desiredPos = _hovered ? new Vector3(targetPos.x, targetPos.y + HOVER_RAISE, 0) : targetPos;
+            // 悬停时保持"放大+上浮"状态（不向基础位置回拉）；移开后回到 targetPos/targetRotation（均含整手压暗偏移）
+            Vector3 desiredPos = DesiredPos();
             Quaternion desiredRot = _hovered ? Quaternion.identity : targetRotation;
             rectTransform.localPosition = Vector3.Lerp(rectTransform.localPosition, desiredPos, Time.deltaTime * 15f);
             rectTransform.localRotation = Quaternion.Slerp(rectTransform.localRotation, desiredRot, Time.deltaTime * 15f);
@@ -59,7 +120,7 @@ public class CardView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
         originalSibling = transform.GetSiblingIndex();
         transform.SetAsLastSibling();
         StopAllCoroutines();
-        StartCoroutine(SmoothTo(new Vector3(targetPos.x, targetPos.y + HOVER_RAISE, 0), Quaternion.identity, originalScale * HOVER_SCALE, 0.12f));
+        StartCoroutine(SmoothTo(DesiredPos(), Quaternion.identity, DesiredScale(), 0.12f));
         handManager?.RefreshLayout(false); // 触发相邻卡牌让位
         handManager?.MarkBoundsDirty();
     }
@@ -70,7 +131,7 @@ public class CardView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
         _hovered = false;
         transform.SetSiblingIndex(originalSibling);
         StopAllCoroutines();
-        StartCoroutine(SmoothTo(targetPos, targetRotation, originalScale, 0.15f));
+        StartCoroutine(SmoothTo(DesiredPos(), targetRotation, DesiredScale(), 0.15f));
         handManager?.RefreshLayout(false); // 触发相邻卡牌归位
         handManager?.MarkBoundsDirty();
     }
@@ -138,7 +199,8 @@ public class CardView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
         float zRot = cfg != null ? cfg.flyZRotation : 8f;
         float scaleMin = cfg != null ? cfg.flyScaleMin : 0.95f;
 
-        Vector3 targetScale = transform.localScale; // Scale2DCard 已 ×3
+        Vector3 targetScale = originalScale * _dimScale; // Scale2DCard 已 ×3；含起飞时压暗基数
+        Vector3 FlyScale() => originalScale * _dimScale; // 实时倍率：压暗若在飞行中翻转，落位用最新值，不错拍成"小卡卡住"
         Quaternion startRotation = Quaternion.Euler(0f, 0f, -zRot);
 
         IsFlying = true;
@@ -175,7 +237,7 @@ public class CardView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
 
             transform.position = Vector3.Lerp(transform.position, currentTargetWorld, eased);
             transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, eased);
-            transform.localScale = Vector3.Lerp(transform.localScale, targetScale, eased);
+            transform.localScale = Vector3.Lerp(transform.localScale, FlyScale(), eased);
 
             yield return null;
         }
@@ -184,7 +246,7 @@ public class CardView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
         Vector3 finalTargetWorld = transform.parent.TransformPoint(targetPos);
         transform.position = finalTargetWorld;
         transform.rotation = targetRotation;
-        transform.localScale = targetScale;
+        transform.localScale = FlyScale();
         canvasGroup.alpha = 1f;
         IsFlying = false;
         handManager?.MarkBoundsDirty();
