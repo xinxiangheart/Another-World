@@ -275,6 +275,13 @@ public static class EnterHandlers
         var slot = ctx.sourceSlot;
         if (!slot.HasAllyTargetExceptSelf()) { slot.CleanupAfterPlacement(); BoardSlot.SyncMistHiderDisplay(); return; }
         {
+            // [AI] 01313：己方(AI 0-5) 5/3/1 且 有主动退场(HasActiveExit) 优先
+            if (SimpleAI.IsAIEvaluating || SimpleAI.forceAutoSelect)
+                SimpleAI.SetAIAutoChoice(new[] { 5, 3, 1 }, s =>
+                {
+                    var c1313 = s?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                    return c1313 != null && c1313.HasActiveExit;
+                });
             var jdLayerId = SM().BeginSelection(TargetType.SingleAlly, null);
             BoardSlot.onTargetSelected = (targetSlot) =>
             {
@@ -499,6 +506,13 @@ public static class EnterHandlers
         var slot = ctx.sourceSlot;
         if (inst.greedySnakeEnterCount >= 3) { slot.CleanupAfterPlacement(); return; }
         if (!slot.HasEnemyTarget()) { slot.CleanupAfterPlacement(); return; }
+        // [AI] 01317：玩家方 5/3/1 且带 先手/退场/反击 的召唤物优先
+        if (SimpleAI.IsAIEvaluating)
+            SimpleAI.SetAIAutoChoice(new[] { 5, 3, 1 }, s =>
+            {
+                var c1317 = s?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                return c1317 != null && (c1317.HasFirstStrike || c1317.HasOnDeath || c1317.HasActiveExit || c1317.HasRevenge);
+            });
         SM().BeginSelection(TargetType.SingleEnemy, (targetSlot) =>
         {
             if (targetSlot?.currentCard3D != null)

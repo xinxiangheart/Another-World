@@ -1876,19 +1876,30 @@ public class BattleManager : MonoBehaviour
         // AI 对局：麻烦制造者在 AI 半场（0-5）时，AI 自动选对方第一个召唤物，避免选择挂起卡死
         if (SimpleAI.IsAIMatch && mySlotID < 6)
         {
+            // [AI] 01308：优先 玩家方(6-11) 5/3/1 费召唤物（5>3>1，非硬门槛）
+            BoardSlot chosen01308 = null;
+            int[] pref01308 = { 5, 3, 1 };
+            int bestRank01308 = int.MaxValue;
             for (int i = enemyStart; i <= enemyEnd; i++)
             {
                 BoardSlot slot = allSlots[i];
                 if (slot?.currentCard3D == null) continue;
-                CardInstance targetCI = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                CardInstance tci01308 = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                if (tci01308 == null) continue;
+                int rank01308 = System.Array.IndexOf(pref01308, tci01308.currentCost);
+                if (rank01308 < 0) rank01308 = pref01308.Length;
+                if (rank01308 < bestRank01308) { bestRank01308 = rank01308; chosen01308 = slot; }
+            }
+            if (chosen01308?.currentCard3D != null)
+            {
+                CardInstance targetCI = chosen01308.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
                 if (targetCI != null)
                 {
                     targetCI.GrantTrait("先手：扣己方玩家1生命值");
                     targetCI.hasFirstStrike = true;
-                    slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
-                    Debug.Log($"麻烦制造者(AI自动)赋予先手特性给槽位{slot.slotID}");
+                    chosen01308.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+                    Debug.Log($"麻烦制造者(AI自动)赋予先手特性给槽位{chosen01308.slotID}");
                 }
-                break;
             }
             yield break;
         }

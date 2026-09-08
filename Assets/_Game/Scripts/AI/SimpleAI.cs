@@ -137,7 +137,11 @@ public class SimpleAI : MonoBehaviour
         switch (ci.templateID)
         {
             case "01135": return false;
-            case "01136": return ci.currentHealth <= Mathf.FloorToInt(ci.currentMaxHealth / 2f);
+            case "01136":
+            case "01343":
+            case "01344":
+            case "01346":
+                return ci.currentHealth <= Mathf.FloorToInt(ci.currentMaxHealth / 2f); // 自身生命 ≤ half(向下取整) 才倾向抛置
             default: return false;
         }
     }
@@ -170,8 +174,19 @@ public class SimpleAI : MonoBehaviour
         SimpleAI.IsAIEvaluating = true;
         try
         {
-            if (ci.templateID == "01136")
-                SimpleAI.SetAIAutoChoice(new[] { 5, 3, 1 }); // 目标=玩家方(6-11) 5/3/1
+            switch (ci.templateID)
+            {
+                case "01346": // 治 AI 己方：5/3/1 且 生命扣除 ≥3（恢复收益足）
+                    SimpleAI.SetAIAutoChoice(new[] { 5, 3, 1 }, s =>
+                    {
+                        var c1346 = s?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                        return c1346 != null && (c1346.currentMaxHealth - c1346.currentHealth) >= 3;
+                    });
+                    break;
+                default: // 01136/01343/01344 → 玩家方(6-11) 5/3/1
+                    SimpleAI.SetAIAutoChoice(new[] { 5, 3, 1 });
+                    break;
+            }
             ci.isActiveExit = false;
             ci.hasRevenge = false;
             slot.HandleDeath(slot.currentCard3D);
@@ -676,17 +691,24 @@ public class SimpleAI : MonoBehaviour
         return 0;
     }
 
-    /// <summary>AI 窃取：从候选手牌中选评分最高的一张（窃贼主动退场自动选择用）。</summary>
+    /// <summary>AI 窃取：从候选手牌中选 5/3/1 优先（5>3>1，非硬门槛）、同费再按评分高的（窃贼主动退场自动选择用）。</summary>
     public static CardInstance PickBestStealTarget(List<CardInstance> cards)
     {
         if (Instance == null || cards == null || cards.Count == 0) return null;
         CardInstance best = null;
+        int bestRank = int.MaxValue;
         float bestScore = float.MinValue;
+        int[] pref = { 5, 3, 1 };
         foreach (var c in cards)
         {
             if (c == null) continue;
+            int rank = System.Array.IndexOf(pref, c.currentCost);
+            if (rank < 0) rank = pref.Length;
             float s = Instance.ScoreCard(c);
-            if (s > bestScore) { bestScore = s; best = c; }
+            if (rank < bestRank || (rank == bestRank && s > bestScore))
+            {
+                bestRank = rank; bestScore = s; best = c;
+            }
         }
         return best;
     }

@@ -113,6 +113,13 @@ public static class DiscardHandlers
             if (bm?.GetSlot(i)?.currentCard3D != null) { hasAlly = true; break; }
         if (hasAlly)
         {
+            // [AI] 01346：治己方 5/3/1 且 生命扣除≥3（恢复收益足）
+            if (SimpleAI.IsAIEvaluating)
+                SimpleAI.SetAIAutoChoice(new[] { 5, 3, 1 }, s =>
+                {
+                    var c1346h = s?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                    return c1346h != null && (c1346h.currentMaxHealth - c1346h.currentHealth) >= 3;
+                });
             BoardSlot.StartDiscardSelection(TargetType.SingleAlly, discardSlotID, (target) =>
             {
                 if (target?.currentCard3D != null)
@@ -141,6 +148,9 @@ public static class DiscardHandlers
             if (bm?.GetSlot(i)?.currentCard3D != null) { hasEnemy = true; break; }
         if (hasEnemy)
         {
+            // [AI] 01343：抛置打 玩家方(6-11) 5/3/1
+            if (SimpleAI.IsAIEvaluating)
+                SimpleAI.SetAIAutoChoice(new[] { 5, 3, 1 });
             BoardSlot.StartDiscardSelection(TargetType.SingleEnemy, mySlot, (target) =>
             {
                 if (target?.currentCard3D != null)
@@ -172,6 +182,9 @@ public static class DiscardHandlers
             if (bm?.GetSlot(i)?.currentCard3D != null) { hasEnemy = true; break; }
         if (hasEnemy)
         {
+            // [AI] 01344：抛置 玩家方(6-11) 5/3/1
+            if (SimpleAI.IsAIEvaluating)
+                SimpleAI.SetAIAutoChoice(new[] { 5, 3, 1 });
             BoardSlot.StartDiscardSelection(TargetType.SingleEnemy, discardSlotID, (target) =>
             {
                 if (target?.currentCard3D != null)

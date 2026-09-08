@@ -2151,13 +2151,63 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         dest.grantedTraitTexts = src.grantedTraitTexts != null ? new List<string>(src.grantedTraitTexts) : new List<string>();
         dest.giveableDeathTraits = src.giveableDeathTraits != null ? new List<string>(src.giveableDeathTraits) : new List<string>();
     }
+    /// <summary>01314 万人迷 AI：AI 手牌挑 Hero(5/3/1) → 服务器免费召唤到空位（复刻 SimpleAI 出牌路径）。</summary>
+    IEnumerator HeartthrobSummonAI()
+    {
+        NetworkPlayer ai1314 = NetworkPlayer.Remote;
+        BoardManager bm1314 = FindObjectOfType<BoardManager>();
+        if (ai1314 == null || bm1314 == null) yield break;
+
+        int free1314 = -1;
+        for (int s = 0; s <= 5; s++)
+        {
+            BoardSlot sl = bm1314.GetSlot(s);
+            if (sl != null && !sl.hasCard && !sl.isBlocked && !sl.prisonBlocked && !sl.permaBlocked) { free1314 = s; break; }
+        }
+        if (free1314 < 0) yield break;
+
+        int[] pref1314 = { 5, 3, 1 };
+        CardInstance pick1314 = null;
+        int bestRank1314 = int.MaxValue;
+        foreach (GameObject hc in ai1314.handCards)
+        {
+            if (hc == null) continue;
+            CardInstance c1314 = hc.GetComponent<CardInstance>();
+            if (c1314 == null) continue;
+            CardData td1314 = CardDatabase.Instance?.GetTemplate(c1314.templateID);
+            if (td1314 == null || td1314.cardType != CardType.Summon || td1314.summonType != SummonType.Hero) continue;
+            int r1314 = System.Array.IndexOf(pref1314, c1314.currentCost);
+            if (r1314 < 0) r1314 = pref1314.Length;
+            if (r1314 < bestRank1314) { bestRank1314 = r1314; pick1314 = c1314; }
+        }
+        if (pick1314 == null) yield break;
+
+        ai1314.ServerPlayCard(pick1314.templateID, free1314 + 6,
+            pick1314.currentAttack, pick1314.currentHealth, pick1314.currentMaxHealth, pick1314.currentCost, pick1314.instanceID);
+        ai1314.handCards.RemoveAll(x => x == null);
+        for (int i = ai1314.handCards.Count - 1; i >= 0; i--)
+            if (ai1314.handCards[i] != null && ai1314.handCards[i].GetComponent<CardInstance>() == pick1314)
+            { ai1314.handCards.RemoveAt(i); break; }
+
+        BoardSlot placed1314 = bm1314.GetSlot(free1314);
+        CardInstance bInst1314 = placed1314?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+        CardData tdp1314 = CardDatabase.Instance?.GetTemplate(pick1314.templateID);
+        if (tdp1314 != null && tdp1314.hasOnEnter && bInst1314 != null)
+            yield return placed1314.StartOnEnterEffect(tdp1314, bInst1314);
+        TurnManager.SyncMyBoardToOpponent();
+    }
+
     public IEnumerator HeartthrobEnterEffect(CardInstance giver)
     {
         yield return null;
 
-        // 万人迷归本机处理（本机=拥有者）。离线 AI 中万人迷在 AI 半场(0-5)→非本机拥有，跳过，
-        // 避免从宿主手牌误召唤（同谜语人 01321/学徒 01329 处理）。
-        if (SimpleAI.IsAIMatch && slotID < 6) { CleanupAfterPlacement(); yield break; }
+        // [AI] 万人迷 01314：AI 手牌 Hero(5/3/1) 自动召唤到空位（服务端 Remote.handCards）
+        if (SimpleAI.IsAIMatch && slotID < 6)
+        {
+            yield return HeartthrobSummonAI();
+            CleanupAfterPlacement();
+            yield break;
+        }
 
         NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
         HandManager hm = FindObjectOfType<HandManager>();
@@ -2314,7 +2364,12 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 while (!_rogueRpcDone && Time.time - t < 30f) yield return null;
                 _rogueRpcDone = false;
             }
-            // 离线 AI 拥有者（无连接）：跳过，避免误从宿主手牌召唤（同谜语人处理）
+            else if (SimpleAI.IsAIMatch && owner == NetworkPlayer.Remote)
+            {
+                // [AI] 01309 无赖：AI 手牌 Hero(5/3/1) 自动召唤（同 01314）
+                yield return StartCoroutine(HeartthrobSummonAI());
+            }
+            // 其它无连接(非 AI)情况：跳过，避免误从宿主手牌召唤
             _roguePhaseBlock = false;
             NestingContext.Exit();
             yield break;
@@ -2969,11 +3024,45 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     {
         return normalColor;
     }
+    /// <summary>01321 谜语人 AI：AI 手牌挑 Counter(5/3/1) → 免费打出（Host 视角 isMine=false）。</summary>
+    void RiddlerCounterAI()
+    {
+        NetworkPlayer ai1321 = NetworkPlayer.Remote;
+        if (ai1321 == null || CounterManager.Instance == null) return;
+
+        CardInstance pick1321 = null;
+        int bestRank1321 = int.MaxValue;
+        int[] pref1321 = { 5, 3, 1 };
+        foreach (GameObject h in ai1321.handCards)
+        {
+            if (h == null) continue;
+            CardInstance c1321 = h.GetComponent<CardInstance>();
+            if (c1321 == null) continue;
+            CardData td1321 = CardDatabase.Instance?.GetTemplate(c1321.templateID);
+            if (td1321 == null || td1321.cardType != CardType.Spell) continue;
+            if ((td1321.spellType & SpellType.Counter) == 0) continue;
+            int r1321 = System.Array.IndexOf(pref1321, c1321.currentCost);
+            if (r1321 < 0) r1321 = pref1321.Length;
+            if (r1321 < bestRank1321) { bestRank1321 = r1321; pick1321 = c1321; }
+        }
+        if (pick1321 == null) return;
+
+        CounterManager.Instance.PlayCounter(pick1321.gameObject, false); // AI 反制 = Host 视角敌方
+        var ec1321 = CounterManager.Instance.enemyCounters;
+        var ctr1321 = (ec1321 != null && ec1321.Count > 0) ? ec1321[ec1321.Count - 1] : null;
+        if (ctr1321 != null) ctr1321.noCostOnTrigger = true;
+        ai1321.handCards.Remove(pick1321.gameObject);
+        TurnManager.SyncMyBoardToOpponent();
+    }
+
     public IEnumerator RiddlerDeathEffect(CardInstance giver)
     {
-        // 谜语人退场归本机处理（本机=拥有者，学徒 01329 同款）。
-        // 离线 AI 中谜语人在 AI 半场(0-5)→非本机拥有，跳过，避免误从宿主手牌出反制。
-        if (SimpleAI.IsAIMatch && slotID < 6) yield break;
+        // [AI] 谜语人 01321：AI 手牌挑 Counter(5/3/1) 免费打出（服务端 Remote.handCards）
+        if (SimpleAI.IsAIMatch && slotID < 6)
+        {
+            RiddlerCounterAI();
+            yield break;
+        }
 
         NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
         HandManager hm = FindObjectOfType<HandManager>();
@@ -3239,6 +3328,78 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         CleanupAfterPlacement();
     }
 
+    /// <summary>01329 学徒 AI：从 AI 手牌挑 法术(5/3/1) 施放/反制（server-only，Host 视角敌方）。</summary>
+    IEnumerator ApprenticeSpellAI()
+    {
+        NetworkPlayer ai1329 = NetworkPlayer.Remote;
+        if (ai1329 == null) yield break;
+
+        CardInstance pick1329 = null;
+        int bestRank1329 = int.MaxValue;
+        int[] pref1329 = { 5, 3, 1 };
+        foreach (GameObject h in ai1329.handCards)
+        {
+            if (h == null) continue;
+            CardInstance c1329 = h.GetComponent<CardInstance>();
+            if (c1329 == null) continue;
+            CardData td1329 = CardDatabase.Instance?.GetTemplate(c1329.templateID);
+            if (td1329 == null || td1329.cardType != CardType.Spell) continue;
+            int r1329 = System.Array.IndexOf(pref1329, c1329.currentCost);
+            if (r1329 < 0) r1329 = pref1329.Length;
+            if (r1329 < bestRank1329) { bestRank1329 = r1329; pick1329 = c1329; }
+        }
+        if (pick1329 == null) yield break;
+        CardData spellT1329 = CardDatabase.Instance?.GetTemplate(pick1329.templateID);
+        if (spellT1329 == null) yield break;
+        GameObject selGO1329 = pick1329.gameObject;
+
+        bool wasEval1329 = SimpleAI.IsAIEvaluating;
+        SimpleAI.IsAIEvaluating = true;
+        try
+        {
+            if ((spellT1329.spellType & SpellType.Counter) != 0)
+            {
+                CounterManager.Instance?.PlayCounter(selGO1329, false); // AI 反制 = Host 敌方
+                var ec1329 = CounterManager.Instance?.enemyCounters;
+                var ctr1329 = (ec1329 != null && ec1329.Count > 0) ? ec1329[ec1329.Count - 1] : null;
+                if (ctr1329 != null) ctr1329.noCostOnTrigger = true;
+                ai1329.handCards.Remove(selGO1329);
+            }
+            else if (spellT1329.targetType == TargetType.None)
+            {
+                ai1329.handCards.Remove(selGO1329);
+                SpellEffectExecutor.Execute(spellT1329, null);
+            }
+            else
+            {
+                ai1329.handCards.Remove(selGO1329);
+                bool targetDone1329 = false;
+                // 目标由 AI 自动选择（IsAIEvaluating=true → setter→AIResolve 首合法）
+                SelectionManager.Instance.BeginSelection((TargetType)spellT1329.targetType, (slot1329) =>
+                {
+                    SpellEffectExecutor.Execute(spellT1329, slot1329);
+                    targetDone1329 = true;
+                });
+                float tgtD1329 = Time.time + 30f;
+                while (!targetDone1329 && Time.time < tgtD1329) yield return null;
+                if (!targetDone1329) SelectionManager.Instance.ForceEndAll();
+            }
+
+            // 死亡链同本地学徒处理
+            int myDepth1329 = NestingContext.Snapshot();
+            CheckAndHandleDeaths();
+            yield return ActionQueueManager.WaitForDrain();
+            yield return new WaitWhile(() => NestingContext.Depth > myDepth1329);
+            if (pendingRevenges.Count > 0 && BattleManager.Instance != null)
+                yield return BattleManager.Instance.StartCoroutine(BattleManager.ResolveRevengesFromSnapshot());
+            TurnManager.SyncMyBoardToOpponent();
+        }
+        finally
+        {
+            SimpleAI.IsAIEvaluating = wasEval1329;
+        }
+    }
+
     public IEnumerator ApprenticeMageEnterEffect(CardInstance giver)
     {
         NestingContext.Enter("Spell_01329");
@@ -3246,9 +3407,13 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         {
         yield return null;
 
-        // 学徒归本机处理（本机=拥有者）。离线 AI 中学徒在 AI 半场(0-5)→非本机拥有，跳过，
-        // 避免从宿主手牌误施法（同谜语人 01321 处理）。
-        if (SimpleAI.IsAIMatch && slotID < 6) { CleanupAfterPlacement(); yield break; }
+        // [AI] 学徒 01329：AI 手牌挑 法术(5/3/1) → 反制/无目标/目标型 自动施放（服务端 Remote.handCards）
+        if (SimpleAI.IsAIMatch && slotID < 6)
+        {
+            yield return ApprenticeSpellAI();
+            CleanupAfterPlacement();
+            yield break; // finally 仍负责 NestingContext.Exit
+        }
 
         NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
         HandManager hm = FindObjectOfType<HandManager>();
@@ -3556,6 +3721,14 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     {
         if (!HasAllyTargetExceptSelf()) { CleanupAfterPlacement(); yield break; }
 
+        // [AI] 01311 进场：AI 侧(0-5) → 自动选 己方 5/3/1 且 HasActiveExit 的召唤物（修复原先 done=true 空转）
+        if (SimpleAI.IsAIMatch && slotID < 6)
+            SimpleAI.SetAIAutoChoice(new[] { 5, 3, 1 }, s =>
+            {
+                var c1311 = s?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                return c1311 != null && c1311.HasActiveExit && s != this;
+            });
+
         CardInstance targetCI = null;
         bool done = false;
         SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (slot) =>
@@ -3566,8 +3739,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             }
             done = true;
         });
-        // AI 放指挥家 → 自动完成；非 AI 30s 超时
-        if (SimpleAI.IsAIMatch && slotID < 6) done = true;
+        // AI 已由 setter→AIResolve(费用优先) 自动完成；非 AI 30s 超时兜底
         float conductorDeadline = Time.time + 30f;
         while (!done && Time.time < conductorDeadline)
             yield return null;
@@ -3603,6 +3775,37 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public IEnumerator DeepSeaActiveExitEffect()
     {
         BoardSlot.isStrengtheningSlot = true;
+
+        // [AI] 01338 主动退场：AI 侧直接自动选 玩家方(6-11) 两格（5/3/1 费召唤物优先，其次空格），不弹 UI
+        if (SimpleAI.IsAIMatch && slotID < 6)
+        {
+            BoardManager b38 = FindObjectOfType<BoardManager>();
+            BoardSlot pick138 = null, pick238 = null;
+            if (b38 != null)
+            {
+                int[] pref38 = { 5, 3, 1 };
+                BoardManager.GetEnemySideRange(slotID, out int e38S, out int e38E);
+                for (int pass38 = 0; pass38 < 2 && (pick138 == null || pick238 == null); pass38++)
+                {
+                    for (int g38 = e38S; g38 <= e38E; g38++)
+                    {
+                        BoardSlot gs38 = b38.GetSlot(g38);
+                        if (gs38 == null || gs38.isBlocked || gs38.prisonBlocked || gs38.permaBlocked) continue;
+                        CardInstance gc38 = gs38.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                        bool want38 = pass38 == 0 ? (gc38 != null && System.Array.IndexOf(pref38, gc38.currentCost) >= 0) : true;
+                        if (!want38) continue;
+                        if (pick138 == null) { pick138 = gs38; continue; }
+                        if (pick238 == null && gs38 != pick138) { pick238 = gs38; break; }
+                    }
+                }
+            }
+            string src38ID = currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance?.instanceID;
+            if (pick138 != null) { ApplyDeepSeaDebuffLocal(pick138, src38ID); pick138.deepSeaMarked = true; pick138.SyncVisual(); }
+            if (pick238 != null) { ApplyDeepSeaDebuffLocal(pick238, src38ID); pick238.deepSeaMarked = true; pick238.SyncVisual(); }
+            NetworkPlayer.Local.AddEnergy(1);
+            TurnManager.SyncMyBoardToOpponent();
+            yield break;
+        }
 
         BoardSlot first = null;
         bool firstDone = false;

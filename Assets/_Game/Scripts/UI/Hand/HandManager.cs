@@ -2431,6 +2431,42 @@ public class HandManager : MonoBehaviour
         Card3DHover.allowDiscard = true;
     }
 
+    /// <summary>01349 收藏家 AI：从 AI 手牌挑 1 张(1/3/5 优先)消耗 → giver +1攻/+1能量（沿用消耗单张语义）。</summary>
+    IEnumerator CollectorConsumeAI(CardInstance giver)
+    {
+        NetworkPlayer ai1349 = NetworkPlayer.Remote;
+        if (ai1349 == null || giver == null) yield break;
+
+        CardInstance pick1349 = null;
+        int bestRank1349 = int.MaxValue;
+        int[] pref1349 = { 1, 3, 5 };
+        foreach (GameObject h in ai1349.handCards)
+        {
+            if (h == null) continue;
+            CardInstance c1349 = h.GetComponent<CardInstance>();
+            if (c1349 == null) continue;
+            int r1349 = System.Array.IndexOf(pref1349, c1349.currentCost);
+            if (r1349 < 0) r1349 = pref1349.Length;
+            if (r1349 < bestRank1349) { bestRank1349 = r1349; pick1349 = c1349; }
+        }
+        if (pick1349 == null) yield break;
+
+        ai1349.handCards.Remove(pick1349.gameObject);
+        giver.currentAttack += 1;
+        giver.baseAttack += 1;
+        ai1349.AddEnergy(1);
+
+        BoardManager bm1349 = FindObjectOfType<BoardManager>();
+        if (bm1349 != null)
+            for (int i = 0; i < 12; i++)
+            {
+                BoardSlot s1349 = bm1349.GetSlot(i);
+                if (s1349?.currentCard3D != null && s1349.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance == giver)
+                { s1349.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues(); break; }
+            }
+        TurnManager.SyncMyBoardToOpponent();
+    }
+
     public IEnumerator CollectorEnterEffect(CardInstance giver)
     {
         yield return null;
@@ -2450,24 +2486,27 @@ public class HandManager : MonoBehaviour
             if (ci != null) displayList.Add(ci);
         }
 
+        // AI 放收集者（AI 半场 0-5）：从 AI 手牌挑 1 张(1/3/5)消耗 → +1 攻 +1 能量（不弹窗/不用玩家手牌）
+        if (SimpleAI.IsAIMatch)
+        {
+            BoardManager cbmAI = FindObjectOfType<BoardManager>();
+            bool isAiCollector = false;
+            for (int i = 0; i < 6; i++)
+                if (cbmAI?.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance == giver)
+                { isAiCollector = true; break; }
+            if (isAiCollector)
+            {
+                yield return CollectorConsumeAI(giver);
+                yield break;
+            }
+        }
+
         CardDisplayPanel.Instance.multiSelect = true;
         bool confirmed = false;
         CardDisplayPanel.Instance.ShowWithCallback(displayList, ci => true, () =>
         {
             confirmed = true;
         }, "召唤");
-
-        // AI 放收集者（AI 半场 0-5）→ 跳过弹窗直接确认，避免 WaitUntil 挂起泄漏 NestingContext
-        bool collectorIsAI = SimpleAI.IsAIMatch;
-        if (collectorIsAI)
-        {
-            collectorIsAI = false;
-            BoardManager cbm = FindObjectOfType<BoardManager>();
-            for (int i = 0; i < 6; i++)
-                if (cbm?.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance == giver)
-                { collectorIsAI = true; break; }
-        }
-        if (collectorIsAI) confirmed = true;
         float collectorDeadline = Time.time + 30f;
         while (!confirmed && Time.time < collectorDeadline)
             yield return null;

@@ -803,6 +803,13 @@ public static class DeathHandlers
     {
         if (ctx.sourceSlot.HasAllyTargetExceptSelf())
         {
+            // [AI] 01311 主动退场：退场卡属 AI 侧 → 强制 AI 自动选 己方 5/3/1 且 HasActiveExit（含被迫退场）
+            if (SimpleAI.IsAIMatch && ctx.sourceSlot != null && ctx.sourceSlot.slotID < 6)
+                SimpleAI.SetAIAutoChoice(new[] { 5, 3, 1 }, s =>
+                {
+                    var c1311b = s?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                    return c1311b != null && c1311b.HasActiveExit && s != ctx.sourceSlot;
+                });
             SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (targetSlot) =>
             {
                 if (targetSlot != null && targetSlot.currentCard3D != null && targetSlot != ctx.sourceSlot)
