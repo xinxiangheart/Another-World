@@ -750,6 +750,12 @@ public partial class TurnManager : MonoBehaviour
     /// </summary>
     IEnumerator SafeBattle()
     {
+        // [兜底/防泄漏] 进入战斗前：强制结束任何“选择中”的遗留选择，
+        // 放行带选择/进场的协程尽早收尾退嵌套(Enter_XXX)，避免滞留到 WaitForSimultaneousWindow 才 5s 强清。
+        if (SelectionManager.Instance != null && SelectionManager.Instance.IsSelecting)
+            SelectionManager.Instance.ForceEndAll();
+        yield return null;
+
         if (NetworkServer.active)
         {
             yield return null; // let BattlePhase broadcast reach clients first

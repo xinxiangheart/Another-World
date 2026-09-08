@@ -542,7 +542,11 @@ public static class EnterHandlers
         => ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.ApprenticeMageEnterEffect(ctx.source));
 
     static void Handle01331(EffectContext ctx)
-        => ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.PrisonEnterEffect(ctx.source));
+    {
+        // 囚牢改为"异步启动、不 await"：StartOnEnterEffect 立即收尾退出 Enter 嵌套，
+        // 避免选格协程把 Enter_01331 滞留到战斗(WaitForSimultaneousWindow 强制复位)。
+        ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.PrisonEnterEffect(ctx.source));
+    }
 
     static void Handle01337(EffectContext ctx)
         => ctx.StartedCoroutine = ctx.sourceSlot.StartCoroutine(ctx.sourceSlot.PirateEnterEffect(ctx.source));

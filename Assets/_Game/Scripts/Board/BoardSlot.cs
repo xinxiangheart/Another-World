@@ -1204,6 +1204,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             {
                 // 等待 handler 协程完成（协程末尾调用 CleanupAfterPlacement）
                 yield return enterCtx.StartedCoroutine;
+                if (template.templateID == "01331")
+                    Debug.Log($"[01331Trace] 01331 handler协程已返回，depth={NestingContext.Depth}");
 
                 // 嵌套同时树结算（法术伤害→死亡→退场→反击）
                 int myDepth = NestingContext.Snapshot();
@@ -2850,6 +2852,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     }
     public IEnumerator PrisonEnterEffect(CardInstance giver)
     {
+        Debug.Log($"[01331Trace] PrisonEnterEffect ENTER giver={giver?.instanceID}");
         BoardManager bm = FindObjectOfType<BoardManager>();
 
         bool hasMyEmpty = false;
@@ -2976,6 +2979,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             NetworkPlayer.Local.CmdSetPrisonSlots(giver.instanceID, myPrison.slotID, enemyPrison.slotID);
 
         CleanupAfterPlacement();
+        Debug.Log("[01331Trace] PrisonEnterEffect 正常结束");
     }
 
     int GetOwnerSlot(CardInstance ci)
