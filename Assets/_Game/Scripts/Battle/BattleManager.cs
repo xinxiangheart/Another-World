@@ -284,6 +284,20 @@ public class BattleManager : MonoBehaviour
 
                 if (adjacentSlots.Count == 0) continue;
 
+                // [AI] 01312：自动"是" + 相邻随机换位（不弹确认/不按退场评分选）
+                if (SimpleAI.IsAIMatch && i < 6)
+                {
+                    int pickB1312 = adjacentSlots[UnityEngine.Random.Range(0, adjacentSlots.Count)];
+                    int a1312 = mySlot, b1312 = pickB1312;
+                    BoardManager.SwapCards(a1312, b1312);
+                    ci._firstStrikeConsumed = true;
+                    if (Mirror.NetworkServer.active && NetworkPlayer.Remote != null
+                        && NetworkPlayer.Remote.connectionToClient != null)
+                        NetworkPlayer.Remote.TargetSwapCards(NetworkPlayer.Remote.connectionToClient, a1312 - 6, b1312 - 6);
+                    BoardSyncManager.MarkDirty();
+                    continue;
+                }
+
                 bool confirmed = false;
                 bool choseYes = false;
                 ConfirmPanel.Instance.Show("是否与相邻格子互换位置？",
@@ -595,6 +609,32 @@ public class BattleManager : MonoBehaviour
                     if (allSlots[j]?.currentCard3D != null) { anyTarget = true; break; }
                 }
                 if (!anyTarget) continue;
+
+                // [AI] 01318：选 玩家方(6-11) 攻击力最高 召唤物（SingleAny 不镜像→默认会自伤错侧，故直选）
+                if (SimpleAI.IsAIMatch && i < 6)
+                {
+                    Card3DInstance bestC318 = null;
+                    int bestAtk318 = -1;
+                    BoardSlot bestSlot318 = null;
+                    for (int j318 = 6; j318 <= 11; j318++)
+                    {
+                        BoardSlot s318 = allSlots[j318];
+                        if (s318?.currentCard3D == null) continue;
+                        Card3DInstance c318 = s318.currentCard3D.GetComponent<Card3DInstance>();
+                        CardInstance ci318 = c318?.cardInstance;
+                        if (ci318 == null) continue;
+                        if (ci318.currentAttack > bestAtk318) { bestAtk318 = ci318.currentAttack; bestC318 = c318; bestSlot318 = s318; }
+                    }
+                    if (bestSlot318 != null && bestC318 != null)
+                    {
+                        CardInstance tci318 = bestC318.cardInstance;
+                        tci318.originalAttackBeforeDebuff = tci318.currentAttack;
+                        tci318.currentAttack = 1;
+                        tci318.AddStatus(true, "本次攻击回合攻击力临时变为1", ci);
+                        bestC318.UpdateValues();
+                    }
+                    continue;
+                }
 
                 bool done = false;
                 SelectionManager.Instance.BeginSelection(TargetType.SingleAny, (targetSlot) =>

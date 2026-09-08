@@ -2553,6 +2553,28 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         Debug.Log($"贪欲之蛇复制了{key}，进场次数={giver.greedySnakeEnterCount}");
     }
   
+    /// <summary>01322 残篇 AI：从己方召唤物挑"优先 有主动退场的5/3/1"（HasActiveExit 优先，再按 5/3/1）。</summary>
+    CardInstance PickRemnantTarget(List<CardInstance> list, CardInstance exclude)
+    {
+        if (list == null) return null;
+        int[] pref = { 5, 3, 1 };
+        CardInstance best = null;
+        bool bestActive = false;
+        int bestRank = int.MaxValue;
+        foreach (CardInstance ci in list)
+        {
+            if (ci == null || ci == exclude) continue;
+            int rank = System.Array.IndexOf(pref, ci.currentCost);
+            if (rank < 0) rank = pref.Length;
+            bool act = ci.HasActiveExit;
+            if (best == null || (act && !bestActive) || (act == bestActive && rank < bestRank))
+            {
+                best = ci; bestActive = act; bestRank = rank;
+            }
+        }
+        return best;
+    }
+
     public IEnumerator RemnantEnterEffect(CardInstance giver)
     {
         List<CardInstance> allyMinions = new List<CardInstance>();
@@ -2570,6 +2592,21 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         if (allyMinions.Count < 2)
         {
             Debug.Log("残篇：己方召唤物不足2个");
+            CleanupAfterPlacement();
+            yield break;
+        }
+
+                // [AI] 残篇 01322：直接选两名(优先 有主动退场的5/3/1)，较高费回手、较低费返费；不弹两选/选择面板
+        if (SimpleAI.IsAIMatch && slotID < 6)
+        {
+            CardInstance a1322 = PickRemnantTarget(allyMinions, null);
+            CardInstance b1322 = PickRemnantTarget(allyMinions, a1322);
+            if (a1322 != null && b1322 != null)
+            {
+                bool returnFirst1322 = a1322.currentCost >= b1322.currentCost;
+                HandManager hm1322 = FindObjectOfType<HandManager>();
+                if (hm1322 != null) hm1322.RemnantFinalize(a1322, b1322, returnFirst1322);
+            }
             CleanupAfterPlacement();
             yield break;
         }
@@ -2657,6 +2694,35 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
 
         if (mySlot < 0) { CleanupAfterPlacement(); yield break; }
+
+        // [AI] 海盗 01337：把“对位敌方排中生命最低”的随从换位到海盗正对的列（不弹交换 UI）
+        if (SimpleAI.IsAIMatch && mySlot < 6)
+        {
+            int eRow1337 = mySlot < 3 ? 6 : 9;      // AI 前/后排 → 敌 6-8/9-11
+            int myCol1337 = mySlot % 3;
+            int faceSlot1337 = eRow1337 + myCol1337;
+            BoardSlot bestLow1337 = null;
+            int minHp1337 = int.MaxValue;
+            for (int j1337 = eRow1337; j1337 < eRow1337 + 3; j1337++)
+            {
+                BoardSlot s1337 = bm?.GetSlot(j1337);
+                if (s1337?.currentCard3D == null) continue;
+                var ci1337 = s1337.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                if (ci1337 != null && ci1337.currentHealth < minHp1337)
+                { minHp1337 = ci1337.currentHealth; bestLow1337 = s1337; }
+            }
+            BoardSlot face1337 = bm?.GetSlot(faceSlot1337);
+            if (bestLow1337 != null && face1337 != null && bestLow1337 != face1337 && face1337.currentCard3D != null)
+            {
+                int a1337 = bestLow1337.slotID, b1337 = faceSlot1337;
+                BoardManager.SwapCards(a1337, b1337);
+                if (Mirror.NetworkServer.active && NetworkPlayer.Remote != null && NetworkPlayer.Remote.connectionToClient != null)
+                    NetworkPlayer.Remote.TargetSwapCards(NetworkPlayer.Remote.connectionToClient, a1337, b1337);
+                BoardSyncManager.MarkDirty();
+            }
+            CleanupAfterPlacement();
+            yield break;
+        }
 
         int rowStart = mySlot < 9 ? 0 : 3;
 
@@ -2838,8 +2904,12 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
         if (myPrison == null) { CleanupAfterPlacement(); yield break; }
 
+        // 敌方半场 = 己方(giver)对侧（AI 放时 giver 0-5 → 敌方 6-11；此前硬编码 0-5 会锁到自己）
+        int enemyStart331 = prSideStart == 0 ? 6 : 0;
+        int enemyEnd331 = enemyStart331 + 5;
+
         bool hasEnemyEmpty = false;
-        for (int i = 0; i <= 5; i++)
+        for (int i = enemyStart331; i <= enemyEnd331; i++)
         {
             BoardSlot s = bm.GetSlot(i);
             if (s != null && !s.hasCard && !s.isBlocked && !s.prisonBlocked) { hasEnemyEmpty = true; break; }
@@ -2850,8 +2920,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         bool enemyDone = false;
         if (isAISide)
         {
-            // AI 放囚牢：敌方空槽（0-5）自动选第一个
-            for (int i = 0; i <= 5; i++)
+            // AI 放囚牢：敌方空槽（对侧半场）自动选第一个
+            for (int i = enemyStart331; i <= enemyEnd331; i++)
             {
                 BoardSlot s = bm.GetSlot(i);
                 if (s != null && !s.hasCard && !s.isBlocked && !s.prisonBlocked) { enemyPrison = s; break; }
@@ -5104,6 +5174,22 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         CounterCard selected = null;
         bool done = false;
+
+        // [AI] 无畏者 01319：直接消耗"最后放置"的对方反制（不弹面板，覆盖 IsAIEvaluating=false 的进场窗口）
+        if (SimpleAI.IsAIMatch && slotID < 6)
+        {
+            CounterCard lastCc1319 = enemyCounters[enemyCounters.Count - 1];
+            if (lastCc1319 != null)
+            {
+                if (NetworkServer.active)
+                    CounterManager.Instance.TriggerEnemyCounterNoEffect(lastCc1319);
+                else
+                    NetworkPlayer.Local?.CmdFearlessTriggerCounter(lastCc1319.template.templateID);
+            }
+            foreach (var go1319 in tempGOs) Destroy(go1319);
+            CleanupAfterPlacement();
+            yield break;
+        }
 
         var panel = CardDisplayPanel.Instance;
         panel.multiSelect = false;

@@ -427,17 +427,25 @@ public static class EnterHandlers
         var slot = ctx.sourceSlot;
         if (CounterManager.Instance == null || CounterManager.Instance.enemyCounters.Count == 0)
         { slot.CleanupAfterPlacement(); return; }
-        GenericChoicePanel.Instance.Show("选择强化", new List<string> { "+3+0", "+0+3" }, (index) =>
+
+        void Apply1348(int idx)
         {
-            if (index == 0) { ctx.source.currentHealth += 3; ctx.source.currentMaxHealth += 3; DamagePipeline.ShowFloaterAt(ctx.source, 3, FloaterType.Heal); }
+            if (idx == 0) { ctx.source.currentHealth += 3; ctx.source.currentMaxHealth += 3; DamagePipeline.ShowFloaterAt(ctx.source, 3, FloaterType.Heal); }
             else { ctx.source.currentAttack += 3; DamagePipeline.ShowFloaterAt(ctx.source, 3, FloaterType.Buff); }
             var c3d = slot.FindGiver3D(ctx.source);
             c3d?.UpdateValues();
-            // 同步属性变更到服务器/对端（参照 Handle01313 的 CmdUpdateCardStats 模式）
             NetworkPlayer.Local?.CmdUpdateCardStats(slot.slotID,
                 ctx.source.currentAttack, ctx.source.currentHealth, ctx.source.currentMaxHealth);
             slot.CleanupAfterPlacement();
-        });
+        }
+
+        // [AI] 01348：自动选 +3+0(index0)，不弹 GenericChoicePanel（否则 AI 卡死）
+        if (SimpleAI.IsAIEvaluating || (SimpleAI.IsAIMatch && slot != null && slot.slotID < 6))
+        {
+            Apply1348(0);
+            return;
+        }
+        GenericChoicePanel.Instance.Show("选择强化", new List<string> { "+3+0", "+0+3" }, Apply1348);
     }
 
     static void Handle01524(EffectContext ctx)

@@ -285,6 +285,7 @@ public class SimpleAI : MonoBehaviour
         ci = null; go = null; host = null;
         if (_ai == null) return false;
 
+        // 候选：可打且可附着的卡；01333 优先独立放置 → 不附着（走召唤分支）
         CardInstance pickCI = null; GameObject pickGO = null;
         bool pureAttach = false;
         foreach (GameObject card in _ai.handCards)
@@ -295,8 +296,8 @@ public class SimpleAI : MonoBehaviour
             CardData td = CardDatabase.Instance?.GetTemplate(c.templateID);
             if (td == null || td.cardType != CardType.Summon) continue;
             if (!td.canAttach) continue;
+            if (td.templateID == "01333") continue; // 01333：AI 优先独立放置
             if (c.currentCost > _ai.currentEnergy) continue;
-            // 优先纯附着(无法独立)，其次可独立附着卡
             bool isPure = td.canAttach && td.baseHealth == 0;
             if (pickCI == null || (isPure && !pureAttach))
             {
@@ -306,21 +307,35 @@ public class SimpleAI : MonoBehaviour
         if (pickCI == null) return false;
         CardData pickTD = CardDatabase.Instance?.GetTemplate(pickCI.templateID);
         bool pickIsPure = pickTD != null && pickTD.canAttach && pickTD.baseHealth == 0;
+        bool preferLing1334 = pickCI.templateID == "01334" || pickCI.templateID == "01336";
+        bool preferHp1335 = pickCI.templateID == "01335";
 
         BoardManager bm = FindObjectOfType<BoardManager>();
         if (bm == null) return false;
-        // 宿主规则
+
+        // 宿主规则（AI 0-5）
+        BoardSlot bestHpHost = null;
+        int bestHpVal = int.MinValue;
+        int[] pref = { 5, 3, 1 };
         for (int s = 0; s <= 5; s++)
         {
             BoardSlot sl = bm.GetSlot(s);
             if (sl?.currentCard3D == null) continue;
             CardInstance hc = sl.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
             if (hc == null) continue;
-            if (pickIsPure)
+            bool hostLing = hc.prefixes != null && hc.prefixes.Contains("灵能");
+
+            if (preferLing1334)
             {
-                // 纯附着：{5,3,1} 里按优先级挑(取最靠前命中的槽即可；此处顺序扫=5优先再3再1)
-                int[] pref = { 5, 3, 1 };
-                int rank = System.Array.IndexOf(pref, hc.currentCost);
+                if (hostLing) { host = sl; break; } // 01334/01336：附着带灵能宿主（任一即可，无费用要求）
+            }
+            else if (preferHp1335)
+            {
+                if (hc.currentHealth > bestHpVal) { bestHpVal = hc.currentHealth; bestHpHost = sl; } // 01335：生命最高
+            }
+            else if (pickIsPure)
+            {
+                int rank = System.Array.IndexOf(pref, hc.currentCost); // 纯附着 {5,3,1}
                 if (rank < 0) continue;
                 if (host == null || rank < System.Array.IndexOf(pref,
                         host.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance?.currentCost ?? -1))
@@ -328,13 +343,14 @@ public class SimpleAI : MonoBehaviour
             }
             else
             {
-                // 可独立附着：只要 5 费宿主
-                if (hc.currentCost == 5) { host = sl; break; }
+                if (hc.currentCost == 5) { host = sl; break; } // 可独立附着：5 费宿主
             }
         }
+        if (preferHp1335) host = bestHpHost;
+
         if (host == null)
         {
-            // 纯附着无宿主 → 卡留手（不误打）；可独立附着无 5 费宿主 → 回落独立放置
+            // 纯附着无理想宿主 → 卡留手（不误打）；可独立附着无理想宿主 → 回落独立放置
             if (pickIsPure) { ci = pickCI; go = pickGO; return false; }
             return false;
         }
