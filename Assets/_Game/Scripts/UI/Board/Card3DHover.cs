@@ -215,6 +215,7 @@ public class Card3DHover : MonoBehaviour
 
         cardInstance.isActiveExit = false;
         cardInstance.hasRevenge = false;
+        cardInstance.discardPendingExit = true; // 抛置退场：残影走"硬币翻转"专用动画
 
         bool shouldTriggerDiscard = cardInstance.HasDiscard; // 5.x 特性组：抛置类激活才触发抛置效果
 

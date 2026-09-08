@@ -22,6 +22,14 @@ public class CardDeathGhost : MonoBehaviour
     public float scaleBoost = 1.06f;     // 放大倍率
     public float activeFadeLag = 0.08f;  // 金闪路径淡出波落后压暗波(归一化 匀速)
 
+    // ── 抛置(硬币式翻转) ──
+    [Header("抛置")]
+    public float discardFlip = 0.20f;    // 绕 Y 轴翻转一圈时长(已加快)
+    public float discardFade = 0.18f;    // 翻转完迅速淡出时长
+    public float discardSpin = 360f;     // 翻转角度
+    public float discardFlipSign = -1f;  // 翻转方向(+1/-1；默认反向)
+    public float discardHover = 0.16f;   // 翻转时向上抬起的弧高(世界单位,已加大)，避免薄卡/背面穿模
+
     Material _mat;
     Vector3 _basePos;
     Vector3 _baseScale;
@@ -29,12 +37,15 @@ public class CardDeathGhost : MonoBehaviour
     static readonly Color Gray = new Color(0.55f, 0.55f, 0.55f, 1f);
     static readonly Color Black = new Color(0f, 0f, 0f, 1f);
     static readonly Color Gold = new Color(1f, 0.82f, 0.25f, 1f);
+    static readonly Color WhiteFade = new Color(1f, 1f, 1f, 1f);
 
-    public static void Play(GameObject model) => Launch(model, false);
-    public static void PlayActive(GameObject model) => Launch(model, true);
+    // kind: 0=普通灰黑, 1=主动金闪, 2=抛置翻转
+    public static void Play(GameObject model) => Launch(model, 0);
+    public static void PlayActive(GameObject model) => Launch(model, 1);
+    public static void PlayDiscard(GameObject model) => Launch(model, 2);
 
     /// <summary>从模型生成残影并播放。model 随后会被正常销毁/同步。纯表现。</summary>
-    static void Launch(GameObject model, bool active)
+    static void Launch(GameObject model, int kind)
     {
         if (model == null) return;
         var shader = Shader.Find("Custom/CardDeathSprite");
@@ -52,7 +63,8 @@ public class CardDeathGhost : MonoBehaviour
         Bounds b = rends.Length > 0 ? rends[0].bounds : new Bounds(model.transform.position, Vector3.one);
         for (int i = 1; i < rends.Length; i++) b.Encapsulate(rends[i].bounds);
 
-        var ghost = new GameObject(model.name + (active ? "_activeDeathGhost" : "_deathGhost"));
+        string kindName = kind == 2 ? "_discardGhost" : (kind == 1 ? "_activeDeathGhost" : "_deathGhost");
+        var ghost = new GameObject(model.name + kindName);
         ghost.transform.position = model.transform.position;
         ghost.transform.rotation = model.transform.rotation;
         ghost.transform.localScale = model.transform.lossyScale;
@@ -82,12 +94,13 @@ public class CardDeathGhost : MonoBehaviour
         comp._mat = mat;
         comp._basePos = ghost.transform.position;
         comp._baseScale = ghost.transform.localScale;
-        comp.StartCoroutine(comp.Run(active));
+        comp.StartCoroutine(comp.Run(kind));
     }
 
-    IEnumerator Run(bool active)
+    IEnumerator Run(int kind)
     {
-        if (active) yield return RunActive();
+        if (kind == 1) yield return RunActive();
+        else if (kind == 2) yield return RunDiscard();
         else yield return RunGray();
         Destroy(gameObject);
     }
@@ -154,6 +167,49 @@ public class CardDeathGhost : MonoBehaviour
         _mat.SetFloat("_Death", 1f);
         _mat.SetFloat("_Fade", 1f);
         _mat.SetFloat("_Additive", 0f);
+    }
+
+    /// <summary>抛置：绕卡面内水平轴(局部 X=宽度方向)快速翻转一圈，翻完整卡迅速淡出。</summary>
+    IEnumerator RunDiscard()
+    {
+        _mat.SetFloat("_Additive", 0f);
+        _mat.SetFloat("_Death", 0f); // 波前归零：整卡不透明、无自下而上裁剪
+        _mat.SetFloat("_Fade", 0f);
+        _mat.SetColor("_TintColor", WhiteFade);
+
+        // 阶段①：绕 Y 轴(残影局部竖直轴 transform.up)翻转一圈 360°。
+        // 方向由 discardFlipSign 控制；翻转过程按 sin(π·progress) 弧线略微上抬，避免薄卡边穿模。
+        Vector3 axis = transform.up;
+        float ang = 0f;
+        float dir = discardFlipSign >= 0f ? 1f : -1f;
+        float perSec = discardSpin / Mathf.Max(0.0001f, discardFlip);
+        while (ang < discardSpin - 0.01f)
+        {
+            float step = Mathf.Min(Time.deltaTime * perSec, discardSpin - ang);
+            transform.Rotate(axis, dir * step, Space.World);
+            ang += step;
+
+            float prog = Mathf.Clamp01(ang / discardSpin);
+            float raise = Mathf.Sin(prog * Mathf.PI) * discardHover; // 顶点在转角一半
+            var pos = transform.position;
+            pos.y = _basePos.y + raise;
+            transform.position = pos;
+            yield return null;
+        }
+        var endPos = transform.position;
+        endPos.y = _basePos.y;
+        transform.position = endPos;
+
+        // 阶段②：翻完 → 整卡迅速淡出（_TintColor.alpha 全局淡出）
+        float t = 0f;
+        while (t < discardFade)
+        {
+            t += Time.deltaTime;
+            float a = 1f - Mathf.Clamp01(t / discardFade);
+            _mat.SetColor("_TintColor", new Color(1f, 1f, 1f, a));
+            yield return null;
+        }
+        _mat.SetColor("_TintColor", new Color(1f, 1f, 1f, 0f));
     }
 
     void OnDestroy()

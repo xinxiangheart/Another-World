@@ -140,6 +140,7 @@ public class CardInstance : MonoBehaviour
     public bool handledReturnToHand;
     public bool silencedThisPhase;
     public bool isActiveExit; // 本次退场是否为主动退场
+    [System.NonSerialized] public bool discardPendingExit; // 本次退场为"抛置"（退场残影选抛置动画用，非同步）
     // 护盾
     public bool hasShield;
     public bool shieldIsPermanent;        // 永久持有（不被顶替，不受时间限制）

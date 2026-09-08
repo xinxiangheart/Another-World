@@ -2463,15 +2463,16 @@ public class NetworkPlayer : NetworkBehaviour
     }
 
     /// <summary>Server → clients：让对端也播放该退场残影（仅视觉）。对端按 instanceID 找到自己场上模型克隆。
-    /// active=true 播主动退场金闪动画，false 播普通灰黑动画。找不到(已被同步移除)则跳过——视觉丢失可接受，
+    /// kind: 0=普通灰黑, 1=主动金闪, 2=抛置硬币翻转。找不到(已被同步移除)则跳过——视觉丢失可接受，
     /// 不重复结算死亡。isLocalPlayer 跳过主机（主机已本地播过）。</summary>
     [ClientRpc]
-    public void RpcPlayDeathGhost(string instanceID, bool active)
+    public void RpcPlayDeathGhost(string instanceID, int kind)
     {
         if (isLocalPlayer) return; // 主机/本地已在此前本地播过
         GameObject model = FindDeathModelByInstanceID(instanceID);
         if (model == null) return;
-        if (active) CardDeathGhost.PlayActive(model);
+        if (kind == 1) CardDeathGhost.PlayActive(model);
+        else if (kind == 2) CardDeathGhost.PlayDiscard(model);
         else CardDeathGhost.Play(model);
     }
 
