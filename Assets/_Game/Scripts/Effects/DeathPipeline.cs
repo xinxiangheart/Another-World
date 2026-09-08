@@ -219,16 +219,18 @@ public static class DeathPipeline
             }
         }
 
-        // ── 7.5 普通退场残影（仅 非反击/非主动退场 的普通退场）─────────
-        // 克隆视觉残影播放 自下而上灰→黑 + 淡出重叠 动画；真模型照常销毁/同步。
+        // ── 7.5 退场残影：主动退场走"放大升高+金闪匀速淡出"；普通(非反击/非主动)走"灰黑+淡出"。──
+        // 克隆视觉残影播放动画；真模型照常销毁/同步。
         {
             CardInstance dci = p.c3d?.cardInstance;
-            if (dci != null && !dci.isActiveExit && !dci.HasRevenge)
+            if (dci != null && (dci.isActiveExit || !dci.HasRevenge))
             {
-                CardDeathGhost.Play(p.dyingCard);
+                bool active = dci.isActiveExit;
+                if (active) CardDeathGhost.PlayActive(p.dyingCard);
+                else CardDeathGhost.Play(p.dyingCard);
                 // [联机] 广播让对端也播同一条退场残影（仅视觉；对端按 instanceID 克隆它自己的模型，不重复结算死亡）
                 if (Mirror.NetworkServer.active && !string.IsNullOrEmpty(dci.instanceID) && NetworkPlayer.Local != null)
-                    NetworkPlayer.Local.RpcPlayDeathGhost(dci.instanceID);
+                    NetworkPlayer.Local.RpcPlayDeathGhost(dci.instanceID, active);
             }
         }
 

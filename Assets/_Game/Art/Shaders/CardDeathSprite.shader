@@ -12,10 +12,11 @@ Shader "Custom/CardDeathSprite"
         [PerRendererData] _MainTex ("Sprite Texture", 2D) = "white" {}
         _Death ("压暗波前 0-1", Range(0, 1)) = 0
         _Fade  ("淡出波前 0-1", Range(0, 1)) = 0
-        _TintColor ("压暗目标色(驱动端 灰→黑)", Color) = (0.45, 0.45, 0.45, 1)
+        _TintColor ("压暗目标色(驱动端 灰→黑/金)", Color) = (0.45, 0.45, 0.45, 1)
         _MinY ("整卡底部世界Y", Float) = 0
         _MaxY ("整卡顶部世界Y", Float) = 1
         _Soft ("波前过渡宽度(归一化Y)", Range(0.001, 0.4)) = 0.06
+        _Additive ("金色辉光强度(主动退场,灰黑=0)", Range(0, 2)) = 0
     }
     SubShader
     {
@@ -56,6 +57,7 @@ Shader "Custom/CardDeathSprite"
             float _MinY;
             float _MaxY;
             float _Soft;
+            float _Additive;
 
             v2f vert (appdata_t v)
             {
@@ -82,6 +84,7 @@ Shader "Custom/CardDeathSprite"
                 float darkHigh = _Death + halfSoft;
                 float darkK = 1.0 - smoothstep(darkLow, darkHigh, n);
                 col.rgb = lerp(col.rgb, _TintColor.rgb, saturate(darkK));
+                col.rgb = col.rgb + (_TintColor.rgb * (saturate(darkK) * _Additive)); // 金色辉光(主动退场), 灰黑=0
 
                 // 淡出波：n 低于 _Fade 的底部区域 → 透明度消失（_Fade 落后 _Death → 重叠）
                 float fadeLow = _Fade - halfSoft;
