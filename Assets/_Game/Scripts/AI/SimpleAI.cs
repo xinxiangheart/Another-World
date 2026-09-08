@@ -21,6 +21,34 @@ public class SimpleAI : MonoBehaviour
     /// <summary>是否离线 AI 对局（Remote 是 server-only AI，无客户端连接）。</summary>
     public static bool IsAIMatch => NetworkPlayer.Remote != null && NetworkPlayer.Remote.connectionToClient == null;
 
+    // ── 费用优先选择钩子（AI 视角：AI方=0-5 / 玩家方=6-11）────────────────
+    // 卡牌 handler 在 AI 触发选择前设置 selectCostPref（如 {5,3,1}=先挑5费；非硬门槛），
+    // BoardSlot.AIResolveSelectionCoroutine 消费一次后自动清空。selectExtraFilter 可选额外过滤(如 有主动退场)。
+    public static int[] selectCostPref;
+    public static System.Func<BoardSlot, bool> selectExtraFilter;
+
+    /// <summary>非 AI 回合也强制走 AI 自动选择（owner 属 AI 但 IsAIEvaluating=false 的"被迫主动退场"等选择）。</summary>
+    public static bool forceAutoSelect;
+
+    /// <summary>槽位是否属于 AI 侧（AI 视角：AI方 = 0-5）。</summary>
+    public static bool IsAISide(int slotID) => IsAIMatch && slotID >= 0 && slotID < 6;
+
+    /// <summary>为一次"归属 AI 的选择"设置：费用优先 + 可选过滤 + 强制 AI 自动选。消费后由 AIResolve/ClearAIAutoChoice 清空。</summary>
+    public static void SetAIAutoChoice(int[] costPref, System.Func<BoardSlot, bool> extra = null)
+    {
+        selectCostPref = costPref;
+        selectExtraFilter = extra;
+        forceAutoSelect = true;
+    }
+
+    /// <summary>复位 AI 选择钩子（费用优先 + 过滤 + forceAutoSelect）。</summary>
+    public static void ClearAIAutoChoice()
+    {
+        selectCostPref = null;
+        selectExtraFilter = null;
+        forceAutoSelect = false;
+    }
+
     public enum Difficulty { Easy, Normal, Hard }
     public Difficulty difficulty = Difficulty.Normal;
 

@@ -99,7 +99,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         {
             _onTargetSelected = value;
             Debug.LogWarning($"[AIDebug] onTargetSelected setter: value={value != null}, IsAIEvaluating={SimpleAI.IsAIEvaluating}, currentTargetType={currentTargetType}");
-            if (value != null && SimpleAI.IsAIEvaluating)
+            if (value != null && (SimpleAI.IsAIEvaluating || SimpleAI.forceAutoSelect))
                 AIResolveSelection();
         }
     }
@@ -148,7 +148,11 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     /// </summary>
     public static void AIResolveSelection()
     {
-        if (!SimpleAI.IsAIEvaluating) { Debug.LogWarning("[AIDebug] AIResolveSelection 被调用但 IsAIEvaluating=false，跳过"); return; }
+        if (!SimpleAI.IsAIEvaluating && !SimpleAI.forceAutoSelect)
+        {
+            Debug.LogWarning("[AIDebug] AIResolveSelection 被调用但 IsAIEvaluating=false 且非 forceAutoSelect，跳过");
+            return;
+        }
         Debug.LogWarning("[AIDebug] AIResolveSelection 触发自动选择协程");
         if (SimpleAI.Instance != null)
             SimpleAI.Instance.StartCoroutine(AIResolveSelectionCoroutine());
@@ -156,6 +160,11 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
     static System.Collections.IEnumerator AIResolveSelectionCoroutine()
     {
+        // 顶部快照并复位钩子（forceAutoSelect/费用优先/过滤），避免任何分支结束后泄漏
+        var aiCostPref = SimpleAI.selectCostPref;
+        var aiExtraFilter = SimpleAI.selectExtraFilter;
+        SimpleAI.ClearAIAutoChoice();
+
         yield return null; // 延迟一帧
         yield return new WaitForSeconds(0.5f); // AI 思考间隔：选中目标前停 0.5s，避免瞬间选中（模拟人类思考）
         BoardManager bm = FindObjectOfType<BoardManager>();
@@ -165,6 +174,29 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         // 需镜像 targetType 才能选到 AI 视角的正确半场。
         TargetType aiType = MirrorTargetTypeForAI(currentTargetType);
         Debug.LogWarning($"[AIDebug] AIResolveSelectionCoroutine 执行: currentTargetType={currentTargetType}, aiType={aiType}");
+
+        // 费用优先钩子：handler 在 AI 触发选择前设置 selectCostPref（如 {5,3,1}）。
+        // 在 aiType 对应的合法召唤物里按优先级(数组顺序，未命中放最后)选一个；aiExtraFilter 可再过滤。
+        if (aiCostPref != null)
+        {
+            BoardSlot best = null;
+            int bestRank = int.MaxValue;
+            foreach (var slot in bm.GetAllSlots())
+            {
+                if (slot == null || slot.currentCard3D == null) continue;
+                if (!slot.IsValidTarget(aiType)) continue;
+                if (aiExtraFilter != null && !aiExtraFilter(slot)) continue;
+                var tci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                if (tci == null) continue;
+                int c = tci.currentCost;
+                int rank = System.Array.IndexOf(aiCostPref, c);
+                if (rank < 0) rank = aiCostPref.Length; // 非优先费用放最后（非硬门槛）
+                if (rank < bestRank) { bestRank = rank; best = slot; }
+            }
+            Debug.LogWarning($"[AIDebug] 费用优先选中 slot={(best != null ? best.slotID : -1)}");
+            onTargetSelected?.Invoke(best); // 无合法目标传 null 结束选择
+            yield break;
+        }
 
         // 选 AI 己方召唤物（镜像后 SingleEnemy = AI 己方 0-5）：
         // 仅当目标是「有牌的召唤物」时用退场评分；若是选空槽（放置位置/囚牢），回退选第一个合法。
@@ -3433,6 +3465,14 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             yield break;
         }
 
+        // [AI] 碎片 01110：卡属 AI 侧 → 强制 AI 自动选己方"有主动退场"的 5/3/1 费召唤物牺牲（HasActiveExit 过滤，非硬门槛）
+        if (SimpleAI.IsAIMatch && slotID < 6)
+            SimpleAI.SetAIAutoChoice(new[] { 5, 3, 1 }, s =>
+            {
+                var c110 = s?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                return c110 != null && c110.HasActiveExit;
+            });
+
         BoardSlot selectedTarget = null;
         bool done = false;
         SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (targetSlot) =>
@@ -3442,8 +3482,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             done = true;
         });
 
-        // AI 放碎片 → 自动完成；非 AI 30s 超时
-        if (SimpleAI.IsAIMatch && slotID < 6) done = true;
+        // 修复竞态：不再对 AI 即断 done=true（会抢在 AIResolve 延迟前吞掉选择）。
+        // AI 由 onTargetSelected setter → AIResolve(费用优先) 自动完成；非 AI / 超时走下方兜底。
         float fragDeadline = Time.time + 30f;
         while (!done && Time.time < fragDeadline)
             yield return null;

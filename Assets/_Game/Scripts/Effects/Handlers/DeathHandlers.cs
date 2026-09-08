@@ -674,6 +674,22 @@ public static class DeathHandlers
         }
         if (hasAlly)
         {
+            // [AI] 妖精 01107：退场卡属 AI 侧(0-5)（含"被迫主动退场"、IsAIEvaluating=false 的情况）
+            // → 强制 AI 自动选己方 5/3/1 费召唤物给盾，不弹玩家。
+            bool aiOwner1107 = false;
+            if (SimpleAI.IsAIMatch && ctx.source != null)
+            {
+                BoardManager bmSide = BM();
+                if (bmSide != null)
+                    for (int s1107 = 0; s1107 < 12; s1107++)
+                    {
+                        var go1107 = bmSide.GetSlot(s1107)?.currentCard3D;
+                        if (go1107 != null && go1107.GetComponent<Card3DInstance>()?.cardInstance == ctx.source)
+                        { aiOwner1107 = SimpleAI.IsAISide(s1107); break; }
+                    }
+            }
+            if (aiOwner1107)
+                SimpleAI.SetAIAutoChoice(new[] { 5, 3, 1 });
             SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (target) =>
             {
                 if (target?.currentCard3D != null)
