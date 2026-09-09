@@ -429,16 +429,22 @@ public partial class TurnManager : MonoBehaviour
                 }
             }
         }
-        foreach (GameObject card in NetworkPlayer.Local.handCards)
+        // 01524 画卷之核：每保留阶段召唤费+1 —— 双方手牌都处理（AI 手牌为 server-side，无 UI 刷新）
+        for (int npIdx = 0; npIdx < 2; npIdx++)
         {
-            if (card == null) continue;
-            CardInstance ci = card.GetComponent<CardInstance>();
-            if (ci != null && ci.templateID == "01524")
+            NetworkPlayer np1524 = npIdx == 0 ? NetworkPlayer.Local : NetworkPlayer.Remote;
+            if (np1524?.handCards == null) continue;
+            foreach (GameObject card in np1524.handCards)
             {
-                ci.scrollCorePhaseCount++;
-                if (ci.scrollCorePhaseCount > 5) ci.scrollCorePhaseCount = 5;
-                ci.currentCost = ci.scrollCorePhaseCount;
-                card.GetComponent<CardDisplay2D>()?.Refresh();
+                if (card == null) continue;
+                CardInstance ci = card.GetComponent<CardInstance>();
+                if (ci != null && ci.templateID == "01524")
+                {
+                    ci.scrollCorePhaseCount++;
+                    if (ci.scrollCorePhaseCount > 5) ci.scrollCorePhaseCount = 5;
+                    ci.currentCost = ci.scrollCorePhaseCount;
+                    card.GetComponent<CardDisplay2D>()?.Refresh();
+                }
             }
         }
         CounterManager.Instance?.CheckOnPhaseEnd();
@@ -789,14 +795,20 @@ public partial class TurnManager : MonoBehaviour
             yield return StartNewPhase();
         }
     }
-    void TriggerMyTurnStartEffects()
+    /// <param name="forHostTurn">true=本地玩家(6-11)的回合开始；false=对手/AI(0-5)的回合开始。
+    /// 「回合开始」类特性只对当前回合方的半场生效（AI 半场由 AutoEndEnemyTurn 以 false 调用）。</param>
+    void TriggerMyTurnStartEffects(bool forHostTurn = true)
     {
         BoardSlot[] slots = FindObjectOfType<BoardManager>()?.GetAllSlots();
         if (slots == null) return;
 
-        // 滋养者(01129)自愈 — 双方都要检查
+        // 归属侧门：只有当前回合方的半场卡才触发「回合开始」效果
+        bool OnTurnSide(int slotID) => (slotID >= 6) == forHostTurn;
+
+        // 滋养者(01129)自愈 — 按 owner 侧
         for (int i = 0; i < 12; i++)
         {
+            if (!OnTurnSide(i)) continue;
             BoardSlot slot = slots[i];
             if (slot?.currentCard3D == null) continue;
             CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
@@ -807,9 +819,10 @@ public partial class TurnManager : MonoBehaviour
                 slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
             }
         }
-        // 心灵学者(01511)回合开始退场+2能量 — 扫双方半场（修复 AI(0-5) 01511 此前永不触发）
+        // 心灵学者(01511)回合开始退场+2能量 — 按 owner 侧（AI 回合由 AutoEndEnemyTurn 触发 0-5）
         for (int i = 0; i < 12; i++)
         {
+            if (!OnTurnSide(i)) continue;
             BoardSlot msSlot = slots[i];
             if (msSlot?.currentCard3D == null) continue;
             CardInstance msCI = msSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
@@ -821,9 +834,10 @@ public partial class TurnManager : MonoBehaviour
                 break;
             }
         }
-        // 滋养者(01129)附着宿主回血 — 双方都要检查
+        // 滋养者(01129)附着宿主回血 — 按 owner 侧
         for (int i = 0; i < 12; i++)
         {
+            if (!OnTurnSide(i)) continue;
             BoardSlot slot = slots[i];
             if (slot?.currentCard3D == null) continue;
             CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
@@ -843,6 +857,7 @@ public partial class TurnManager : MonoBehaviour
         {
             for (int i = 0; i < 12; i++)
             {
+                if (!OnTurnSide(i)) continue;
                 BoardSlot slot = bmHeal.GetSlot(i);
                 if (slot?.currentCard3D == null) continue;
                 Card3DInstance c3d = slot.currentCard3D.GetComponent<Card3DInstance>();
@@ -873,21 +888,23 @@ public partial class TurnManager : MonoBehaviour
 
         if (slots != null)
         {
-            for (int i = 6; i <= 11; i++)
+            for (int i = 0; i < 12; i++)
             {
+                if (!OnTurnSide(i)) continue;
                 if (slots[i]?.currentCard3D == null) continue;
                 Card3DInstance c3d = slots[i].currentCard3D.GetComponent<Card3DInstance>();
                 if (c3d?.cardInstance != null && c3d.cardInstance.templateID == "01105")
                 {
                     if (!c3d.cardInstance.CanTriggerTrait("回合开始")) continue;
-                    NetworkPlayer.Local.DrawCard();
+                    // 按 owner 抽牌：AI(0-5, server-only) 走 DrawCard 内部分支，不误抽玩家牌
+                    BoardManager.GetOwnerPlayer(i)?.DrawCard();
                 }
             }
         }
 
         bool hasTeleporter = false;
         BoardSlot teleporterSlot = null;
-        if (slots != null)
+        if (slots != null && forHostTurn)
         {
             for (int i = 6; i <= 11; i++)
             {
@@ -930,16 +947,20 @@ public partial class TurnManager : MonoBehaviour
 
         if (slots != null)
         {
-            for (int i = 6; i <= 11; i++)
+            for (int i = 0; i < 12; i++)
             {
+                if (!OnTurnSide(i)) continue;
                 BoardSlot slot = slots[i];
                 if (slot?.currentCard3D == null) continue;
                 CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
                 if (ci != null && ci.templateID == "01315")
                 {
                     if (!ci.CanTriggerTrait("回合开始")) continue;
-                    NetworkPlayer.Local.AddEnergy(1);
-                    NetworkPlayer.Local.DrawCardWithoutLimit();
+                    // 按 owner 加能量/摸牌：AI(0-5, server-only) 走 server 分支
+                    NetworkPlayer owner1315 = BoardManager.GetOwnerPlayer(i);
+                    if (owner1315 == null) continue;
+                    owner1315.AddEnergy(1);
+                    owner1315.DrawCardWithoutLimit();
                 }
             }
         }
@@ -1187,7 +1208,10 @@ public partial class TurnManager : MonoBehaviour
     /// </summary>
     IEnumerator AutoEndEnemyTurn()
     {
-        // AI 回合开始：先处理 AI 半场的阶段开始触发器（铁匠/执行之剑/忤逆者自动处理）
+        // AI 回合开始：先处理 AI 半场(0-5)的「回合开始」特性（01105/01315/01129/01511/01302 等）
+        TriggerMyTurnStartEffects(false);
+
+        // AI 半场的阶段开始触发器（铁匠/执行之剑/忤逆者自动处理）
         ProcessAIPhaseStartTriggers();
 
         // AI 行动：抽牌 + 出牌（SimpleAI.EvaluateAndPlay 内部会 ServerEndTurn 结束回合）
@@ -1604,7 +1628,8 @@ public partial class TurnManager : MonoBehaviour
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
         if (bm == null) return null;
-        for (int i = 6; i <= 11; i++)
+        // 扫双方半场：AI(0-5) 未附着的滋养者此前搜不到 → 宿主回血失效
+        for (int i = 0; i < 12; i++)
         {
             BoardSlot s = bm.GetSlot(i);
             if (s?.currentCard3D != null)

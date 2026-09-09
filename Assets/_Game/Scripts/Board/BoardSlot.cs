@@ -3321,13 +3321,15 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             BoardSlot slot = FindSlotOf(ci);
             if (slot != null)
             {
+                // 退场前捕获 owner——HandleDeath 后卡已不在槽位，扫描失败会回退到 Local（AI 回收误进玩家手牌）
+                NetworkPlayer cardOwner = BoardManager.GetOwnerPlayer(slot.slotID);
                 slot.HandleDeath(slot.currentCard3D);
-                // HandleDeath 可能已通过退场特性处理回手；若未处理则手动回手
+                // HandleDeath 可能已通过退场特性处理回手；若未处理则手动回手（按 owner 分流）
                 if (!ci.handledReturnToHand)
                 {
                     CardData tt = CardDatabase.Instance?.GetTemplate(ci.templateID);
                     if (tt != null)
-                        NetworkPlayer.Local.AddCardToHandFromInstance(tt, ci);
+                        NetworkPlayer.ReturnCardToOwner(tt, ci, cardOwner);
                 }
                 yield return null;
                 // 防止退场效果残留的选择状态阻塞
@@ -3381,6 +3383,55 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public IEnumerator ScarletSaintEnterEffect(CardInstance giver)
     {
         yield return null;
+
+        // [AI] 01533：AI 侧(0-5)自动加血歌 —— 优先 AI 场上 5/3/1 无血歌召唤物，其次 AI 手牌召唤物；
+        // 不弹玩家选择、不动玩家手牌（此前 AI 分支只置 done 空放，且会短暂隐藏玩家手牌里的法术）
+        if (SimpleAI.IsAIMatch && slotID < 6)
+        {
+            NetworkPlayer aiOwner = BoardManager.GetOwnerPlayer(slotID);
+            BoardManager bmS = FindObjectOfType<BoardManager>();
+            int[] prefS = { 5, 3, 1 };
+            BoardSlot bestSlotS = null;
+            int bestRankS = int.MaxValue;
+            for (int i = 0; i <= 5; i++)
+            {
+                BoardSlot s = bmS?.GetSlot(i);
+                CardInstance ci = s?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                if (ci == null || ci == giver) continue;
+                if (ci.prefixes != null && ci.prefixes.Contains("血歌")) continue;
+                CardData td = CardDatabase.Instance?.GetTemplate(ci.templateID);
+                if (td == null || td.cardType != CardType.Summon) continue;
+                int rank = System.Array.IndexOf(prefS, ci.currentCost);
+                if (rank < 0) rank = prefS.Length;
+                if (rank < bestRankS) { bestRankS = rank; bestSlotS = s; }
+            }
+            if (bestSlotS != null)
+            {
+                Card3DInstance c3dS = bestSlotS.currentCard3D.GetComponent<Card3DInstance>();
+                c3dS.cardInstance.GivePrefix("血歌", "01533");
+                c3dS.UpdateValues();
+                TurnManager.SyncMyBoardToOpponent();
+            }
+            else if (aiOwner?.handCards != null)
+            {
+                CardInstance bestHandS = null;
+                int bestRankHS = int.MaxValue;
+                foreach (GameObject h in aiOwner.handCards)
+                {
+                    CardInstance hc = h?.GetComponent<CardInstance>();
+                    if (hc == null || (hc.prefixes != null && hc.prefixes.Contains("血歌"))) continue;
+                    CardData td = CardDatabase.Instance?.GetTemplate(hc.templateID);
+                    if (td == null || td.cardType != CardType.Summon) continue;
+                    int rank = System.Array.IndexOf(prefS, hc.currentCost);
+                    if (rank < 0) rank = prefS.Length;
+                    if (rank < bestRankHS) { bestRankHS = rank; bestHandS = hc; }
+                }
+                if (bestHandS != null) bestHandS.GivePrefix("血歌", "01533");
+            }
+            CleanupAfterPlacement();
+            yield break;
+        }
+
         NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
 
         SelectionManager.Instance.BeginOpenSelection(TargetType.SingleAlly, null);
@@ -3438,8 +3489,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             done = true;
         };
 
-        // AI 放猩红圣徒 → 自动完成；非 AI 30s 超时
-        if (SimpleAI.IsAIMatch && slotID < 6) done = true;
+        // 非 AI 30s 超时（AI 侧已在函数开头自动加血歌并返回）
         float saintDeadline = Time.time + 30f;
         while (!done && Time.time < saintDeadline)
             yield return null;
@@ -4540,21 +4590,12 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         yield return null;
         yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
 
-                // 清理重定向标记
+        // 连锁轮必须与第一次 AOE 同半场（terrEs..terrEe）——此前硬编码 0..5 当敌方，
+        // AI(0-5) 打出的恐怖分子会把连锁伤害打到自己半场并漏检对方退场
         bool anyDied = false;
-        for (int i = 0; i <= 5; i++)
-        {
-            BoardSlot s = bm?.GetSlot(i);
-            if (s?.currentCard3D == null && beforeEnter.Count > 0)
-            {
-                // 清理重定向标记
-                anyDied = true;
-                break;
-            }
-        }
         // 准备确认并校验当前instanceID
         HashSet<string> afterEnter = new HashSet<string>();
-        for (int i = 0; i <= 5; i++)
+        for (int i = terrEs; i <= terrEe; i++)
         {
             BoardSlot s = bm?.GetSlot(i);
             if (s?.currentCard3D != null)
@@ -4570,7 +4611,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         {
             beforeEnter = new HashSet<string>(afterEnter);
 
-            for (int i = 0; i <= 5; i++)
+            for (int i = terrEs; i <= terrEe; i++)
             {
                 BoardSlot s = bm?.GetSlot(i);
                 if (s?.currentCard3D != null)
@@ -4591,7 +4632,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
 
             afterEnter.Clear();
-            for (int i = 0; i <= 5; i++)
+            for (int i = terrEs; i <= terrEe; i++)
             {
                 BoardSlot s = bm?.GetSlot(i);
                 if (s?.currentCard3D != null)
@@ -5311,7 +5352,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
         else
         {
-            foreach (var card in NetworkPlayer.Local.handCards)
+            // 非联网（离线 AI 对局）：对手手牌取 oppNp 的 server-side 手牌；
+            // 此前写死 Local.handCards，玩家放荣誉侍者时会把自己的手牌当"对手手牌"展示/弃牌
+            NetworkPlayer handSrc = oppNp != null ? oppNp : NetworkPlayer.Local;
+            foreach (var card in handSrc.handCards)
             {
                 if (card == null) continue;
                 var ci = card.GetComponent<CardInstance>();

@@ -328,6 +328,24 @@ public class CounterManager : MonoBehaviour
             counter.remainingDuration--;
             if (counter.remainingDuration <= 0)
             {
+                // 02305/02306 属 Remote/AI 时：受害方（能量判定对象）是 Local，
+                // 与 myCounters 分支的 Remote 判定镜像（此前该分支不判定直接触发=空放）
+                if (counter.template.templateID == "02305")
+                {
+                    if (NetworkPlayer.Local != null && NetworkPlayer.Local.currentEnergy == 0)
+                        TriggerCounterWithCardSelect(counter, i, false);
+                    else
+                        ExpireWithNoEffect(counter, i, false);
+                    continue;
+                }
+                if (counter.template.templateID == "02306")
+                {
+                    if (NetworkPlayer.Local != null && NetworkPlayer.Local.currentEnergy != 0)
+                        TriggerCounterWithCardSelect(counter, i, false);
+                    else
+                        ExpireWithNoEffect(counter, i, false);
+                    continue;
+                }
                 ResolveCounterExpiry(counter, i, false);
             }
         }
@@ -519,10 +537,19 @@ public class CounterManager : MonoBehaviour
             TriggerCounter(counter, i, true);
         }
     }
+    /// <summary>02305/02306：受益方=反制拥有者；受害方=其对手（被挑走一张手牌）。按 isMine 定向。</summary>
     void TriggerCounterWithCardSelect(CounterCard counter, int index, bool isMine)
     {
+        NetworkPlayer beneficiary = CounterOwner(isMine);
+        NetworkPlayer victim = isMine ? NetworkPlayer.Remote : NetworkPlayer.Local;
+        if (beneficiary == null || victim == null || victim.handCards == null)
+        {
+            ExpireWithNoEffect(counter, index, isMine);
+            return;
+        }
+
         List<CardInstance> enemyCards = new List<CardInstance>();
-        foreach (GameObject card in NetworkPlayer.Remote.handCards)
+        foreach (GameObject card in victim.handCards)
         {
             if (card == null) continue;
             CardInstance ci = card.GetComponent<CardInstance>();
@@ -535,51 +562,84 @@ public class CounterManager : MonoBehaviour
             return;
         }
 
+        // [AI] 反制属 AI（AI 挑玩家手牌）或受害方是 AI（无 UI 可弹）→ 自动挑，不弹面板
+        bool aiPicks = SimpleAI.IsAIMatch && (!isMine || victim == NetworkPlayer.Remote);
+        if (aiPicks)
+        {
+            CardInstance pick = SimpleAI.PickBestStealTarget(enemyCards) ?? enemyCards[0];
+            if (pick != null)
+                ResolveCardSteal(counter, index, isMine, victim, beneficiary, pick.instanceID);
+            else
+                ExpireWithNoEffect(counter, index, isMine);
+            return;
+        }
+
         CardDisplayPanel.Instance.multiSelect = false;
         CardDisplayPanel.Instance.ShowWithCallback(enemyCards, ci => true, () =>
         {
             CardInstance selected = CardDisplayPanel.Instance.GetSelectedCard();
-            if (selected != null)
-            {
-                GameObject toRemove = null;
-                foreach (GameObject card in NetworkPlayer.Remote.handCards)
-                {
-                    CardInstance ci = card?.GetComponent<CardInstance>();
-                    if (ci != null && ci.instanceID == selected.instanceID)
-                    {
-                        toRemove = card;
-                        break;
-                    }
-                }
-                if (toRemove != null)
-                {
-                    NetworkPlayer.Remote.handCards.Remove(toRemove);
-                    // 远端同步（02305/02306）：通知 victim(真远端) 本地 UI 删除该手牌并重排；离线 AI 无连接则跳过。
-                    // 与 01316/01347 偷牌同款 RPC：instanceID 与远端本地手牌一致。
-                    if (NetworkPlayer.Remote != null && NetworkPlayer.Remote.connectionToClient != null)
-                        NetworkPlayer.Remote.TargetRemoveHandCard(NetworkPlayer.Remote.connectionToClient, selected.instanceID);
-                    CardData template = CardDatabase.Instance?.GetTemplate(selected.templateID);
-                    if (template != null)
-                        NetworkPlayer.Local.AddCardToHand(template);
-                    Destroy(toRemove);
-                }
-
-                if (counter.template.templateID == "02305")
-                    NetworkPlayer.Local.AddEnergy(2);
-                else if (counter.template.templateID == "02306")
-                {
-                    NetworkPlayer.Local.DrawCardWithoutLimit();
-                    NetworkPlayer.Local.DrawCardWithoutLimit();
-                }
-            }
-
             CardDisplayPanel.Instance.Hide();
-
-            int cost = counter.template.baseCost;
-            NetworkPlayer.Local.currentEnergy -= cost;
-            NetworkPlayer.Local.UpdateUI();
-            RemoveCounter(index, true);
+            if (selected == null)
+            {
+                ExpireWithNoEffect(counter, index, isMine);
+                return;
+            }
+            ResolveCardSteal(counter, index, isMine, victim, beneficiary, selected.instanceID);
         }, "获得");
+    }
+
+    /// <summary>把 victim 手牌中 iid 的牌移给 beneficiary，并结算 02305/02306 效果 + 扣费 + 移除反制。</summary>
+    void ResolveCardSteal(CounterCard counter, int index, bool isMine,
+        NetworkPlayer victim, NetworkPlayer beneficiary, string iid)
+    {
+        CardData template = null;
+        for (int i = victim.handCards.Count - 1; i >= 0; i--)
+        {
+            GameObject card = victim.handCards[i];
+            if (card == null) { victim.handCards.RemoveAt(i); continue; }
+            CardInstance ci = card.GetComponent<CardInstance>();
+            if (ci == null || ci.instanceID != iid) continue;
+            template = CardDatabase.Instance?.GetTemplate(ci.templateID);
+            if (victim == NetworkPlayer.Local)
+            {
+                // 本机手牌：走 UI 安全移除（隐藏/重排）
+                NetworkPlayer.RemoveCardFromLocalHand(iid);
+            }
+            else
+            {
+                victim.handCards.RemoveAt(i);
+                if (victim.connectionToClient != null)
+                    victim.TargetRemoveHandCard(victim.connectionToClient, iid);
+                Destroy(card);
+            }
+            break;
+        }
+        if (template == null)
+        {
+            ExpireWithNoEffect(counter, index, isMine);
+            return;
+        }
+
+        // 归属受益方：Local 走手牌 UI；AI(server-only) 走服务器手牌追踪
+        if (beneficiary == NetworkPlayer.Local) NetworkPlayer.Local.AddCardToHand(template);
+        else beneficiary.AddServerSideCard(template, iid);
+
+        if (counter.template.templateID == "02305")
+            beneficiary.AddEnergy(2);
+        else if (counter.template.templateID == "02306")
+        {
+            beneficiary.DrawCardWithoutLimit();
+            beneficiary.DrawCardWithoutLimit();
+        }
+
+        if (!counter.noCostOnTrigger)
+        {
+            int cost = counter.reducedTriggerCost >= 0 ? counter.reducedTriggerCost : counter.template.baseCost;
+            beneficiary.currentEnergy -= cost;
+            if (beneficiary == NetworkPlayer.Local) beneficiary.UpdateUI();
+        }
+        RemoveCounter(index, isMine);
+        SyncCounterRemoved(counter, isMine);
     }
     public void TriggerEnemyCounterNoEffect(CounterCard counter)
     {

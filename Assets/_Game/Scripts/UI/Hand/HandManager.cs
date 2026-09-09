@@ -2873,8 +2873,8 @@ public class HandManager : MonoBehaviour
             }
             return null;
         }
-        // 兼容旧调用：默认搜 6-11
-        for (int i = 6; i <= 11; i++)
+        // 兼容旧调用：无槽位信息时扫双方半场（AI 0-5 的复生造物此前漏搜）
+        for (int i = 0; i < 12; i++)
         {
             BoardSlot s = bm?.GetSlot(i);
             if (s?.currentCard3D != null)
