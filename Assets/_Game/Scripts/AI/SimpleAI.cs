@@ -128,6 +128,17 @@ public class SimpleAI : MonoBehaviour
         return true;
     }
 
+    /// <summary>"不优先打出"：AI 可打但降优先级（非禁打）。</summary>
+    bool NoPriorityCard(string tid)
+    {
+        switch (tid)
+        {
+            case "02106": case "02111": case "02202": case "02213": case "02307": case "02311":
+                return true;
+            default: return false;
+        }
+    }
+
     /// <summary>该抛置卡此刻是否倾向"主动抛置"（逐张条件；默认 false，后续逐步补）：
     /// - 01135 杂耍大师：AI 不倾向触发抛置（换位互动）。
     /// - 01136 难民：自身生命 ≤ floor(max/2) 时才倾向抛置（打玩家 1 伤，选玩家 5/3/1）。</summary>
@@ -214,6 +225,29 @@ public class SimpleAI : MonoBehaviour
     {
         _playedCard = false;
         if (_ai == null) yield break;
+
+        // [出牌规则] 反制牌最高优先打出（高于其它一切）
+        CardInstance cntCI = null; GameObject cntGO = null;
+        foreach (GameObject h in _ai.handCards)
+        {
+            if (h == null) continue;
+            CardInstance c = h.GetComponent<CardInstance>();
+            if (c == null) continue;
+            CardData td = CardDatabase.Instance?.GetTemplate(c.templateID);
+            if (td == null || td.cardType != CardType.Spell) continue;
+            if ((td.spellType & SpellType.Counter) == 0) continue;
+            if (c.currentCost > _ai.currentEnergy) continue;
+            cntCI = c; cntGO = h; break;
+        }
+        if (cntCI != null && cntGO != null)
+        {
+            // 反制：打出不扣费、触发时才扣费（与人类一致；只有辉煌法师/学徒等明确免费的牌才置 noCostOnTrigger）
+            CounterManager.Instance?.PlayCounter(cntGO, false); // AI 反制 = Host 敌方
+            _ai.handCards.Remove(cntGO);
+            if (cntGO != null) Destroy(cntGO);
+            _playedCard = true;
+            yield break;
+        }
 
         // 0. 附着专用卡：选 AI 侧宿主直接附着（费用优先 5/3/1，不按普通召唤打）
         if (TryFindAttachAndHost(out CardInstance aci, out GameObject ago, out BoardSlot aHost))
@@ -384,7 +418,8 @@ public class SimpleAI : MonoBehaviour
             // TODO(附着宿主AI)：直接选 AI 侧宿主(5/3/1)走附着落地后再放行；当前先跳过防误打。
             if (td.canAttach && td.baseHealth == 0) continue;
             if (c.currentCost > _ai.currentEnergy) continue;
-            candidates.Add((c, card, ScoreCard(c)));
+            float sc425 = ScoreCard(c) - (NoPriorityCard(c.templateID) ? 80f : 0f); // 不优先打出→降级仍可打
+            candidates.Add((c, card, sc425));
         }
         if (candidates.Count == 0) return false;
 
@@ -403,6 +438,8 @@ public class SimpleAI : MonoBehaviour
     {
         ci = null; go = null; target = null;
 
+        // "不优先打出"卡(可打但降级)：优先选普通法术；只剩不优先牌时才选
+        CardInstance bN = null, bNp = null; GameObject gN = null, gNp = null;
         foreach (GameObject card in _ai.handCards)
         {
             if (card == null) continue;
@@ -410,10 +447,16 @@ public class SimpleAI : MonoBehaviour
             if (c == null) continue;
             CardData td = CardDatabase.Instance?.GetTemplate(c.templateID);
             if (td == null || td.cardType != CardType.Spell) continue;
-            if ((td.spellType & SpellType.Counter) != 0) continue; // 反制牌暂不处理
+            if ((td.spellType & SpellType.Counter) != 0) continue; // 反制已在最前优先处理
             if (c.currentCost > _ai.currentEnergy) continue;
-            if (ci == null || c.currentCost > ci.currentCost) { ci = c; go = card; }
+            if (NoPriorityCard(c.templateID))
+            {
+                if (bNp == null || c.currentCost > bNp.currentCost) { bNp = c; gNp = card; }
+            }
+            else if (bN == null || c.currentCost > bN.currentCost) { bN = c; gN = card; }
         }
+        ci = bN != null ? bN : bNp;
+        go = bN != null ? gN : gNp;
         if (ci == null || go == null) return false;
 
         // 目标槽：单目标扫第一个合法；整排/全体/null 交给 handler 内部遍历

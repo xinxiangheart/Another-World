@@ -4880,6 +4880,85 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 mist.IsActive(); // 触发同步
         }
     }
+    /// <summary>[AI] 01521：AI 手牌(Remote) 贪心挑"和≤8尽量满(高费优先)"的法术子集，逐张免费施放/反制。
+    /// 复刻本地辉煌法师的免费结算语义，但手牌/反制/目标都走 AI(server)。</summary>
+    IEnumerator AI_BrilliantCast()
+    {
+        NetworkPlayer ai1521 = NetworkPlayer.Remote;
+        if (ai1521 == null) yield break;
+
+        var spells = new List<CardInstance>();
+        foreach (GameObject h in ai1521.handCards)
+        {
+            if (h == null) continue;
+            CardInstance c = h.GetComponent<CardInstance>();
+            if (c == null) continue;
+            CardData td = CardDatabase.Instance?.GetTemplate(c.templateID);
+            if (td != null && td.cardType == CardType.Spell) spells.Add(c);
+        }
+        if (spells.Count == 0) yield break;
+
+        // 高费优先贪心装 ≤8（尽量凑满 & 尽量高费）
+        var pool = new List<(CardInstance c, CardData td)>();
+        foreach (var c in spells)
+        {
+            var td = CardDatabase.Instance?.GetTemplate(c.templateID);
+            if (td != null) pool.Add((c, td));
+        }
+        pool.Sort((a, b) => b.td.baseCost.CompareTo(a.td.baseCost));
+        var chosen = new List<(CardInstance c, CardData td)>();
+        int sum1521 = 0;
+        foreach (var it in pool)
+        {
+            if (sum1521 + it.td.baseCost <= 8) { sum1521 += it.td.baseCost; chosen.Add(it); }
+        }
+
+        int baseDepth1521 = NestingContext.Snapshot();
+        foreach (var it in chosen)
+        {
+            CardInstance ci1521 = it.c;
+            CardData td1521 = it.td;
+            // 从 AI 手牌移除该张
+            for (int i = ai1521.handCards.Count - 1; i >= 0; i--)
+                if (ai1521.handCards[i] != null && ai1521.handCards[i].GetComponent<CardInstance>() == ci1521)
+                { ai1521.handCards.RemoveAt(i); break; }
+
+            if ((td1521.spellType & SpellType.Counter) != 0)
+            {
+                CounterManager.Instance?.PlayCounter(ci1521.gameObject, false); // AI 反制 = Host 敌方
+                var ec1521 = CounterManager.Instance?.enemyCounters;
+                var ctr1521 = (ec1521 != null && ec1521.Count > 0) ? ec1521[ec1521.Count - 1] : null;
+                if (ctr1521 != null) ctr1521.noCostOnTrigger = true;
+            }
+            else if (td1521.targetType == TargetType.None)
+            {
+                SpellEffectExecutor.Execute(td1521, null);
+            }
+            else
+            {
+                if (!CardDrag.HasValidTargetStatic((TargetType)td1521.targetType)) continue;
+                bool tDone1521 = false;
+                SelectionManager.Instance.BeginSelection((TargetType)td1521.targetType, (slot1521) =>
+                {
+                    SpellEffectExecutor.Execute(td1521, slot1521);
+                    tDone1521 = true;
+                });
+                float tDead1521 = Time.time + 30f;
+                while (!tDone1521 && Time.time < tDead1521) yield return null;
+                if (!tDone1521) SelectionManager.Instance.ForceEndAll();
+            }
+
+            yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
+            yield return new WaitForEndOfFrame();
+            CheckAndHandleDeaths();
+            yield return ActionQueueManager.WaitForDrain();
+            yield return new WaitWhile(() => NestingContext.Depth > baseDepth1521);
+            if (pendingRevenges.Count > 0 && BattleManager.Instance != null)
+                yield return BattleManager.Instance.StartCoroutine(BattleManager.ResolveRevengesFromSnapshot());
+        }
+        TurnManager.SyncMyBoardToOpponent();
+    }
+
     public IEnumerator BrilliantMageEnterEffect(CardInstance giver)
     {
         NestingContext.Enter("Spell_01521");
@@ -4890,6 +4969,14 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         // AI 放辉煌法师（AI 半场 0-5）→ 自动完成选择，避免 WaitUntil 挂起泄漏 NestingContext
         bool isAI = SimpleAI.IsAIMatch && slotID < 6;
+
+        // [AI] 01521：AI 手牌(Remote) 贪心凑"和≤8尽量满"(高费优先)并逐张免费施放；不弹面板/不用 Local 手牌
+        if (isAI)
+        {
+            yield return AI_BrilliantCast();
+            CleanupAfterPlacement();
+            yield break;
+        }
 
         List<CardInstance> spellList = new List<CardInstance>();
         foreach (GameObject card in NetworkPlayer.Local.handCards)
