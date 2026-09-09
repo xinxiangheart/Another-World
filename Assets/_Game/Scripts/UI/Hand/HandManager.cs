@@ -2120,6 +2120,37 @@ public class HandManager : MonoBehaviour
         }
         if (!hasAvailableSlot) { CardDrag.CleanupSpellResources(); yield break; }
 
+        // [AI] 02310：AI 施法 → 直选 AI(0-5) 首个可聚光灯格
+        if (SimpleAI.IsAIEvaluating)
+        {
+            BoardManager bmAI2310 = FindObjectOfType<BoardManager>();
+            BoardSlot pick2310 = null;
+            for (int s = 0; s <= 5; s++)
+            {
+                BoardSlot sl = bmAI2310?.GetSlot(s);
+                if (sl != null && !sl.isBlocked && !sl.hasSpotlight) { pick2310 = sl; break; }
+            }
+            if (pick2310 != null)
+            {
+                pick2310.hasSpotlight = true;
+                pick2310.spotlightTierBoost = 2;
+                pick2310.spotlightSourceTemplateID = "02310";
+                if (pick2310.currentCard3D != null)
+                {
+                    CardInstance ci = pick2310.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                    if (ci != null)
+                    {
+                        ci.currentTier += 2;
+                        ci.AddStatus(false, "阶位+2；每阶段开始恢复2生命值", "02310");
+                        pick2310.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+                    }
+                }
+            }
+            TurnManager.SyncMyBoardToOpponent();
+            CardDrag.CleanupSpellResources();
+            yield break;
+        }
+
         BoardSlot.isStrengtheningSlot = true;
         bool done = false;
         SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (selectedSlot) =>
@@ -2278,6 +2309,50 @@ public class HandManager : MonoBehaviour
     {
         CardData template = CardDatabase.Instance?.GetTemplate("03027");
         if (template?.prefab3D == null) { CardDrag.CleanupSpellResources(); yield break; }
+
+        // [AI] 02212：直放核心(03027)到 AI(0-5) 首个空槽，并给 AI 场/手牌召唤物加"灵能"
+        if (SimpleAI.IsAIEvaluating)
+        {
+            BoardManager bmAI2212 = FindObjectOfType<BoardManager>();
+            if (bmAI2212 != null)
+            {
+                for (int s = 0; s <= 5; s++)
+                {
+                    BoardSlot sl = bmAI2212.GetSlot(s);
+                    if (sl == null || sl.hasCard || sl.isBlocked || sl.prisonBlocked || sl.permaBlocked) continue;
+                    GameObject tempAI = new GameObject("TempCoreAI");
+                    CardInstance tiAI = tempAI.AddComponent<CardInstance>();
+                    tiAI.InitFromTemplate(template, 0);
+                    PlaceCardToSlot(sl, tempAI);
+                    Destroy(tempAI);
+                    if (NetworkClient.isConnected)
+                        NetworkPlayer.Local?.CmdPlayCard("03027", sl.slotID,
+                            tiAI.baseAttack, tiAI.baseHealth, tiAI.baseMaxHealth, tiAI.currentCost,
+                            tiAI.instanceID ?? CardZoneManager.GenerateInstanceID("03027"));
+                    break;
+                }
+                // 灵能：AI 场上(0-5)
+                for (int s2 = 0; s2 <= 5; s2++)
+                {
+                    BoardSlot sl2 = bmAI2212.GetSlot(s2);
+                    CardInstance ci2 = sl2?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                    if (ci2 != null && (ci2.prefixes == null || !ci2.prefixes.Contains("灵能")))
+                    { ci2.GivePrefix("灵能", "03027"); sl2.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues(); }
+                }
+            }
+            // 灵能：AI 手牌
+            NetworkPlayer aiH2212 = NetworkPlayer.Remote;
+            if (aiH2212 != null)
+                foreach (GameObject hc in aiH2212.handCards)
+                {
+                    if (hc == null) continue;
+                    CardInstance hci = hc.GetComponent<CardInstance>();
+                    if (hci != null && (hci.prefixes == null || !hci.prefixes.Contains("灵能")))
+                        hci.GivePrefix("灵能", "03027");
+                }
+            CardDrag.CleanupSpellResources();
+            yield break;
+        }
 
         BoardManager bm = FindObjectOfType<BoardManager>();
         bool hasEmpty = false;
@@ -2926,6 +3001,28 @@ public class HandManager : MonoBehaviour
 
     public IEnumerator PlagueEffect()
     {
+        // [AI] 02408：AI 施法 → 直选 玩家方(6-11) 两个合法空格（排除免疫），不弹玩家
+        if (SimpleAI.IsAIEvaluating)
+        {
+            BoardManager bmAI2408 = FindObjectOfType<BoardManager>();
+            List<BoardSlot> pick2408 = new List<BoardSlot>();
+            for (int s = 6; s <= 11 && pick2408.Count < 2; s++)
+            {
+                BoardSlot sl = bmAI2408?.GetSlot(s);
+                if (sl == null || sl.isBlocked || !PlagueExcludeImmuneFilter(sl)) continue;
+                pick2408.Add(sl);
+            }
+            foreach (BoardSlot p in pick2408)
+            {
+                p.hasPlague = true;
+                p.plagueRoundCount = 1;
+                p.plagueSourceTemplateID = "02408";
+            }
+            TurnManager.SyncMyBoardToOpponent();
+            CardDrag.CleanupSpellResources();
+            yield break;
+        }
+
         // 第一次：隐藏手牌（征服者免疫：瘟疫不可选中敌方免疫卡01508）
         BoardSlot.extraTargetFilter = PlagueExcludeImmuneFilter;
         BoardSlot first = null;
@@ -3017,6 +3114,19 @@ public class HandManager : MonoBehaviour
         if (enemyCounters == null || enemyCounters.Count == 0)
         {
                 Debug.Log("对方场上没有召唤物，阴阳无法打出");
+            CardDrag.CleanupSpellResources();
+            yield break;
+        }
+
+        // [AI] 02302：AI 施法 → 自动选"玩家最后放置"的反制（enemyCounters 末位），不弹玩家点选
+        if (SimpleAI.IsAIEvaluating)
+        {
+            CounterCard aiCK2302 = enemyCounters[enemyCounters.Count - 1];
+            if (aiCK2302 != null)
+            {
+                CounterManager.Instance.TriggerEnemyCounterNoEffect(aiCK2302);
+                CounterManager.Instance.PlayCounterWithReducedCost(aiCK2302.template, 1);
+            }
             CardDrag.CleanupSpellResources();
             yield break;
         }
