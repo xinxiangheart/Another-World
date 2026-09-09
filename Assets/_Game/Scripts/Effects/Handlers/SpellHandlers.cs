@@ -244,7 +244,9 @@ public static class SpellHandlers
         if (bm == null) { Cleanup(); return; }
         int totalRefund = 0;
         var toRemove = new List<BoardSlot>();
-        for (int i = 6; i <= 11; i++)
+        // [AI/侧向] 02202：按施法者己方半场（AI 施放 → 0-5），不再写死 6-11
+        int selfStart2202 = ctx.spellCasterIsHost ? 6 : 0;
+        for (int i = selfStart2202; i <= selfStart2202 + 5; i++)
         {
             var s = bm.GetSlot(i);
             if (s?.currentCard3D != null)
@@ -265,7 +267,9 @@ public static class SpellHandlers
             }
         }
         foreach (var s in toRemove) s.HandleDeath(s.currentCard3D);
-        NetworkPlayer.Local.AddEnergy(totalRefund);
+        // [AI/侧向] 返费给施法者 owner（AI 施放 → Remote）
+        if (ctx.spellCasterIsHost) NetworkPlayer.Local?.AddEnergy(totalRefund);
+        else NetworkPlayer.Remote?.AddEnergy(totalRefund);
         Cleanup();
     }
 
@@ -455,7 +459,9 @@ public static class SpellHandlers
         var bm = BM();
         if (bm != null)
         {
-            for (int i = 0; i <= 5; i++)
+            // [AI/侧向] 02303 箭雨：按施法者算敌方半场（AI 施放 → 6-11），不再写死 0-5
+            int eStart2303 = ctx.spellCasterIsHost ? 0 : 6;
+            for (int i = eStart2303; i <= eStart2303 + 5; i++)
             {
                 var s = bm.GetSlot(i);
                 if (s?.currentCard3D != null)
@@ -517,7 +523,9 @@ public static class SpellHandlers
         var bm = BM();
         if (bm != null)
         {
-            for (int i = 6; i <= 11; i++)
+            // [AI/侧向] 02402：按施法者己方半场（AI 施放 → 0-5），不再写死 6-11
+            int sStart2402 = ctx.spellCasterIsHost ? 6 : 0;
+            for (int i = sStart2402; i <= sStart2402 + 5; i++)
             {
                 var s = bm.GetSlot(i);
                 if (s?.currentCard3D != null)

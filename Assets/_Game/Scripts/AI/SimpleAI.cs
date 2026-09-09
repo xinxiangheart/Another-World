@@ -482,7 +482,7 @@ public class SimpleAI : MonoBehaviour
                     CardInstance ec = es?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
                     if (ec == null) continue;
                     if (target == null) target = es;
-                    if (ci.templateID == "02107")
+                    if (ci.templateID == "02107" || ci.templateID == "02213")
                     {
                         int r2107 = CostRank(ec.currentCost, prefEnemy2107);
                         int rCur = CostRank(target.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance?.currentCost ?? -1, prefEnemy2107);
@@ -548,6 +548,25 @@ public class SimpleAI : MonoBehaviour
                 {
                     // 任意目标：AI 任选一个召唤物（先扫己方 0-5 再敌方 6-11）
                     for (int i = 0; i <= 11; i++)
+                        if (bm.GetSlot(i)?.currentCard3D != null) { target = bm.GetSlot(i); break; }
+                }
+            }
+            else if (td2.targetType == TargetType.EnemyAnyRow)
+            {
+                // 02214：选敌方(AI 视角=玩家 6-11)召唤物最多的一排
+                if (ci.templateID == "02214")
+                {
+                    int countF2214 = 0, countB2214 = 0;
+                    for (int c2 = 6; c2 <= 8; c2++) if (bm.GetSlot(c2)?.currentCard3D != null) countF2214++;
+                    for (int c2 = 9; c2 <= 11; c2++) if (bm.GetSlot(c2)?.currentCard3D != null) countB2214++;
+                    int rowStart2214 = countB2214 > countF2214 ? 9 : 6;
+                    for (int c2 = rowStart2214; c2 < rowStart2214 + 3; c2++)
+                        if (bm.GetSlot(c2)?.currentCard3D != null) { target = bm.GetSlot(c2); break; }
+                    if (target == null) target = bm.GetSlot(rowStart2214);
+                }
+                else
+                {
+                    for (int i = 6; i <= 11; i++)
                         if (bm.GetSlot(i)?.currentCard3D != null) { target = bm.GetSlot(i); break; }
                 }
             }

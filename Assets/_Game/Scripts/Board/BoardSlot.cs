@@ -3934,7 +3934,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             string src38ID = currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance?.instanceID;
             if (pick138 != null) { ApplyDeepSeaDebuffLocal(pick138, src38ID); pick138.deepSeaMarked = true; pick138.SyncVisual(); }
             if (pick238 != null) { ApplyDeepSeaDebuffLocal(pick238, src38ID); pick238.deepSeaMarked = true; pick238.SyncVisual(); }
-            NetworkPlayer.Local.AddEnergy(1);
+            NetworkPlayer.Remote?.AddEnergy(1); // [AI/侧向] AI 01338 主动退场 +1 能量给 AI
             TurnManager.SyncMyBoardToOpponent();
             yield break;
         }

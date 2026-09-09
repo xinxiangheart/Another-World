@@ -1879,6 +1879,14 @@ public class HandManager : MonoBehaviour
     }
     public IEnumerator ReformFormationEffect(CardDrag cardDrag)
     {
+        // [AI] 02106：AI 确认即不变位置（不弹重排面板）
+        if (SimpleAI.IsAIEvaluating)
+        {
+            BoardSlot.isPlacingCard = false;
+            BoardSlot.isStrengtheningSlot = false;
+            CardDrag.CleanupSpellResources();
+            yield break;
+        }
         BoardSlot.isStrengtheningSlot = true;
         var swapTracker = new System.Collections.Generic.List<(int, int)>();
         SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, null);
@@ -2677,7 +2685,12 @@ public class HandManager : MonoBehaviour
 
         CardData returnTemplate = CardDatabase.Instance?.GetTemplate(returnTarget.templateID);
 
-        NetworkPlayer.Local.AddEnergy(refundTarget.currentCost);
+        // [AI/侧向] 返费给该卡 owner（AI 01322 → Remote）
+        NetworkPlayer refundOwner1322 = null;
+        BoardSlot rfSlot1322 = FindSlotOf(refundTarget) ?? FindSlotOf(returnTarget);
+        if (rfSlot1322 != null) refundOwner1322 = BoardManager.GetOwnerPlayer(rfSlot1322.slotID);
+        if (refundOwner1322 != null) refundOwner1322.AddEnergy(refundTarget.currentCost);
+        else NetworkPlayer.Local?.AddEnergy(refundTarget.currentCost);
 
         returnTarget.isActiveExit = true;
         refundTarget.isActiveExit = true;
