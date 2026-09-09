@@ -798,6 +798,10 @@ public class NetworkPlayer : NetworkBehaviour
                         // 非Token卡 → 玩家放置，禁止过期SyncNow覆盖
                         var placedCI = model.GetComponent<Card3DInstance>()?.cardInstance;
                         if (placedCI != null && !placedCI.templateID.StartsWith("03")) placedCI._hadEnterEffect = true;
+                        // 雾隐(01517)：对手(Remote/AI)有活跃雾隐 → 新落地卡先隐藏，再展示（与客户端 TargetSpawnCard3D 同款顺序）
+                        if (GlobalEventManager.Instance != null
+                            && GlobalEventManager.Instance.IsMistHiderActiveOwnedBy(false))
+                            Card3DHover.SetHidden(model, true, false);
                         // [打出展示] Host 视角看到远程/AI 召唤物落地 → 展示（卡背读模型统一隐藏源）
                         PlayRevealManager.Show(template, PlayRevealManager.IsHiddenBack(model));
                     }
@@ -1685,6 +1689,8 @@ public class NetworkPlayer : NetworkBehaviour
 
         // Opponent's counter is hidden — flipped, no text, no hover panel
         Card3DHover.SetHidden(model, true, false);
+        // [打出展示] 客户端看到对手(Host)反制打出 → 展示（先隐藏后读，卡背为终态）
+        PlayRevealManager.Show(template, PlayRevealManager.IsHiddenBack(model));
 
         CounterCard counter = new CounterCard();
         counter.model = model;

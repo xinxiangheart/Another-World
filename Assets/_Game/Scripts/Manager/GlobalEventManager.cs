@@ -68,6 +68,24 @@ public class GlobalEventManager : MonoBehaviour
         return false;
     }
 
+    /// <summary>是否有"归属指定方"的活跃雾隐(01517)。ownerIsHost=true → 本端(6-11)半场拥有；false → 对手(0-5)。
+    /// 雾隐只隐藏"拥有者"的召唤物，故收发两端必须按归属侧判定——旧的 side-agnostic 判定会隐藏错误半场
+    /// （Remote 有雾隐时把 Host 的卡隐藏给客户端看，而 Host 侧自己的 0-5 从不隐藏）。</summary>
+    public bool IsMistHiderActiveOwnedBy(bool ownerIsHost)
+    {
+        var all = GetAllAuras();
+        if (all == null) return false;
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return false;
+        foreach (var a in all)
+        {
+            if (!(a is MistHiderAura) || !a.IsActive() || a.source == null) continue;
+            int slot = GetSlotOf(a.source, bm);
+            if (slot >= 0 && (slot >= 6) == ownerIsHost) return true;
+        }
+        return false;
+    }
+
     /// <summary>兜底：根据棋盘状态判断特性是否被狂热萨满(01515)/法官(01323)压制</summary>
     bool IsTraitBlockedByBoardState(CardInstance ci, string trait)
     {

@@ -1150,6 +1150,14 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             CleanupAfterPlacement();
             yield break;
         }
+        // 能量骇客(01335)：对位槽有活跃骇客 → 进场效果不触发（落板/召唤动作本身不受影响，与 B1 附着门同款几何判定）。
+        // IsTraitBlocked 不覆盖骇客（其只走 IsFullySilenced/CanTriggerTrait），故此处显式补。
+        if (GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsSlotHackedByEnergyHacker(slotID))
+        {
+            Debug.Log($"[01335] 对位能量骇客压制进场效果：slot={slotID} tid={template.templateID}");
+            CleanupAfterPlacement();
+            yield break;
+        }
                 // 清理重定向标记
         if (GlobalEventManager.Instance?.PendingEnterRedirectInstance == inst)
         {
@@ -4849,7 +4857,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         CardInstance newHostCI = newHost.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
         if (newHostCI != null)
         {
-            if (!newHostCI.cannotHealOrGainMaxHP)
+            // 能量骇客(01335)：新宿主对位有活跃骇客 → 附着效果(+5)不触发，重附着动作(上方 hostSlotID/挂载)照常
+            bool reattachSilenced = GlobalEventManager.Instance != null
+                && GlobalEventManager.Instance.IsSlotHackedByEnergyHacker(hostSlotID);
+            if (!reattachSilenced && !newHostCI.cannotHealOrGainMaxHP)
             {
                 newHostCI.currentHealth += 5;
                 newHostCI.currentMaxHealth += 5;

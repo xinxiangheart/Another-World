@@ -112,24 +112,28 @@ public class BoardSyncManager : MonoBehaviour
             }
         }
 
-        // Signal whether the server-side has an active MistHider so the client hides the correct side
+        // Signal whether the HOST owns an active MistHider(01517) so the client hides the correct side.
+        // 雾隐只隐藏"拥有者"的召唤物：客户端只该隐藏 Host(6-11) 的卡；Remote 有雾隐时改由 Host 本地隐藏 0-5（下方）。
         // Also sync global shadow state (01502) for remote clients
-        bool mistHiderActive = IsMistHiderActive();
+        bool hostMistHider = GlobalEventManager.Instance != null
+            && GlobalEventManager.Instance.IsMistHiderActiveOwnedBy(true);
+        bool remoteMistHider = GlobalEventManager.Instance != null
+            && GlobalEventManager.Instance.IsMistHiderActiveOwnedBy(false);
         BoardManager.attachGen++;
-        string header = $"{(mistHiderActive ? "1" : "0")}|{CardInstance.shadowLimit}|{CardInstance.shadowAtkBonus}|{CardInstance.shadowTierBonus}|{BoardManager.attachGen}|";
+        string header = $"{(hostMistHider ? "1" : "0")}|{CardInstance.shadowLimit}|{CardInstance.shadowAtkBonus}|{CardInstance.shadowTierBonus}|{BoardManager.attachGen}|";
+
+        // Host 本地：对手(Remote/AI, 0-5)有活跃雾隐 → 隐藏其卡（与客户端 ApplySync 隐藏 0-5 对称）。
+        // 同步写 EnemyCardsAreHidden，供 ServerPlayCard 新落地卡在展示前判终态。
+        Card3DHover.EnemyCardsAreHidden = remoteMistHider;
+        for (int i = 0; i <= 5; i++)
+        {
+            GameObject card = bm.GetSlot(i)?.currentCard3D;
+            if (card != null) Card3DHover.SetHidden(card, remoteMistHider, false);
+        }
 
         foreach (var kv in NetworkServer.connections)
             if (kv.Value != NetworkPlayer.Local?.connectionToClient)
             { NetworkPlayer.Local?.RpcSyncBoard(kv.Value, s, header + ab); return; }
-    }
-
-    static bool IsMistHiderActive()
-    {
-        var all = GlobalEventManager.Instance?.GetAllAuras();
-        if (all == null) return false;
-        foreach (var a in all)
-            if (a is MistHiderAura && a.IsActive()) return true;
-        return false;
     }
 
     static string Tid(GameObject o)

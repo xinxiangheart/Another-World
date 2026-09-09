@@ -103,6 +103,14 @@ public class PlayRevealManager : MonoBehaviour
         cg.alpha = 0f;
         Vector3 baseScale = go.transform.localScale;
 
+        // ── 卡面终态门 ──────────────────────────────────────────────────
+        // 展示卡 Instantiate 后 BuildCard 立刻切面，但 CardDisplay2DSpell.Start() 在本帧稍后
+        // 无条件 ShowFront()（CardDisplay2DNew.Start() 则 Refresh()），会覆盖刚设的卡背 →
+        // 法术类（反制牌）展示恒显示正面。等本帧所有 Start() 跑完再重设终态；此刻 alpha=0
+        // 不可见，不会闪正面。原则：展示动画的卡背必须在"对展示玩家隐藏"的最终态确定之后读。
+        yield return null;
+        if (back && go != null) ApplyBackFace(go, td);
+
         // ① 闪烁进：亮起 + 轻微过冲缩放
         float t = 0f;
         while (t < growIn)
@@ -172,19 +180,24 @@ public class PlayRevealManager : MonoBehaviour
         var base2d = go.GetComponent<CardDisplay2D>(); // 召唤=Compat(转发New)；法术=CardDisplay2DSpell
         if (back)
         {
-            var dNew = go.GetComponent<CardDisplay2DNew>(); // 召唤物必须走 New.ShowBack 才真正翻背
-            if (dNew != null) dNew.ShowBack();
-            else
-            {
-                var dSpell = go.GetComponent<CardDisplay2DSpell>();
-                if (dSpell != null) dSpell.ShowBack(td, "反制牌");
-                else base2d?.ShowBack(td, "反制牌"); // 基类兜底（不切正反面，视觉有限）
-            }
+            ApplyBackFace(go, td); // 立即切背（防 prefab 默认正面闪一帧）；Start() 后再补一次见 PlayOne
         }
         else
         {
             base2d?.RefreshWithInstance(di); // 新实例默认正面
         }
         return go;
+    }
+
+    /// <summary>把展示卡切到卡背（按预制体实际挂的显示组件分流）。
+    /// 幂等：BuildCard 立即调一次防闪，PlayOne 在 Start() 之后再调一次定终态。</summary>
+    static void ApplyBackFace(GameObject go, CardData td)
+    {
+        if (go == null) return;
+        var dNew = go.GetComponent<CardDisplay2DNew>(); // 召唤物必须走 New.ShowBack 才真正翻背
+        if (dNew != null) { dNew.ShowBack(); return; }
+        var dSpell = go.GetComponent<CardDisplay2DSpell>();
+        if (dSpell != null) { dSpell.ShowBack(td, "反制牌"); return; }
+        go.GetComponent<CardDisplay2D>()?.ShowBack(td, "反制牌"); // 基类兜底（不切正反面，视觉有限）
     }
 }
