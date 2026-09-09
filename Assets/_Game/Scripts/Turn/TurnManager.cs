@@ -804,8 +804,8 @@ public partial class TurnManager : MonoBehaviour
                 slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
             }
         }
-        // 心灵学者(01511)回合开始退场+2能量 — 双方各自检查自己半场
-        for (int i = 6; i <= 11; i++)
+        // 心灵学者(01511)回合开始退场+2能量 — 扫双方半场（修复 AI(0-5) 01511 此前永不触发）
+        for (int i = 0; i < 12; i++)
         {
             BoardSlot msSlot = slots[i];
             if (msSlot?.currentCard3D == null) continue;

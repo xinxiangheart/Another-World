@@ -382,6 +382,9 @@ public static class EnterHandlers
     {
         var slot = ctx.sourceSlot;
         if (!slot.HasAllyTargetExceptSelf()) { slot.CleanupAfterPlacement(); return; }
+        // [AI] 01507 生命祭司：己方 5/3/1 优先、排除自身（不再走"牺牲评分"语义错位）
+        if (SimpleAI.IsAIEvaluating)
+            SimpleAI.SetAIAutoChoice(new[] { 5, 3, 1 }, s => s != null && s.currentCard3D != null && s != slot);
         SM().BeginSelection(TargetType.SingleAlly, (targetSlot) =>
         {
             if (targetSlot?.currentCard3D != null && targetSlot != slot)

@@ -408,6 +408,10 @@ public class HandManager : MonoBehaviour
                     CardView cvAttach2 = cardObj.GetComponent<CardView>();
                     if (cvAttach2 != null) RemoveCard(cvAttach2);
                     else { handCards.RemoveAll(c => c == null); RefreshLayout(true); }
+                    // 修复：附着类无进场效果时也恢复手牌射线/按钮（否则抽牌/结束按钮被永久隐藏禁用）
+                    ShowAllCards();
+                    SetHandAreaRaycast(true);
+                    FindObjectOfType<CardDrag>()?.SetButtonsInteractable(true);
                 }
                 else
                 {
@@ -421,6 +425,11 @@ public class HandManager : MonoBehaviour
                     CardView cvInd = cardObj.GetComponent<CardView>();
                     if (cvInd != null) RemoveCard(cvInd);
                     else { handCards.RemoveAll(c => c == null); RefreshLayout(true); }
+                    // 修复：hasOnEnter==0 的 canAttach 卡独立落位不会触发进场 → 无 CleanupAfterPlacement，
+                    // 这里主动恢复手牌射线/抽牌/结束按钮，防被永久隐藏禁用
+                    ShowAllCards();
+                    SetHandAreaRaycast(true);
+                    FindObjectOfType<CardDrag>()?.SetButtonsInteractable(true);
                 }
             });
             return;

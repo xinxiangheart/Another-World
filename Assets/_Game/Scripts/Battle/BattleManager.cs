@@ -2014,6 +2014,14 @@ public class BattleManager : MonoBehaviour
     }
     IEnumerator QuickShadowRearrangeEffect(CardInstance ci)
     {
+        // [AI] 01516：先手直接确认"不调整"（不动位置）
+        if (SimpleAI.IsAIEvaluating)
+        {
+            BoardSlot.isStrengtheningSlot = false;
+            BoardSyncManager.MarkDirty();
+            yield break;
+        }
+
         BoardSlot.isStrengtheningSlot = true;
         SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, null);
 
@@ -2186,6 +2194,15 @@ public class BattleManager : MonoBehaviour
     }
     IEnumerator MechRearrangementEffect()
     {
+        // [AI] 01513：先手直接确认"不调整"（不动位置）
+        if (SimpleAI.IsAIEvaluating)
+        {
+            BoardSlot.isStrengtheningSlot = false;
+            BoardSlot.extraTargetFilter = null;
+            BoardSyncManager.MarkDirty();
+            yield break;
+        }
+
         var selMgr = SelectionManager.Instance;
         var confirmBtn = ConfirmSelectionButton.Instance;
         if (selMgr == null || confirmBtn == null)

@@ -3046,19 +3046,56 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             }
             else
             {
-                // AI（无连接）：自动给 0-5 半场第一个未带渊召唤物
+                // [AI] 01501：先 AI 场上(0-5) 5/3/1 召唤物；无则 AI 手牌(Remote) 5/3/1 召唤物，加渊前缀
+                int[] pref1501 = { 5, 3, 1 };
+                BoardSlot bestField1501 = null;
+                int bestRank1501 = int.MaxValue;
                 if (bm0 != null)
                     for (int i = 0; i <= 5; i++)
                     {
                         BoardSlot s = bm0.GetSlot(i);
                         CardInstance ci = s?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
-                        if (ci != null && !ci.prefixes.Contains("渊"))
+                        if (ci == null || (ci.prefixes != null && ci.prefixes.Contains("渊"))) continue;
+                        int rank = System.Array.IndexOf(pref1501, ci.currentCost);
+                        if (rank < 0) rank = pref1501.Length;
+                        if (rank < bestRank1501) { bestRank1501 = rank; bestField1501 = s; }
+                    }
+                if (bestField1501?.currentCard3D != null)
+                {
+                    var fci1501 = bestField1501.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                    if (fci1501 != null)
+                    {
+                        fci1501.GivePrefix("渊", "01501");
+                        bestField1501.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+                    }
+                }
+                else
+                {
+                    NetworkPlayer ai1501 = giverSlot >= 0 ? BoardManager.GetOwnerPlayer(giverSlot) : NetworkPlayer.Remote;
+                    if (ai1501 == null) ai1501 = NetworkPlayer.Remote;
+                    if (ai1501 != null)
+                    {
+                        CardInstance bestHand1501 = null;
+                        int bestRankH1501 = int.MaxValue;
+                        foreach (GameObject h in ai1501.handCards)
                         {
-                            ci.GivePrefix("渊", "01501");
-                            s.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
-                            break;
+                            if (h == null) continue;
+                            CardInstance hc = h.GetComponent<CardInstance>();
+                            if (hc == null) continue;
+                            CardData htd = CardDatabase.Instance?.GetTemplate(hc.templateID);
+                            if (htd == null || htd.cardType != CardType.Summon) continue;
+                            if (hc.prefixes != null && hc.prefixes.Contains("渊")) continue;
+                            int rank = System.Array.IndexOf(pref1501, hc.currentCost);
+                            if (rank < 0) rank = pref1501.Length;
+                            if (rank < bestRankH1501) { bestRankH1501 = rank; bestHand1501 = hc; }
+                        }
+                        if (bestHand1501 != null)
+                        {
+                            bestHand1501.GivePrefix("渊", "01501");
+                            TurnManager.SyncMyBoardToOpponent();
                         }
                     }
+                }
             }
         }
         CleanupAfterPlacement();
@@ -3185,8 +3222,12 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
 
+        // 敌方半场 = 封锁者自身对侧（AI 0-5 → 玩家 6-11；此前硬编码 0-5 会锁错/自锁）
+        int bEnemyStart1505 = slotID < 6 ? 6 : 0;
+        int bEnemyEnd1505 = bEnemyStart1505 + 5;
+
         bool hasEnemyEmpty = false;
-        for (int i = 0; i <= 5; i++)
+        for (int i = bEnemyStart1505; i <= bEnemyEnd1505; i++)
         {
             BoardSlot s = bm.GetSlot(i);
             if (s != null && !s.hasCard && !s.isBlocked && !s.prisonBlocked) { hasEnemyEmpty = true; break; }
@@ -3197,15 +3238,24 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         bool done = false;
         SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (s) =>
         {
-            if (s != null && !s.hasCard && !s.isBlocked && !s.prisonBlocked && s.slotID <= 5)
+            if (s != null && !s.hasCard && !s.isBlocked && !s.prisonBlocked
+                && s.slotID >= bEnemyStart1505 && s.slotID <= bEnemyEnd1505)
             {
                 target = s;
                 done = true;
             }
         });
         BoardSlot.isStrengtheningSlot = true;
-        // AI 放封锁者 → 自动完成选择；非 AI 30s 超时
-        if (SimpleAI.IsAIMatch && slotID < 6) done = true;
+        // [AI] 01505：显式选敌方(玩家 6-11)第一个空槽封锁（不再 done=true 空转）
+        if (SimpleAI.IsAIMatch && slotID < 6)
+        {
+            for (int i1505 = bEnemyStart1505; i1505 <= bEnemyEnd1505; i1505++)
+            {
+                BoardSlot s1505 = bm.GetSlot(i1505);
+                if (s1505 != null && !s1505.hasCard && !s1505.isBlocked && !s1505.prisonBlocked) { target = s1505; break; }
+            }
+            done = true;
+        }
         float blockerDeadline = Time.time + 30f;
         while (!done && Time.time < blockerDeadline)
             yield return null;
@@ -3969,8 +4019,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         if (shadowTemplate?.prefab3D == null) yield break;
 
         BoardManager bm = FindObjectOfType<BoardManager>();
+        bool aiSide1502 = SimpleAI.IsAIMatch && slotID < 6; // 本实例=AI 侧(0-5)
+        int shStart1502 = aiSide1502 ? 0 : 6;               // Host/人类=6-11
         int currentShadows = 0;
-        for (int i = 6; i <= 11; i++)
+        for (int i = shStart1502; i <= shStart1502 + 5; i++)
         {
             BoardSlot s = bm?.GetSlot(i);
             if (s?.currentCard3D != null)
@@ -3982,6 +4034,38 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         int toSummon = CardInstance.shadowLimit - currentShadows;
         Debug.Log($"SummonAllShadows: limit={CardInstance.shadowLimit}, current={currentShadows}, toSummon={toSummon}");
+
+        // [AI] 01502：AI 侧直接依次放影子到 AI 空槽（避免选择挂起/错放玩家半场）
+        if (aiSide1502)
+        {
+            for (int k = 0; k < toSummon; k++)
+            {
+                BoardSlot emp1502 = null;
+                for (int i = 0; i <= 5; i++)
+                {
+                    BoardSlot s1502 = bm?.GetSlot(i);
+                    if (s1502 != null && !s1502.isBlocked && !s1502.hasCard) { emp1502 = s1502; break; }
+                }
+                if (emp1502 == null) break;
+                string shid1502 = CardZoneManager.GenerateInstanceID(shadowTemplate.templateID);
+                GameObject t1502 = new GameObject("TempShadowAI");
+                CardInstance ti1502 = t1502.AddComponent<CardInstance>();
+                ti1502.InitFromTemplate(shadowTemplate, 0, shid1502);
+                ti1502.isShadow = true;
+                ti1502.currentAttack += CardInstance.shadowAtkBonus;
+                ti1502.baseAttack += CardInstance.shadowAtkBonus;
+                ti1502.currentTier += CardInstance.shadowTierBonus;
+                ti1502.baseTier += CardInstance.shadowTierBonus;
+                HandManager hm1502 = FindObjectOfType<HandManager>();
+                hm1502.PlaceCardToSlot(emp1502, t1502);
+                Destroy(t1502);
+                if (NetworkClient.isConnected)
+                    NetworkPlayer.Local?.CmdPlayCard(shadowTemplate.templateID, emp1502.slotID,
+                        ti1502.currentAttack, ti1502.currentHealth, ti1502.currentMaxHealth, ti1502.currentCost, shid1502);
+                yield return null;
+            }
+            yield break;
+        }
 
         for (int k = 0; k < toSummon; k++)
         {
@@ -4045,7 +4129,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             bool placed = false;
             BoardSlot.onTargetSelected = (selectedSlot) =>
             {
-                if (selectedSlot == null || selectedSlot.isBlocked || selectedSlot.slotID < 6) return;
+                if (selectedSlot == null || selectedSlot.isBlocked || selectedSlot.hasCard) return;
+                if ((selectedSlot.slotID >= 6) != (slotID >= 6)) return; // 只放己方半场（修复：AI 领主 0-5 被 6-11 硬编码拒）
                 GameObject temp = new GameObject("TempGhost");
                 CardInstance ti = temp.AddComponent<CardInstance>();
                 string giid = CardZoneManager.GenerateInstanceID(ghostTemplate.templateID);
@@ -4063,12 +4148,13 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 BoardSlot.isPlacingCard = false;
                 BoardSlot.isStrengtheningSlot = false;
             };
-            // AI 放领主（AI 半场 0-5）→ 自动选第一个合法空槽，避免 WaitUntil 挂起泄漏 NestingContext
+            // AI 放领主 → 自动选第一个己方空槽（AI 半场 0-5），避免 WaitUntil 挂起
             if (SimpleAI.IsAIMatch && slotID < 6)
             {
                 BoardManager lordBm = FindObjectOfType<BoardManager>();
                 BoardSlot autoSlot = null;
-                for (int si = 6; si <= 11; si++)
+                int lSideStart1503 = slotID < 6 ? 0 : 6;
+                for (int si = lSideStart1503; si <= lSideStart1503 + 5; si++)
                 {
                     BoardSlot s = lordBm?.GetSlot(si);
                     if (s != null && !s.isBlocked && !s.hasCard) { autoSlot = s; break; }
@@ -4113,7 +4199,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 bool placed = false;
                 BoardSlot.onTargetSelected = (selectedSlot) =>
                 {
-                    if (selectedSlot == null || selectedSlot.isBlocked || selectedSlot.slotID < 6) return;
+                    if (selectedSlot == null || selectedSlot.isBlocked || selectedSlot.hasCard) return;
+                    if ((selectedSlot.slotID >= 6) != (slotID >= 6)) return; // 只放己方半场（AI 0-5 不被 6-11 硬编码拒）
                     string siid = CardZoneManager.GenerateInstanceID(soldierTemplate.templateID);
                     GameObject temp = new GameObject("TempSoldier");
                     CardInstance ti = temp.AddComponent<CardInstance>();
@@ -4131,12 +4218,13 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     BoardSlot.isPlacingCard = false;
                     BoardSlot.isStrengtheningSlot = false;
                 };
-                // AI 放增幅结构 → 自动选第一个合法空槽；非 AI 30s 超时
+                // AI 放增幅结构 → 自动选第一个己方空槽（AI 半场 0-5）
                 if (SimpleAI.IsAIMatch && slotID < 6)
                 {
                     BoardManager ampBm = FindObjectOfType<BoardManager>();
                     BoardSlot autoSlot = null;
-                    for (int si = 6; si <= 11; si++)
+                    int ampSideStart1506 = slotID < 6 ? 0 : 6;
+                    for (int si = ampSideStart1506; si <= ampSideStart1506 + 5; si++)
                     {
                         BoardSlot s = ampBm?.GetSlot(si);
                         if (s != null && !s.isBlocked && !s.hasCard) { autoSlot = s; break; }
@@ -4174,14 +4262,52 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     IEnumerator AmplifierAddMechPrefix(CardInstance giver)
     {
         yield return null;
-        // AI 半场(0-5)：无 UI 自动给第一个己方召唤物（沿用原无 UI 语义，用 6-11 兜底选首个当前槽）
+        // [AI] 01506 机械前缀：AI 场上(0-5) 5/3/1 优先；无则 AI 手牌(Remote.handCards) 5/3/1 召唤物
         if (SimpleAI.IsAIMatch && slotID < 6)
         {
-            BoardManager abm = FindObjectOfType<BoardManager>();
-            BoardSlot auto = null;
-            for (int ri = 6; ri <= 11; ri++)
-                if (abm?.GetSlot(ri)?.currentCard3D != null) { auto = abm.GetSlot(ri); break; }
-            if (auto?.currentCard3D != null) ApplyMechPrefix(auto.currentCard3D);
+            int[] pref1506 = { 5, 3, 1 };
+            BoardSlot bestField1506 = null;
+            int bestRank1506 = int.MaxValue;
+            BoardManager abm1506 = FindObjectOfType<BoardManager>();
+            for (int rs = 0; rs <= 5; rs++)
+            {
+                BoardSlot sl = abm1506?.GetSlot(rs);
+                if (sl?.currentCard3D == null) continue;
+                CardInstance fc = sl.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                if (fc == null) continue;
+                CardData ftd = CardDatabase.Instance?.GetTemplate(fc.templateID);
+                if (ftd == null || ftd.cardType != CardType.Summon) continue;
+                if (fc.prefixes != null && fc.prefixes.Contains("机械")) continue;
+                int rank = System.Array.IndexOf(pref1506, fc.currentCost);
+                if (rank < 0) rank = pref1506.Length;
+                if (rank < bestRank1506) { bestRank1506 = rank; bestField1506 = sl; }
+            }
+            if (bestField1506?.currentCard3D != null)
+            {
+                ApplyMechPrefix(bestField1506.currentCard3D);
+            }
+            else
+            {
+                NetworkPlayer ai1506 = NetworkPlayer.Remote;
+                if (ai1506 != null)
+                {
+                    CardInstance bestHand1506 = null;
+                    int bestRankH1506 = int.MaxValue;
+                    foreach (GameObject h in ai1506.handCards)
+                    {
+                        if (h == null) continue;
+                        CardInstance hc = h.GetComponent<CardInstance>();
+                        if (hc == null) continue;
+                        CardData htd = CardDatabase.Instance?.GetTemplate(hc.templateID);
+                        if (htd == null || htd.cardType != CardType.Summon) continue;
+                        if (hc.prefixes != null && hc.prefixes.Contains("机械")) continue;
+                        int rank = System.Array.IndexOf(pref1506, hc.currentCost);
+                        if (rank < 0) rank = pref1506.Length;
+                        if (rank < bestRankH1506) { bestRankH1506 = rank; bestHand1506 = hc; }
+                    }
+                    if (bestHand1506 != null) { bestHand1506.GivePrefix("机械", "01506"); TurnManager.SyncMyBoardToOpponent(); }
+                }
+            }
             CleanupAfterPlacement();
             yield break;
         }
@@ -4493,6 +4619,31 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             yield return new WaitUntil(() => _fairyReattachDone || Time.time > deadline);
             if (_fairyReattachNewHost >= 0)
                 ApplyFairyReattachToSlot(fairy, fairyCI, _fairyReattachNewHost);
+            else
+                Destroy(fairy);
+            BoardSlot.isPlacingCard = false;
+            yield break;
+        }
+
+        // [AI] 01510 古老精灵重附着：AI 侧(0-5)选 有卡且≠旧宿主 的新宿主，5/3/1 优先（不再超时销毁/错放玩家半场）
+        if (SimpleAI.IsAIMatch && oldHostSlotID <= 5)
+        {
+            BoardManager bmF1510 = FindObjectOfType<BoardManager>();
+            BoardSlot pickF1510 = null;
+            int brF1510 = int.MaxValue;
+            int[] prefF1510 = { 5, 3, 1 };
+            for (int i = 0; i <= 5; i++)
+            {
+                BoardSlot s1510 = bmF1510?.GetSlot(i);
+                if (s1510?.currentCard3D == null || s1510.slotID == oldHostSlotID) continue;
+                CardInstance ciF1510 = s1510.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                if (ciF1510 == null) continue;
+                int rF1510 = System.Array.IndexOf(prefF1510, ciF1510.currentCost);
+                if (rF1510 < 0) rF1510 = prefF1510.Length;
+                if (rF1510 < brF1510) { brF1510 = rF1510; pickF1510 = s1510; }
+            }
+            if (pickF1510 != null)
+                ApplyFairyReattachToSlot(fairy, fairyCI, pickF1510.slotID);
             else
                 Destroy(fairy);
             BoardSlot.isPlacingCard = false;
@@ -5275,6 +5426,48 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         // AI 放心灵学者（AI 半场）→ 跳过复制确认弹窗，避免 WaitUntil 挂起泄漏 NestingContext
         bool isAIOwner = SimpleAI.IsAIMatch && BoardManager.GetOwnerPlayer(slotID) == NetworkPlayer.Remote;
+        // [AI] 01511：直接复制 玩家(6-11) 3/1 费 进场/抛置（进场优先；不弹确认/选择面板），复用下方既有触发逻辑
+        if (isAIOwner && giver.mindScholarCopyCount < 4 && !giver._mindScholarCopyPrompted)
+        {
+            giver._mindScholarCopyPrompted = true;
+            CardInstance aiSel1511 = null;
+            int br1511 = int.MaxValue;
+            int[] pref1511 = { 3, 1 };
+            BoardManager.GetEnemySideRange(slotID, out int eS1511, out int eE1511);
+            for (int i1511 = eS1511; i1511 <= eE1511; i1511++)
+            {
+                BoardSlot s1511 = bm?.GetSlot(i1511);
+                if (s1511?.currentCard3D == null) continue;
+                CardInstance c1511 = s1511.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                CardData d1511 = CardDatabase.Instance?.GetTemplate(c1511?.templateID);
+                if (d1511 == null || !(d1511.baseCost == 1 || d1511.baseCost == 3)) continue;
+                if (!(d1511.hasOnEnter || (c1511 != null && c1511.HasDiscard))) continue;
+                int r1511 = System.Array.IndexOf(pref1511, d1511.baseCost);
+                if (r1511 < 0) r1511 = pref1511.Length;
+                if (r1511 < br1511) { br1511 = r1511; aiSel1511 = c1511; }
+            }
+            if (aiSel1511 != null)
+            {
+                List<string> copyable1511 = new List<string>();
+                CardData selTD1511 = CardDatabase.Instance?.GetTemplate(aiSel1511.templateID);
+                if (selTD1511 != null && selTD1511.hasOnEnter) copyable1511.Add("进场");
+                if (aiSel1511.HasDiscard) copyable1511.Add("抛置");
+                string chosen1511 = copyable1511.Count > 0 ? copyable1511[0] : null; // 进场优先
+                if (chosen1511 != null)
+                {
+                    CardData.TraitEntry src1511 = ResolveSourceTrait(aiSel1511, chosen1511);
+                    if (src1511 != null)
+                    {
+                        giver.mindScholarCopyCount++;
+                        giver.GrantTrait(src1511.text, new List<string>(src1511.GetAttributes()), aiSel1511.templateID);
+                        newCopyRecord = $"{aiSel1511.templateID}:{chosen1511}:{src1511.text}";
+                        newCopyType = chosen1511;
+                        giver.mindScholarCopiedTraits.Add(newCopyRecord);
+                    }
+                }
+            }
+        }
+
         if (giver.mindScholarCopyCount < 4 && !giver._mindScholarCopyPrompted && !isAIOwner)
         {
             giver._mindScholarCopyPrompted = true;
