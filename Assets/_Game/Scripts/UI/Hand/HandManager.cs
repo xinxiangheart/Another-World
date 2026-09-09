@@ -2893,6 +2893,56 @@ public class HandManager : MonoBehaviour
     }
    public IEnumerator DoorEffect()
     {
+        // [AI] 02501：AI 施法 → 自伤AI + Remote 手牌 Summon 贪心"和≤8(高费优先)"子集 → 依次放到 AI(0-5) 空槽
+        if (SimpleAI.IsAIEvaluating)
+        {
+            NetworkPlayer.Remote?.TakeDamage(1, "02501", null, null);
+            DamageFX.Request(DamageFX.GetPlayerWorldPos(false), 1, FloaterType.Damage, DamageFxSource.Self, 0, -1, true);
+            NetworkPlayer ai2501 = NetworkPlayer.Remote;
+            if (ai2501 != null)
+            {
+                var pool2501 = new List<(CardInstance c, CardData td)>();
+                foreach (GameObject h in ai2501.handCards)
+                {
+                    if (h == null) continue;
+                    CardInstance c = h.GetComponent<CardInstance>();
+                    if (c == null) continue;
+                    CardData td = CardDatabase.Instance?.GetTemplate(c.templateID);
+                    if (td != null && td.cardType == CardType.Summon) pool2501.Add((c, td));
+                }
+                pool2501.Sort((a, b) => b.td.baseCost.CompareTo(a.td.baseCost));
+                var chosen2501 = new List<(CardInstance c, CardData td)>();
+                int sum2501 = 0;
+                foreach (var it in pool2501)
+                {
+                    if (sum2501 + it.td.baseCost <= 8) { sum2501 += it.td.baseCost; chosen2501.Add(it); }
+                }
+                BoardManager bm2501 = FindObjectOfType<BoardManager>();
+                foreach (var it in chosen2501)
+                {
+                    CardInstance ci2501 = it.c;
+                    // 放到 AI 第一个空槽
+                    BoardSlot emp2501 = null;
+                    for (int s = 0; s <= 5; s++)
+                    {
+                        BoardSlot sl = bm2501?.GetSlot(s);
+                        if (sl != null && !sl.hasCard && !sl.isBlocked && !sl.prisonBlocked && !sl.permaBlocked) { emp2501 = sl; break; }
+                    }
+                    if (emp2501 == null) break;
+                    for (int i = ai2501.handCards.Count - 1; i >= 0; i--)
+                        if (ai2501.handCards[i] != null && ai2501.handCards[i].GetComponent<CardInstance>() == ci2501)
+                        { ai2501.handCards.RemoveAt(i); break; }
+                    CardDisplayPanel.Instance.multiSelect = false;
+                    PlaceCardToSlot(emp2501, ci2501.gameObject);
+                    BoardSyncManager.MarkDirty();
+                    yield return null;
+                }
+            }
+            CardDisplayPanel.Instance.multiSelect = false;
+            CardDrag.CleanupSpellResources();
+            yield break;
+        }
+
         NetworkPlayer.Local.TakeDamage(1, "02501"); // 传送门自伤，来源=法术02501
         DamageFX.Request(DamageFX.GetPlayerWorldPos(false), 1, FloaterType.Damage, DamageFxSource.Self, 0, -1, true); // 英雄自伤特殊轨迹
         NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
