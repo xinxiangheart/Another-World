@@ -611,6 +611,47 @@ public class BattleManager : MonoBehaviour
                 bool hasEnemy = false;
                 for (int j = myStart; j < myStart + 6; j++) if (allSlots[j]?.currentCard3D != null) { hasEnemy = true; break; }
                 if (!hasEnemy) continue;
+                // [AI] 03502：先手直选 敌方 神选者优先，否则玩家方 5/3/1（不弹窗）
+                if (SimpleAI.IsAIMatch && i < 6)
+                {
+                    int pEnemyStart3502 = i < 6 ? 6 : 0;
+                    CardInstance best3502 = null;
+                    CardInstance chosenOne3502 = null;
+                    int br3502 = int.MaxValue;
+                    int[] pref3502 = { 5, 3, 1 };
+                    for (int j3502 = pEnemyStart3502; j3502 < pEnemyStart3502 + 6; j3502++)
+                    {
+                        BoardSlot t3502 = allSlots[j3502];
+                        CardInstance c3502 = t3502?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                        if (c3502 == null) continue;
+                        if (c3502.summonType == SummonType.ChosenOne && chosenOne3502 == null) chosenOne3502 = c3502;
+                        int r3502 = System.Array.IndexOf(pref3502, c3502.currentCost);
+                        if (r3502 < 0) r3502 = pref3502.Length;
+                        if (r3502 < br3502) { br3502 = r3502; best3502 = c3502; }
+                    }
+                    CardInstance pick3502 = chosenOne3502 ?? best3502;
+                    if (pick3502 != null)
+                    {
+                        pick3502.RemoveShield();
+                        pick3502.poisoned = true;
+                        pick3502.AddStatus(true, "无法获得护盾；受到伤害×2（本阶段）", "03502");
+                        if (pick3502.summonType == SummonType.ChosenOne)
+                        {
+                            for (int e3502 = 0; e3502 < 12; e3502++)
+                                if (allSlots[e3502]?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance == pick3502)
+                                {
+                                    NetworkPlayer ep3502 = BoardManager.GetOwnerPlayer(e3502);
+                                    if (ep3502 != null) { ep3502.currentEnergy -= 1; ep3502.UpdateUI(); }
+                                    break;
+                                }
+                        }
+                        for (int u3502 = 0; u3502 < 12; u3502++)
+                            if (allSlots[u3502]?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance == pick3502)
+                            { allSlots[u3502].currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues(); break; }
+                    }
+                    BoardSyncManager.MarkDirty();
+                    continue;
+                }
                 bool poisonDone = false;
                 SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (targetSlot) =>
                 {

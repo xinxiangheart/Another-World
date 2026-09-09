@@ -143,6 +143,9 @@ public class SimpleAI : MonoBehaviour
             case "01346":
             case "03026":
                 return ci.currentHealth <= Mathf.FloorToInt(ci.currentMaxHealth / 2f); // 自身生命 ≤ half(向下取整) 才倾向抛置
+            case "01534": // 母巢：累计受伤>0 且 自身血≤half 才倾向抛置（召唤可怖之物）
+                return ci.totalDamageTaken > 0
+                    && ci.currentHealth <= Mathf.FloorToInt(ci.currentMaxHealth / 2f);
             default: return false;
         }
     }
@@ -190,6 +193,9 @@ public class SimpleAI : MonoBehaviour
             }
             ci.isActiveExit = false;
             ci.hasRevenge = false;
+            // 与玩家抛置一致：先快照 攻击/累计受伤，供 01343/01534 等 handler 读取
+            ci.savedAttackForDiscard = ci.currentAttack;
+            ci.savedTotalDamage = ci.totalDamageTaken;
             slot.HandleDeath(slot.currentCard3D);
             // 抛置效果分发（同 Card3DHover.HandleDiscardEffect）
             var dctx = EffectContext.ForDiscard(ci, savedSlotID);

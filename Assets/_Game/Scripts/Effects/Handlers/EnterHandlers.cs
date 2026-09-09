@@ -126,6 +126,13 @@ public static class EnterHandlers
     {
         GlobalEventManager.Instance.RegisterAura(new SuppressorAura { source = ctx.source });
         if (!ctx.sourceSlot.HasEnemyTarget()) { ctx.sourceSlot.CleanupAfterPlacement(); return; }
+        // [AI] 03501：优先 玩家方(敌) 5/3/1（高攻/进场/先手优先）
+        if (SimpleAI.IsAIEvaluating || (SimpleAI.IsAIMatch && ctx.sourceSlot.slotID < 6))
+            SimpleAI.SetAIAutoChoice(new[] { 5, 3, 1 }, s =>
+            {
+                var c3501 = s?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                return c3501 != null && (c3501.currentAttack >= 3 || c3501.HasOnEnter || c3501.HasFirstStrike);
+            });
         SM().BeginSelection(TargetType.SingleEnemy, (targetSlot) =>
         {
             if (targetSlot?.currentCard3D != null)
@@ -298,7 +305,7 @@ public static class EnterHandlers
                     if (!targetInst.handledReturnToHand)
                     {
                         var tt = CardDatabase.Instance?.GetTemplate(targetInst.templateID);
-                        if (tt != null) NetworkPlayer.Local.AddCardToHandFromInstance(tt, targetInst);
+                        if (tt != null) NetworkPlayer.ReturnCardToOwner(tt, targetInst); // 回手按 owner 分流（AI→AI手牌）
                     }
                     var self3D = slot.currentCard3D?.GetComponent<Card3DInstance>();
                     if (self3D != null)

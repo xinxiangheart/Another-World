@@ -1273,6 +1273,31 @@ public class NetworkPlayer : NetworkBehaviour
         return cv;
     }
 
+    /// <summary>回手按 owner 分流：卡主属 AI(Remote,server-only)→回 AI 手牌(AddServerSideCard)；否则回本机手牌。
+    /// 修复"AI 回手误进玩家手牌"。oldInstance 仍按在场定位 owner。</summary>
+    public static void ReturnCardToOwner(CardData template, CardInstance oldInstance)
+    {
+        if (template == null || oldInstance == null) return;
+        NetworkPlayer owner = null;
+        BoardManager bm = UnityEngine.Object.FindObjectOfType<BoardManager>();
+        if (bm != null)
+            for (int i = 0; i < 12; i++)
+            {
+                var s = bm.GetSlot(i);
+                if (s?.currentCard3D == null) continue;
+                CardInstance ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                if (ci != null && ci.instanceID == oldInstance.instanceID) { owner = BoardManager.GetOwnerPlayer(i); break; }
+            }
+        if (owner != null && owner != Local && owner.connectionToClient == null)
+        {
+            owner.AddServerSideCard(template, oldInstance.instanceID); // AI(server-only)手牌
+        }
+        else
+        {
+            Local?.AddCardToHandFromInstance(template, oldInstance);
+        }
+    }
+
     public void AddCardToHandFromInstance(CardData template, CardInstance oldInstance, bool isEnemy = false)
     {
         // 使用实例字段而非 static Local/Remote——当服务器对 Remote 牌退场回手时，this 是 Remote，

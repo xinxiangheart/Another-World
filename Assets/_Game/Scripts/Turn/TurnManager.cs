@@ -520,7 +520,10 @@ public partial class TurnManager : MonoBehaviour
                 {
                     slot.HandleDeath(slot.currentCard3D);
                     BoardManager.GetOwnerPlayer(i)?.AddEnergy(5);
-                    StartCoroutine(SummonSmallEvilOnSlot());
+                    if (SimpleAI.IsAIMatch && i < 6)
+                        yield return StartCoroutine(AISummonSmallEvilOnSlot(i)); // [AI] 03011：直放 03010 到 AI 空槽
+                    else
+                        StartCoroutine(SummonSmallEvilOnSlot());
                     break;
                 }
             }
@@ -1488,6 +1491,30 @@ public partial class TurnManager : MonoBehaviour
             BoardManager.SyncAttachedModels(slot2);
         }
     }
+    /// <summary>[AI] 03011：大团恶念退场直放一只 03010 到 owner 侧(0-5)空槽，不弹玩家选择。</summary>
+    IEnumerator AISummonSmallEvilOnSlot(int ownerSlot)
+    {
+        CardData template = CardDatabase.Instance?.GetTemplate("03010");
+        BoardManager bmAI = FindObjectOfType<BoardManager>();
+        if (template?.prefab3D == null || bmAI == null) yield break;
+        int sideStartAI = ownerSlot < 6 ? 0 : 6;
+        for (int s = sideStartAI; s <= sideStartAI + 5; s++)
+        {
+            BoardSlot sl = bmAI.GetSlot(s);
+            if (sl == null || sl.hasCard || sl.isBlocked || sl.prisonBlocked || sl.permaBlocked) continue;
+            GameObject temp = new GameObject("TempSmallEvilAI");
+            CardInstance ti = temp.AddComponent<CardInstance>();
+            ti.InitFromTemplate(template, 0);
+            HandManager hm = FindObjectOfType<HandManager>();
+            hm.PlaceCardToSlot(sl, temp);
+            Destroy(temp);
+            if (NetworkClient.isConnected)
+                NetworkPlayer.Local?.CmdPlayCard(template.templateID, sl.slotID, -1, -1, -1, -1, ti.instanceID);
+            break;
+        }
+        BoardSyncManager.MarkDirty();
+    }
+
     IEnumerator SummonSmallEvilOnSlot()
     {
         CardData template = CardDatabase.Instance?.GetTemplate("03010");

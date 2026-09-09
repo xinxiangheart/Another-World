@@ -2617,7 +2617,7 @@ public class HandManager : MonoBehaviour
 
         returnTarget.handledReturnToHand = true;
         if (returnTemplate != null)
-            NetworkPlayer.Local.AddCardToHandFromInstance(returnTemplate, returnTarget);
+            NetworkPlayer.ReturnCardToOwner(returnTemplate, returnTarget); // 回手按 owner 分流（AI→AI手牌）
 
         // 01322 进场完成，恢复界面状态
         BoardSlot anySlot = FindSlotOf(returnTarget) ?? FindSlotOf(refundTarget) ?? returnSlot ?? refundSlot;
@@ -2676,6 +2676,24 @@ public class HandManager : MonoBehaviour
     {
         CardData horrorTemplate = CardDatabase.Instance?.GetTemplate("03029");
         if (horrorTemplate?.prefab3D == null) yield break;
+
+        // [AI] 01534：抛置者属 AI 侧(0-5) → 直放两只可怖之物到 AI 空槽，不弹玩家放置
+        bool aiH1534 = SimpleAI.IsAIMatch && Card3DHover.ignoreSlotID < 6;
+        if (aiH1534)
+        {
+            BoardManager bmH1534 = FindObjectOfType<BoardManager>();
+            int placedH1534 = 0;
+            for (int s = 0; s <= 5 && placedH1534 < 2; s++)
+            {
+                BoardSlot sl = bmH1534?.GetSlot(s);
+                if (sl == null || sl.hasCard || sl.isBlocked || sl.prisonBlocked || sl.permaBlocked) continue;
+                PlaceHorror(sl, horrorTemplate, baseHP, baseAtk, placedH1534);
+                placedH1534++;
+                yield return null;
+            }
+            BoardSyncManager.MarkDirty();
+            yield break;
+        }
 
         for (int k = 0; k < 2; k++)
         {
