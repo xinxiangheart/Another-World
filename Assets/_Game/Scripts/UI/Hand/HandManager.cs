@@ -3256,25 +3256,52 @@ public class HandManager : MonoBehaviour
     void WatcherCheckAndTrigger()
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
-        bool hasEnemy = false;
-        for (int i = 0; i <= 5; i++)
-            if (bm?.GetSlot(i)?.currentCard3D != null) { hasEnemy = true; break; }
 
-        if (!hasEnemy) return;
-
+        // 找守望者(01339)：0-5(AI) 优先（玩家打出时触发 AI 守望者），否则 6-11(Host)
         CardInstance watcher = null;
-        for (int i = 6; i <= 11; i++)
+        int watcherSlot = -1;
+        for (int i = 0; i <= 11; i++)
         {
+            if (watcherSlot >= 0 && i > 5 && watcherSlot < 6) break; // 已在 0-5 找到就不扫 6-11
             BoardSlot s = bm?.GetSlot(i);
             if (s?.currentCard3D != null)
             {
                 CardInstance ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                if (ci != null && ci.isWatcher) { watcher = ci; break; }
+                if (ci != null && ci.isWatcher) { watcher = ci; watcherSlot = i; break; }
             }
         }
-
         if (watcher == null) return;
         if (GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(watcher)) return;
+
+        // 目标 = watcher 的对侧（AI watcher(0-5)→玩家6-11；Host watcher→0-5）
+        int tStart = watcherSlot < 6 ? 6 : 0;
+
+        // [AI] watcher 属 AI 侧且当前由玩家打出触发 → 自动选（否则会弹给玩家）
+        if (watcherSlot < 6)
+        {
+            BoardSlot bestW = null;
+            for (int i = tStart; i < tStart + 6; i++)
+            {
+                BoardSlot s = bm?.GetSlot(i);
+                if (s?.currentCard3D != null) { bestW = s; break; }
+            }
+            if (bestW?.currentCard3D != null)
+            {
+                Card3DInstance t3d = bestW.currentCard3D.GetComponent<Card3DInstance>();
+                if (t3d?.cardInstance != null)
+                {
+                    BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, 1, null);
+                    t3d.UpdateValues();
+                    BoardSlot.CheckAndHandleDeaths();
+                }
+            }
+            return;
+        }
+
+        bool hasEnemy = false;
+        for (int i = tStart; i < tStart + 6; i++)
+            if (bm?.GetSlot(i)?.currentCard3D != null) { hasEnemy = true; break; }
+        if (!hasEnemy) return;
 
         SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (target) =>
         {

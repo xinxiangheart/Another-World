@@ -52,7 +52,7 @@ MonoBehaviour:
     isDiscard: 0
     isAttach: 0
     isGrant: 0
-  - text: "\u4E0D\u53D7\u5BF9\u65B9\u975E\u53CD\u5236\u724C\u6CD5\u672F\u5F71\u54CD\uFF08\u672A\u5B9E\u73B0\uFF09"
+  - text: "\u4E0D\u53D7\u5BF9\u65B9\u975E\u53CD\u5236\u724C\u6CD5\u672F\u5F71\u54CD"
     isEnter: 0
     isFirstStrike: 0
     isRevenge: 0

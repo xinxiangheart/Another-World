@@ -187,10 +187,29 @@ public static class EnterHandlers
         ctx.sourceSlot.CleanupAfterPlacement();
     }
 
+    /// <summary>按在场 CardInstance 找其 owner（找不到回退 Local）——AI/玩家视角分流用。</summary>
+    static NetworkPlayer FindSlotOwner(CardInstance ci)
+    {
+        var bm = UnityEngine.Object.FindObjectOfType<BoardManager>();
+        if (bm != null)
+            for (int i = 0; i < 12; i++)
+            {
+                var s = bm.GetSlot(i);
+                if (s?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance == ci)
+                {
+                    var owner = BoardManager.GetOwnerPlayer(i);
+                    if (owner != null) return owner;
+                }
+            }
+        return NetworkPlayer.Local;
+    }
+
     static void Handle01520(EffectContext ctx)
     {
         GlobalEventManager.Instance.RegisterAura(new MerchantAura { source = ctx.source });
-        foreach (var card in NetworkPlayer.Local.handCards)
+        // [AI/侧向] 减费作用到 aura owner 的手牌（AI 商人 → Remote）
+        NetworkPlayer handOwner1520 = FindSlotOwner(ctx.source);
+        foreach (var card in handOwner1520.handCards)
         {
             if (card == null) continue;
             var ci = card.GetComponent<CardInstance>();
@@ -209,7 +228,9 @@ public static class EnterHandlers
     {
         if (!ctx.source.isAttached)
             GlobalEventManager.Instance.RegisterAura(new EnergyReaperAura { source = ctx.source });
-        foreach (var card in NetworkPlayer.Local.handCards)
+        // [AI/侧向] 减费作用到 aura owner 的手牌（AI 收割者 → Remote）
+        NetworkPlayer handOwner1528 = FindSlotOwner(ctx.source);
+        foreach (var card in handOwner1528.handCards)
         {
             if (card == null) continue;
             var ci = card.GetComponent<CardInstance>();
@@ -417,11 +438,23 @@ public static class EnterHandlers
         var follower = CardDatabase.Instance?.GetTemplate("03001");
         if (follower != null)
         {
-            NetworkPlayer.Local.AddCardToHand(follower);
-            NetworkPlayer.Local.AddCardToHand(follower);
-            // 纯客户端需通知服务器同步手牌
-            if (NetworkClient.isConnected && !NetworkServer.active)
-                NetworkPlayer.Local?.CmdAddCardToHand("03001", 2);
+            if (SimpleAI.IsAIEvaluating)
+            {
+                // [AI] 01514：发两张 03001 到 AI(Remote) 手牌（服务端追踪）
+                if (NetworkPlayer.Remote != null)
+                {
+                    NetworkPlayer.Remote.AddServerSideCard(follower, CardZoneManager.GenerateInstanceID("03001"));
+                    NetworkPlayer.Remote.AddServerSideCard(follower, CardZoneManager.GenerateInstanceID("03001"));
+                }
+            }
+            else
+            {
+                NetworkPlayer.Local.AddCardToHand(follower);
+                NetworkPlayer.Local.AddCardToHand(follower);
+                // 纯客户端需通知服务器同步手牌
+                if (NetworkClient.isConnected && !NetworkServer.active)
+                    NetworkPlayer.Local?.CmdAddCardToHand("03001", 2);
+            }
         }
         ctx.sourceSlot.CleanupAfterPlacement();
     }
