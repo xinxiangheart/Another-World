@@ -134,9 +134,17 @@ public class SimpleAI : MonoBehaviour
         switch (tid)
         {
             case "02106": case "02111": case "02202": case "02213": case "02307": case "02311":
+            case "02214": // AI 排选暂未实现 → 不优先防空放
                 return true;
             default: return false;
         }
+    }
+
+    /// <summary>费用序排名：命中 pref 返回序号(越小越优先)，未命中返回 pref 长度(最后)。</summary>
+    int CostRank(int cost, int[] pref)
+    {
+        int r = System.Array.IndexOf(pref, cost);
+        return r < 0 ? pref.Length : r;
     }
 
     /// <summary>该抛置卡此刻是否倾向"主动抛置"（逐张条件；默认 false，后续逐步补）：
@@ -466,8 +474,21 @@ public class SimpleAI : MonoBehaviour
         {
             if (td2.targetType == TargetType.SingleEnemy)
             {
-                for (int i = 6; i <= 11; i++) // AI 的敌方 = 人类 = 服务器 6-11
-                    if (bm.GetSlot(i)?.currentCard3D != null) { target = bm.GetSlot(i); break; }
+                // 02107：玩家方(6-11) {5,3,1} 优先；其余取首个
+                int[] prefEnemy2107 = { 5, 3, 1 };
+                for (int i = 6; i <= 11; i++)
+                {
+                    BoardSlot es = bm.GetSlot(i);
+                    CardInstance ec = es?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                    if (ec == null) continue;
+                    if (target == null) target = es;
+                    if (ci.templateID == "02107")
+                    {
+                        int r2107 = CostRank(ec.currentCost, prefEnemy2107);
+                        int rCur = CostRank(target.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance?.currentCost ?? -1, prefEnemy2107);
+                        if (r2107 < rCur) target = es;
+                    }
+                }
             }
             else if (td2.targetType == TargetType.SingleAlly)
             {
@@ -486,15 +507,49 @@ public class SimpleAI : MonoBehaviour
                 }
                 else
                 {
-                    for (int i = 0; i <= 5; i++) // AI 的己方 = 服务器 0-5
-                        if (bm.GetSlot(i)?.currentCard3D != null) { target = bm.GetSlot(i); break; }
+                    // 己方 0-5：02103(扣血≥3,5/3/1)、02110(HP≥4,1/3/5)、02201(HasOnEnter,5/3/1)
+                    int[] prefAlly531 = { 5, 3, 1 };
+                    int[] prefAlly135 = { 1, 3, 5 };
+                    for (int i = 0; i <= 5; i++)
+                    {
+                        BoardSlot asl = bm.GetSlot(i);
+                        CardInstance ac = asl?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                        if (ac == null) continue;
+                        if (ci.templateID == "02103" && (ac.currentMaxHealth - ac.currentHealth) < 3) continue;
+                        if (ci.templateID == "02110" && ac.currentHealth < 4) continue;
+                        if (ci.templateID == "02201" && !ac.HasOnEnter) continue;
+                        if (target == null) { target = asl; continue; }
+                        CardInstance tc = target.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                        int[] pr = ci.templateID == "02110" ? prefAlly135 : prefAlly531;
+                        if (CostRank(ac.currentCost, pr) < CostRank(tc?.currentCost ?? -1, pr)) target = asl;
+                    }
                 }
             }
             else if (td2.targetType == TargetType.SingleAny)
             {
-                // 任意目标：AI 任选一个召唤物（先扫己方 0-5 再敌方 6-11）
-                for (int i = 0; i <= 11; i++)
-                    if (bm.GetSlot(i)?.currentCard3D != null) { target = bm.GetSlot(i); break; }
+                if (ci.templateID == "02206" || ci.templateID == "02207" || ci.templateID == "02215")
+                {
+                    // 02206/02207：AI 己方 !isAttached，{1,3,5}；02215：己方攻击最高、费用 {1,3,5}
+                    int[] prefAny135 = { 1, 3, 5 };
+                    for (int i = 0; i <= 5; i++)
+                    {
+                        BoardSlot anySlot = bm.GetSlot(i);
+                        CardInstance ac = anySlot?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                        if (ac == null || ac.isAttached) continue;
+                        if (target == null) { target = anySlot; continue; }
+                        CardInstance tc = target.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                        bool better = ci.templateID == "02215"
+                            ? ac.currentAttack > (tc?.currentAttack ?? -1)
+                            : CostRank(ac.currentCost, prefAny135) < CostRank(tc?.currentCost ?? -1, prefAny135);
+                        if (better) target = anySlot;
+                    }
+                }
+                else
+                {
+                    // 任意目标：AI 任选一个召唤物（先扫己方 0-5 再敌方 6-11）
+                    for (int i = 0; i <= 11; i++)
+                        if (bm.GetSlot(i)?.currentCard3D != null) { target = bm.GetSlot(i); break; }
+                }
             }
         }
         return true;
