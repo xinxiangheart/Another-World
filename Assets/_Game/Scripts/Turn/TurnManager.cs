@@ -1351,41 +1351,40 @@ public partial class TurnManager : MonoBehaviour
     /// <summary>AI 铁匠：循环消耗 1/3/5 费召唤物换能量（0/2/4）。</summary>
     void AIIronSmithConsume(NetworkPlayer ai, CardInstance ironSmith)
     {
-        bool consumed = true;
-        while (consumed)
+        // [AI] 01525：只消耗 1 次，手牌召唤物按 1/3/5(先1) 优先挑一个
+        CardInstance pick = null;
+        int bestRank = int.MaxValue;
+        int[] pref1525 = { 1, 3, 5 };
+        foreach (GameObject card in ai.handCards)
         {
-            consumed = false;
-            GameObject target = null;
-            CardInstance targetCI = null;
-            foreach (GameObject card in ai.handCards)
-            {
-                if (card == null) continue;
-                CardInstance c = card.GetComponent<CardInstance>();
-                if (c == null) continue;
-                CardData td = CardDatabase.Instance?.GetTemplate(c.templateID);
-                if (td == null || td.cardType != CardType.Summon) continue;
-                if (td.baseCost != 1 && td.baseCost != 3 && td.baseCost != 5) continue;
-                target = card;
-                targetCI = c;
-                break;
-            }
-            if (target == null || targetCI == null) break;
-
-            int cost = targetCI.currentCost;
-            int energy = cost switch { 1 => 0, 3 => 2, 5 => 4, _ => 0 };
-            ai.AddEnergy(energy);
-            ai.handCards.Remove(target);
-            Destroy(target);
-            ironSmith.ironSmithTotalConsumedCount++;
-            consumed = true;
+            if (card == null) continue;
+            CardInstance c = card.GetComponent<CardInstance>();
+            if (c == null) continue;
+            CardData td = CardDatabase.Instance?.GetTemplate(c.templateID);
+            if (td == null || td.cardType != CardType.Summon) continue;
+            if (td.baseCost != 1 && td.baseCost != 3 && td.baseCost != 5) continue;
+            int rank = System.Array.IndexOf(pref1525, c.currentCost);
+            if (rank < 0) rank = pref1525.Length;
+            if (rank < bestRank) { bestRank = rank; pick = c; }
         }
+        if (pick == null) return;
+
+        int cost = pick.currentCost;
+        int energy = cost switch { 1 => 0, 3 => 2, 5 => 4, _ => 0 };
+        ai.AddEnergy(energy);
+        ai.handCards.Remove(pick.gameObject);
+        Destroy(pick.gameObject);
+        ironSmith.ironSmithTotalConsumedCount++;
     }
 
     /// <summary>AI 执行之剑：消耗一个法术，记录 consumedSpellCost。</summary>
     void AIExecutionSwordConsume(NetworkPlayer ai, CardInstance sword)
     {
+        // [AI] 01535：消耗 1/3/5 费法术（先1）
         GameObject target = null;
         CardInstance targetCI = null;
+        int bestRank1535 = int.MaxValue;
+        int[] pref1535 = { 1, 3, 5 };
         foreach (GameObject card in ai.handCards)
         {
             if (card == null) continue;
@@ -1393,9 +1392,10 @@ public partial class TurnManager : MonoBehaviour
             if (c == null) continue;
             CardData td = CardDatabase.Instance?.GetTemplate(c.templateID);
             if (td == null || td.cardType != CardType.Spell) continue;
-            target = card;
-            targetCI = c;
-            break;
+            if (td.baseCost != 1 && td.baseCost != 3 && td.baseCost != 5) continue;
+            int rank1535 = System.Array.IndexOf(pref1535, c.currentCost);
+            if (rank1535 < 0) rank1535 = pref1535.Length;
+            if (rank1535 < bestRank1535) { bestRank1535 = rank1535; target = card; targetCI = c; }
         }
         if (target == null || targetCI == null) { sword.consumedSpellCost = 0; return; }
 
@@ -1408,8 +1408,11 @@ public partial class TurnManager : MonoBehaviour
     /// <summary>AI 忤逆者：消耗一个召唤物回血（tier + 渊?1:0）。</summary>
     void AIRebelConsume(NetworkPlayer ai, CardInstance rebel, BoardSlot rebelSlot)
     {
+        // [AI] 01526：消耗 1/3/5 费召唤物（先1）
         GameObject target = null;
         CardInstance targetCI = null;
+        int bestRank1526 = int.MaxValue;
+        int[] pref1526 = { 1, 3, 5 };
         foreach (GameObject card in ai.handCards)
         {
             if (card == null) continue;
@@ -1417,9 +1420,10 @@ public partial class TurnManager : MonoBehaviour
             if (c == null) continue;
             CardData td = CardDatabase.Instance?.GetTemplate(c.templateID);
             if (td == null || td.cardType != CardType.Summon) continue;
-            target = card;
-            targetCI = c;
-            break;
+            if (td.baseCost != 1 && td.baseCost != 3 && td.baseCost != 5) continue;
+            int rank1526 = System.Array.IndexOf(pref1526, c.currentCost);
+            if (rank1526 < 0) rank1526 = pref1526.Length;
+            if (rank1526 < bestRank1526) { bestRank1526 = rank1526; target = card; targetCI = c; }
         }
         if (target == null || targetCI == null) return;
 

@@ -372,6 +372,9 @@ public class BattleManager : MonoBehaviour
             if (ci.templateID == "03012")
             {
                 if (i < 6 && !SimpleAI.IsAIMatch) continue; // 非 AI 对局：AI 半场跳过（远程客户端处理）；AI 对局：AI 半场也执行
+                // [AI] 03012 阴阳：己方 5/3/1 优先
+                if (SimpleAI.IsAIMatch && i < 6)
+                    SimpleAI.SetAIAutoChoice(new[] { 5, 3, 1 });
                 bool yinYangDone = false;
                 SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (targetSlot) =>
                 {
@@ -476,6 +479,42 @@ public class BattleManager : MonoBehaviour
 
                 Debug.Log($"守护骑士 candidates.Count={candidates.Count}");
                 foreach (var cs in candidates) Debug.Log($"候选: 槽位{cs.slotID}");
+
+                // [AI] 01519：先给自己 1 盾；再按 己方(0-5) 5/3/1 给最多 2 个其它无盾随从（不重复目标）
+                if (SimpleAI.IsAIMatch && i < 6)
+                {
+                    CardInstance selfC1519 = allSlots[i]?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                    if (selfC1519 != null && !selfC1519.hasShield)
+                    {
+                        selfC1519.GrantShield(false, false, true, "01519");
+                        allSlots[i].currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+                    }
+                    int need1519 = 2;
+                    int[] pref1519 = { 5, 3, 1 };
+                    while (need1519 > 0)
+                    {
+                        BoardSlot best1519 = null; int br1519 = int.MaxValue;
+                        foreach (BoardSlot cand in candidates)
+                        {
+                            if (cand == null) continue;
+                            CardInstance cc = cand.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                            if (cc == null || cc.hasShield) continue;
+                            int r1519 = System.Array.IndexOf(pref1519, cc.currentCost);
+                            if (r1519 < 0) r1519 = pref1519.Length;
+                            if (r1519 < br1519) { br1519 = r1519; best1519 = cand; }
+                        }
+                        if (best1519 == null) break;
+                        CardInstance bc1519 = best1519.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                        if (bc1519 != null)
+                        {
+                            bc1519.GrantShield(false, false, true, "01519");
+                            best1519.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+                        }
+                        candidates.Remove(best1519); // 不重复目标
+                        need1519--;
+                    }
+                    continue;
+                }
 
                 if (candidates.Count == 0) continue;
 
@@ -2145,21 +2184,27 @@ public class BattleManager : MonoBehaviour
             // AI 对局：处刑剑在 AI 半场（0-5）时，AI 自动选对方第一个召唤物，避免选择挂起卡死
             if (SimpleAI.IsAIMatch && owner == NetworkPlayer.Remote)
             {
+                // [AI] 01535 目标：优先 玩家方(6-11) 5/3/1 费召唤物
                 BoardManager bm = FindObjectOfType<BoardManager>();
+                CardInstance best1535 = null;
+                int br1535 = int.MaxValue;
+                int[] pref1535b = { 5, 3, 1 };
                 for (int i = 6; i <= 11; i++)
                 {
                     BoardSlot target = bm?.GetSlot(i);
-                    if (target?.currentCard3D == null) continue;
-                    CardInstance aiTargetCI = target.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                    CardInstance aiTargetCI = target?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
                     if (aiTargetCI == null) continue;
-
-                    BattleManager.Instance.ApplyDamageToMinionPublic(aiTargetCI, damage, swordSlot.currentCard3D);
+                    int r1535b = System.Array.IndexOf(pref1535b, aiTargetCI.currentCost);
+                    if (r1535b < 0) r1535b = pref1535b.Length;
+                    if (r1535b < br1535) { br1535 = r1535b; best1535 = aiTargetCI; }
+                }
+                if (best1535 != null)
+                {
+                    BattleManager.Instance.ApplyDamageToMinionPublic(best1535, damage, swordSlot.currentCard3D);
                     BoardSlot.CheckAndHandleDeaths();
                     yield return ActionQueueManager.WaitForDrain();
-
-                    if (aiTargetCI.currentHealth <= 0)
-                        BoardManager.GetOpponentPlayer(swordSlot.slotID)?.TakeDamage(2, sword.templateID, sword.instanceID); // 执行之剑打玩家
-                    break;
+                    if (best1535.currentHealth <= 0)
+                        BoardManager.GetOpponentPlayer(swordSlot.slotID)?.TakeDamage(2, sword.templateID, sword.instanceID);
                 }
                 BoardSyncManager.MarkDirty();
                 yield break;

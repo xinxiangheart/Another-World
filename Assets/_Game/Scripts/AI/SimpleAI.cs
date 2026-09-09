@@ -141,6 +141,7 @@ public class SimpleAI : MonoBehaviour
             case "01343":
             case "01344":
             case "01346":
+            case "03026":
                 return ci.currentHealth <= Mathf.FloorToInt(ci.currentMaxHealth / 2f); // 自身生命 ≤ half(向下取整) 才倾向抛置
             default: return false;
         }
@@ -296,7 +297,8 @@ public class SimpleAI : MonoBehaviour
             CardData td = CardDatabase.Instance?.GetTemplate(c.templateID);
             if (td == null || td.cardType != CardType.Summon) continue;
             if (!td.canAttach) continue;
-            if (td.templateID == "01333") continue; // 01333：AI 优先独立放置
+            // 01333/01527/01528：AI 优先独立放置（不附着）
+            if (td.templateID == "01333" || td.templateID == "01527" || td.templateID == "01528") continue;
             if (c.currentCost > _ai.currentEnergy) continue;
             bool isPure = td.canAttach && td.baseHealth == 0;
             if (pickCI == null || (isPure && !pureAttach))

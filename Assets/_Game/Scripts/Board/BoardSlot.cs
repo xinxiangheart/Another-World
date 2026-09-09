@@ -2316,13 +2316,21 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         bool selDone = false;
         float selDeadline = Time.time + 30f;
         BoardManager bmLocal = FindObjectOfType<BoardManager>();
+        int mSideStart1522 = slotID < 6 ? 0 : 6; // 己方半场（AI 0-5 / Host 6-11）
         bool hasAlly = false;
-        for (int j = 6; j <= 11; j++)
+        for (int j = mSideStart1522; j <= mSideStart1522 + 5; j++)
         {
             if (bmLocal?.GetSlot(j)?.currentCard3D != null) { hasAlly = true; break; }
         }
         if (hasAlly)
         {
+            // [AI] 01522 殉难者：AI-owner(0-5) 强制自动选 己方 5/3/1（排除自身；含被对手逼死场景）
+            if (SimpleAI.IsAIMatch && slotID < 6)
+                SimpleAI.SetAIAutoChoice(new[] { 5, 3, 1 }, s =>
+                {
+                    var c1522 = s?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                    return c1522 != null && c1522 != giver;
+                });
             SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (targetSlot) =>
             {
                 if (!selDone && targetSlot?.currentCard3D != null)
