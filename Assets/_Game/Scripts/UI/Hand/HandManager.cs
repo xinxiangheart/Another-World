@@ -2640,6 +2640,29 @@ public class HandManager : MonoBehaviour
         CardData template = CardDatabase.Instance?.GetTemplate("03010");
         if (template?.prefab3D == null) { CardDrag.CleanupSpellResources(); yield break; }
 
+        // [AI] 02403：AI 施法 → 直放 03010 到 AI(0-5) 首个空槽，不弹玩家
+        if (SimpleAI.IsAIEvaluating)
+        {
+            BoardManager bmAI2403 = FindObjectOfType<BoardManager>();
+            for (int s = 0; s <= 5; s++)
+            {
+                BoardSlot sl = bmAI2403?.GetSlot(s);
+                if (sl == null || sl.hasCard || sl.isBlocked || sl.prisonBlocked || sl.permaBlocked) continue;
+                GameObject tempAI = new GameObject("TempSmallEvilAI");
+                CardInstance tiAI = tempAI.AddComponent<CardInstance>();
+                tiAI.InitFromTemplate(template, 0);
+                PlaceCardToSlot(sl, tempAI);
+                Destroy(tempAI);
+                if (NetworkClient.isConnected)
+                    NetworkPlayer.Local?.CmdPlayCard("03010", sl.slotID,
+                        tiAI.baseAttack, tiAI.baseHealth, tiAI.baseMaxHealth, tiAI.currentCost,
+                        tiAI.instanceID ?? CardZoneManager.GenerateInstanceID("03010"));
+                break;
+            }
+            CardDrag.CleanupSpellResources();
+            yield break;
+        }
+
         BoardManager bm = FindObjectOfType<BoardManager>();
         bool hasEmpty = false;
         for (int i = 6; i <= 11; i++)
@@ -3116,6 +3139,30 @@ public class HandManager : MonoBehaviour
 
         CardData traitorTemplate = CardDatabase.Instance?.GetTemplate("03025");
         if (traitorTemplate?.prefab3D == null) { CardDrag.CleanupSpellResources(); yield break; }
+
+        // [AI] 02010：AI 施法 → 直放叛徒到 玩家方(6-11) 首个空槽（不弹玩家；人类侧敌方为 0-5）
+        if (SimpleAI.IsAIEvaluating)
+        {
+            BoardManager bmAI2010 = FindObjectOfType<BoardManager>();
+            for (int s = 6; s <= 11; s++)
+            {
+                BoardSlot sl = bmAI2010?.GetSlot(s);
+                if (sl == null || sl.hasCard || sl.isBlocked || sl.prisonBlocked || sl.permaBlocked) continue;
+                GameObject tempAI = new GameObject("TempTraitorAI");
+                CardInstance tiAI = tempAI.AddComponent<CardInstance>();
+                tiAI.InitFromTemplate(traitorTemplate, 0);
+                PlaceCardToSlot(sl, tempAI);
+                Destroy(tempAI);
+                sl.currentCard3D.transform.rotation = Quaternion.Euler(0, 180, 0);
+                if (NetworkClient.isConnected)
+                    NetworkPlayer.Local?.CmdPlayCard("03025", sl.slotID,
+                        tiAI.baseAttack, tiAI.baseHealth, tiAI.baseMaxHealth, tiAI.currentCost,
+                        tiAI.instanceID ?? CardZoneManager.GenerateInstanceID("03025"));
+                break;
+            }
+            CardDrag.CleanupSpellResources();
+            yield break;
+        }
 
         // 选择对方空位
         BoardSlot.isPlacingCard = true;
