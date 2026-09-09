@@ -502,7 +502,7 @@ public static class DeathHandlers
             if (subCtx.StartedCoroutine != null)
             {
                 Debug.Log($"[01301] 同伴[{t+1}] 协程等待... Nesting={NestingContext.Depth}");
-                yield return subCtx.StartedCoroutine;
+                yield return subCtx.SupervisorCoroutine ?? subCtx.StartedCoroutine; // 唯一等待者见 EffectContext.SupervisorCoroutine
                 Debug.Log($"[01301] 同伴[{t+1}] 协程完成 Nesting={NestingContext.Depth}");
             }
         }
@@ -743,7 +743,7 @@ public static class DeathHandlers
             if (subCtx.StartedCoroutine != null)
             {
                 Debug.Log($"[01111] 同伴[{t+1}] 协程等待...");
-                yield return subCtx.StartedCoroutine;
+                yield return subCtx.SupervisorCoroutine ?? subCtx.StartedCoroutine; // 唯一等待者见 EffectContext.SupervisorCoroutine
             }
         }
 

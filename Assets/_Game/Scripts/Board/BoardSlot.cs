@@ -1210,8 +1210,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         {
             if (enterCtx.StartedCoroutine != null)
             {
-                // 等待 handler 协程完成（协程末尾调用 CleanupAfterPlacement）
-                yield return enterCtx.StartedCoroutine;
+                // 等 Dispatch 的监督协程（它才是 StartedCoroutine 的唯一等待者）——
+                // 直接 yield StartedCoroutine 会撞 "Another coroutine is already waiting" → 本协程永久挂起 → 嵌套泄漏
+                yield return enterCtx.SupervisorCoroutine ?? enterCtx.StartedCoroutine;
                 if (template.templateID == "01331")
                     Debug.Log($"[01331Trace] 01331 handler协程已返回，depth={NestingContext.Depth}");
 
@@ -5159,8 +5160,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             {
                 NetworkPlayer.Local.handCards.Remove(cardObj);
                 CardDrag.ExecuteSpellEffect(td, null);
-                // 法术 handler 可能产生异步协程(02501等) → 等待
-                if (CardDrag.SpellPending != null) { yield return CardDrag.SpellPending; CardDrag.SpellPending = null; }
+                // 法术 handler 可能产生异步协程(02501等) → 原子取走等待（取走即清空，防两处同帧双等待）
+                Coroutine pendingNone = CardDrag.TakeSpellPending();
+                if (pendingNone != null) yield return pendingNone;
                 Destroy(cardObj);
                 yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
                 yield return new WaitForEndOfFrame();
@@ -5193,7 +5195,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     Debug.LogWarning("[Effect] 01521 辉煌法师选目标超时，AI兜底");
                     SelectionManager.Instance.ForceEndAll();
                 }
-                if (CardDrag.SpellPending != null) { yield return CardDrag.SpellPending; CardDrag.SpellPending = null; }
+                Coroutine pendingTgt = CardDrag.TakeSpellPending();
+                if (pendingTgt != null) yield return pendingTgt;
                 yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
                 yield return new WaitForEndOfFrame();
                 yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
@@ -5741,7 +5744,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         // 只给 traceSource=giver：原卡 handler 伤害溯源能取到学者已复制的进场特性索引/文本
         var effectCtx = new EffectContext { template = originalTD, sourceSlot = mySlot, trigger = Trigger.Enter, traceSource = giver };
         if (EffectDispatcher.Dispatch(Trigger.Enter, effectCtx) && effectCtx.StartedCoroutine != null)
-            yield return effectCtx.StartedCoroutine;
+            yield return effectCtx.SupervisorCoroutine ?? effectCtx.StartedCoroutine; // 唯一等待者见 EffectContext.SupervisorCoroutine
         yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
 
         // 嵌套树结算——handler 内部可能触发的死亡/退场在当前层内完成

@@ -18,7 +18,21 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
     private CanvasGroup canvasGroup;
     private RectTransform rectTransform;
     private HandManager handManager;
-    public static Coroutine SpellPending;
+    /// <summary>最近一次异步法术的协程（StartedCoroutine 的唯一等待者见 EffectContext.SupervisorCoroutine）。
+    /// 消费方必须用 TakeSpellPending() 原子取走：旧的"读 → yield → 置空"在 yield 挂起期间字段仍非空，
+    /// 另一处同帧读到会等同一协程 → Unity "Another coroutine is already waiting" 双等待卡死。</summary>
+    static Coroutine _spellPending;
+
+    /// <summary>登记一次异步法术协程（ResolveSpellEffect 在 Dispatch 后调用；null=本次为同步法术，清掉旧值）。</summary>
+    public static void SetSpellPending(Coroutine co) => _spellPending = co;
+
+    /// <summary>原子取走待等协程：取走即清空，第二处同帧调用返回 null（不会双等待）。</summary>
+    public static Coroutine TakeSpellPending()
+    {
+        Coroutine co = _spellPending;
+        _spellPending = null;
+        return co;
+    }
     private bool isOutsideHand = false;
     private Canvas tempCanvas;
 
@@ -466,6 +480,10 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
 }
   public void ResolveSpellEffect(CardData template, BoardSlot targetSlot)
     {
+        // 本次法术的待等协程先清空：纯客户端非 UI 法术走 CmdResolveSpell（不设值），
+        // 不清会把上一张法术的协程留在槽里，被消费方误当本次法术等待
+        SetSpellPending(null);
+
         // [打出展示] 法术打出（本地/离线/01329等迭代召唤复用法术）→ 正面（法术无场上模型、无隐藏机制）
         if (template != null)
             PlayRevealManager.Show(template, false);
@@ -505,7 +523,9 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
             var spellCtx = EffectContext.ForSpell(template, targetSlot);
             spellCtx.spellCasterIsHost = NetworkServer.active; // 本地/离线=主机侧(6-11)；远程客户端本地放→false（法伤侧判定用）
             EffectDispatcher.Dispatch(Trigger.Spell, spellCtx);
-            SpellPending = spellCtx.StartedCoroutine;
+            // 等 Dispatch 的监督协程（StartedCoroutine 的唯一等待者）——直接等后者会撞
+            // "Another coroutine is already waiting" → 法术 pipeline 永久挂起
+            SetSpellPending(spellCtx.SupervisorCoroutine ?? spellCtx.StartedCoroutine);
 
             // ── 通用法术收尾（仅 Host/离线/客户端 UI 法术）────────────
             if (template != null && (template.spellType & SpellType.Evil) != 0)

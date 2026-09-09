@@ -55,6 +55,12 @@ public class EffectContext
     /// <summary>handler 启动的协程引用。父协程通过 yield return 此引用来等待嵌套同时树完成。</summary>
     public Coroutine StartedCoroutine;
 
+    /// <summary>由 EffectDispatcher.Dispatch 挂的监督协程：它是 StartedCoroutine 的**唯一**等待者（完成后清特效文字）。
+    /// 其它任何想等 handler 协程的地方必须等这个（`SupervisorCoroutine ?? StartedCoroutine`）——Unity 只允许一个
+    /// 等待者，第二个会报 "Another coroutine is already waiting for this coroutine!" 并**永久挂起**，
+    /// 导致 Enter_xxx 嵌套泄漏（5s 强制复位）/ 法术 pipeline 卡死。</summary>
+    public Coroutine SupervisorCoroutine;
+
     // ---- 死亡后处理回手标志（handler 设置 → DeathPipeline 消费） ----
 
     public bool shouldReturn03504;

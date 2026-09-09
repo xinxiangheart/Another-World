@@ -58,15 +58,18 @@ public static class EffectDispatcher
             EffectTextBroadcaster.Show(id, cardName, traitCN);
 
             Coroutine prevCoroutine = ctx.StartedCoroutine;
+            ctx.SupervisorCoroutine = null;
             handler(ctx);
 
-            // 挂监督协程：等特性完成后清除文字+广播隐藏
+            // 挂监督协程：等特性完成后清除文字+广播隐藏。
+            // 它是 StartedCoroutine 的唯一等待者——其它地方（StartOnEnterEffect / SpellPending / 子 dispatch）
+            // 必须等 SupervisorCoroutine，否则同一协程两个等待者 → 第二个永久挂起 → Enter_xxx 嵌套泄漏。
             var runner = ctx.sourceSlot ?? Object.FindObjectOfType<BoardSlot>();
             if (ctx.StartedCoroutine != null && ctx.StartedCoroutine != prevCoroutine)
             {
                 // 异步handler: 等待协程完成
                 if (runner != null)
-                    runner.StartCoroutine(HideAfterCoroutine(ctx.StartedCoroutine));
+                    ctx.SupervisorCoroutine = runner.StartCoroutine(HideAfterCoroutine(ctx.StartedCoroutine));
                 else
                 {
                     if (debugText != null) debugText.gameObject.SetActive(false);
