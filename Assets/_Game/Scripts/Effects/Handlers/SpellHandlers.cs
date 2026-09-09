@@ -65,6 +65,7 @@ public static class SpellHandlers
         Register("02311", Handle02311);
 
         // 4费
+        Register("02401", Handle02401);
         Register("02402", Handle02402);
         Register("02403", Handle02403);
         Register("02404", Handle02404);
@@ -82,6 +83,14 @@ public static class SpellHandlers
     }
 
     static void Register(string id, EffectHandler h) => EffectRegistry.Register(id, Trigger.Spell, h);
+
+    /// <summary>02401 加班：无目标，直接跑 OvertimeEffect（AI 分支已内置在 SelectionManager.OvertimeEffect）。</summary>
+    static void Handle02401(EffectContext ctx)
+    {
+        if (SelectionManager.Instance != null)
+            ctx.StartedCoroutine = SelectionManager.Instance.StartCoroutine(
+                SelectionManager.Instance.OvertimeEffect());
+    }
 
     // ── 便捷 ──────────────────────────────────────────────────────────
     static BoardManager BM() => UnityEngine.Object.FindObjectOfType<BoardManager>();

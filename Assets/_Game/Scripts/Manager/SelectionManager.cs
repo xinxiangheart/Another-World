@@ -159,6 +159,46 @@ public class SelectionManager : MonoBehaviour
 
         if (valid.Count == 0) { CardDrag.CleanupSpellResources(); yield break; }
 
+        // [AI] 02401：AI 施法 → 从上一阶段召唤物里按 {5,3,1} 挑一个，直放 AI(0-5) 空槽
+        if (SimpleAI.IsAIEvaluating)
+        {
+            GraveEntry best2401 = null;
+            int br2401 = int.MaxValue;
+            int[] pref2401 = { 5, 3, 1 };
+            foreach (GraveEntry e in valid)
+            {
+                CardData td2401 = CardDatabase.Instance?.GetTemplate(e.templateID);
+                int cost = td2401 != null ? td2401.baseCost : (e.currentCost);
+                int r2401 = System.Array.IndexOf(pref2401, cost);
+                if (r2401 < 0) r2401 = pref2401.Length;
+                if (r2401 < br2401) { br2401 = r2401; best2401 = e; }
+            }
+            if (best2401 != null)
+            {
+                GraveyardManager.Instance.graveyard.RemoveAll(x => x.instanceID == best2401.instanceID);
+                CardData tdPl = CardDatabase.Instance?.GetTemplate(best2401.templateID);
+                BoardManager bm2401 = FindObjectOfType<BoardManager>();
+                if (tdPl?.prefab3D != null && bm2401 != null)
+                    for (int s = 0; s <= 5; s++)
+                    {
+                        BoardSlot sl = bm2401.GetSlot(s);
+                        if (sl == null || sl.hasCard || sl.isBlocked || sl.prisonBlocked || sl.permaBlocked) continue;
+                        GameObject tmpAI = new GameObject("Temp");
+                        CardInstance tiAI = tmpAI.AddComponent<CardInstance>();
+                        tiAI.InitFromTemplate(tdPl, 0, best2401.instanceID);
+                        HandManager hmAI = FindObjectOfType<HandManager>();
+                        hmAI.PlaceCardToSlot(sl, tmpAI);
+                        UnityEngine.Object.Destroy(tmpAI);
+                        if (Mirror.NetworkClient.isConnected)
+                            NetworkPlayer.Local?.CmdPlayCard(best2401.templateID, sl.slotID,
+                                tiAI.baseAttack, tiAI.baseHealth, tiAI.baseMaxHealth, tiAI.currentCost, best2401.instanceID);
+                        break;
+                    }
+            }
+            CardDrag.CleanupSpellResources();
+            yield break;
+        }
+
         List<CardInstance> displayList = new List<CardInstance>();
         foreach (GraveEntry e in valid)
         {
