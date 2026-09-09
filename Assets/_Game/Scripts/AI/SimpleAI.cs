@@ -270,6 +270,7 @@ public class SimpleAI : MonoBehaviour
                 _ai.handCards.Remove(ago);
                 if (ago != null) Destroy(ago);
                 _playedCard = true;
+                TriggerOpponentWatcher(); // AI 打出附着卡 → 玩家守望者(01339)
             }
             else _ai.AddEnergy(acost);
             yield break;
@@ -306,6 +307,7 @@ public class SimpleAI : MonoBehaviour
             _ai.handCards.Remove(go);
             if (go != null) Destroy(go);
             _playedCard = true;
+            TriggerOpponentWatcher(); // AI 打出召唤物 → 玩家守望者(01339)
             yield break;
         }
 
@@ -321,7 +323,15 @@ public class SimpleAI : MonoBehaviour
             _ai.handCards.Remove(sgo);
             if (sgo != null) Destroy(sgo);
             _playedCard = true;
+            TriggerOpponentWatcher(); // AI 打出法术 → 玩家守望者(01339)
         }
+    }
+
+    /// <summary>AI 打出牌（召唤/法术/附着）后触发玩家侧守望者(01339)：效果结算后由玩家（或自动）对 AI 召唤物造成1伤。</summary>
+    void TriggerOpponentWatcher()
+    {
+        HandManager hm = FindObjectOfType<HandManager>();
+        if (hm != null) hm.StartCoroutine(hm.WatcherDelayedCheckFor(false));
     }
 
     /// <summary>找一张可打的附着卡 + AI 侧(0-5)宿主槽。

@@ -1932,11 +1932,44 @@ public class HandManager : MonoBehaviour
                 NetworkPlayer.Local?.CmdSwapCards(a, b);
         TurnManager.SyncMyBoardToOpponent();
     }
-    public IEnumerator HandCleanseEffect()
+    /// <summary>费用优先排名（pref 命中返回序号，未命中放最后）。</summary>
+    static int CostRankOf(GameObject card, int[] pref)
     {
-        NetworkPlayer player = NetworkPlayer.Local;
+        CardInstance ci = card?.GetComponent<CardInstance>();
+        int cost = ci != null ? ci.currentCost : -1;
+        int rank = System.Array.IndexOf(pref, cost);
+        return rank < 0 ? pref.Length : rank;
+    }
+
+    /// <param name="casterIsHost">施法方是否为本地(主机)侧；false 且 AI 对局 → 施法方是 AI(Remote,0-5)。</param>
+    public IEnumerator HandCleanseEffect(bool casterIsHost = true)
+    {
+        bool casterIsAI = SimpleAI.IsAIMatch && !casterIsHost;
+        NetworkPlayer player = casterIsAI ? NetworkPlayer.Remote : NetworkPlayer.Local;
+        if (player == null) { CardDrag.CleanupSpellResources(); yield break; }
         player.handCards.RemoveAll(c => c == null);
         if (player.handCards.Count == 0) { CardDrag.CleanupSpellResources(); yield break; }
+
+        // [AI] 02111：自动保留最多 4 张（5/3/1 优先），其余弃掉并摸等量 —— 不弹面板、不动玩家手牌
+        if (casterIsAI)
+        {
+            int[] pref = { 5, 3, 1 };
+            var sorted = new List<GameObject>(player.handCards);
+            sorted.Sort((a, b) => CostRankOf(a, pref).CompareTo(CostRankOf(b, pref)));
+            int discardedAI = 0;
+            for (int i = 4; i < sorted.Count; i++)
+            {
+                GameObject card = sorted[i];
+                if (card == null) continue;
+                player.handCards.Remove(card);
+                Destroy(card);
+                discardedAI++;
+            }
+            for (int i = 0; i < discardedAI; i++) player.DrawCard();
+            Debug.Log($"[SimpleAI] 02111 换洗：保留 {player.handCards.Count} 张，弃 {discardedAI} 摸 {discardedAI}");
+            CardDrag.CleanupSpellResources();
+            yield break;
+        }
 
         // 反选语义：多选“保留”的（≤4），其余弃掉并摸等量（CardDisplayPanel 收藏家式多选）
         List<CardInstance> candidates = BuildHandCardList(ci => true);
@@ -2001,9 +2034,12 @@ public class HandManager : MonoBehaviour
 
         CardDrag.CleanupSpellResources();
     }
-    public IEnumerator ManyCardsEffect()
+    /// <param name="casterIsHost">施法方是否为本地(主机)侧；false 且 AI 对局 → 施法方是 AI(Remote,0-5)。</param>
+    public IEnumerator ManyCardsEffect(bool casterIsHost = true)
     {
-        NetworkPlayer player = NetworkPlayer.Local;
+        bool casterIsAI = SimpleAI.IsAIMatch && !casterIsHost;
+        NetworkPlayer player = casterIsAI ? NetworkPlayer.Remote : NetworkPlayer.Local;
+        if (player == null) { CardDrag.CleanupSpellResources(); yield break; }
 
         // 1. 抽7张牌
         for (int i = 0; i < 7; i++)
@@ -2014,6 +2050,30 @@ public class HandManager : MonoBehaviour
 
         if (player.handCards.Count == 0)
         {
+            CardDrag.CleanupSpellResources();
+            yield break;
+        }
+
+        // [AI] 02307：自动弃 4 张，倾向先弃 5/3/1（高费先弃以尽量触发每张 5 费 +1 能量）
+        if (casterIsAI)
+        {
+            int[] pref = { 5, 3, 1 };
+            var sorted = new List<GameObject>(player.handCards);
+            sorted.Sort((a, b) => CostRankOf(a, pref).CompareTo(CostRankOf(b, pref)));
+            int discardCountAI = Mathf.Min(4, sorted.Count);
+            int energyGainAI = 0;
+            for (int i = 0; i < discardCountAI; i++)
+            {
+                GameObject card = sorted[i];
+                if (card == null) continue;
+                CardInstance ci = card.GetComponent<CardInstance>();
+                CardData data = ci != null ? CardDatabase.Instance?.GetTemplate(ci.templateID) : null;
+                if (data != null && data.baseCost == 5) energyGainAI++;
+                player.handCards.Remove(card);
+                Destroy(card);
+            }
+            player.AddEnergy(energyGainAI);
+            Debug.Log($"[SimpleAI] 02307 很——多牌：抽7弃{discardCountAI}，+{energyGainAI}能量");
             CardDrag.CleanupSpellResources();
             yield break;
         }
@@ -3122,11 +3182,48 @@ public class HandManager : MonoBehaviour
 
         CardDrag.CleanupSpellResources();
     }
-    public IEnumerator ChargeHornEffect()
+    /// <param name="casterIsHost">施法方是否为本地(主机)侧；false 且 AI 对局 → 施法方是 AI(Remote,0-5)。</param>
+    public IEnumerator ChargeHornEffect(bool casterIsHost = true)
     {
         yield return null;
 
         BoardManager bm = FindObjectOfType<BoardManager>();
+        bool casterIsAI = SimpleAI.IsAIMatch && !casterIsHost;
+
+        // [AI] 02311：自动选 AI 己方(0-5)召唤物最多的一排，不弹玩家点选
+        if (casterIsAI)
+        {
+            int cntFront = 0, cntBack = 0;
+            for (int c = 0; c < 3; c++) if (bm?.GetSlot(c)?.currentCard3D != null) cntFront++;
+            for (int c = 3; c < 6; c++) if (bm?.GetSlot(c)?.currentCard3D != null) cntBack++;
+            if (cntFront + cntBack == 0) { CardDrag.CleanupSpellResources(); yield break; }
+
+            int rowStart = cntBack > cntFront ? 3 : 0;   // AI 前排 0-2 / 后排 3-5
+            int enemyRowStart = rowStart == 0 ? 6 : 9;   // 对位：玩家前排 6-8 / 后排 9-11
+            for (int col = 0; col < 3; col++)
+            {
+                BoardSlot mySlot = bm.GetSlot(rowStart + col);
+                CardInstance myInst = mySlot?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                if (myInst == null) continue;
+                int atk = myInst.currentAttack;
+
+                BoardSlot enemySlot = bm.GetSlot(enemyRowStart + col);
+                CardInstance enemyInst = enemySlot?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                if (enemyInst != null)
+                {
+                    BattleManager.Instance.ApplyDamageToMinionPublic(enemyInst, atk, mySlot.currentCard3D);
+                    enemySlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+                }
+
+                myInst.currentAttack += 1;
+                mySlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+            }
+            BoardSlot.CheckAndHandleDeaths();
+            TurnManager.SyncMyBoardToOpponent();
+            CardDrag.CleanupSpellResources();
+            yield break;
+        }
+
         bool hasValid = false;
         for (int i = 6; i <= 11; i++)
             if (bm.GetSlot(i)?.currentCard3D != null) { hasValid = true; break; }
@@ -3245,32 +3342,60 @@ public class HandManager : MonoBehaviour
         yield return null;
         yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
         yield return null;
-        WatcherCheckAndTrigger();
+        WatcherCheckAndTriggerCore(-1);
+    }
+
+    /// <summary>对方打出牌/反制、效果结算后触发守望者(01339)。
+    /// playedByHost=true：打出者是本地玩家(6-11) → 守望者必在 0-5(AI)；false：打出者是 AI → 守望者在 6-11。</summary>
+    public IEnumerator WatcherDelayedCheckFor(bool playedByHost)
+    {
+        yield return null;
+        yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
+        yield return null;
+        WatcherCheckAndTriggerCore(playedByHost ? 0 : 6);
     }
 
     public void WatcherImmediateCheck()
     {
-        WatcherCheckAndTrigger();
+        WatcherCheckAndTriggerCore(-1);
     }
 
-    void WatcherCheckAndTrigger()
+    /// <param name="forceWatcherSideStart">≥0=只在该半场找守望者（打出者的对侧）；-1=旧行为(0-5 优先)。</param>
+    void WatcherCheckAndTriggerCore(int forceWatcherSideStart)
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
 
-        // 找守望者(01339)：0-5(AI) 优先（玩家打出时触发 AI 守望者），否则 6-11(Host)
+        // 找守望者(01339)
         CardInstance watcher = null;
         int watcherSlot = -1;
-        for (int i = 0; i <= 11; i++)
+        if (forceWatcherSideStart >= 0)
         {
-            if (watcherSlot >= 0 && i > 5 && watcherSlot < 6) break; // 已在 0-5 找到就不扫 6-11
-            BoardSlot s = bm?.GetSlot(i);
-            if (s?.currentCard3D != null)
+            for (int i = forceWatcherSideStart; i < forceWatcherSideStart + 6; i++)
             {
+                BoardSlot s = bm?.GetSlot(i);
+                if (s?.currentCard3D == null) continue;
                 CardInstance ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
                 if (ci != null && ci.isWatcher) { watcher = ci; watcherSlot = i; break; }
             }
         }
+        else
+        {
+            // 旧行为：0-5(AI) 优先，否则 6-11(Host)
+            for (int i = 0; i <= 11; i++)
+            {
+                if (watcherSlot >= 0 && i > 5 && watcherSlot < 6) break; // 已在 0-5 找到就不扫 6-11
+                BoardSlot s = bm?.GetSlot(i);
+                if (s?.currentCard3D != null)
+                {
+                    CardInstance ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                    if (ci != null && ci.isWatcher) { watcher = ci; watcherSlot = i; break; }
+                }
+            }
+        }
         if (watcher == null) return;
+        // 在线远端(有连接)的守望者：由远端客户端自行处理，主机不代跑（否则会替远端自动选目标）
+        NetworkPlayer wOwner = BoardManager.GetOwnerPlayer(watcherSlot);
+        if (wOwner != null && wOwner != NetworkPlayer.Local && wOwner.connectionToClient != null) return;
         if (GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(watcher)) return;
 
         // 目标 = watcher 的对侧（AI watcher(0-5)→玩家6-11；Host watcher→0-5）
@@ -3303,19 +3428,30 @@ public class HandManager : MonoBehaviour
             if (bm?.GetSlot(i)?.currentCard3D != null) { hasEnemy = true; break; }
         if (!hasEnemy) return;
 
-        SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (target) =>
+        // 玩家自己的守望者：AI 回合中 IsAIEvaluating=true 会让 onTargetSelected setter 自动代选
+        // （镜像成 SingleAlly 会误打玩家自己半场）→ 选目标期间临时关闭 AI 自动选择
+        bool prevAIEvaluating = SimpleAI.IsAIEvaluating;
+        SimpleAI.IsAIEvaluating = false;
+        try
         {
-            if (target?.currentCard3D != null)
+            SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (target) =>
             {
-                Card3DInstance t3d = target.currentCard3D.GetComponent<Card3DInstance>();
-                if (t3d?.cardInstance != null)
+                if (target?.currentCard3D != null)
                 {
-                    BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, 1, null);
-                    t3d.UpdateValues();
+                    Card3DInstance t3d = target.currentCard3D.GetComponent<Card3DInstance>();
+                    if (t3d?.cardInstance != null)
+                    {
+                        BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, 1, null);
+                        t3d.UpdateValues();
+                    }
                 }
-            }
-            BoardSlot.CheckAndHandleDeaths();
-        });
+                BoardSlot.CheckAndHandleDeaths();
+            });
+        }
+        finally
+        {
+            SimpleAI.IsAIEvaluating = prevAIEvaluating;
+        }
     }
   public  IEnumerator BetrayalEffect()
     {

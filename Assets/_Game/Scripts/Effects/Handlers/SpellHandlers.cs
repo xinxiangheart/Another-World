@@ -217,7 +217,7 @@ public static class SpellHandlers
 
     static void Handle02111(EffectContext ctx)
     {
-        HM().StartCoroutine(HM().HandCleanseEffect());
+        HM().StartCoroutine(HM().HandCleanseEffect(ctx.spellCasterIsHost));
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -487,7 +487,7 @@ public static class SpellHandlers
 
     static void Handle02307(EffectContext ctx)
     {
-        HM().StartCoroutine(HM().ManyCardsEffect());
+        HM().StartCoroutine(HM().ManyCardsEffect(ctx.spellCasterIsHost));
     }
 
     static void Handle02308(EffectContext ctx)
@@ -511,7 +511,7 @@ public static class SpellHandlers
 
     static void Handle02311(EffectContext ctx)
     {
-        HM().StartCoroutine(HM().ChargeHornEffect());
+        HM().StartCoroutine(HM().ChargeHornEffect(ctx.spellCasterIsHost));
     }
 
     // ═══════════════════════════════════════════════════════════════════

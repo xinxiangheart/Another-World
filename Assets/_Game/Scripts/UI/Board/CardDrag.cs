@@ -205,6 +205,13 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
             if (hmWatcher != null)
                 hmWatcher.StartCoroutine(hmWatcher.WatcherDelayedCheck());
         }
+        else if (SimpleAI.IsAIMatch)
+        {
+            // 离线 AI 对局：玩家(6-11)从手牌打出 → 触发 AI 侧守望者(01339)，效果结算后自动打玩家一召唤物
+            HandManager hmWatcher = FindObjectOfType<HandManager>();
+            if (hmWatcher != null)
+                hmWatcher.StartCoroutine(hmWatcher.WatcherDelayedCheckFor(true));
+        }
 
         if (template.cardType == CardType.Spell && (template.spellType & SpellType.Counter) != 0)
         {

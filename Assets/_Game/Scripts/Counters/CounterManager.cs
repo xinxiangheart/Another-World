@@ -118,12 +118,12 @@ public class CounterManager : MonoBehaviour
     PlayRevealManager.Show(template, PlayRevealManager.IsHiddenBack(model));
 
     Debug.Log($"反制牌已生成，己方数量：{myCounters.Count}");
-        // 守望者：对方打出反制牌立即触发
+        // 守望者(01339)：对方打出反制牌立即触发 —— isMine=false 表示 Remote/AI 打出 → 守望者在本地(6-11)
         if (!isMine)
         {
             HandManager hmWatcher = FindObjectOfType<HandManager>();
             if (hmWatcher != null)
-                hmWatcher.StartCoroutine(hmWatcher.WatcherDelayedCheck());
+                hmWatcher.StartCoroutine(hmWatcher.WatcherDelayedCheckFor(false));
         }
     }
 

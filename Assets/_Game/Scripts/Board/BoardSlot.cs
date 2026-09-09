@@ -4071,13 +4071,28 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     }
 
 
-    public IEnumerator SummonAllShadows()
+    public IEnumerator SummonAllShadows(int forceSideSlotID = -1)
     {
         CardData shadowTemplate = CardDatabase.Instance?.GetTemplate("03007");
         if (shadowTemplate?.prefab3D == null) yield break;
 
         BoardManager bm = FindObjectOfType<BoardManager>();
-        bool aiSide1502 = SimpleAI.IsAIMatch && slotID < 6; // 本实例=AI 侧(0-5)
+        // 取实例侧：调用方（阶段开始）用 FindObjectOfType<BoardSlot>() 拿到的是任意槽，slotID 不可靠，
+        // 故以场上 01502 所在半场为准（AI 0-5 / Host 6-11），找不到才回退调用方 slotID。
+        int sideProbe1502 = forceSideSlotID;
+        if (sideProbe1502 < 0 && bm != null)
+        {
+            for (int i = 0; i < 12; i++)
+            {
+                CardInstance probe = bm.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                if (probe != null && probe.templateID == "01502") { sideProbe1502 = i; break; }
+            }
+        }
+        if (sideProbe1502 < 0) sideProbe1502 = slotID;
+        // 在线对局的远端半场(0-5)：由远端客户端 SetPhaseFromNetwork 自己放影子，主机不代放
+        if (!SimpleAI.IsAIMatch && sideProbe1502 >= 0 && sideProbe1502 < 6) yield break;
+
+        bool aiSide1502 = SimpleAI.IsAIMatch && sideProbe1502 < 6; // 本实例=AI 侧(0-5)
         int shStart1502 = aiSide1502 ? 0 : 6;               // Host/人类=6-11
         int currentShadows = 0;
         for (int i = shStart1502; i <= shStart1502 + 5; i++)
@@ -4115,11 +4130,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 ti1502.currentTier += CardInstance.shadowTierBonus;
                 ti1502.baseTier += CardInstance.shadowTierBonus;
                 HandManager hm1502 = FindObjectOfType<HandManager>();
-                hm1502.PlaceCardToSlot(emp1502, t1502);
+                hm1502.PlaceCardToSlot(emp1502, t1502); // 内部已 MarkDirty，同步给玩家端
                 Destroy(t1502);
-                if (NetworkClient.isConnected)
-                    NetworkPlayer.Local?.CmdPlayCard(shadowTemplate.templateID, emp1502.slotID,
-                        ti1502.currentAttack, ti1502.currentHealth, ti1502.currentMaxHealth, ti1502.currentCost, shid1502);
+                // AI 无客户端：不能再以 Local 身份 CmdPlayCard（会把 AI 影子记成玩家牌放到 0-5）
                 yield return null;
             }
             yield break;
