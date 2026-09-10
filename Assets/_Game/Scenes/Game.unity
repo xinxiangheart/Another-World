@@ -4595,6 +4595,11 @@ MonoBehaviour:
   - {fileID: 1966811782}
   rotateDuration: 0.4
   battleIcon: {fileID: 21300000, guid: c3994ebf59fed414cbfc4ad6664fc42e, type: 3}
+  restScale: 0.8
+  spinScale: 1
+  growDuration: 0.12
+  shrinkDuration: 0.5
+  animRoot: {fileID: 0}
 --- !u!1 &862899110
 GameObject:
   m_ObjectHideFlags: 0
@@ -6131,6 +6136,8 @@ MonoBehaviour:
   pushRatio: 0.7
   animationSpeed: 45
   hoverSpacingOffset: 12
+  dimScale: 0.7
+  dimOffsetY: -160
 --- !u!1 &1066589404
 GameObject:
   m_ObjectHideFlags: 0
@@ -9359,6 +9366,8 @@ MonoBehaviour:
   pushRatio: 0.7
   animationSpeed: 45
   hoverSpacingOffset: 12
+  dimScale: 0.7
+  dimOffsetY: -160
 --- !u!1 &1662060711
 GameObject:
   m_ObjectHideFlags: 0
