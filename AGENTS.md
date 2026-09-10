@@ -6,7 +6,9 @@
 
 基准文件：`Assets/_Game/Resources/Cards/Summon/Hero/1/SummonCard_{01103}.png`
 
-01101「复仇者」与 01102「堕落者」已按此基准重绘（2026-09-10），两者的原始内容要求未变。
+已按此基准重绘（2026-09-10，原始内容要求未变）：01101「复仇者」、01102「堕落者」；01103「腐化之心」为首张基准稿；01104「佣兵」、01105「牌场老手」由手绘稿改为正式插画。
+
+被替换下来的旧卡图归档在 `Assets/_Game/Art/Old/`，索引见该目录 `README.md`。
 
 风格特征：
 
@@ -50,6 +52,20 @@ refined hand-drawn card game illustration, clean rounded line art, stylized like
 - `~/.codex/imagegen-compat.json` 里 `providers.ofoxai.model` 已固定为 `volcengine/doubao-seedream-5.0-pro`，`size` 已设为 `1152x1536`，因此 `--refine` 可直接用
 - 尺寸：`1152x1536`（3:4 竖版）
 - 透明底：加 `--transparent` 先生成纯洋红背景，再抠图
+
+#### 局部改图（换脸 / 只改某一处）
+
+```bash
+# 1) 打蒙版：白底 + 透明区，透明处 = 要改的地方（OpenAI 约定）
+python Tools/imagegen/mkmask.py <原图> <mask.png> "x0,y0,x1,y1" <feather>
+# 2) 调接口
+python Tools/imagegen/edit_masked.py <原图> <mask.png> <输出> "<提示词>" google/gemini-3-pro-image 1152x1536
+```
+
+- **蒙版只是提示，不是硬约束：Gemini 会重绘整张图**。实测给 01105 只蒙头部改脸，结果帽子形状、衣褶、构图全都跟着变了。要做精确保留的改动，这条路不合适
+- 返回 **1792x2400、无 alpha、洋红底**（与 3:4 略有出入），必须重新抠图，再缩放到 `1152x1536`
+- 缩放回标准尺寸后要重新居中：`Tools/imagegen/resize_centre.py <src> <dst> 1152 1536`
+- 提示词里要显式写「只改渲染方式，不改五官/表情/姿势」，否则模型会顺手换人设
 
 ### 抠图注意事项（踩过的坑）
 
