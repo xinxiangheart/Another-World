@@ -6,7 +6,7 @@
 
 基准文件：`Assets/_Game/Resources/Cards/Summon/Hero/1/SummonCard_{01103}.png`
 
-已按此基准重绘（2026-09-10，原始内容要求未变）：01101「复仇者」、01102「堕落者」；01103「腐化之心」为首张基准稿；01104「佣兵」、01105「牌场老手」、01107「妖精」由手绘稿改为正式插画。
+已按此基准重绘（2026-09-10，原始内容要求未变）：01101「复仇者」、01102「堕落者」；01103「腐化之心」为首张基准稿；01104「佣兵」、01105「牌场老手」、01107「妖精」由手绘稿改为正式插画；01106「无名之辈」由灰色剪影占位稿改为正式插画（2026-09-11）。
 
 被替换下来的旧卡图归档在 `Assets/_Game/Art/Old/`，索引见该目录 `README.md`。
 
@@ -26,7 +26,7 @@
 - 线条粗细统一、闭合、干净
 - 剪影优先：缩到卡面尺寸时外轮廓仍要能读出来
 - 低细节密度：内部只保留必要的结构线
-- 全身只允许**一个**高饱和点缀色（紫 / 暗红），其余全部压在低饱和灰黑
+- 全身只允许**一个**高饱和点缀色，其余全部压在低饱和灰黑；**这个点缀色的色相由卡牌前缀决定**，见下面「前缀配色」
 
 不要：
 
@@ -43,13 +43,61 @@
 refined hand-drawn card game illustration, clean rounded line art, stylized like Slay the Spire 2, dark fantasy, low saturation, flat cel shading with hard-edged two-tone shadow shapes, bold uniform outlines, no gradients, minimal hatching, no sketch texture, simple clean shapes, low detail density
 ```
 
+### 前缀配色（Prefix palette）
+
+总画风（杀戮尖塔 2 + 暗黑奇幻低饱和）**所有卡牌统一**。前缀只改变**色调、元素、气质**三项，不改变画风；差异一旦破坏统一感，就是跑偏。
+
+| 前缀 | 主色 | 气质 | 视觉特征 |
+|---|---|---|---|
+| 灵能 | 蓝 | 精神、联结 | 符文、水晶、连接线 |
+| 渊 | 紫 | 阴沉、深渊 | 触手、眼睛、旋涡 |
+| 机械 | 棕 | 厚重、构造 | 齿轮、金属、蒸汽 |
+| 血歌 | 红 | 狂热、牺牲 | 血滴、音符、燃烧 |
+| 神灵画卷 | 绿 | 神秘、古卷 | 书籍、卷轴、星点 |
+| 无前缀 | **不固定** | 中性、普通 | 简洁、无属性标志 |
+
+> **`无前缀` 的「灰」说的是气质，不是色相。** 它不锁定点缀色——点缀色**按角色描述逐张决定**，可以红、可以紫、可以金绿。它和有前缀卡的区别只有一条：**不带属性母题、不套属性配色**。不要把它理解成「必须画成灰的」。
+
+**与「唯一高饱和点缀色」的关系**：前缀不是那条规则的例外，而是**指定它的色相**。上面「全身只允许一个高饱和点缀色」照旧成立——有前缀的卡取表里的「主色」；**`无前缀` 卡不套任何属性配色，点缀色由角色描述决定**。不论哪种，其余部分仍然全部压在低饱和灰黑。
+
+**前缀只决定两件事**：① 唯一点缀色的色相；② 一到两个属性母题。**明度结构、线条、平涂阶梯、细节密度一律不动**——差异只允许落在这两处，这就是「有差异但不破坏统一感」的界线。
+
+生成时，在基准提示词前缀之后、角色描述之前，追加该前缀的一行：
+
+```
+灵能      psychic blue accent, glowing runes and crystal shards, thin connecting energy lines
+渊        deep purple accent, writhing tentacles, watching eyes, swirling abyss
+机械      rust brown accent, exposed gears and metal plating, venting steam
+血歌      blood red accent, falling droplets and burning embers, faint musical notes
+神灵画卷   mystic green accent, ancient scrolls and tomes, scattered star motes
+无前缀    no attribute motif and no attribute palette, plain and grounded; take the single accent colour from the character description itself
+```
+
+完整提示词 =
+
+```
+<基准提示词前缀>
+<该前缀的修饰行>
+<角色描述>
+transparent background, 3:4 portrait, no text, no border
+```
+
+**数据实况（2026-09-11 核对 `Assets/_Game/Resources/CardData`）**
+
+- 前缀字段实际只出现 `无`（138 张）、`渊`（14）、`机械`（11）、`灵能`（11）、`神灵画卷`（3）
+- **`血歌` 目前一张卡都没有**。规则先记着，等有卡再用
+- 基准卡 01103「腐化之心」是 `渊`，所以它的紫色点缀与该规则一致
+
+**`无前缀` 卡的点缀色不受本表约束**：01101 匕首的暗红、01104 卷轴/皮具的暖棕、01105 的紫色大衣、01107 的金绿翅膀，都是按各自角色描述定的，符合规则，**不需要为了「配灰」去改**。
+
 ### 生成配方（已实测可用）
 
 - 工具：`imagegen-compat` skill（`scripts/gen_image.py`），`--provider ofoxai`
-- 模型：`volcengine/doubao-seedream-5.0-pro`
+- 模型：`qwen/qwen-image-3.0-pro`（2026-09-11 起）
+  - **不要用 `volcengine/doubao-seedream-*`（豆包）**：出图偏「平面卡通」——粗黑描边、明度只留两级、整体偏亮，缩到卡面尺寸和 01103/01101 并排一看就不是一个画风
   - **不要用 `openai/gpt-image-2`**：它走 Azure 通道，画面里只要出现武器，一律被内容审核拒绝（HTTP 400 safety system）
   - 需要局部改图时走 `POST /v1/images/edits` + 蒙版，用 `google/gemini-3-pro-image`
-- `~/.codex/imagegen-compat.json` 里 `providers.ofoxai.model` 已固定为 `volcengine/doubao-seedream-5.0-pro`，`size` 已设为 `1152x1536`，因此 `--refine` 可直接用
+- `~/.codex/imagegen-compat.json` 里 `providers.ofoxai.model` 已固定为 `qwen/qwen-image-3.0-pro`，`size` 已设为 `1152x1536`，因此 `--refine` 可直接用
 - 尺寸：`1152x1536`（3:4 竖版）
 - 透明底：加 `--transparent` 先生成纯洋红背景，再抠图
 
@@ -114,6 +162,7 @@ python Tools/imagegen/defringe.py <cut.png> <clean.png> 3 0.02
 - 做法：保留全部 alpha，只修 RGB。`core` = 收缩 `radius` 像素后的实心区，`rim` = 其余非全透明像素；把 RGB 从 `core` 向外铺进 `rim`；再按混色比例 `t` 过滤——`t <= t_min` 的像素（例如本来就贴在边缘的黑色描边）原样保留
 - **不要用反解** `(C - t*K)/(1-t)`：`t` 大时会把 `F` 的误差放大，实测把一条 75% 洋红的边缘像素解成了亮绿色。平涂线稿不需要它，直接把该像素换成 `F` 即可
 - 实测效果：01107 的粉紫边缘像素 10,020 → 90
+- 参数不是定死的：01106 的发丝边缘残留的洋红描边用默认 `3 0.05 80` 只清掉一半（`pink>45` 还剩 23 px，缩到 1 倍仍在发梢泛紫），把半径放到 **6**、`t_min` 放到 **0.005**（`defringe.py <cut> <out> 6 0.005 0`）后降到 5 px，且发丝没有变粗。边缘细碎（发丝、布褶）的图先量一下 `pink>45` 的像素数再定参数
 - 参数：`defringe.py <src> <dst> [radius] [t_min] [t_abs] [mode]`
   - `t_abs`：绝对兜底。`t` 是相对 `F`（最近的内部色）算的，**当 `F` 本身就是浅色**（浅灰护腕、白色高光、键色是白色）时，边缘的浅色像素算出的 `t` 很小、躲过判定，留成一串浅色「串珠」。给个 `t_abs`（白键用 `80`）就能兜住
   - `mode=all`：无条件替换所有边缘像素。**平涂线稿上实测更糟**——会把手的外轮廓外侧抹成一条深灰带。不要用
