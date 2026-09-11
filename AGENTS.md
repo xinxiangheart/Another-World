@@ -6,7 +6,7 @@
 
 基准文件：`Assets/_Game/Resources/Cards/Summon/Hero/1/SummonCard_{01103}.png`
 
-已按此基准重绘（2026-09-10，原始内容要求未变）：01101「复仇者」、01102「堕落者」；01103「腐化之心」为首张基准稿；01104「佣兵」、01105「牌场老手」、01107「妖精」由手绘稿改为正式插画；01106「无名之辈」由灰色剪影占位稿改为正式插画（2026-09-11）；01108「搜查官」由抽象占位稿改为正式插画（2026-09-11）。01109「尖啸者」由旧占位稿（恶搞图，未作参考）改为正式插画（2026-09-11）。
+已按此基准重绘（2026-09-10，原始内容要求未变）：01101「复仇者」、01102「堕落者」；01103「腐化之心」为首张基准稿；01104「佣兵」、01105「牌场老手」、01107「妖精」由手绘稿改为正式插画；01106「无名之辈」由灰色剪影占位稿改为正式插画（2026-09-11）；01108「搜查官」由抽象占位稿改为正式插画（2026-09-11）。01109「尖啸者」由旧占位稿（恶搞图，未作参考）改为正式插画（2026-09-11）。01117「苦难给予者」为新增卡图（2026-09-11，此前该卡无任何立绘）。
 
 被替换下来的旧卡图归档在 `Assets/_Game/Art/Old/`，索引见该目录 `README.md`。
 
@@ -14,7 +14,7 @@
 
 - 杀戮尖塔 2（Slay the Spire 2）风格
 - 干净圆润的手绘线条（clean rounded line art）
-- 暗黑奇幻、低饱和度
+- 暗黑奇幻基底、低饱和度（`dark fantasy` 是**画风基底**，不等于「每张都必须黑暗」——气质按角色走，见下面「气质层」）
 - 精致但不繁复
 - 手绘卡牌插画质感
 
@@ -43,9 +43,36 @@
 refined hand-drawn card game illustration, clean rounded line art, stylized like Slay the Spire 2, dark fantasy, low saturation, flat cel shading with hard-edged two-tone shadow shapes, bold uniform outlines, no gradients, minimal hatching, no sketch texture, simple clean shapes, low detail density
 ```
 
+### 气质层（Tone）：画风统一，气质随角色
+
+**画风和明度结构是所有卡铁的纪律，「黑暗」不是。** 不是每张卡都该画成黑暗的——同一套平涂语言下，气质按角色走。
+
+| 层 | 是否统一 | 说明 |
+|---|---|---|
+| 画风 | **统一** | 杀戮尖塔 2、平涂赛璐璐、干净线条、低细节密度 |
+| 明度结构 | **统一** | 2–3 级硬边阶梯 |
+| 气质 | **随角色** | 黑暗 / 中性 / 优雅 / 神圣 |
+| 点缀色 | **随角色或前缀** | 全身只一个高饱和色，色相见下面「前缀配色」 |
+
+- 黑暗系（渊、血歌一类）：凶狠、阴沉、压迫
+- 中性系（无前缀普通卡）：平静、日常、不带属性
+- 优雅系（舞者一类）：从容、轻盈、有姿态
+- 神圣系（神灵画卷一类）：庄严、宁静、可以带一点希望感
+
+生成时把气质词加进**角色描述**（基底里的 `dark fantasy` 不动）：
+
+```
+黑暗卡    dark, grim, unsettling
+优雅卡    graceful, elegant, light
+神圣卡    sacred, serene, luminous
+中性卡    不加气质词，按角色描述直写
+```
+
+**边界**：气质只允许动表情、姿态、光感、点缀色的明度倾向；**线条粗细、平涂阶梯级数、细节密度一律不动**。`luminous` 指的是少量高亮色块，**不是**辉光、AO 或渐变——神圣卡也不许加光晕。
+
 ### 前缀配色（Prefix palette）
 
-总画风（杀戮尖塔 2 + 暗黑奇幻低饱和）**所有卡牌统一**。前缀只改变**色调、元素、气质**三项，不改变画风；差异一旦破坏统一感，就是跑偏。
+总画风（杀戮尖塔 2 + 暗黑奇幻低饱和）**所有卡牌统一**。前缀只改变**色调、元素、默认气质**三项，不改变画风；差异一旦破坏统一感，就是跑偏。表里的「气质」只是该属性的**默认**气质，角色描述可以带出更具体的气质（优雅 / 中性 / 神圣），以角色为准，见上面「气质层」。
 
 | 前缀 | 主色 | 气质 | 视觉特征 |
 |---|---|---|---|
@@ -78,6 +105,7 @@ refined hand-drawn card game illustration, clean rounded line art, stylized like
 ```
 <基准提示词前缀>
 <该前缀的修饰行>
+<气质词（dark, grim, unsettling ｜ graceful, elegant, light ｜ sacred, serene, luminous；中性卡可省）>
 <角色描述>
 transparent background, 3:4 portrait, no text, no border
 ```
@@ -186,3 +214,15 @@ python Tools/imagegen/purge_key.py <src.png> <dst.png> 45 pink     # 按色相
 - 卡图路径：`Assets/_Game/Resources/Cards/Summon/Hero/<分组>/SummonCard_{ID}.png`
 - 替换时**只覆盖 PNG，保留同名 `.meta`**，这样 Unity 里的引用（GUID）不会断
 - 卡图 `.meta` 的 `maxTextureSize` 是 **2048**（`enableMipMap: 0`、`alphaIsTransparency: 1`）。出图长边不要超过 2048，否则 Unity 会静默降采样；`1152x1536` 安全
+
+**定稿后一次性收尾：改名 → 归位 → 清场**
+
+人工确认定稿之后，不要让它停在临时文件名或 `Generated/` 里，一次把下面几步做完：
+
+1. **改名**：`{ID}-{英文短名}-01.png`，例 `01115-false-flame-01.png`、`01116-flesh-mountain-01.png`。`Generated/` 里只保留这一份成品存档，且用的就是这个名
+2. **归位**：放到卡图路径 `SummonCard_{ID}.png` ——
+   - 该卡**已有卡图** → 只覆盖 PNG，保留原 `.meta`（GUID 不能变）
+   - 该卡**此前没有卡图**（新增） → 必须一并建 `.meta`：复制同组已有卡图的 `.meta`、只改 `guid`；新 GUID 要全库唯一（先扫 `Assets` 下所有 `.meta` 查重）
+   - 文件名后缀必须严格是 `SummonCard_{ID}`，运行时按这个路径 `Resources.Load`，写错就加载不到
+3. **清场**：候选图、卡面尺寸对照图、蒙版、`cut` / `clean` / `edit-*` 之类的中间件全部删掉，`Generated/` 下同 ID 只剩改名后的定稿
+4. 被换下来的旧图归档到 `Assets/_Game/Art/Old/`，并在该目录 `README.md` 的替换记录表补一行（新增卡图也补，注明「此前无卡图」）
