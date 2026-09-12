@@ -195,15 +195,19 @@ public class CardDisplay3D : MonoBehaviour
         }
         else
         {
-            string sub;
+            string sub, fallback = null;
             switch (template.summonType)
             {
                 case SummonType.Hero:      sub = "Hero/" + template.baseCost; break;
                 case SummonType.ChosenOne: sub = "ChosenOne"; break;
-                default:                   sub = "Special"; break;
+                // 兜底：Special 型召唤的卡图也可能按费用放在 Hero/{cost}（01113 传送阵、01306 阴 即此安排）
+                default:                   sub = "Special"; fallback = "Hero/" + template.baseCost; break;
             }
             s = LoadSprite("Cards/Summon/" + sub + "/SummonCard_{" + tid + "}")
              ?? LoadSprite("Cards/Summon/" + sub + "/SummonCard_" + tid);
+            if (s == null && fallback != null)
+                s = LoadSprite("Cards/Summon/" + fallback + "/SummonCard_{" + tid + "}")
+                 ?? LoadSprite("Cards/Summon/" + fallback + "/SummonCard_" + tid);
         }
         return s;
     }
@@ -231,15 +235,19 @@ public class CardDisplay3D : MonoBehaviour
         }
         else
         {
-            string sub;
+            string sub, fallback = null;
             switch (template.summonType)
             {
                 case SummonType.Hero:      sub = "Hero/" + template.baseCost; break;
                 case SummonType.ChosenOne: sub = "ChosenOne"; break;
-                default:                   sub = "Special"; break;
+                // 兜底：Special 型召唤的卡图也可能按费用放在 Hero/{cost}（01113 传送阵、01306 阴 即此安排）
+                default:                   sub = "Special"; fallback = "Hero/" + template.baseCost; break;
             }
             s = LoadSprite("Cards/Summon/" + sub + "/SummonCard_{" + tid + "}")
              ?? LoadSprite("Cards/Summon/" + sub + "/SummonCard_" + tid);
+            if (s == null && fallback != null)
+                s = LoadSprite("Cards/Summon/" + fallback + "/SummonCard_{" + tid + "}")
+                 ?? LoadSprite("Cards/Summon/" + fallback + "/SummonCard_" + tid);
         }
         return s != null ? s.texture : Texture2D.whiteTexture;
     }

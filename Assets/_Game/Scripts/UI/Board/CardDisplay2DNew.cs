@@ -639,15 +639,18 @@ public class CardDisplay2DNew : MonoBehaviour
         }
         else
         {
-            string sub;
+            string sub, fallback = null;
             switch (template.summonType)
             {
                 // 目录按费用分（Hero/1、Hero/3、Hero/5），非阶位——3费卡 baseTier=2 但卡图在 Hero/3
                 case SummonType.Hero:      sub = "Hero/" + template.baseCost; break;
                 case SummonType.ChosenOne: sub = "ChosenOne"; break;
-                default:                   sub = "Special"; break;
+                // 兜底：Special 型召唤的卡图也可能按费用放在 Hero/{cost}（01113 传送阵、01306 阴 即此安排）
+                default:                   sub = "Special"; fallback = "Hero/" + template.baseCost; break;
             }
             AddArtCandidates(candidates, "Summon/" + sub, "SummonCard", tid);
+            // 兜底追加在 Special/ 之后，两处都有图时仍以 Special/ 为准
+            if (fallback != null) AddArtCandidates(candidates, "Summon/" + fallback, "SummonCard", tid);
         }
 
         foreach (string p in candidates)

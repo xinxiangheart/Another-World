@@ -108,7 +108,7 @@ refined hand-drawn card game illustration, clean rounded line art, stylized like
 生成时，在基准提示词前缀之后、角色描述之前，追加该前缀的一行：
 
 ```
-灵能      psychic blue accent, glowing runes and crystal shards, thin connecting energy lines
+灵能      psychic blue accent, glowing runes and crystal shards, thin connecting energy lines, being of pure psychic energy
 渊        deep purple accent, writhing tentacles, watching eyes, swirling abyss
 机械      rust brown accent, exposed gears and metal plating, venting steam
 血歌      blood red accent, falling droplets and burning embers, faint musical notes
@@ -167,12 +167,14 @@ transparent background, 3:4 portrait, no text, no border
 | 高费 | 全身 | 几乎纯机械，保留人形轮廓 |
 | 顶级 | 完全体 | 精密构造，庞大压迫 |
 
-**数据实况（2026-09-12 核对 `Assets/_Game/Resources/CardData`）**：机械卡共 11 张，费用只落三档，对应关系是——
+**数据实况（2026-09-12 核对 `Assets/_Game/Resources/CardData`）**：机械卡共 12 张（11 张纯机械 + 1332 双前缀），费用只落三档，对应关系是——
 
 - 费用 0–1（tier 1）→ **低费**：3004 杂兵、1114 暴徒、1118 猎犬、1125 投机者
 - 费用 3（tier 2）→ **中费**：1308 麻烦制造者、1328 破防者、1345 改造人、3005 飞升者、1332 异面信徒
 - 费用 5（tier 3）→ **高费**：1505 封锁者、1506 增幅结构、1513 复生造物
 - **顶级目前没有对应卡**：全库最高费用就是 5，这一级先留着
+
+**卡图现状（2026-09-12）**：12 张里只有 3 张有图，且都落在低费档——01114 暴徒、01118 猎犬、01125 投机者（都在 `Cards/Summon/Hero/1/`，能正常加载）。其余 9 张为空：01308 麻烦制造者、01328 破防者、01332 异面信徒、01345 改造人（3 费），01505 封锁者、01506 增幅结构、01513 复生造物（5 费），以及 03004 杂兵（0 费）、03005 飞升者（3 费）——**最后两张是 `summonType: 2` 的 Special 型召唤**，卡图目录由 `summonType` 决定、不能照抄 CardData 的目录，见「落盘规范」。
 
 **气质**：机械力量感——厚重、精密、构造感。**不黑暗**，偏工业 / 精密美学。这不是「气质层」的例外：它同样只动表情、姿态、光感、点缀色明度倾向，不动线条粗细、平涂阶梯级数、细节密度。因此机械卡默认**省掉气质词**，把「工业 / 精密」写进角色描述即可。
 
@@ -183,7 +185,7 @@ transparent background, 3:4 portrait, no text, no border
 | 精工装备 | 破烂废铁 |
 | 低细节密度（机械抽象成简单形状） | 堆砌精密零件 |
 
-**负面词**（该后端是否接收 `--negative` 尚未实测；不认就退化成正文里的否定句）
+**负面词**（**已实测 2026-09-12：`ofoxai` 不接收 `--negative`，传了会被静默忽略**——下面这串必须写成正文里的否定句）
 
 ```
 rusty, broken, scrappy, junkyard, pure machine, no human form, photorealistic, overly detailed, complex, CG render, 3D, busy background, watermarks
@@ -230,7 +232,7 @@ transparent background, 3:4 portrait, no text, no border
 | 被注视的压迫感 | 可爱 / 友好 |
 | 低细节密度 | 堆砌器官纹理 |
 
-**负面词**（该后端是否接收 `--negative` 尚未实测；不认就退化成正文里的否定句）
+**负面词**（**已实测 2026-09-12：`ofoxai` 不接收 `--negative`，传了会被静默忽略**——下面这串必须写成正文里的否定句）
 
 ```
 bright colors, cute, friendly, gore, bloody, photorealistic, overly detailed, complex, CG render, 3D, busy background, watermarks
@@ -252,17 +254,17 @@ transparent background, 3:4 portrait, no text, no border
 
 暂无卡图 9 张：3002 幽魂、1302 疗、1303 潜行者、1304 黑暗骑士、1331 囚牢、1332 异面信徒（双前缀，画法见「前缀配色」里的「双前缀」条）、1503 领主、1526 忤逆者、3003 被腐化者。
 
-### 灵能前缀细化（半透明精神体）
+### 灵能前缀细化（能量体）
 
-**核心概念：半透明精神体。** 灵能生物**全部能附着、也能独立放置**，所以它们不是实体，是**半透明的精神存在**。
+**核心概念：能量体。** 灵能生物**全部能附着、也能独立放置**，所以它们不是血肉实体，是**能量的凝聚**。**半透明只是质感倾向，不是必须真透**——一句话：**灵能 = 实色平涂 + 能量感表现**。
 
 | 特征 | 说明 |
 |---|---|
-| 身体 | 半透明，能看到轮廓但不实 |
-| 边缘 | 微微发光 |
+| 主体 | 由能量构成，不是血肉；**照常画实色平涂，alpha 保持 1** |
+| 质感 | 边缘发光、内部有能量流动感、轻盈，不像实体那么重 |
 | 气质 | 精神体、非实体 |
 
-**这是灵能与其他前缀最大的区别**——其他前缀是实体，灵能是半透明精神体。
+**这是灵能与其他前缀最大的区别**——其他前缀是血肉 / 金属实体，灵能是**能量的凝聚体**。
 
 **统一母题**（灵能前缀只允许这五个）
 
@@ -271,49 +273,52 @@ transparent background, 3:4 portrait, no text, no border
 | 符文 | 精神印记 |
 | 水晶 | 菱形水晶 / 碎片 |
 | 连接线 | 意识的链接 |
-| 半透明 | 灵体感 |
-| 光晕 | 精神的微光 |
+| 能量感 | 边缘发光、内部能量流动 |
+| 光晕 | 精神的微光（一小块高亮平涂，不是 glow） |
 
 **配色**
 
 | 项 | 值 |
 |---|---|
 | 点缀色 | **蓝（psychic blue）**，全身仍只此一个高饱和色 |
-| 主体 | 半透明，低饱和 |
+| 主体 | **蓝色主调**：能量体本身走低饱和蓝 / 蓝灰，**不是灰白**（实色，不靠降 alpha 做通透） |
 | 能量 | 淡蓝 / 青光 |
+| 整体 | 整张卡读起来应该是**蓝的**——「主色调是蓝色」 |
 
-> **半透明不等于可以破平涂。** 通透感靠**降低色块的不透明度 / 整体提亮**来做，**不许**用渐变、雾化、AO 辉光——硬边平涂、闭合干净的轮廓、低细节密度一条都不松。所谓「光晕」也只是一小块高亮平涂，不是 glow。缩到卡面尺寸时剪影仍要读得出来。
+> **主色调是蓝（2026-09-12 定）。** 灵能卡的色彩印象一律偏蓝：能量体的主体、边缘高光带、符文 / 水晶 / 连接线全部落在蓝色系里，**不许出现灰白主体的裸感**。蓝的明度阶梯照常 2–3 级硬边，只有一处可以用高饱和蓝（水晶核 / 符文 / 线尾节点）。
 
-**气质**：精神、联结、空灵——不是黑暗，是「精神性的存在」。默认**省掉气质词**，写进角色描述即可。
+> **实色平涂，不是真透明。** 「能量感」只靠**边缘发光、内部高亮色块、整体提亮**暗示，色块本身照常是硬边平涂、明度阶梯照常 2–3 级。**不许**用渐变、雾化、AO 辉光，也**不许**把主体真做成半透明（卡面底是深色，真透明会透出卡底，且难平涂）。所谓「光晕」只是一小块高亮平涂。缩到卡面尺寸时剪影仍要读得出来。
+
+**气质**：空灵、精神、能量感——不是黑暗，是「能量的凝聚」。默认**省掉气质词**，写进角色描述即可。
 
 | 要 | 不要 |
 |---|---|
-| 半透明身体 | 实体厚重 |
+| 能量体（实色平涂 + 能量感表现） | 真 alpha 半透明 / 通透到剪影读不出 |
 | 符文 / 水晶 / 连接线 | 无灵能母题 |
 | 蓝色点缀 | 暖色 |
-| 空灵精神感 | 沉重实体感 |
+| 空灵精神感 | 沉重血肉实体感 |
 | 低细节密度 | 堆砌细节 |
 
-**负面词**（同上，机制待实测）
+**负面词**（同上：**必须写成正文里的否定句**）
 
 ```
-solid, opaque, heavy, earthy, bright colors, photorealistic, overly detailed, complex, CG render, 3D, busy background, watermarks
+translucent, transparent body, see-through, ghostly, heavy, earthy, bright colors, photorealistic, overly detailed, complex, CG render, 3D, busy background, watermarks, anatomy, muscle definition, ribs, smooth mannequin, nude body
 ```
 
 **完整提示词（灵能卡）**
 
 ```
 <基准提示词前缀>
-psychic blue accent, glowing runes and crystal shards, thin connecting energy lines, translucent ethereal body
+psychic blue accent, glowing runes and crystal shards, thin connecting energy lines, being of pure psychic energy
 <角色描述>
 transparent background, 3:4 portrait, no text, no border
 ```
 
 **数据实况（2026-09-12 核对 `Assets/_Game/Resources/CardData`）**：灵能卡 11 张（1126 凝聚体、1127 改造者、1128 超数故障、1129 滋养者、1333 幻身、1334 集群意识、1335 能量骇客、1336 修正者、1527 消逝之影、1528 能量收割者、3027 中枢），费用 0 / 1 / 3 / 5。
 
-**只有 1334 集群意识一张有卡图，而且是 2000x2666 的旧规格、主体完全不透明**——既不符合画风基准，也和「灵能 = 半透明」冲突，列进待重绘。其余 10 张暂无卡图。
+**只有 1334 集群意识一张有卡图，而且是 2000x2666 的旧规格、画风也不符合基准**，列进待重绘。其余 10 张暂无卡图。
 
-> **待验证：半透明的落法。** 卡面底是深色，身体半透明会**透出卡底**，观感需要在真机上验一次再定：是整块半透明，还是只让边缘 / 局部通透、主体仍留不透明色块。画第一张灵能卡之前先拿一张试。
+> **「半透明怎么落」这个悬案（2026-09-12 定案）：不做真透明。** 灵能卡一律**实色平涂 + 能量感表现**（边缘发光 / 内部高亮 / 整体提亮），alpha 与其他前缀一样是 1。原先「真机上验半透明透底」的待验证条目随之作废。
 
 ### 生成配方（已实测可用）
 
@@ -376,6 +381,7 @@ python Tools/imagegen/key_flood.py <src> <dst> <T_fill> <T0> <T1>
 - 为什么非它不可：01103「腐化之心」心口光晕有 **2.5 万+ 像素**与键色距离 < 55，纯全局阈值会把发光抠成半透明甚至抠没
 - 泛洪用 numpy 扫描线自实现（Pillow 10 起 `ImageDraw.floodfill` 已被移除，不要再调用）
 - 自检：抠完打印「`alpha > 200` 且 `d < 35`」的像素数，必须为 **0**，否则说明有洋红残留
+- 自检有盲区：上面那条只查「离键色 `d < 35`」的**实心**残留，查不出深色混色边缘。01126「凝聚体」实测 `d < 35` 为 0、自检全过，但轮廓内外各留一条 1px 暗洋红边（`(121,30,150)` 一类，`d` 约 **112**），共 **2459 px**。蓝描边的卡尤其要当心（蓝与洋红相邻）；不论自检结果，**一律再过一遍 `defringe.py`**，收尾再用 `min(R,B)-G > 30` 数一遍
 
 **必做收尾：去洋红染色 `Tools/imagegen/defringe.py`**
 
@@ -386,8 +392,7 @@ python Tools/imagegen/defringe.py <cut.png> <clean.png> 3 0.02
 - 为什么需要：洋红底与主体的抗锯齿像素是**混色**（50% 金 + 50% 洋红 = 粉），而且这些像素的 `alpha` 常常是 **255**，所以只看 alpha 的抠图完全发现不了它们，成品在深底和浅底上都会有一圈粉紫描边
 - 做法：保留全部 alpha，只修 RGB。`core` = 收缩 `radius` 像素后的实心区，`rim` = 其余非全透明像素；把 RGB 从 `core` 向外铺进 `rim`；再按混色比例 `t` 过滤——`t <= t_min` 的像素（例如本来就贴在边缘的黑色描边）原样保留
 - **不要用反解** `(C - t*K)/(1-t)`：`t` 大时会把 `F` 的误差放大，实测把一条 75% 洋红的边缘像素解成了亮绿色。平涂线稿不需要它，直接把该像素换成 `F` 即可
-- 实测效果：01107 的粉紫边缘像素 10,020 → 90
-- 参数不是定死的：01106 的发丝边缘残留的洋红描边用默认 `3 0.05 80` 只清掉一半（`pink>45` 还剩 23 px，缩到 1 倍仍在发梢泛紫），把半径放到 **6**、`t_min` 放到 **0.005**（`defringe.py <cut> <out> 6 0.005 0`）后降到 5 px，且发丝没有变粗。边缘细碎（发丝、布褶）的图先量一下 `pink>45` 的像素数再定参数
+- 实测效果：01107 的粉紫边缘像素 10,020 → 90；01126 轮廓内外 2459 → 97（`3 0.02`）
 - 参数：`defringe.py <src> <dst> [radius] [t_min] [t_abs] [mode]`
   - `t_abs`：绝对兜底。`t` 是相对 `F`（最近的内部色）算的，**当 `F` 本身就是浅色**（浅灰护腕、白色高光、键色是白色）时，边缘的浅色像素算出的 `t` 很小、躲过判定，留成一串浅色「串珠」。给个 `t_abs`（白键用 `80`）就能兜住
   - `mode=all`：无条件替换所有边缘像素。**平涂线稿上实测更糟**——会把手的外轮廓外侧抹成一条深灰带。不要用
@@ -408,7 +413,18 @@ python Tools/imagegen/purge_key.py <src.png> <dst.png> 45 pink     # 按色相
 ### 落盘规范
 
 - 先写入 `Assets/_Game/Art/Sprites/Generated/`，人工确认后再替换卡图
-- 卡图路径：`Assets/_Game/Resources/Cards/Summon/Hero/<分组>/SummonCard_{ID}.png`
+- 卡图路径由**卡的 `summonType`** 决定（`Assets/_Game/Scripts/Core/CardEnums.cs:2`：`SummonType { Hero, ChosenOne, Special }`），**与 CardData 所在的子目录无关**。对照表：
+
+| summonType | 卡图目录 | 例 |
+|---|---|---|
+| `Hero`(0) | `Cards/Summon/Hero/{baseCost}`（按**费用**分 1 / 3 / 5，不是阶位） | `.../Hero/1/SummonCard_{01103}.png` |
+| `ChosenOne`(1) | `Cards/Summon/ChosenOne`（不分费用） | — |
+| `Special`(2) | `Cards/Summon/Special`（不分费用）；**找不到时兜底 `Cards/Summon/Hero/{baseCost}`** | `.../Special/SummonCard_{03001}.png`、`.../Hero/1/SummonCard_{01113}.png` |
+
+- 运行时按这张表拼路径 `Resources.Load<Sprite>`：`Assets/_Game/Scripts/UI/Board/CardDisplay2DNew.cs:643`、`CardDisplay3D.cs:199` 与 `:235`（法术另有一套 `Spell/{Normal|Special}/{cost}`，两个子目录都试）。**放错目录不报错**——静默退回占位图，卡面露出前缀底图 `PrefixArtBG`，只有肉眼能发现
+
+- **Special 卡图可放两处（2026-09-12 起）**：加载器先找 `Summon/Special/`，没有再兜底 `Summon/Hero/{baseCost}`——`CardDisplay2DNew.cs:651`、`CardDisplay3D.cs:208` 与 `:248` 三处同步（少改一处，手牌和棋盘的卡面就会不一致）。两处都有图时以 `Special/` 为准。`01113`「传送阵」（图在 `Hero/1`）、`01306`「阴」（图在 `Hero/3`）即靠这条兜底显示，属既定安排
+- 2026-09-12 之前只认 `Special/`，那两张卡因此一直显示不出卡图（静默退回前缀底图）。全库 178 张模板按新旧逻辑逐张比对过：**只有这两张的行为发生变化**，其余完全一致
 - 替换时**只覆盖 PNG，保留同名 `.meta`**，这样 Unity 里的引用（GUID）不会断
 - 卡图 `.meta` 的 `maxTextureSize` 是 **2048**（`enableMipMap: 0`、`alphaIsTransparency: 1`）。出图长边不要超过 2048，否则 Unity 会静默降采样；`1152x1536` 安全
 
