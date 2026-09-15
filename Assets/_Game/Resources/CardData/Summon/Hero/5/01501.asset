@@ -20,8 +20,8 @@ MonoBehaviour:
   summonType: 0
   baseCost: 5
   baseTier: 3
-  prefix: "\u65E0"
-  baseHealth: 6
+  prefix: "\u6E0A"
+  baseHealth: 5
   baseAttack: 3
   hasFirstStrike: 0
   hasOnEnter: 1
