@@ -1300,26 +1300,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             hm?.ShowAllCards();
             FindObjectOfType<CardDrag>()?.SetButtonsInteractable(true);
         }
-
-        // 手牌为空时强制启用按钮（防止放置/效果链路中残留禁用状态）
-        NetworkPlayer.Local?.handCards.RemoveAll(c => c == null);
-        if (NetworkPlayer.Local != null && NetworkPlayer.Local.handCards.Count == 0)
-        {
-            EndTurnButton endBtn = FindObjectOfType<EndTurnButton>();
-            if (endBtn != null)
-            {
-                CanvasGroup endCG = endBtn.GetComponent<CanvasGroup>() ?? endBtn.gameObject.AddComponent<CanvasGroup>();
-                endCG.interactable = true;
-                endCG.blocksRaycasts = true;
-            }
-            DrawCardUI drawUI = FindObjectOfType<DrawCardUI>();
-            if (drawUI != null)
-            {
-                CanvasGroup drawCG = drawUI.GetComponent<CanvasGroup>() ?? drawUI.gameObject.AddComponent<CanvasGroup>();
-                drawCG.interactable = true;
-                drawCG.blocksRaycasts = true;
-            }
-        }
+        // 放置/效果链路里残留的按钮禁用不再在这里特判"手牌为空"补救：
+        // 按钮开关由 TurnButtonGate 每帧按状态派生（含非己方回合应保持禁用的情形）
+        TurnButtonGate.Refresh();
 
         BoardSyncManager.MarkDirty();
     }

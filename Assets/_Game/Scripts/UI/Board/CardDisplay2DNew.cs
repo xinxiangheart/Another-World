@@ -158,6 +158,7 @@ public class CardDisplay2DNew : MonoBehaviour
     public Sprite statusTestSprite;
 
     CardInstance _inst;
+    CardView _view; // 压暗态（非己方回合手牌）转发用，懒取
     static Sprite _placeholder;
 
     // 卡框缓存：卡框只由模板决定（baseCost/01524 特判），生成时按模板检测一次，
@@ -323,6 +324,10 @@ public class CardDisplay2DNew : MonoBehaviour
         if (cardHealthText != null) cardHealthText.gameObject.SetActive(showCombat);
         if (attackIcon != null) attackIcon.gameObject.SetActive(showCombat);
         if (healthIcon != null) healthIcon.gameObject.SetActive(showCombat);
+
+        // 本次刷新可能换了卡图、重建了图标排 → 新 Graphic 按当前压暗强度补上（未压暗时内部直接返回）
+        if (_view == null) _view = GetComponent<CardView>();
+        _view?.RefreshDimVisuals();
     }
 
     // ================= 翻面 =================

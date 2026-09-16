@@ -104,6 +104,10 @@ public class CardDisplay2DSpell : CardDisplay2D
             if (art == null) cardArt.gameObject.SetActive(false); // 无原画：隐藏露出 prefixArtBG
             else { cardArt.gameObject.SetActive(true); cardArt.sprite = art; cardArt.enabled = true; }
         }
+
+        // 本次刷新换了卡图/费用框 → 新 Graphic 按当前压暗强度补上（未压暗时内部直接返回）
+        CardView view = GetComponent<CardView>();
+        if (view != null) view.RefreshDimVisuals();
     }
 
     /// <summary>背面（隐藏/对手视角）：切 BackFace 容器 + 卡背图。</summary>

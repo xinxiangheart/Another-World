@@ -667,42 +667,16 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
                 return false;
         }
     }
+    /// <summary>
+    /// 兼容旧调用点（拖拽/选择/放置/弹窗各处的"关门/开门"）。
+    /// 现在不再直接写 CanvasGroup —— 按钮开关是派生状态（见 TurnButtonGate）：
+    ///   阶段权威由 TurnManager 写；UI 交互锁(拖拽/选择/放置/弹窗/战斗动画)每帧重算。
+    /// 因此本例的 enabled 只作"请求重算"，真正生效的是调用点对应的状态本身。
+    /// 这修掉了"某条协程没走到收尾就把按钮留在禁用态"的偶发问题（表现为自己回合点不动结束回合/抽牌）。
+    /// </summary>
     public void SetButtonsInteractable(bool enabled)
     {
-        ApplyButtonsInteractable(enabled);
-        // 每次禁用时，挂到 HandManager(常驻) 上启动延迟守卫
-        if (!enabled && handManager != null)
-            handManager.StartCoroutine(WatchEmptyHand());
-    }
-
-    IEnumerator WatchEmptyHand()
-    {
-        yield return new WaitForSeconds(0.3f);
-        yield return new WaitForSeconds(0.3f);
-        NetworkPlayer.Local?.handCards.RemoveAll(c => c == null);
-        if (NetworkPlayer.Local != null && NetworkPlayer.Local.handCards.Count == 0)
-            ApplyButtonsInteractable(true);
-    }
-
-    void ApplyButtonsInteractable(bool enabled)
-    {
-        EndTurnButton endBtn = FindObjectOfType<EndTurnButton>();
-        if (endBtn != null)
-        {
-            CanvasGroup cg = endBtn.GetComponent<CanvasGroup>();
-            if (cg == null) cg = endBtn.gameObject.AddComponent<CanvasGroup>();
-            cg.interactable = enabled;
-            cg.blocksRaycasts = enabled;
-        }
-
-        DrawCardUI drawUI = FindObjectOfType<DrawCardUI>();
-        if (drawUI != null)
-        {
-            CanvasGroup cg = drawUI.GetComponent<CanvasGroup>();
-            if (cg == null) cg = drawUI.gameObject.AddComponent<CanvasGroup>();
-            cg.interactable = enabled;
-            cg.blocksRaycasts = enabled;
-        }
+        TurnButtonGate.Refresh();
     }
 
     bool CheckSpellCondition(CardData template)

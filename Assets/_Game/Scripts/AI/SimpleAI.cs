@@ -808,6 +808,16 @@ public class SimpleAI : MonoBehaviour
         return best;
     }
 
+    /// <summary>供法术/效果 handler 的「AI 自己选」复用（如 02109 正义的群殴召唤两名杂兵）：
+    /// 返回 AI 侧(0-5)最优空槽，null = 无合法槽（调用方跳过即可）。
+    /// 站位倾向与 AI 自己出召唤物完全一致（内部走 SelectSlot），不另立一套规则。</summary>
+    public static BoardSlot PickSlotForAI(CardInstance ci)
+    {
+        if (ci == null || Instance == null) return null;
+        int s = Instance.SelectSlot(ci);
+        return s < 0 ? null : FindObjectOfType<BoardManager>()?.GetSlot(s);
+    }
+
     // ═══════════════════════════════════════════════════════════════════
     // 抽牌策略
     // ═══════════════════════════════════════════════════════════════════

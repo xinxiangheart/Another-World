@@ -29,6 +29,10 @@ public class CardDisplayPanel : MonoBehaviour
 
     void Awake() { Instance = this; panelRoot.SetActive(false); }
 
+    /// <summary>面板是否正在展示（供 TurnButtonGate 判定"弹窗期间禁止结束回合/抽牌"）。
+    /// 用 panelRoot 的实际激活状态派生，而不是另立一个布尔锁——Show/Hide 任一路径漏掉都不会残留。</summary>
+    public bool IsShowing => panelRoot != null && panelRoot.activeInHierarchy;
+
     public void Show(List<CardInstance> list, Func<CardInstance, bool> f, string txt = "确认")
     {
         cards = list; filter = f; onOk = null; selected = null;
@@ -41,15 +45,15 @@ public class CardDisplayPanel : MonoBehaviour
             foreach (var c in player.handCards) if (c) c.SetActive(false);
         }
 
-        var cd = FindObjectOfType<CardDrag>();
-        if (cd) cd.SetButtonsInteractable(false);
+        // 弹窗期间的"结束回合/抽牌"禁用不再直接写按钮：按钮开关由 TurnButtonGate 按本面板的
+        // IsShowing 派生（直接写会在"弹窗被顶掉、收尾没走到"时留下永久禁用 → 自己回合点不动按钮）。
+        // 这里只关掉弃牌通道，真正的按钮重算放在 panelRoot 激活之后（见方法尾）。
         Card3DHover.allowDiscard = false;
 
         var hm = FindObjectOfType<HandManager>();
         if (hm) hm.SetHandAreaRaycast(false);
 
-        // 弹窗期间禁止结束回合 — 任何需要玩家查看/选择的弹窗都应阻塞阶段推进
-        FindObjectOfType<EndTurnButton>()?.SetInteractable(false);
+        // 弹窗期间禁止结束回合 — 任何需要玩家查看/选择的弹窗都应阻塞阶段推进（由 TurnButtonGate 统一判定）
 
         foreach (Transform t in cardContainer) Destroy(t.gameObject);
         createdCards.Clear();
@@ -138,6 +142,7 @@ public class CardDisplayPanel : MonoBehaviour
 
         panelRoot.SetActive(true);
         panelRoot.transform.SetAsLastSibling();
+        TurnButtonGate.Refresh(); // panelRoot 已激活 → 此刻起结束回合/抽牌保持禁用
 
         // 多选 + confirmWhenEmpty：确认键常显，允许 0 张确认（onOk 在 ShowWithCallback 中随后赋值，
         // 闭包延迟读取字段，按钮回调时已就绪）。02111 换洗(全弃)/02307(弃0) 反选场景。
@@ -289,8 +294,8 @@ public class CardDisplayPanel : MonoBehaviour
             foreach (var c in player.handCards) if (c) c.SetActive(true);
         }
 
-        var cd = FindObjectOfType<CardDrag>();
-        if (cd) cd.SetButtonsInteractable(true);
+        // 关闭后重算按钮（由 TurnButtonGate 判定：非己方回合或仍有其它 UI 锁时保持禁用）
+        TurnButtonGate.Refresh();
         Card3DHover.allowDiscard = true;
 
         var hm = FindObjectOfType<HandManager>();
@@ -299,9 +304,6 @@ public class CardDisplayPanel : MonoBehaviour
             hm.SetHandAreaRaycast(true);
             hm.RefreshLayout(true);
         }
-
-        // 弹窗关闭后恢复结束回合按钮
-        FindObjectOfType<EndTurnButton>()?.SetInteractable(true);
     }
 
     public CardInstance GetSelectedCard() => selected;

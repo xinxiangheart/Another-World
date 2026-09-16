@@ -1178,28 +1178,12 @@ public partial class TurnManager : MonoBehaviour
         onComplete();
     }
 
-    void SetEndButton(bool enabled)
-    {
-        EndTurnButton endBtn = FindObjectOfType<EndTurnButton>();
-        if (endBtn != null)
-            endBtn.SetInteractable(enabled);
-        else
-            Debug.LogWarning("[TurnManager] SetEndButton: EndTurnButton not found in scene!");
-    }
-    void SetDrawButtonInteractable(bool enabled)
-    {
-        DrawCardUI drawUI = FindObjectOfType<DrawCardUI>();
-        if (drawUI != null)
-            drawUI.SetInteractable(enabled);
-        else
-            Debug.LogWarning("[TurnManager] SetDrawButtonInteractable: DrawCardUI not found in scene!");
-    }
-
     void SetPlayerActionsEnabled(bool enabled)
     {
         Debug.Log($"[TurnManager] SetPlayerActionsEnabled({enabled}), currentPhase={currentPhase}");
-        SetEndButton(enabled);
-        SetDrawButtonInteractable(enabled);
+        // 阶段权威交给自己之后由 TurnButtonGate 统一写按钮：门 = 阶段允许(本处) 且 无 UI 交互锁。
+        // 这样即便某个协程漏放了自己那把锁，也不会把"结束回合/抽牌"永久禁用（见 TurnButtonGate 注释）。
+        TurnButtonGate.SetTurnAllowsActions(enabled);
     }
 
     /// <summary>

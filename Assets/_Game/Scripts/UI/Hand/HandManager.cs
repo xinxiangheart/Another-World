@@ -20,10 +20,13 @@ public class HandManager : MonoBehaviour
     [Tooltip("悬停卡牌时相邻卡牌的额外水平让位偏移（0=关闭）")]
     public float hoverSpacingOffset = 24f;
 
-    [Header("非己方回合手牌压暗（对手回合提示）")]
-    [Tooltip("非己方回合且不在选择阶段时，整手缩小倍率")] public float dimScale = 0.7f;
+    [Header("手牌压暗（对方回合 / 攻击回合提示）")]
+    [Tooltip("对方回合 / 攻击回合且不在选择 / 确认中时，整手缩小倍率")] public float dimScale = 0.7f;
     [Tooltip("压暗时整手向下偏移（局部单位，负=下移，让手牌部分移出视野）")] public float dimOffsetY = -160f;
+    [Tooltip("压暗最终强度 0-1（觉得灰过头就往下调：0.6 轻描淡写 / 1.0 全灰）")] public float dimStrength = 0.75f;
+    // 压暗的视觉（去饱和 + 压亮度，非"盖灰纸"）由 CardView 负责，参数在 Resources/Cards/Materials/CardDim.mat
     bool _handDimmed;
+    bool _dimHeld; // 上一次"真实阶段"（非 PhaseStart）算出的压暗结论，过渡期沿用，见 ShouldDimHand
 
     private List<CardView> handCards = new List<CardView>();
     private CardView draggingCard;
@@ -55,9 +58,9 @@ public class HandManager : MonoBehaviour
             RefreshLayout(true);
             MarkBoundsDirty();
         }
-        // 新入卡若正值"非己方回合压暗"，立即应用同态（缩小/下移/淡灰遮罩）
+        // 新入卡若正值"手牌压暗"，立即应用同态（缩小/下移/去饱和压暗）
         if (_handDimmed && cv != null)
-            cv.SetGroupDim(true, dimScale, dimOffsetY);
+            cv.SetGroupDim(true, dimScale, dimOffsetY, dimStrength);
     }
 
     public void RemoveCard(CardView cv)
@@ -78,26 +81,9 @@ public class HandManager : MonoBehaviour
             Destroy(cv.gameObject);
         }
 
-        // 手牌为0时强制刷新按钮交互
-        if (handCards.Count == 0)
-        {
-            EndTurnButton endBtn = FindObjectOfType<EndTurnButton>();
-            if (endBtn != null)
-            {
-                CanvasGroup endCG = endBtn.GetComponent<CanvasGroup>();
-                if (endCG == null) endCG = endBtn.gameObject.AddComponent<CanvasGroup>();
-                endCG.interactable = true;
-                endCG.blocksRaycasts = true;
-            }
-            DrawCardUI drawUI = FindObjectOfType<DrawCardUI>();
-            if (drawUI != null)
-            {
-                CanvasGroup drawCG = drawUI.GetComponent<CanvasGroup>();
-                if (drawCG == null) drawCG = drawUI.gameObject.AddComponent<CanvasGroup>();
-                drawCG.interactable = true;
-                drawCG.blocksRaycasts = true;
-            }
-        }
+        // 手牌为0时不再在这里"强制启用按钮"：按钮开关由 TurnButtonGate 每帧按状态派生
+        // （旧写法在非己方回合会错误地放开结束回合），此处只需让状态尽快重算一次。
+        TurnButtonGate.Refresh();
 
         // Sync to remote client after spell/counter cast is fully processed.
         // Skip attach-only cards (canAttach && baseHealth==0) — their models live in attachedModels,
@@ -756,10 +742,41 @@ public class HandManager : MonoBehaviour
     /// 必须缓存引用：FindObjectOfType 不命中已隐藏(inactive)的对象——首次调用(隐藏)时对象仍激活即可缓存，此后直接 SetActive 恢复。</summary>
     void SetTurnButtonsVisible(bool visible)
     {
-        if (_endBtnCache == null) _endBtnCache = FindObjectOfType<EndTurnButton>();
-        if (_drawUiCache == null) _drawUiCache = FindObjectOfType<DrawCardUI>();
+        if (_endBtnCache == null) _endBtnCache = FindObjectOfType<EndTurnButton>(true);
+        if (_drawUiCache == null) _drawUiCache = FindObjectOfType<DrawCardUI>(true);
         if (_endBtnCache != null) _endBtnCache.gameObject.SetActive(visible);
         if (_drawUiCache != null) _drawUiCache.gameObject.SetActive(visible);
+        if (visible) TurnButtonGate.Refresh(); // 重新显示后立刻按当前状态刷一次，避免残留隐藏前的禁用态
+    }
+
+    /// <summary>
+    /// 兜底：_handCardsHidden 只在 ShowAllCards 里解除，但不少流程（CardDisplayPanel.Hide、
+    /// 各效果协程收尾、CleanupAfterPlacement 在 IsSelecting 残留时跳过 ShowAllCards）会直接把
+    /// 手牌 SetActive(true) 却不通知本类 —— 会让抽牌/结束回合按钮永久停在隐藏态，
+    /// 表现正是"自己回合点不了结束回合和抽牌"。
+    /// 这里改为按"手牌是否真的被隐藏"派生：只要有一张手牌可见（或手牌已空/只剩已销毁残留）就恢复按钮。
+    /// </summary>
+    void ReconcileTurnButtonsVisible()
+    {
+        if (!_handCardsHidden) return;
+        bool anyLive = false;
+        for (int i = 0; i < handCards.Count; i++)
+        {
+            CardView cv = handCards[i];
+            if (cv == null || cv.gameObject == null) continue;
+            anyLive = true;
+            if (cv.gameObject.activeSelf)
+            {
+                _handCardsHidden = false;
+                SetTurnButtonsVisible(true);
+                return;
+            }
+        }
+        if (!anyLive)
+        {
+            _handCardsHidden = false;
+            SetTurnButtonsVisible(true);
+        }
     }
 
     public void SetHandAreaRaycast(bool enabled)
@@ -781,28 +798,46 @@ public class HandManager : MonoBehaviour
     }
 
     // ══════════════════════════════════════════════════════════════
-    // 非己方回合手牌压暗：!IsMyTurn 且 不在选择阶段 → 整手 0.7× + 下移 + 淡灰遮罩
-    // （选择阶段 = SelectionManager.IsSelecting：对手回合弹给我的选择目标面板也恢复）
+    // 手牌压暗：仅"对方回合 / 攻击回合"，且不在选择 / 确认中 → 整手 0.7× + 下移 + 去饱和压暗（见 CardView）
+    // （选择 = SelectionManager.IsSelecting，确认 = ConfirmQueueManager.IsBusy：任何阶段下弹给我的面板都恢复原色）
     // ══════════════════════════════════════════════════════════════
     bool ShouldDimHand()
     {
-        if (TurnManager.Instance == null) return false;
-        if (TurnManager.Instance.IsMyTurn()) return false;
+        TurnManager tm = TurnManager.Instance;
+        if (tm == null) return false;
+
+        // ① 选择 / 确认优先，且与阶段无关：只要轮到"我做选择"或"我答确认"就立刻恢复原色 ——
+        //    选择 = SelectionManager.IsSelecting（选择目标面板、从手牌里挑一张……）；
+        //    确认 = ConfirmQueueManager.IsBusy（"是否……？"弹窗，正在显示或还排在队列里）。
+        //    这一刻手牌是要被看的、可能还要被点的，压暗只会添乱。
         if (SelectionManager.Instance != null && SelectionManager.Instance.IsSelecting) return false;
-        return true;
+        if (ConfirmQueueManager.Instance != null && ConfirmQueueManager.Instance.IsBusy()) return false;
+
+        // ② 压暗只发生在"对方回合"与"攻击回合"：
+        //    - 对方回合：轮不到我行动；
+        //    - 攻击回合：双方都不能出牌，只有结算。
+        //    判据不能反过来写成 !IsMyTurn()：PhaseStart 是 currentPhase 的初值，而且**每个阶段开始时**都会先被置上
+        //    （StartNewPhase → BroadcastTurnPhase(PhaseStart)，其间还有若干 yield）—— 反推会把开局发牌与每阶段开始
+        //    也算作"非己方回合"，于是手牌会先灰一下再亮回来（己方先手开局时尤其明显）。
+        // ③ PhaseStart 本身不参与判定，沿用上一条真实阶段的结论：它只是"阶段切换中"的过渡值（PhaseWheel 也把它
+        //    当成非阶段），否则回合过渡时手牌会先亮一下再灰回去；而它作为初值时沿用默认的"不灰"，正好让开局发牌不灰。
+        TurnManager.TurnPhase phase = tm.currentPhase;
+        if (phase != TurnManager.TurnPhase.PhaseStart)
+            _dimHeld = phase == TurnManager.TurnPhase.EnemyTurn || phase == TurnManager.TurnPhase.BattlePhase;
+        return _dimHeld;
     }
 
     void ApplyHandDimToAll(bool dim)
     {
         if (handCards == null) return;
         // 先按新 dim 重算整手间距/位置（RefreshLayout 读到 _handDimmed 会按 dimScale 缩放水平排布），
-        // 再对每张卡做缩放 + 下移 + 遮罩动画，确保缩小时间距同步收紧。
+        // 再对每张卡做缩放 + 下移 + 压暗淡入，确保缩小时间距同步收紧。
         RefreshLayout(false);
         for (int i = 0; i < handCards.Count; i++)
         {
             var cv = handCards[i];
             if (cv == null) continue;
-            cv.SetGroupDim(dim, dim ? dimScale : 1f, dim ? dimOffsetY : 0f);
+            cv.SetGroupDim(dim, dim ? dimScale : 1f, dim ? dimOffsetY : 0f, dimStrength);
         }
         MarkBoundsDirty();
     }
@@ -821,6 +856,8 @@ public class HandManager : MonoBehaviour
     void Update()
     {
         ReconcileHandDimState(); // 回合/选择状态变化 → 整手压暗或还原（边缘检测）
+        TurnButtonGate.Tick();   // 结束回合/抽牌：按"阶段权威 + UI 交互锁"每帧派生（修掉偶发锁死）
+        ReconcileTurnButtonsVisible(); // 手牌已恢复显示但隐藏标志未清 → 补回被一起隐藏的两个按钮
         if (handCards == null || handCards.Count == 0) return;
         bool hasNull = false;
         for (int i = 0; i < handCards.Count; i++)
@@ -2009,10 +2046,37 @@ public class HandManager : MonoBehaviour
         RefreshLayout(true);
         CardDrag.CleanupSpellResources();
     }
-    public IEnumerator SummonTwoMinions()
+    /// <param name="casterIsHost">施法方是否为本地(主机)侧；false 且 AI 对局 → 施法方是 AI(Remote,0-5)。</param>
+    public IEnumerator SummonTwoMinions(bool casterIsHost = true)
     {
         CardData template = CardDatabase.Instance?.GetTemplate("03004");
         if (template?.prefab3D == null) { CardDrag.CleanupSpellResources(); yield break; }
+
+        // [AI] 02109：AI 施法时按自身站位倾向直接落地（同 01502 影子召唤的 AI 分支），不挂玩家点选
+        if (SimpleAI.IsAIMatch && !casterIsHost)
+        {
+            for (int round = 0; round < 2; round++)
+            {
+                GameObject tempAI = new GameObject("TempSpawnAI");
+                CardInstance tiAI = tempAI.AddComponent<CardInstance>();
+                tiAI.InitFromTemplate(template, 0, CardZoneManager.GenerateInstanceID("03004"));
+
+                BoardSlot pickAI = SimpleAI.PickSlotForAI(tiAI);
+                if (pickAI == null)
+                {
+                    Debug.LogWarning($"[SimpleAI] 02109 正义的群殴：AI 半场无合法空槽，第 {round + 1} 名杂兵未召唤");
+                    Destroy(tempAI);
+                    break;
+                }
+                // 离线 AI 与玩家共用本地板面：直接落板即可，不能补"CmdPlayCard as Local"
+                // （那会把 AI 的杂兵记成玩家牌放到 6-11），同 01502 影子召唤的 AI 分支
+                PlaceCardToSlot(pickAI, tempAI); // 内部已 MarkDirty，玩家端可见
+                Destroy(tempAI);
+                yield return null;
+            }
+            CardDrag.CleanupSpellResources();
+            yield break;
+        }
 
         for (int round = 0; round < 2; round++)
         {

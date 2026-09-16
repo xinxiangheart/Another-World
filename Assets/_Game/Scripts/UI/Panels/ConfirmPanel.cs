@@ -21,6 +21,10 @@ public class ConfirmPanel : MonoBehaviour
         panelRoot.SetActive(false);
     }
 
+    /// <summary>确认弹窗是否正在展示（供 TurnButtonGate 判定"确认中禁止结束回合/抽牌"）。
+    /// 用 panelRoot 的实际激活状态派生，Show/Hide 漏掉任何一条路径都不会残留锁。</summary>
+    public bool IsShowing => panelRoot != null && panelRoot.activeInHierarchy;
+
     void Start()
     {
         yesButton.onClick.AddListener(() =>

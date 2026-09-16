@@ -191,7 +191,8 @@ public static class SpellHandlers
 
     static void Handle02109(EffectContext ctx)
     {
-        HM().StartCoroutine(HM().SummonTwoMinions());
+        // 两名杂兵的落位：AI 施法时由 SimpleAI 按站位倾向自选（不弹玩家点选），人类照旧手点
+        HM().StartCoroutine(HM().SummonTwoMinions(ctx.spellCasterIsHost));
     }
 
     static void Handle02110(EffectContext ctx)
