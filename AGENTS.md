@@ -750,6 +750,7 @@ python Tools/imagegen/purge_key.py <src.png> <dst.png> 45 pink     # 按色相
 
 ### 落盘规范
 
+- `Assets/_Game/Art/Sprites/Generated/` 是**暂存区，不是存档区**：候选图、卡面尺寸对照图、蒙版、`cut` / `clean` / `edit-*` 之类的中间件都只在这里短暂停留，**定稿后一份都不留**（2026-09-16 定，见下面「定稿后一次性收尾」）
 - 先写入 `Assets/_Game/Art/Sprites/Generated/`，人工确认后再替换卡图
 - 卡图路径由**卡的 `summonType`** 决定（`Assets/_Game/Scripts/Core/CardEnums.cs:2`：`SummonType { Hero, ChosenOne, Special }`），**与 CardData 所在的子目录无关**。对照表：
 
@@ -767,14 +768,17 @@ python Tools/imagegen/purge_key.py <src.png> <dst.png> 45 pink     # 按色相
 - 替换时**只覆盖 PNG，保留同名 `.meta`**，这样 Unity 里的引用（GUID）不会断
 - 卡图 `.meta` 的 `maxTextureSize` 是 **2048**（`enableMipMap: 0`、`alphaIsTransparency: 1`）。出图长边不要超过 2048，否则 Unity 会静默降采样；`1152x1536` 安全
 
-**定稿后一次性收尾：改名 → 归位 → 清场**
+**定稿后一次性收尾：归位 → 清场**（2026-09-16 修：不再留「成品存档」副本）
 
 人工确认定稿之后，不要让它停在临时文件名或 `Generated/` 里，一次把下面几步做完：
 
-1. **改名**：`{ID}-{英文短名}-01.png`，例 `01115-false-flame-01.png`、`01116-flesh-mountain-01.png`。`Generated/` 里只保留这一份成品存档，且用的就是这个名
-2. **归位**：放到卡图路径 `SummonCard_{ID}.png` ——
+1. **归位**：把选中那张放到卡图路径 `SummonCard_{ID}.png` ——
    - 该卡**已有卡图** → 只覆盖 PNG，保留原 `.meta`（GUID 不能变）
    - 该卡**此前没有卡图**（新增） → 必须一并建 `.meta`：复制同组已有卡图的 `.meta`、只改 `guid`；新 GUID 要全库唯一（先扫 `Assets` 下所有 `.meta` 查重）
    - 文件名后缀必须严格是 `SummonCard_{ID}`，运行时按这个路径 `Resources.Load`，写错就加载不到
-3. **清场**：候选图、卡面尺寸对照图、蒙版、`cut` / `clean` / `edit-*` 之类的中间件全部删掉，`Generated/` 下同 ID 只剩改名后的定稿
-4. 被换下来的旧图归档到 `Assets/_Game/Art/Old/`，并在该目录 `README.md` 的替换记录表补一行（新增卡图也补，注明「此前无卡图」）
+2. **清场**：候选图、**选中的那张暂存稿本身**、卡面尺寸对照图、蒙版、`cut` / `clean` / `edit-*` 之类的中间件全部删掉 —— `Generated/` 下同 ID **一份都不留**（图已经在 `Resources/Cards/` 那一份里了）
+3. 被换下来的旧图归档到 `Assets/_Game/Art/Old/`，并在该目录 `README.md` 的替换记录表补一行（新增卡图也补，注明「此前无卡图」）
+
+> **只留一份（2026-09-16 定）**：定稿后**全库只有卡图一份**。原先的流程会在 `Generated/` 另存一份 `{ID}-{英文短名}-01.png`「成品存档」，而那份与卡图**逐字节相同**，纯属重复 —— 用户点名「归档进库的有两张一样的图」后取消该步。暂存期的文件名沿用 `{ID}-{英文短名}-{候选序号}.png`（例 `01516-swift-shadow-a.png`），**这个名不进库**，只在候选之间区分用。
+> **同日已按此清库**：`Generated/` 下与卡图逐字节相同的 **106 对**副本（106 个 PNG + 106 个 `.meta`）已删，106 张卡图一张没动；同日再把剩下 3 个去背前中间件（`01105-veteran-gambler-01-unedited.png`、`01112-sprite-v5-1.png`、`01112-sprite-v5-1-cut.png`）也删掉 —— **`Generated/` 现已清空**（目录本身保留，`Generated.meta` 还在，出图仍写这里）。删除清单存档在会话输出目录的 `deleted_generated_dupes.json`；这些文件原本都被 git 跟踪，误删可 `git checkout -- <路径>` 还原。
+> **`Art/Old/README.md` 里 60 多条历史行**仍写着「新图另存 `Art/Sprites/Generated/…`／卡图与归档 PNG SHA256 一致」，那是**旧流程的当时记述**，按原文保留不改；执行时一律以本节为准。
