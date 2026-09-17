@@ -140,6 +140,28 @@ public class SimpleAI : MonoBehaviour
         }
     }
 
+    /// <summary>AI 己方（场上 0-5 + AI 手牌）是否至少有一张召唤物。
+    /// 02004 皇帝认可 / 02203 伟大进化 都是「buff 己方召唤物」的法术，一个目标都没有时打出 = 白扣费，留手。</summary>
+    bool HasOwnSummonForSelfBuff()
+    {
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        for (int i = 0; i <= 5; i++)
+        {
+            CardInstance ci = bm?.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci != null && CardDatabase.Instance?.GetTemplate(ci.templateID)?.cardType == CardType.Summon)
+                return true;
+        }
+        if (_ai?.handCards == null) return false;
+        foreach (GameObject h in _ai.handCards)
+        {
+            if (h == null) continue;
+            CardInstance ci = h.GetComponent<CardInstance>();
+            if (ci != null && CardDatabase.Instance?.GetTemplate(ci.templateID)?.cardType == CardType.Summon)
+                return true;
+        }
+        return false;
+    }
+
     /// <summary>费用序排名：命中 pref 返回序号(越小越优先)，未命中返回 pref 长度(最后)。</summary>
     int CostRank(int cost, int[] pref)
     {
@@ -470,6 +492,9 @@ public class SimpleAI : MonoBehaviour
             if (td == null || td.cardType != CardType.Spell) continue;
             if ((td.spellType & SpellType.Counter) != 0) continue; // 反制已在最前优先处理
             if (c.currentCost > _ai.currentEnergy) continue;
+            // 02004/02203 需要有「己方召唤物」才有意义 → 一个都没有就留手，不空放（空放=白扣费）
+            if ((c.templateID == "02004" || c.templateID == "02203") && !HasOwnSummonForSelfBuff())
+                continue;
             if (NoPriorityCard(c.templateID))
             {
                 if (bNp == null || c.currentCost > bNp.currentCost) { bNp = c; gNp = card; }

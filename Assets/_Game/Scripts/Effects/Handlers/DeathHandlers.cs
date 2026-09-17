@@ -265,7 +265,12 @@ public static class DeathHandlers
                     (src.mindScholarCopiedTraits != null ? string.Join(";;", src.mindScholarCopiedTraits) : "") + "|" +
                     (src.mindScholarTriggeredKeys != null ? string.Join(";;", src.mindScholarTriggeredKeys) : "") + "|" +
                     (src.grantedTraitTexts != null ? string.Join(";;", src.grantedTraitTexts) : "");
-                owner.CmdReturnScholarToHand(src.instanceID, ctx.sourceSlot?.slotID ?? -1, state);
+                // 连同整张卡快照一起回传：这条路的「回手」在客户端重建手牌，少了快照，
+                // 减费 / 永久数值 / 前缀 / 阶位会在客户端被 InitFromTemplate 抹成模板值
+                //（与 AI 那条路同一个坑，见 NetworkPlayer.AddServerSideCard 的 oldInstance）。
+                string proto = CardStateProto.FromCardInstance(
+                    src, CardZone.Board, ctx.sourceSlot?.slotID ?? -1, 0).SerializeCard();
+                owner.CmdReturnScholarToHand(src.instanceID, ctx.sourceSlot?.slotID ?? -1, state, proto);
             }
             else
             {
@@ -589,7 +594,7 @@ public static class DeathHandlers
 
         NetworkPlayer owner = BoardManager.GetOwnerPlayer(ctx.sourceSlot.slotID);
 
-        if (owner == NetworkPlayer.Remote && Mirror.NetworkServer.active
+        if (owner == NetworkPlayer.RemoteHalfPlayer && Mirror.NetworkServer.active
             && NetworkPlayer.Remote.connectionToClient != null)
         {
             // 远端玩家的卡：委托远端选择目标（AI 无连接走 else 本地选择）
@@ -623,7 +628,7 @@ public static class DeathHandlers
         {
             // 主机/离线：直接选择（BeginSelection 使 IsSelecting=true → WaitForSimultaneousWindow 阻塞）
             // AI 对局中，触发者是 AI 半场的卡 → AI 自动选择，不弹给玩家
-            bool isAISide = SimpleAI.IsAIMatch && owner == NetworkPlayer.Remote;
+            bool isAISide = SimpleAI.IsAIMatch && owner == NetworkPlayer.RemoteHalfPlayer;
             if (isAISide) SimpleAI.IsAIEvaluating = true;
             try
             {

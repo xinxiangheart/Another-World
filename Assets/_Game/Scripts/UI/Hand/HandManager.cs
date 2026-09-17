@@ -644,7 +644,8 @@ public class HandManager : MonoBehaviour
         BoardManager bm = FindObjectOfType<BoardManager>();
         if (bm == null) return false;
 
-        int start = (owner == NetworkPlayer.Local) ? 6 : 0; // 6-11 = 本机半场；0-5 = 对手/AI 半场
+        // 用 LocalHalfPlayer 而不是 Local：RunAsLocal 期间 Local 指向施法者，按对象身份判半场会反掉。
+        int start = (owner == NetworkPlayer.LocalHalfPlayer) ? 6 : 0; // 6-11 = 本机半场；0-5 = 对手/AI 半场
         int end = start + 5;
 
         bool coreOnField = false;
@@ -677,9 +678,16 @@ public class HandManager : MonoBehaviour
                 if (cd == null || cd.cardType != CardType.Summon) continue;
                 ci.GivePrefix("灵能", "03027");
                 handCard.GetComponent<CardDisplay2D>()?.Refresh();
-                // 同步手牌前缀到服务器（打出时 ConsumeHandPrefixOverride 注入）
-                if (owner == NetworkPlayer.Local && NetworkClient.isConnected)
-                    owner.CmdSetHandCardPrefix(ci.instanceID, "灵能");
+                // 同步手牌前缀到服务器（打出时 ConsumeHandPrefixOverride 注入）：
+                // 本机走 Command；AI 手牌没有客户端，直接在服务器权威侧登记。
+                if (owner == NetworkPlayer.LocalHalfPlayer)
+                {
+                    if (NetworkClient.isConnected) owner.CmdSetHandCardPrefix(ci.instanceID, "灵能");
+                }
+                else
+                {
+                    owner.ServerSetHandCardPrefixOverride(ci.instanceID, "灵能");
+                }
             }
         }
         return true;
@@ -2270,11 +2278,16 @@ public class HandManager : MonoBehaviour
         FindObjectOfType<CardDrag>()?.SetButtonsInteractable(true);
         BoardSyncManager.MarkDirty();
     }
-    public IEnumerator SpotlightEffect()
+    /// <param name="casterIsHost">施法方是否为本地(主机)侧；false 且 AI 对局 → 施法方是 AI(Remote,0-5)。</param>
+    public IEnumerator SpotlightEffect(bool casterIsHost = true)
     {
+        bool casterIsAI = SimpleAI.IsAIMatch && !casterIsHost;
+        // 空位门控按「施法者的己方半场」算：AI 施放 → 0-5；人类 → 6-11。
+        // 旧写法写死 6-11：AI 的聚光灯会被「玩家场上有无可放格」挡掉（AI 明明有空位也放不出）。
+        int ownStart2310 = casterIsAI ? 0 : 6;
         BoardManager bm = FindObjectOfType<BoardManager>();
         bool hasAvailableSlot = false;
-        for (int i = 6; i <= 11; i++)
+        for (int i = ownStart2310; i <= ownStart2310 + 5; i++)
         {
             BoardSlot s = bm.GetSlot(i);
             if (s != null && !s.isBlocked && !s.hasSpotlight) { hasAvailableSlot = true; break; }
@@ -2282,7 +2295,7 @@ public class HandManager : MonoBehaviour
         if (!hasAvailableSlot) { CardDrag.CleanupSpellResources(); yield break; }
 
         // [AI] 02310：AI 施法 → 直选 AI(0-5) 首个可聚光灯格
-        if (SimpleAI.IsAIEvaluating)
+        if (casterIsAI)
         {
             BoardManager bmAI2310 = FindObjectOfType<BoardManager>();
             BoardSlot pick2310 = null;
@@ -2354,8 +2367,29 @@ public class HandManager : MonoBehaviour
         RefreshLayout(true);
         CardDrag.CleanupSpellResources();
     }
-    public IEnumerator GreatEvolutionEffect()
+    /// <param name="casterIsHost">施法方是否为本地(主机)侧；false 且 AI 对局 → 施法方是 AI(Remote,0-5)。</param>
+    public IEnumerator GreatEvolutionEffect(bool casterIsHost = true)
     {
+        // [AI] 02203：AI 施法 → 只 buff AI 自己(先场上 0-5、后 AI 手牌)，不弹玩家面板。
+        // 旧写法把「那一刻的 Local(已是人类)」的场上 6-11 + 人类手牌当候选 → AI 的牌给玩家加了阶位。
+        if (SimpleAI.IsAIMatch && !casterIsHost)
+        {
+            CardInstance pick2203 = PickAIOwnSummon();
+            if (pick2203 != null)
+            {
+                pick2203.currentTier += 3;
+                pick2203.baseTier += 3;
+                CommitAIOwnCardTier(pick2203);
+                Debug.Log($"[AI] 02203 伟大进化：{pick2203.instanceID} 阶位永久+3");
+            }
+            else
+            {
+                Debug.LogWarning("[AI] 02203 伟大进化：AI 己方无召唤物，本次无效果");
+            }
+            CardDrag.CleanupSpellResources();
+            yield break;
+        }
+
         NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
 
         BoardManager bm = FindObjectOfType<BoardManager>();
@@ -2494,7 +2528,8 @@ public class HandManager : MonoBehaviour
                 }
             }
             // 灵能：只作用于 AI 自己的半场(0-5)与 AI 手牌 —— 玩家手牌不受影响
-            ApplyCorePsiAura(NetworkPlayer.Remote);
+            // 必须用 RemoteHalfPlayer：这段跑在 RunAsLocal 里，此刻 Remote 指向的是「施法者的对手」= 玩家。
+            ApplyCorePsiAura(NetworkPlayer.RemoteHalfPlayer);
             CardDrag.CleanupSpellResources();
             yield break;
         }
@@ -2537,7 +2572,7 @@ public class HandManager : MonoBehaviour
             BoardSlot.isStrengtheningSlot = false;
 
             // 灵能：本方半场(6-11) + 本机手牌（与 AI 分支共用同一结算点）
-            ApplyCorePsiAura(NetworkPlayer.Local);
+            ApplyCorePsiAura(NetworkPlayer.LocalHalfPlayer);
             foreach (GameObject card in NetworkPlayer.Local.handCards)
             {
                 if (card != null) card.SetActive(true);
@@ -2583,6 +2618,79 @@ public class HandManager : MonoBehaviour
             list.Add(ci);
         }
         return list;
+    }
+
+    // ── [AI] 己方半场(0-5)+AI 手牌 的选择与改动落地 ───────────────────────────
+    // AI 施法的 effect 协程跑在 RunAsLocal 作用域之外，那一刻 NetworkPlayer.Local 已还原成人类。
+    // 所以 AI 分支一律显式走 NetworkPlayer.Remote + 0-5，绝不借道 BuildHandPlusFieldCardList（本机 6-11）。
+
+    /// <summary>[AI] 在 AI 己方（先场上 0-5、后 AI 手牌）里挑一张满足 filter 的召唤物；
+    /// 同一区取费用最高者（前缀 / 阶位的收益随费用走）。找不到 → null。</summary>
+    public static CardInstance PickAIOwnSummon(System.Func<CardInstance, bool> filter = null)
+    {
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        CardInstance best = null;
+        if (bm != null)
+        {
+            for (int i = 0; i <= 5; i++)
+            {
+                CardInstance ci = bm.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                if (!IsAIOwnSummonCandidate(ci, filter)) continue;
+                if (best == null || ci.currentCost > best.currentCost) best = ci;
+            }
+        }
+        if (best != null) return best;
+
+        NetworkPlayer ai = NetworkPlayer.Remote;
+        if (ai?.handCards == null) return null;
+        foreach (GameObject handCard in ai.handCards)
+        {
+            if (handCard == null) continue;
+            CardInstance ci = handCard.GetComponent<CardInstance>();
+            if (!IsAIOwnSummonCandidate(ci, filter)) continue;
+            if (best == null || ci.currentCost > best.currentCost) best = ci;
+        }
+        return best;
+    }
+
+    static bool IsAIOwnSummonCandidate(CardInstance ci, System.Func<CardInstance, bool> filter)
+    {
+        if (ci == null || ci.isAttached) return false;
+        if (CardDatabase.Instance?.GetTemplate(ci.templateID)?.cardType != CardType.Summon) return false;
+        return filter == null || filter(ci);
+    }
+
+    /// <summary>[AI] 把「前缀」改动落到 AI 自己的权威侧：该卡在场上 0-5 → 刷数值 + 板面同步；
+    /// 在 AI 手牌 → 登记前缀覆盖（ServerPlayCard 重建 CardInstance 时注入）。</summary>
+    public static void CommitAIOwnCardPrefix(CardInstance ci, string prefix)
+    {
+        if (ci == null || string.IsNullOrEmpty(ci.instanceID)) return;
+        if (TryRefreshAIOwnFieldCard(ci)) return;
+        NetworkPlayer.Remote?.ServerSetHandCardPrefixOverride(ci.instanceID, prefix);
+    }
+
+    /// <summary>[AI] 把「阶位」改动落到 AI 自己的权威侧（同 CommitAIOwnCardPrefix）。</summary>
+    public static void CommitAIOwnCardTier(CardInstance ci)
+    {
+        if (ci == null || string.IsNullOrEmpty(ci.instanceID)) return;
+        if (TryRefreshAIOwnFieldCard(ci)) return;
+        NetworkPlayer.Remote?.ServerSetHandCardTierOverride(ci.instanceID, ci.currentTier, ci.baseTier);
+    }
+
+    /// <summary>[AI] 该卡是否在 AI 场上 0-5？是则刷新数值 + 板面同步并返回 true。</summary>
+    static bool TryRefreshAIOwnFieldCard(CardInstance ci)
+    {
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return false;
+        for (int i = 0; i <= 5; i++)
+        {
+            Card3DInstance c3d = bm.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>();
+            if (c3d?.cardInstance != ci) continue;
+            c3d.UpdateValues();
+            TurnManager.SyncMyBoardToOpponent();
+            return true;
+        }
+        return false;
     }
 
     /// <summary>按 instanceID 回找本地手牌里的真身 GameObject（弹窗返回的是克隆）。找不到 → null。</summary>
@@ -3445,7 +3553,7 @@ public class HandManager : MonoBehaviour
         if (watcher == null) return;
         // 在线远端(有连接)的守望者：由远端客户端自行处理，主机不代跑（否则会替远端自动选目标）
         NetworkPlayer wOwner = BoardManager.GetOwnerPlayer(watcherSlot);
-        if (wOwner != null && wOwner != NetworkPlayer.Local && wOwner.connectionToClient != null) return;
+        if (wOwner != null && wOwner != NetworkPlayer.LocalHalfPlayer && wOwner.connectionToClient != null) return;
         if (GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsFullySilenced(watcher)) return;
 
         // 目标 = watcher 的对侧（AI watcher(0-5)→玩家6-11；Host watcher→0-5）
@@ -3503,13 +3611,18 @@ public class HandManager : MonoBehaviour
             SimpleAI.IsAIEvaluating = prevAIEvaluating;
         }
     }
-  public  IEnumerator BetrayalEffect()
+  /// <param name="casterIsHost">施法方是否为本地(主机)侧；false 且 AI 对局 → 施法方是 AI(Remote,0-5)。</param>
+  public  IEnumerator BetrayalEffect(bool casterIsHost = true)
     {
+        bool casterIsAI2010 = SimpleAI.IsAIMatch && !casterIsHost;
         BoardManager bm = FindObjectOfType<BoardManager>();
 
-        // 检查对方区域是否有空位
+        // 空位门控按「叛徒要落进去的那半场」算 —— 背叛把叛徒放到施法者的对方区域：
+        // AI 施放 → 6-11（玩家场）；人类施放 → 0-5。旧写法写死 0-5：AI 的背叛会被
+        // 「AI 自己场上有无空格」挡掉，却把叛徒放到 6-11（门控与落点不同侧）。
+        int enemyStart2010 = casterIsAI2010 ? 6 : 0;
         bool hasEmpty = false;
-        for (int i = 0; i <= 5; i++)
+        for (int i = enemyStart2010; i <= enemyStart2010 + 5; i++)
         {
             BoardSlot s = bm?.GetSlot(i);
             if (s != null && !s.isBlocked && !s.hasCard && !s.prisonBlocked)
@@ -3527,7 +3640,7 @@ public class HandManager : MonoBehaviour
         if (traitorTemplate?.prefab3D == null) { CardDrag.CleanupSpellResources(); yield break; }
 
         // [AI] 02010：AI 施法 → 直放叛徒到 玩家方(6-11) 首个空槽（不弹玩家；人类侧敌方为 0-5）
-        if (SimpleAI.IsAIEvaluating)
+        if (casterIsAI2010)
         {
             BoardManager bmAI2010 = FindObjectOfType<BoardManager>();
             for (int s = 6; s <= 11; s++)

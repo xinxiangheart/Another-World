@@ -174,18 +174,20 @@ public class BoardManager : MonoBehaviour
     public static bool IsAllySide(int slotID) => slotID >= 6;
 
     /// <summary>返回指定槽位的所有者 NetworkPlayer（6-11→Local, 0-5→Remote）。
-    /// 非联网模式下 slotID 无效时返回 Local。</summary>
+    /// 非联网模式下 slotID 无效时返回 Local。
+    /// 走 NetworkPlayer.HalfOwner —— RunAsLocal 期间 Local/Remote 会临时换成施法者/其对手，
+    /// 那里按固定配对解析，否则 AI 施法途中解析 0-5 会拿到玩家对象。</summary>
     public static NetworkPlayer GetOwnerPlayer(int slotID)
     {
-        if (slotID < 0 || slotID >= 12) return NetworkPlayer.Local;
-        return IsAllySide(slotID) ? NetworkPlayer.Local : NetworkPlayer.Remote;
+        if (slotID < 0 || slotID >= 12) return NetworkPlayer.LocalHalfPlayer;
+        return NetworkPlayer.HalfOwner(slotID);
     }
 
     /// <summary>返回指定槽位的对手 NetworkPlayer（6-11→Remote, 0-5→Local）。</summary>
     public static NetworkPlayer GetOpponentPlayer(int slotID)
     {
-        if (slotID < 0 || slotID >= 12) return NetworkPlayer.Remote;
-        return IsAllySide(slotID) ? NetworkPlayer.Remote : NetworkPlayer.Local;
+        if (slotID < 0 || slotID >= 12) return NetworkPlayer.RemoteHalfPlayer;
+        return NetworkPlayer.HalfOwner(slotID >= 6 ? 0 : 6);
     }
 
     /// <summary>遍历对方半场的所有槽位，对每个有卡槽位执行 action。

@@ -888,7 +888,107 @@ python Tools/imagegen/purge_key.py <src.png> <dst.png> 45 pink     # 按色相
 | AI 放的中枢给**玩家手牌**加灵能前缀（第二条入口） | `HandManager.SummonCoreEffect` 的 AI 分支里 `PlaceCardToSlot` → `ProcessAuras` 又对 `Local.handCards` 跑了一遍 | 同上；AI 分支改为显式 `ApplyCorePsiAura(NetworkPlayer.Remote)` |
 | AI 的英雄进场吃到**玩家**缄默神官的阶位+1 | `IsSuppressorOnField()` 写死 `6..11` | 加 `sideSlotID` 参数，`ProcessAuras` 传 `slot.slotID` |
 | AI 的商人/收割者减**玩家**手牌费 | `IsMerchantOnField` / `IsEnergyReaperOnField` side-agnostic | 统一改走 `IsAuraActiveOwnedBy<T>(this == Local)` |
+| AI 的皇帝认可(02004)给**玩家**的牌加「渊」前缀、还让玩家白摸 1 张 | `CardDrag.EmperorsApprovalEffectCoroutine` 借 `BuildHandPlusFieldCardList`（本机手牌 + 6-11 场）取候选，`CardDisplayPanel.ShowWithCallback` 在 `IsAIEvaluating` 下自动确认第一张 | 加 `casterIsHost` 参数；AI 分支走 `HandManager.PickAIOwnSummon` + `CommitAIOwnCardPrefix`，只碰 AI 自己 |
+| AI 的伟大进化(02203)给**玩家**的召唤物阶位+3 | `HandManager.GreatEvolutionEffect` 写死 `6..11` + `NetworkPlayer.Local.handCards`，无 AI 分支 | 加 `casterIsHost` 参数；AI 分支走 `PickAIOwnSummon` + `CommitAIOwnCardTier` |
+| AI 的聚光灯(02310)被**玩家**场上没有空格挡掉（AI 自己有空位也放不出） | 门控写死 `6..11` | 门控改按「施法者己方半场」（AI → 0-5） |
+| AI 的背叛(02010)被**AI 自己**场上没有空格挡掉，却把叛徒放到 6-11 | 门控写死 `0..5`，与落点不同侧 | 门控改按「叛徒要落进去的那半场」（AI → 6-11） |
+| AI 中枢给**自己手牌**加的灵能前缀放牌时丢了 | AI 手牌是 server-only 追踪对象，`GivePrefix` 改的是 `ServerPlayCard` 会重建的那个 `CardInstance`；而放牌时真正生效的是 `_handPrefixOverrides` / `_handTierOverrides` | 新增 `NetworkPlayer.ServerSetHandCardPrefixOverride` / `ServerSetHandCardTierOverride`（非 Command，服务器权威侧直接登记），`ApplyCorePsiAura` 的 AI 分支改用它 |
+| AI 在没有己方召唤物时空放 02004 / 02203（白扣费） | `SimpleAI.TryFindSpell` 不检查目标存在性 | 加 `SimpleAI.HasOwnSummonForSelfBuff()` 守卫，一个目标都没有就留手 |
 
 **判据（改效果时自查）**：写完问一句 —— 「这张牌是对手放的，它会不会作用到我这半边？」只要函数里出现 `NetworkPlayer.Local`、写死的 `6..11` 或 `0..11`，就大概率是错的。`Player` 组件是本机单例（6-11），`NetworkPlayer.Remote` 是 AI/远端（0-5）。
 
+### `RunAsLocal` 与协程：`NetworkPlayer.Local` 只在同步段可信（2026-09-17 定，改法术 handler 前必读）
+
+`NetworkPlayer.RunAsLocal(action)` 会在 `action()` 执行期间把 `Local` 换成**施法者**、`Remote` 换成施法者的对手，`finally` 里还原。三条法术分发路径（`NetworkPlayer.CmdResolveSpell`、`SimpleAI.PlaySpell`、`CardDrag.ResolveSpellEffect`）都包在它里面。
+
+- **同步 handler**（`SpellHandlers` 里绝大多数）：`NetworkPlayer.Local` = 施法者、`NetworkPlayer.Remote` = 对手 —— **写 `Local` 是对的**，`02001/02002/02006/02009/02104/02105/02110/02205/02209/02301/02308/02309/02404/02407/02508/02005` 都属这一类，已逐条核对无需改。
+- **协程**：`StartCoroutine` 会**立即**执行协程体到第一个 `yield` 为止，所以「第一个 `yield` 之前」的代码仍在 `RunAsLocal` 里（此时 `Local` = 施法者）；**第一个 `yield` 之后的代码跑在 `RunAsLocal` 之外，那一刻 `Local` 已经还原成人类**。这就是 02004 出 bug 的原因（它的第一句就是 `yield return null`）。
+
+**因此**：协程里的 AI 分支判据用 `SimpleAI.IsAIMatch && !casterIsHost`（`casterIsHost` 从 `ctx.spellCasterIsHost` 传入，与时机无关）；只靠 `SimpleAI.IsAIEvaluating` 的判断仅对「第一个 yield 之前」成立 —— 现存几处（02106 / 02212 / 02310 / 02403 / 02408 / 02501 / 02302）都恰好在协程体开头，故仍有效，但**新写协程不要沿用这个写法**。
+
+**AI 的「己方」工具**（`HandManager`，2026-09-17 新增，AI 分支请复用）：`PickAIOwnSummon(filter)` 在 AI 场上 0-5 → AI 手牌里挑费用最高的合格召唤物；`CommitAIOwnCardPrefix(ci, prefix)` / `CommitAIOwnCardTier(ci)` 把改动落到权威侧（场上 → `UpdateValues` + 板面同步；手牌 → 登记覆盖，放牌时注入）。
+
+### 按半场解析玩家：用 `LocalHalfPlayer` / `RemoteHalfPlayer`，不要用裸 `Local` / `Remote`（2026-09-17 定）
+
+`RunAsLocal` 换的是**静态引用**，**棋盘槽位不会跟着换**：0-5 永远是 AI/对手的物理半场，6-11 永远是本机半场。所以「按对象身份反推半场」的写法在 `RunAsLocal` 期间会整体反掉 —— 这是本次一整类错位 bug 的总根因。
+
+| 取法 | 含义 | 用在哪 |
+|---|---|---|
+| `NetworkPlayer.Local` / `Remote` | **当前施法者 / 其对手**（`RunAsLocal` 内会换） | 只在法术 handler 的同步段、以及进入 `RunAsLocal` **之前**的快照里用 |
+| `NetworkPlayer.LocalHalfPlayer` / `RemoteHalfPlayer` | **6-11 / 0-5 半场的固定归属者** | 想表达「我这半边 / 对侧半边」时一律用它；非 `RunAsLocal` 期间与 `Local`/`Remote` **完全相同**（零风险替换） |
+| `NetworkPlayer.HalfOwner(slotID)` | 按槽位解析归属玩家 | `BoardManager.GetOwnerPlayer` 的底座（已改为走它） |
+
+本次按这条口径替换过的位置（都是「半场归属」语义，替换后在非 `RunAsLocal` 期间行为一字不变）：`Counters/CounterManager.cs`（victim / beneficiary）、`Effects/Handlers/DeathHandlers.cs`（owner）、`Battle/BattleManager.cs`（revOwner / owner）、`Board/BoardSlot.cs`（targetOwner / owner / oppNp，共 6 处）、`Network/NetworkPlayer.cs`（`ServerPlayCard` 的 `this != Local`、registry 的 `this == Local ? 0 : 1`、`IsMyTurnOnServer`、`IsMerchantOnField` / `IsEnergyReaperOnField`、oppNp 共 4 处）、`Turn/TurnManagerNetwork.cs`、`Network/BoardSyncManager.cs`、`Manager/GlobalDeathEventHandler.cs`、`UI/Hand/HandManager.cs`（守望者 01339）、`Player.cs`（`ApplyCorePrefix`）。另外 `HandManager.SummonCoreEffect` 的 AI 分支改走 `RemoteHalfPlayer`（原来写 `Remote`，在 `RunAsLocal` 里其实拿到的是玩家）。
+
+**已知非问题（仅日志噪音）**：`HandManager.SummonCoreEffect` / `SummonSmallEvilEffect` / `BetrayalEffect` / `DoorEffect` 的 AI 分支里那句 `if (NetworkClient.isConnected) NetworkPlayer.Local?.CmdPlayCard(...)` —— 该分支只在离线 AI 对局跑，此刻 `Local` 是 AI 对象、`isOwned == false`，Mirror 打一条 "called on ... without authority" 警告后直接 return（不改变任何状态）；板面模型已由 `PlaceCardToSlot` 建好、`MarkDirty` 负责同步。留着不影响结果，故未改。
+
 **未覆盖**：附着物（`BoardManager.attachedModels`）不参与 03027 的中枢光环，只扫 12 个槽位（与原实现一致）。
+## 进场窗口与死亡判定（2026-09-17 定，改 `StartOnEnterEffect` / 死亡扫描前必读）
+
+**症状**：召唤物生命值已经 ≤0，却一直留在场上不退场（例：佣兵 01104、逃兵 01312）。
+
+**根因**：死亡扫描 `BoardSlot.CheckAndHandleDeaths` 会跳过 `_enterEffectRunning == true` 的卡（"进场效果还没结算完，先别判死"，守卫见 `EnterWindowStillActive`）。这个标记一旦被永久留在 `true`，该卡就**永久免疫死亡**。本次堵掉的三条泄漏路径：
+
+| 泄漏路径 | 说明 | 修法 |
+|---|---|---|
+| 卡面 `hasOnEnter: 1` 却没有 Enter handler | `EffectDispatcher.Dispatch` 返回 false → 走「未注册卡回退」分支；那句 `CleanupAfterPlacement()` 跑在 `NestingContext.Depth == 1` 里被 `!IsNested` 门挡下，`Exit()` 之后又没人再清 → 标记永久为 true。**实测受害者：01312 逃兵（3 费 5 血墙）** | ① `01312.asset` 的 `hasOnEnter` 改 0（它的效果是先手，`hasFirstStrike` 已有）；② 标记清除统一改走 `inst.EndEnterEffect()` 并放进 `StartOnEnterEffect` 的 `finally` |
+| 协程挂死 | 进场 handler 卡在一个再也不会到来的选择回调上（`WaitUntil(() => done)`）→ `StartOnEnterEffect` 永不收尾 | ① 选择被强退时把 `null` 喂回等待者（`SelectionManager.CancelPendingSelections`，挂在 `ForceEndAll` / 清栈上）；② AI 半场的进场选择一律自动裁决（`BoardSlot.enterEffectActorIsAI`） |
+| 任何未知路径 | —— | 死亡扫描兜底：`EnterWindowStillActive()` 判定标记「残留」（`NestingContext.Depth == 0`）或「悬挂」（年龄 > `CardInstance.EnterEffectHangSeconds` = 10s）时强制解除，并打一条 `[DeathScan] 进场窗口残留/悬挂，强制解除` 警告 |
+
+**口径（改这块代码时必须守）**：
+
+1. `_enterEffectRunning` **只**由 `CardInstance.BeginEnterEffect()` / `EndEnterEffect()` 维护，是深度计数 `_enterEffectDepth` 的派生量；两者必须成对，`End` 必须放在 `finally` 里。**不要再直接给 `_enterEffectRunning` 赋值**（旧代码的 `inst._enterEffectRunning = false` 已全部替换）。
+2. 深度归零的那一刻若 `currentHealth <= 0` → `EndEnterEffect` 内部补一次死亡扫描，兑现「窗口结束之后再判死」。
+3. 「`NestingContext.Depth == 0`」与「某张卡 `_enterEffectRunning == true`」**不可能同时成立**（唯一的置位点在 `NestingContext.Enter` 之后、同一个 `try` 里），所以深度为 0 时还自称"进场中"的标记必为残留 —— 这是兜底判据的地基，别绕开 `StartOnEnterEffect` 去开进场窗口。
+4. 进场效果里的目标选择不能只靠 `SimpleAI.IsAIEvaluating` 判断「是不是 AI 在选」：AI 的卡会在非评估期进场（战斗阶段被召唤 / 学者复制的进场 / 人类回合里被效果召唤）。用 `SimpleAI.IsAISide(slotID)`（或 `BoardSlot.enterEffectActorIsAI`）。
+5. 给新卡加进场效果：卡面 `hasOnEnter: 1` **必须**配一个 `EnterHandlers.Register("<tid>", Trigger.Enter, ...)`；漏配时 Console 会打 `[StartOnEnterEffect] 进场效果未注册` 的 **Error**（卡面无效果 + 触发标志不一致，是数据错误不是正常回退）。
+6. 选项被强退（超时 / 强制收尾）时，`SelectionManager.BeginSelection` 登记的回调会以 `null` 被调一次 —— handler 的回调必须容忍 `targetSlot == null`（这也是 `BeginSelection` 原有约定："选不到合法目标传 null 结束选择"）。
+## 回手 / 进手牌：实例状态继承规则（2026-09-17 定，改退场回手 / 抽牌进手牌前必读）
+
+**症状**：AI 的执念亡魂(03504)退场回手后像换了一张新牌 —— 「退场回手费-1」不累计，场上吃到的永久数值改动也不生效。
+
+**根因**：回手按 owner 分流（`DeathPipeline.ExecuteCommon` → `NetworkPlayer.AddCardToHandFromInstance`），人类侧走「Instantiate 预制体 + `CopyFrom(oldInstance)` + 一段『回手即清』规则」，AI(server-only) 侧走 `NetworkPlayer.AddServerSideCard`，而那里**只按模板 `InitFromTemplate`** —— 旧实例的费用 / 永久数值 / 前缀 / 授予特性 / 状态全部丢弃，等于新建一张牌。两条路径口径分叉就是根因。
+
+**口径（只此一处，别在分支里各写一份）**：
+
+| 类别 | 字段 | 回手后 |
+|---|---|---|
+| 永久改动（保留） | `currentCost` / `costReduction` —— 03504 的「退场回手费-1」靠它累计（`Handle03504` 在**退场时**先 `costReduction++`、`currentCost--`，再回手） | 原样带进手牌 |
+| 永久改动（保留） | `baseAttack` / `baseHealth` / `baseMaxHealth`、`prefixes`、`grantedTraits`、`activeStatuses`、`totalDamageTaken` | 原样带进手牌 |
+| 场上临时状态（清除） | `tempAttackBoost` / `tempHealthBoost`、`buffedBySage` / `buffedByEmperor`、护盾、01336 附着授予特性、01520 / 01528 来源状态、`handledReturnToHand` | 清零 / 移除 |
+| current* 归位 | `currentAttack = max(0, baseAttack)`、`currentHealth` / `currentMaxHealth` 同理、`currentTier = baseTier` | 「回手即清」只清场上临时加成，**永久改动一律走 `base*` 保留** |
+| 回手后重判 | `merchantDiscounted` / `energyReaperDiscounted`（商人 01520 / 收割者 01528 是否在**该手牌主人的半场**）；01524 画卷之核 `currentCost = 0` | 按光环现状重算 |
+
+实现落在 `NetworkPlayer.ApplyReturnToHandRules(inst, template)`：人类路径 `AddCardToHandFromInstance` 与 AI 路径 `AddServerSideCard(data, iid, oldInstance)` **唯一共用点**。AI 侧若旧实例是影子类（`isShadow`）则不进手牌（与人类分支同款 `Destroy` + `return`）。
+
+**通道表（状态怎么进板面）**：
+
+| 侧 | 手牌 → 板面 | 说明 |
+|---|---|---|
+| 人类 | `HandManager.PlaceCardToSlot` 里 `cardInst.CopyFrom(sourceInstance)` | 整份实例随拖放进板 |
+| AI(server-only) | `ServerPlayCard` 重建 `CardInstance` 时按 instanceID 注入覆盖表：`_handTierOverrides` / `_handPrefixOverrides` / `_handBaseOverrides` | 前两张早就有（02203 伟大进化 / 02004 皇帝认可）；`_handBaseOverrides` 为本次新增 —— 回手时由 `AddServerSideCard` 登记 `base*`，否则永久数值改动到下一次放牌就被 `InitFromTemplate` 抹掉 |
+
+**新增卡 / 新效果时自查**：任何「让一张牌离开板面再回到手牌」的路径，都必须把**旧 `CardInstance` 传下去**（AI 侧是 `AddServerSideCard` 的第三个参数）。只传 `templateID + instanceID` 的写法一律会退化成「全新个体」。
+
+**已知偏差（记录未改）**：AI 的 `AddServerSideCard` 不查 `maxHandSize`（人类侧 `AddCardToHandFromInstance` 是 `handCards.Count >= maxSize → return`，手牌满时该牌消失）；这条差异在回手路径上一直存在，本次不动。
+### 回手类卡片覆盖清单（2026-09-17 盘点）
+
+**入口只有两个**（守住这两处即覆盖全部回手类卡）：`NetworkPlayer.AddCardToHandFromInstance`（人类 / 主机，含 UI 路径）与 `NetworkPlayer.AddServerSideCard(..., oldInstance)`（AI，server-only）。效果牌统一走 `NetworkPlayer.ReturnCardToOwner`，它只负责按 owner 分流到上面两个。
+
+| 卡 | 回手实现位置 | AI 侧 |
+|---|---|---|
+| 03504 执念亡魂（神选者，数据在 `ChosenOneData/03504.asset`）| `DeathPipeline.ExecuteCommon` | ✅（本次修：费用累计 + 实例状态继承）|
+| 01117 苦难给予者 | `DeathPipeline.ExecuteCommon` | ✅ |
+| 03009 打工人 | `DeathPipeline.ExecuteCommon` | ✅ |
+| 01511 心灵学者 | `DeathHandlers.Handle01511`（服务端直加；纯客户端走 `CmdReturnScholarToHand` → `TargetReceiveReturnedCard`）| ✅ 服务端 / AI；纯客户端本次补「整卡快照」（原先只有心灵学者 4 个字段）|
+| 01313 嫉妒之辈 | `EnterHandlers.Handle01313` → `ReturnCardToOwner` | ✅ |
+| 01322 残篇 | `HandManager.RemnantFinalize` → `ReturnCardToOwner` | ✅ |
+| 01523 水墨 | `BoardSlot.InkEnterEffect` → `ReturnCardToOwner` | ✅ |
+| 02205 战略性撤退 | `SpellHandlers.Handle02205`（在 `SimpleAI.PlaySpell` 的 `RunAsLocal` 里跑，`NetworkPlayer.Local` 此刻就是 AI）| ✅ |
+| 02305 片甲不留 / 02306 屯能噩梦（挑获对方 1 张手牌）| `CounterManager.ResolveCardSteal` | ✅（本次修：原先人类走 `AddCardToHand(template)`、AI 走 `AddServerSideCard(template, iid)`，两边都只按模板新建 = 挑过来变新牌；现在按旧实例重建，且改成「先建后销」以免 `CopyFrom` 读到已销毁组件）|
+
+**纯客户端的整卡快照**：`CardStateProto.FromCardInstance(...).SerializeCard()` 由 `CmdReturnScholarToHand` 的第 4 个参数带上，客户端在 `TargetReceiveReturnedCard` 里用 `NetworkPlayer.ApplyKeptCardState(inst, proto)` 套回 —— 只套「保留类」字段，再交给 `ApplyReturnToHandRules` 清临时状态。以后再有「远端重建手牌」的新路径，用同一对方法，别再手写字段表。
+
+**未实现 / 无资产（不是回手 bug，别去查）**：03508 天选之人、02108 下班时间、03013 归息 —— 只有 `CardTextTable` 文案，既无卡资产也无 handler。
+**死代码（无调用点）**：`NetworkPlayer.RouteReturnToHand`；`AddCardToHandForPlayer` 的 `oldInstanceID` 分支（且其内部传的是 `null`）。
+**调试面板**：`UI/Panels/GetCardPanel.cs` 里 7 处 `AddCardToHandFromInstance` 都写死 `Local`，但该类无任何调用点（面板未接入流程）。

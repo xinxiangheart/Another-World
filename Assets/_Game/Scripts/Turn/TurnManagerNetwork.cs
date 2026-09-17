@@ -130,9 +130,9 @@ public partial class TurnManager
     {
         bool isValid;
         if (currentPhase == TurnPhase.MyTurn)
-            isValid = (player == NetworkPlayer.Local);
+            isValid = (player == NetworkPlayer.LocalHalfPlayer);
         else if (currentPhase == TurnPhase.EnemyTurn)
-            isValid = (player == NetworkPlayer.Remote);
+            isValid = (player == NetworkPlayer.RemoteHalfPlayer);
         else
             isValid = false;
 

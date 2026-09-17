@@ -563,7 +563,7 @@ public class CounterManager : MonoBehaviour
         }
 
         // [AI] 反制属 AI（AI 挑玩家手牌）或受害方是 AI（无 UI 可弹）→ 自动挑，不弹面板
-        bool aiPicks = SimpleAI.IsAIMatch && (!isMine || victim == NetworkPlayer.Remote);
+        bool aiPicks = SimpleAI.IsAIMatch && (!isMine || victim == NetworkPlayer.RemoteHalfPlayer);
         if (aiPicks)
         {
             CardInstance pick = SimpleAI.PickBestStealTarget(enemyCards) ?? enemyCards[0];
@@ -593,6 +593,8 @@ public class CounterManager : MonoBehaviour
         NetworkPlayer victim, NetworkPlayer beneficiary, string iid)
     {
         CardData template = null;
+        CardInstance stolenCI = null;
+        GameObject victimCard = null;
         for (int i = victim.handCards.Count - 1; i >= 0; i--)
         {
             GameObject card = victim.handCards[i];
@@ -600,18 +602,8 @@ public class CounterManager : MonoBehaviour
             CardInstance ci = card.GetComponent<CardInstance>();
             if (ci == null || ci.instanceID != iid) continue;
             template = CardDatabase.Instance?.GetTemplate(ci.templateID);
-            if (victim == NetworkPlayer.Local)
-            {
-                // 本机手牌：走 UI 安全移除（隐藏/重排）
-                NetworkPlayer.RemoveCardFromLocalHand(iid);
-            }
-            else
-            {
-                victim.handCards.RemoveAt(i);
-                if (victim.connectionToClient != null)
-                    victim.TargetRemoveHandCard(victim.connectionToClient, iid);
-                Destroy(card);
-            }
+            stolenCI = ci;   // 先抓住实例，别急着销毁——受益方要按「同一张牌」重建
+            victimCard = card;
             break;
         }
         if (template == null)
@@ -620,9 +612,33 @@ public class CounterManager : MonoBehaviour
             return;
         }
 
-        // 归属受益方：Local 走手牌 UI；AI(server-only) 走服务器手牌追踪
-        if (beneficiary == NetworkPlayer.Local) NetworkPlayer.Local.AddCardToHand(template);
-        else beneficiary.AddServerSideCard(template, iid);
+        // 归属受益方：Local 走手牌 UI；AI(server-only) 走服务器手牌追踪。
+        // 必须继承旧实例（减费 / 永久数值 / 前缀 / 授予特性 / 持续状态）——旧实现走 AddCardToHand(template) /
+        // AddServerSideCard(template, iid) 只按模板新建，挑过来的牌会变成「全新个体」（人类侧还换了 instanceID）。
+        // 顺序也必须「先建后销」：先销毁再 CopyFrom 会读到已销毁的组件。
+        if (beneficiary == NetworkPlayer.LocalHalfPlayer)
+        {
+            if (stolenCI != null) NetworkPlayer.LocalHalfPlayer.AddCardToHandFromInstance(template, stolenCI);
+            else NetworkPlayer.LocalHalfPlayer.AddCardToHand(template);
+        }
+        else
+        {
+            if (stolenCI != null) beneficiary.AddServerSideCard(template, stolenCI.instanceID, stolenCI);
+            else beneficiary.AddServerSideCard(template, iid);
+        }
+
+        // 再从原主人手里移除（本机手牌走 UI 安全移除；AI/远端手牌直接移除 + 通知）
+        if (victim == NetworkPlayer.LocalHalfPlayer)
+        {
+            NetworkPlayer.RemoveCardFromLocalHand(iid);
+        }
+        else if (victimCard != null)
+        {
+            victim.handCards.Remove(victimCard);
+            if (victim.connectionToClient != null)
+                victim.TargetRemoveHandCard(victim.connectionToClient, iid);
+            Destroy(victimCard);
+        }
 
         if (counter.template.templateID == "02305")
             beneficiary.AddEnergy(2);
@@ -636,7 +652,7 @@ public class CounterManager : MonoBehaviour
         {
             int cost = counter.reducedTriggerCost >= 0 ? counter.reducedTriggerCost : counter.template.baseCost;
             beneficiary.currentEnergy -= cost;
-            if (beneficiary == NetworkPlayer.Local) beneficiary.UpdateUI();
+            if (beneficiary == NetworkPlayer.LocalHalfPlayer) beneficiary.UpdateUI();
         }
         RemoveCounter(index, isMine);
         SyncCounterRemoved(counter, isMine);

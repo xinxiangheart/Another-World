@@ -132,7 +132,7 @@ public class BoardSyncManager : MonoBehaviour
         }
 
         foreach (var kv in NetworkServer.connections)
-            if (kv.Value != NetworkPlayer.Local?.connectionToClient)
+            if (kv.Value != NetworkPlayer.LocalHalfPlayer?.connectionToClient)
             { NetworkPlayer.Local?.RpcSyncBoard(kv.Value, s, header + ab); return; }
     }
 

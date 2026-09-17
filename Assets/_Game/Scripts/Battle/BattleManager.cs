@@ -1576,7 +1576,7 @@ public class BattleManager : MonoBehaviour
                 if (effect.Contains("选定一个格子"))
                 {
                     NetworkPlayer revOwner = BoardManager.GetOwnerPlayer(deadSlotID);
-                    if (revOwner == NetworkPlayer.Remote && Mirror.NetworkServer.active
+                    if (revOwner == NetworkPlayer.RemoteHalfPlayer && Mirror.NetworkServer.active
                         && NetworkPlayer.Remote.connectionToClient != null)
                     {
                         // 远端玩家的卡 → 委托远端选择目标（AI 无连接走 else 本地选择）
@@ -1598,7 +1598,7 @@ public class BattleManager : MonoBehaviour
                     else
                     {
                         // 主机玩家 → 直接本地选择；AI 对局中触发者是 AI 半场 → AI 自动选择
-                        bool isAISide = SimpleAI.IsAIMatch && revOwner == NetworkPlayer.Remote;
+                        bool isAISide = SimpleAI.IsAIMatch && revOwner == NetworkPlayer.RemoteHalfPlayer;
                         if (isAISide) SimpleAI.IsAIEvaluating = true;
                         try
                         {
@@ -1625,7 +1625,7 @@ public class BattleManager : MonoBehaviour
                 if (effect.Contains("为己方一召唤物+2+1"))
                 {
                     NetworkPlayer revOwner = BoardManager.GetOwnerPlayer(deadSlotID);
-                    if (revOwner == NetworkPlayer.Remote && Mirror.NetworkServer.active
+                    if (revOwner == NetworkPlayer.RemoteHalfPlayer && Mirror.NetworkServer.active
                         && NetworkPlayer.Remote.connectionToClient != null)
                     {
                         // 远端玩家的卡 → 委托远端选择目标（AI 无连接走 else 本地选择）
@@ -1657,7 +1657,7 @@ public class BattleManager : MonoBehaviour
                     else
                     {
                         // 主机玩家 → 直接本地选择；AI 对局中触发者是 AI 半场 → AI 自动选择
-                        bool isAISide2 = SimpleAI.IsAIMatch && revOwner == NetworkPlayer.Remote;
+                        bool isAISide2 = SimpleAI.IsAIMatch && revOwner == NetworkPlayer.RemoteHalfPlayer;
                         if (isAISide2) SimpleAI.IsAIEvaluating = true;
                         try
                         {
@@ -2185,7 +2185,7 @@ public class BattleManager : MonoBehaviour
     {
         NetworkPlayer owner = BoardManager.GetOwnerPlayer(swordSlot.slotID);
 
-        if (owner == NetworkPlayer.Remote && Mirror.NetworkServer.active
+        if (owner == NetworkPlayer.RemoteHalfPlayer && Mirror.NetworkServer.active
             && NetworkPlayer.Remote.connectionToClient != null)
         {
             // 远端玩家的卡：委托远端选择目标（AI 无连接走 else 本地选择）
@@ -2223,7 +2223,7 @@ public class BattleManager : MonoBehaviour
         else
         {
             // AI 对局：处刑剑在 AI 半场（0-5）时，AI 自动选对方第一个召唤物，避免选择挂起卡死
-            if (SimpleAI.IsAIMatch && owner == NetworkPlayer.Remote)
+            if (SimpleAI.IsAIMatch && owner == NetworkPlayer.RemoteHalfPlayer)
             {
                 // [AI] 01535 目标：优先 玩家方(6-11) 5/3/1 费召唤物
                 BoardManager bm = FindObjectOfType<BoardManager>();

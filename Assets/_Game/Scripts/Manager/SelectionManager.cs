@@ -10,6 +10,45 @@ public class SelectionManager : MonoBehaviour
     private Stack<string> layerStack = new Stack<string>();
     private int idCounter;
 
+    /// <summary>待裁决选择的"取消钩子"：layerId → 把 null 结果喂给等待者（幂等，只触发一次）。
+    /// 供 ForceEndAll / 清栈等强制收尾路径使用，保证不会有协程永远等一个再也不会到来的选择。</summary>
+    readonly Dictionary<string, Action> _cancelHooks = new Dictionary<string, Action>();
+
+    /// <summary>注册一次选择的回调。回调只生效一次（防 AI 自动选择 + 双路点击重复触发）；
+    /// 同时登记取消钩子，强制收尾时以 null 结束等待（符合 BeginSelection 既有约定"选不到目标传 null"）。</summary>
+    void RegisterSelectionCallback(string id, Action<BoardSlot> onSelected)
+    {
+        bool fired = false;
+        BoardSlot.onTargetSelected = (slot) =>
+        {
+            if (fired) return;
+            fired = true;
+            _cancelHooks.Remove(id);
+            onSelected?.Invoke(slot);
+            EndSelection(id);
+        };
+        _cancelHooks[id] = () =>
+        {
+            if (fired) return;
+            fired = true;
+            _cancelHooks.Remove(id);
+            onSelected?.Invoke(null);
+        };
+    }
+
+    /// <summary>把所有待裁决选择以 null 结果收尾（幂等）。不碰层栈/高亮，清理由调用方负责。</summary>
+    public void CancelPendingSelections()
+    {
+        if (_cancelHooks.Count == 0) return;
+        var hooks = new List<Action>(_cancelHooks.Values);
+        _cancelHooks.Clear();
+        foreach (var hook in hooks)
+        {
+            try { hook(); }
+            catch (Exception e) { Debug.LogError($"[SelectionManager] 取消选择回调异常: {e}"); }
+        }
+    }
+
     void Awake()
     {
         if (Instance != null) { Destroy(gameObject); return; }
@@ -34,11 +73,7 @@ public class SelectionManager : MonoBehaviour
         layerStack.Push(id);
 
         BoardSlot.currentTargetType = targetType;
-        BoardSlot.onTargetSelected = (slot) =>
-        {
-            onSelected?.Invoke(slot);
-            EndSelection(id);
-        };
+        RegisterSelectionCallback(id, onSelected);
         NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
         Debug.Log($"BeginSelection 隐藏手牌: handCards.Count={Player.Instance.handCards.Count}");
         foreach (GameObject card in NetworkPlayer.Local.handCards)
@@ -65,11 +100,7 @@ public class SelectionManager : MonoBehaviour
         layerStack.Push(id);
 
         BoardSlot.currentTargetType = targetType;
-        BoardSlot.onTargetSelected = (slot) =>
-        {
-            onSelected?.Invoke(slot);
-            EndSelection(id);
-        };
+        RegisterSelectionCallback(id, onSelected);
 
         FindObjectOfType<CardDrag>()?.SetButtonsInteractable(false);
         Card3DHover.allowDiscard = false;
@@ -83,7 +114,12 @@ public class SelectionManager : MonoBehaviour
     public void EndSelection(string id)
     {
         if (layerStack.Count == 0) return;
-        if (layerStack.Peek() != id) layerStack.Clear();
+        if (layerStack.Peek() != id)
+        {
+            // 非栈顶收尾 = 直接清栈：栈里其它层仍在等回调的协程必须一并解除等待，否则永久挂起
+            layerStack.Clear();
+            CancelPendingSelections();
+        }
         else layerStack.Pop();
 
         if (layerStack.Count == 0)
@@ -117,6 +153,11 @@ public class SelectionManager : MonoBehaviour
     /// </summary>
     public void ForceEndAll()
     {
+        // 关键兜底：强退前先把待裁决选择以 null 结果喂回等待者。
+        // 只清层栈而不回调（旧行为）会让等选择的协程永久挂起——典型 01104 佣兵进场选目标：
+        // Handle01104Coroutine 卡在 WaitUntil(() => done)，StartOnEnterEffect 永不收尾，
+        // _enterEffectRunning 永远为 true → 该卡从此不参与死亡扫描 → 生命值 ≤0 也不退场。
+        CancelPendingSelections();
         BoardSlot.ClearAllHighlights();
         layerStack.Clear();
         BoardSlot.currentTargetType = TargetType.None;

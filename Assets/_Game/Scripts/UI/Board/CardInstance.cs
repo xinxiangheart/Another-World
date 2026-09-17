@@ -106,12 +106,51 @@ public class CardInstance : MonoBehaviour
     /// <summary>最近一次被服务端同步确认的世代号（syncGen/attachGen）。-1=从未被服务端同步确认。
     /// EnsureEmpty 纯客户端兜底销毁守卫：只销毁已确认的残留模型，刚放置未确认的牌受保护。</summary>
     [System.NonSerialized] public int serverAckGen = -1;
-    /// <summary>[Legacy] 进场效果正在执行中——死亡扫描应跳过此卡。后续由 NestingContext.IsNested 替代。</summary>
+    /// <summary>进场效果窗口是否仍在执行中——死亡扫描应跳过此卡（等窗口收尾后再判定）。
+    /// 由 _enterEffectDepth 派生，唯一入口 BeginEnterEffect/EndEnterEffect；收尾挂在 StartOnEnterEffect 的
+    /// finally 里，所以协程异常退出 / 提前 yield break / "未注册卡"回退都不会把标记永久留在 true
+    /// （标记一旦永久为 true，该卡就永久免疫死亡 —— 症状：生命值 ≤0 不退场）。</summary>
     [System.NonSerialized] public bool _enterEffectRunning;
+    /// <summary>进场窗口嵌套深度：>0 = 仍有若干层进场窗口在执行；归零时才清除 _enterEffectRunning。</summary>
+    [System.NonSerialized] public int _enterEffectDepth;
+    /// <summary>本层进场窗口的开启时刻（Time.time）。死亡扫描据此兜底解除"悬挂"窗口（协程死锁救不回来时的最后一道保险）。</summary>
+    [System.NonSerialized] public float _enterEffectStartTime;
     /// <summary>进场效果已运行过（一次性的持久标记，不清除）。用于保护玩家放置的卡不被网络同步覆盖。</summary>
     [System.NonSerialized] public bool _hadEnterEffect;
     /// <summary>[Legacy] 协程型进场效果尚未完成。后续由 EffectContext.StartedCoroutine + NestingContext 替代。</summary>
     [System.NonSerialized] public bool _hasPendingCoroutine;
+
+    /// <summary>进场窗口"悬挂"判定阈值（秒）。窗口开了这么久还自称"进场中"的卡，死亡扫描会强制解除窗口。</summary>
+    public const float EnterEffectHangSeconds = 10f;
+
+    /// <summary>开启一层进场窗口。与 EndEnterEffect 成对使用（后者必须放在 finally 里）。</summary>
+    public void BeginEnterEffect()
+    {
+        _enterEffectDepth++;
+        _enterEffectRunning = true;
+        _hadEnterEffect = true;
+        _enterEffectStartTime = Time.time;
+    }
+
+    /// <summary>关闭一层进场窗口。深度归零才真正清除标记——清除瞬间若本卡已 ≤0，补一次死亡扫描
+    /// （窗口内被 AOE / 光环 / 自伤打到 ≤0 的进场卡，靠这一扫描兑现"窗口结束后再判定死亡"）。
+    /// 深度已为 0 时被调用不视为错误：只在标记确实残留时兜底清掉（自愈）。</summary>
+    public void EndEnterEffect()
+    {
+        if (_enterEffectDepth > 0) _enterEffectDepth--;
+        if (_enterEffectDepth > 0) return;            // 仍有更外层窗口在跑，标记保持
+        bool wasRunning = _enterEffectRunning;
+        _enterEffectRunning = false;
+        if (wasRunning && currentHealth <= 0)
+            BoardSlot.CheckAndHandleDeaths();
+    }
+
+    /// <summary>强制解除进场窗口（兜底）。只清状态、不补扫——由扫描方把该卡直接登记进本轮死亡列表。</summary>
+    public void ForceEndEnterEffect()
+    {
+        _enterEffectDepth = 0;
+        _enterEffectRunning = false;
+    }
     // 动态赋予的特性文本
     public List<string> grantedTraitTexts = new List<string>();
     /// <summary>结构化赋予特性（text + 属性 + 源模板ID），与 grantedTraitTexts 锁步维护（按 text 对齐）。</summary>

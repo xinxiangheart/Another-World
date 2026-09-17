@@ -11,16 +11,41 @@ public class NetworkPlayer : NetworkBehaviour
     // Remote 需 public set：离线 AI 模式由 OfflineAIHost 手动赋 AI player（connectionToClient == null）。
     public static NetworkPlayer Remote { get; set; }
 
+    // RunAsLocal 会把 Local/Remote 临时换成「施法者 / 施法者的对手」，此时按对象身份反推半场会反掉
+    // （棋盘槽位不会跟着换：0-5 永远是对手/AI 的物理半场，6-11 永远是本机的）。
+    // 这里在互换发生前记下固定配对，供「按半场」查询使用；深度计数支持嵌套。
+    static int s_runAsLocalDepth;
+    static NetworkPlayer s_canonicalLocal;
+    static NetworkPlayer s_canonicalRemote;
+
+    /// <summary>6-11（本机半边）的固定归属者。RunAsLocal 期间 Local 指向施法者，需要「按半场」而不是
+    /// 「按当前施法者」解析玩家时用这个。非 RunAsLocal 期间 === Local。</summary>
+    public static NetworkPlayer LocalHalfPlayer => s_runAsLocalDepth > 0 ? s_canonicalLocal : Local;
+
+    /// <summary>0-5（对手/AI 半边）的固定归属者。非 RunAsLocal 期间 === Remote。</summary>
+    public static NetworkPlayer RemoteHalfPlayer => s_runAsLocalDepth > 0 ? s_canonicalRemote : Remote;
+
+    /// <summary>按槽位半场解析归属玩家（不受 RunAsLocal 影响）：6-11 → 本机半边，0-5 → 对手半边。
+    /// BoardManager.GetOwnerPlayer 的稳定版底座。</summary>
+    public static NetworkPlayer HalfOwner(int slotID) => slotID >= 6 ? LocalHalfPlayer : RemoteHalfPlayer;
+
     /// <summary>服务器替远程客户端执行时，临时把 Local 设为对应玩家，同时正确维护 Remote 语义（始终指向施法者的对手）。</summary>
     public void RunAsLocal(System.Action action)
     {
+        if (s_runAsLocalDepth == 0) { s_canonicalLocal = Local; s_canonicalRemote = Remote; }
+        s_runAsLocalDepth++;
         var savedLocal = Local;
         var savedRemote = Remote;
         Local = this;
         // 施法者切换时 Remote 也需要对应切换，否则 handler 内 Remote 不再代表对手
         Remote = (this == savedLocal) ? savedRemote : savedLocal;
         try { action(); }
-        finally { Local = savedLocal; Remote = savedRemote; }
+        finally
+        {
+            Local = savedLocal; Remote = savedRemote;
+            s_runAsLocalDepth--;
+            if (s_runAsLocalDepth == 0) { s_canonicalLocal = null; s_canonicalRemote = null; }
+        }
     }
 
     [Header("Player Stats")]
@@ -707,7 +732,7 @@ public class NetworkPlayer : NetworkBehaviour
         {
             // slotID=-1 是手牌消耗通知，不创建板面模型
             if (slotID < 0) return;
-            if (this != NetworkPlayer.Local)
+            if (this != NetworkPlayer.LocalHalfPlayer)
             {
                 // Remote's card — spawn on server for BattleCoroutine. Host=server, no TargetRpc needed.
                 // Mirror remote's local slot to server slot: remote 6-11→server 0-5, remote 0-5→server 6-11
@@ -760,6 +785,9 @@ public class NetworkPlayer : NetworkBehaviour
                             { ci.currentTier = hTO; ci.baseTier = hTB; }
                             // 手牌前缀覆盖（02004 皇帝认可等）
                             ConsumeHandPrefixOverride(instanceID, ci);
+                            // 手牌基础数值覆盖（回手卡带来的永久数值改动）—— 人类侧靠拖放 CopyFrom，AI 侧只有这条通道
+                            if (ConsumeHandBaseOverride(instanceID, out int hBA, out int hBH, out int hBMH))
+                            { ci.baseAttack = hBA; ci.baseHealth = hBH; ci.baseMaxHealth = hBMH; }
                             // 01515 狂热萨满 / 01520 商户 — 光环需在服务器侧注册
                             if (templateID == "01515") GlobalEventManager.Instance?.RegisterAura(new FanaticShamanAura { source = ci });
                             if (templateID == "01520") GlobalEventManager.Instance?.RegisterAura(new MerchantAura { source = ci });
@@ -826,13 +854,13 @@ public class NetworkPlayer : NetworkBehaviour
             CardInstance playedCI = null;
             if (template.cardType == CardType.Summon)
             {
-                int probeSlot = this != NetworkPlayer.Local
+                int probeSlot = this != NetworkPlayer.LocalHalfPlayer
                     ? (slotID >= 6 ? slotID - 6 : slotID + 6) // Remote 的本地槽镜像到服务器槽
                     : slotID;
                 var pSlot = FindObjectOfType<BoardManager>()?.GetSlot(probeSlot);
                 playedCI = pSlot?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
             }
-            CounterManager.Instance?.ServerCheckOnCardPlayed(template, this == NetworkPlayer.Local, playedCI);
+            CounterManager.Instance?.ServerCheckOnCardPlayed(template, this == NetworkPlayer.LocalHalfPlayer, playedCI);
 
             // 蛊惑之音(02304): if Remote's counter redirected this card's enter effect,
             // tell the owning client to select an ally and run the redirected enter effect.
@@ -840,7 +868,7 @@ public class NetworkPlayer : NetworkBehaviour
                 GlobalEventManager.Instance.PendingEnterRedirectTemplate == template)
             {
                 GlobalEventManager.Instance.PendingEnterRedirectTemplate = null;
-                NetworkConnectionToClient redirectTarget = this == NetworkPlayer.Local
+                NetworkConnectionToClient redirectTarget = this == NetworkPlayer.LocalHalfPlayer
                     ? NetworkPlayer.Remote?.connectionToClient
                     : NetworkPlayer.Local?.connectionToClient;
                 if (redirectTarget != null)
@@ -1066,7 +1094,7 @@ public class NetworkPlayer : NetworkBehaviour
         handCardCount = handCards.Count;
         Debug.Log($"[NetworkPlayer] DrawCard: templateID={data.templateID}, instanceID={data._instanceID}, handCount={handCardCount}");
         // Registry
-        RegistrySyncManager.Instance?.UpdateCard(instance, this == Local ? 0 : 1, CardZone.Hand, -1);
+        RegistrySyncManager.Instance?.UpdateCard(instance, this == LocalHalfPlayer ? 0 : 1, CardZone.Hand, -1);
         return cv;
     }
 
@@ -1149,7 +1177,7 @@ public class NetworkPlayer : NetworkBehaviour
 
         handCardCount = handCards.Count;
         // Registry: 本地抽牌入区
-        RegistrySyncManager.Instance?.UpdateCard(instance, this == Local ? 0 : 1, CardZone.Hand, -1);
+        RegistrySyncManager.Instance?.UpdateCard(instance, this == LocalHalfPlayer ? 0 : 1, CardZone.Hand, -1);
     }
 
     /// <summary>中枢(03027)在场时为新抽取的召唤物附加灵能前缀并同步到服务器。
@@ -1173,7 +1201,7 @@ public class NetworkPlayer : NetworkBehaviour
             FindObjectOfType<HandManager>()?.RefreshLayout(true);
             // Registry: 手牌移除
             if (ciRemove != null)
-                RegistrySyncManager.Instance?.Remove(ciRemove.instanceID, this == Local ? 0 : 1);
+                RegistrySyncManager.Instance?.Remove(ciRemove.instanceID, this == LocalHalfPlayer ? 0 : 1);
             handCardCount = handCards.Count;
         }
     }
@@ -1262,7 +1290,7 @@ public class NetworkPlayer : NetworkBehaviour
 
         handCardCount = handCards.Count;
         // Registry
-        RegistrySyncManager.Instance?.UpdateCard(inst, this == Local ? 0 : 1, CardZone.Hand, -1);
+        RegistrySyncManager.Instance?.UpdateCard(inst, this == LocalHalfPlayer ? 0 : 1, CardZone.Hand, -1);
         return cv;
     }
 
@@ -1285,9 +1313,9 @@ public class NetworkPlayer : NetworkBehaviour
                     if (ci != null && ci.instanceID == oldInstance.instanceID) { owner = BoardManager.GetOwnerPlayer(i); break; }
                 }
         }
-        if (owner != null && owner != Local && owner.connectionToClient == null)
+        if (owner != null && owner != LocalHalfPlayer && owner.connectionToClient == null)
         {
-            owner.AddServerSideCard(template, oldInstance.instanceID); // AI(server-only)手牌
+            owner.AddServerSideCard(template, oldInstance.instanceID, oldInstance); // AI(server-only)手牌·带旧实例
         }
         else
         {
@@ -1302,11 +1330,12 @@ public class NetworkPlayer : NetworkBehaviour
         NetworkPlayer target = isEnemy ? Remote : this;
         if (target == null) return;
 
-        // AI server-only（无客户端连接）：走服务器手牌追踪（无 UI、无 Instantiate、无 handArea）
-        if (NetworkServer.active && target.connectionToClient == null)
+        // AI server-only（无客户端连接）：走服务器手牌追踪（无 UI、无 Instantiate、无 handArea）。
+        // 「不是本机半边」这条是显式兜底：本机玩家的手牌必须走 UI 路径，别把判据押在 Mirror 的 connectionToClient 细节上。
+        if (NetworkServer.active && target.connectionToClient == null && target != LocalHalfPlayer)
         {
             string iid = oldInstance?.instanceID ?? CardZoneManager.GenerateInstanceID(template.templateID);
-            AddServerSideCard(template, iid);
+            AddServerSideCard(template, iid, oldInstance); // 继承旧实例状态（与下方人类分支同一套规则）
             return;
         }
 
@@ -1329,6 +1358,51 @@ public class NetworkPlayer : NetworkBehaviour
         if (inst == null) inst = card.AddComponent<CardInstance>();
 
         inst.CopyFrom(oldInstance);
+        ApplyReturnToHandRules(inst, template);
+        if (inst.isShadow)
+        {
+            Destroy(card);
+            return;
+        }
+
+        CardDisplay2D display = card.GetComponent<CardDisplay2D>();
+        if (display != null) display.RefreshWithInstance(inst);
+
+        if (!isEnemy)
+        {
+            handCards.Add(card);
+            CardView cv = card.GetComponent<CardView>();
+            if (cv != null)
+            {
+                HandManager hm = FindObjectOfType<HandManager>();
+                cv.handManager = hm;
+                cv.IsFlying = true; // 飞行中不参与布局；RefreshLayout 延迟到 AnimateCardDraw 内部 60% 时触发
+                hm?.RegisterCard(cv, false); // 只加入列表，不刷新布局
+
+                // 回手入场动画
+                cv.SetAlpha(0f);
+                var newCards = new System.Collections.Generic.List<CardView> { cv };
+                hm.StartCoroutine(hm.AnimateCardDraw(newCards));
+            }
+            handCardCount = handCards.Count;
+            // Registry
+            RegistrySyncManager.Instance?.UpdateCard(inst, this == LocalHalfPlayer ? 0 : 1, CardZone.Hand, -1);
+        }
+        else
+        {
+            // isEnemy 路径：对手手牌增加 → 注册到 Remote 侧
+            RegistrySyncManager.Instance?.UpdateCard(inst, 1, CardZone.Hand, -1);
+        }
+    }
+
+    /// <summary>回手进手牌时的实例状态裁决（人类路径与 AI 服务端路径共用，口径只有这一处）。
+    /// 保留永久改动：费用（currentCost / costReduction，03504「退场回手费-1」靠它累计）、base 数值
+    /// （baseAttack / baseHealth / baseMaxHealth）、前缀、授予特性、持续状态；
+    /// 清除场上临时状态：temp 加成、智者(03503)/皇帝(01501) 光环标记、护盾、01336 附着授予特性、
+    /// 商人(01520)/能量收割者(01528) 来源状态、handledReturnToHand。
+    /// current* 归位到 base*：「回手即清」只清场上临时加成，永久改动走 base 保留。</summary>
+    void ApplyReturnToHandRules(CardInstance inst, CardData template)
+    {
         inst.RemoveGrantedTraitsBySource("01336"); // 5.x：01336 修正者附着授予离场即清，防幻影先手特性重打
         // 商人/收割者"召唤费用-1"来源状态：回手即清（回手后重判，来源在场才重新打标 flag；手牌不携带 AddStatus）
         inst.RemoveStatusBySource("01520");
@@ -1362,54 +1436,21 @@ public class NetworkPlayer : NetworkBehaviour
         if (!inst.energyReaperDiscounted && IsEnergyReaperOnField()
             && template.cardType == CardType.Summon && inst.prefixes.Contains("灵能"))
             inst.energyReaperDiscounted = true;
-        if (inst.isShadow)
-        {
-            Destroy(card);
-            return;
-        }
-
-        CardDisplay2D display = card.GetComponent<CardDisplay2D>();
-        if (display != null) display.RefreshWithInstance(inst);
-
-        if (!isEnemy)
-        {
-            handCards.Add(card);
-            CardView cv = card.GetComponent<CardView>();
-            if (cv != null)
-            {
-                HandManager hm = FindObjectOfType<HandManager>();
-                cv.handManager = hm;
-                cv.IsFlying = true; // 飞行中不参与布局；RefreshLayout 延迟到 AnimateCardDraw 内部 60% 时触发
-                hm?.RegisterCard(cv, false); // 只加入列表，不刷新布局
-
-                // 回手入场动画
-                cv.SetAlpha(0f);
-                var newCards = new System.Collections.Generic.List<CardView> { cv };
-                hm.StartCoroutine(hm.AnimateCardDraw(newCards));
-            }
-            handCardCount = handCards.Count;
-            // Registry
-            RegistrySyncManager.Instance?.UpdateCard(inst, this == Local ? 0 : 1, CardZone.Hand, -1);
-        }
-        else
-        {
-            // isEnemy 路径：对手手牌增加 → 注册到 Remote 侧
-            RegistrySyncManager.Instance?.UpdateCard(inst, 1, CardZone.Hand, -1);
-        }
     }
 
     // ========== Helpers ==========
 
     // 商人(01520)/能量收割者(01528)：只认「这手牌的主人自己半场」的光环。
-    // this == Local → 本端 6-11；否则 this 是服务端视角的对手 (0-5)。
+    // this == LocalHalfPlayer → 本端 6-11；否则 this 是服务端视角的对手 (0-5)。
+    // 用 HalfPlayer 而不是裸 Local/Remote：run-as-local(AI 施法)期间 Local 会指向施法者。
     // 旧实现 side-agnostic：AI 的商人/收割者会减玩家手牌的费。
     bool IsMerchantOnField()
         => GlobalEventManager.Instance != null
-           && GlobalEventManager.Instance.IsAuraActiveOwnedBy<MerchantAura>(this == Local);
+           && GlobalEventManager.Instance.IsAuraActiveOwnedBy<MerchantAura>(this == LocalHalfPlayer);
 
     bool IsEnergyReaperOnField()
         => GlobalEventManager.Instance != null
-           && GlobalEventManager.Instance.IsAuraActiveOwnedBy<EnergyReaperAura>(this == Local);
+           && GlobalEventManager.Instance.IsAuraActiveOwnedBy<EnergyReaperAura>(this == LocalHalfPlayer);
 
     public bool IsMerchantOnFieldPublic() => IsMerchantOnField();
     public bool IsEnergyReaperOnFieldPublic() => IsEnergyReaperOnField();
@@ -1450,18 +1491,38 @@ public class NetworkPlayer : NetworkBehaviour
         if (tm.currentPhase == TurnManager.TurnPhase.BattlePhase)
             return true;
         if (tm.currentPhase == TurnManager.TurnPhase.MyTurn)
-            return (this == NetworkPlayer.Local);
+            return (this == NetworkPlayer.LocalHalfPlayer);
         if (tm.currentPhase == TurnManager.TurnPhase.EnemyTurn)
-            return (this == NetworkPlayer.Remote);
+            return (this == NetworkPlayer.RemoteHalfPlayer);
         return false;
     }
 
-    /// <summary>Create a lightweight card object on the server for hand tracking.</summary>
-    public void AddServerSideCard(CardData data, string instanceID = null)
+    /// <summary>Create a lightweight card object on the server for hand tracking.
+    /// oldInstance != null = 回手（退场回手 03504/01117/03009 等）：继承旧实例状态（费用 / 永久数值 / 前缀 /
+    /// 授予特性 / 持续状态），再套用与人类侧 AddCardToHandFromInstance 同一套「回手即清」规则。
+    /// 旧实现只按模板 InitFromTemplate —— AI 的执念亡魂(03504)回手即变成全新个体，减费与永久数值改动全丢。</summary>
+    public void AddServerSideCard(CardData data, string instanceID = null, CardInstance oldInstance = null)
     {
         GameObject card = new GameObject($"ServerCard_{data.templateID}");
         CardInstance ci = card.AddComponent<CardInstance>();
-        ci.InitFromTemplate(data, 0, instanceID);
+        if (oldInstance != null)
+        {
+            ci.InitFromTemplate(data, 0, oldInstance.instanceID);
+            ci.CopyFrom(oldInstance);
+            ApplyReturnToHandRules(ci, data);
+            if (ci.isShadow)
+            {
+                Destroy(card); // 影子(03007)类不进手牌，与人类分支同款处理
+                return;
+            }
+            // 服务器侧手牌没有「拖放时 CopyFrom」那一道（人类侧由 HandManager.PlaceCardToSlot 补齐），
+            // 放牌时 ServerPlayCard 只覆盖 current*，base* 会退回模板值 —— 永久数值改动在这里登记，放牌时还原。
+            ServerSetHandCardBaseOverride(ci.instanceID, ci.baseAttack, ci.baseHealth, ci.baseMaxHealth);
+        }
+        else
+        {
+            ci.InitFromTemplate(data, 0, instanceID);
+        }
         if (!string.IsNullOrEmpty(instanceID))
             CardZoneManager.Instance?.RegisterInstanceID(instanceID);
         handCards.Add(card);
@@ -1471,7 +1532,7 @@ public class NetworkPlayer : NetworkBehaviour
         if (data.cardType == CardType.Summon)
             HandManager.ApplyCorePsiAura(this);
         // Registry: 手牌入区
-        RegistrySyncManager.Instance?.UpdateCard(ci, this == Local ? 0 : 1, CardZone.Hand, -1);
+        RegistrySyncManager.Instance?.UpdateCard(ci, this == LocalHalfPlayer ? 0 : 1, CardZone.Hand, -1);
     }
 
     int GetCopyIndex(string templateID)
@@ -2913,11 +2974,54 @@ public class NetworkPlayer : NetworkBehaviour
         }
     }
 
+    /// <summary>服务器权威侧直接登记「手牌前缀覆盖」。AI(server-only, connectionToClient==null) 的
+    /// 手牌没有客户端，不能走 CmdSetHandCardPrefix；但放牌时同样经 ConsumeHandPrefixOverride 注入 ——
+    /// 不在这里登记，AI 手牌上 GivePrefix 出来的前缀就会在 ServerPlayCard 重建 CardInstance 时丢掉。</summary>
+    public void ServerSetHandCardPrefixOverride(string instanceID, string prefix)
+    {
+        if (string.IsNullOrEmpty(instanceID) || string.IsNullOrEmpty(prefix)) return;
+        if (!_handPrefixOverrides.TryGetValue(instanceID, out var list))
+            _handPrefixOverrides[instanceID] = list = new List<string>();
+        if (!list.Contains(prefix)) list.Add(prefix);
+    }
+
+    /// <summary>服务器权威侧直接登记「手牌阶位覆盖」（同 ServerSetHandCardPrefixOverride 的由来）。</summary>
+    public void ServerSetHandCardTierOverride(string instanceID, int currentTier, int baseTier)
+    {
+        if (string.IsNullOrEmpty(instanceID)) return;
+        _handTierOverrides[instanceID] = (currentTier, baseTier);
+    }
+
+    // ── 手牌基础数值覆盖 ──────────────────────────────────────────
+    // 与 _handTierOverrides / _handPrefixOverrides 同源：AI(server-only) 手牌没有客户端模型，
+    // 放牌时 ServerPlayCard 用 InitFromTemplate 重建 CardInstance，只覆盖 current*（CmdPlayCard 参数），
+    // base* 会退回模板值 —— 「永久数值改动」到下一次放牌就被抹掉。回手时登记一份，放牌时还原。
+    Dictionary<string, (int atk, int hp, int maxHp)> _handBaseOverrides = new();
+
+    public void ServerSetHandCardBaseOverride(string instanceID, int baseAtk, int baseHealth, int baseMaxHealth)
+    {
+        if (string.IsNullOrEmpty(instanceID)) return;
+        _handBaseOverrides[instanceID] = (baseAtk, baseHealth, baseMaxHealth);
+    }
+
+    bool ConsumeHandBaseOverride(string instanceID, out int baseAtk, out int baseHealth, out int baseMaxHealth)
+    {
+        if (!string.IsNullOrEmpty(instanceID) && _handBaseOverrides.TryGetValue(instanceID, out var v))
+        {
+            _handBaseOverrides.Remove(instanceID);
+            baseAtk = v.atk; baseHealth = v.hp; baseMaxHealth = v.maxHp;
+            return true;
+        }
+        baseAtk = 0; baseHealth = 0; baseMaxHealth = 0;
+        return false;
+    }
+
     /// <summary>清理指定 instanceID 的所有暂存覆盖（弃牌/爆牌/反制时调用）。</summary>
     void ClearAllHandOverrides(string instanceID)
     {
         _handTierOverrides.Remove(instanceID);
         _handPrefixOverrides.Remove(instanceID);
+        _handBaseOverrides.Remove(instanceID);
     }
 
     /// <summary>客户端→服务器：弃掉手牌中指定 instanceID 的卡牌。</summary>
@@ -2937,15 +3041,16 @@ public class NetworkPlayer : NetworkBehaviour
         }
     }
 
-    /// <summary>远程客户端→服务器：01511死亡回手。state 由客户端序列化——服务端的 ci 从未跑过 MindScholarEnterEffect，状态为空。</summary>
+    /// <summary>远程客户端→服务器：01511死亡回手。state 由客户端序列化——服务端的 ci 从未跑过 MindScholarEnterEffect，状态为空。
+    /// cardProto = 客户端那张卡的完整快照（CardStateProto），随 RPC 一起带回客户端重建手牌用。</summary>
     [Command]
-    public void CmdReturnScholarToHand(string scholarInstanceID, int clientSideSlotID, string scholarState)
+    public void CmdReturnScholarToHand(string scholarInstanceID, int clientSideSlotID, string scholarState, string cardProto = "")
     {
         int serverSlot = isLocalPlayer ? clientSideSlotID : clientSideSlotID - 6;
         BoardManager bm = FindObjectOfType<BoardManager>();
         var ci = bm?.GetSlot(serverSlot)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
         if (ci == null || ci.templateID != "01511" || ci.instanceID != scholarInstanceID) return;
-        TargetReceiveReturnedCard(connectionToClient, "01511", scholarState);
+        TargetReceiveReturnedCard(connectionToClient, "01511", scholarState, cardProto);
         var slot = bm.GetSlot(serverSlot);
         if (slot?.currentCard3D != null) { Destroy(slot.currentCard3D); slot.SetCard(null); }
         BoardSyncManager.MarkDirty();
@@ -3072,9 +3177,10 @@ public class NetworkPlayer : NetworkBehaviour
         BoardSlot.OnFairyReattachResult(newHostLocalSlot >= 0 ? serverSlot : -1);
     }
 
-    /// <summary>服务端→远端：01117/01511等卡牌回手（通过 CopyFrom 完整继承板面状态）。</summary>
+    /// <summary>服务端→远端：01117/01511等卡牌回手。srcState = 心灵学者专属字段；
+    /// cardProto = 整张卡快照（CardStateProto）——远端手牌是重建出来的，没有它就会退回模板值。</summary>
     [TargetRpc]
-    public void TargetReceiveReturnedCard(NetworkConnectionToClient target, string templateID, string srcState)
+    public void TargetReceiveReturnedCard(NetworkConnectionToClient target, string templateID, string srcState, string cardProto = "")
     {
         CardData template = CardDatabase.Instance?.GetTemplate(templateID);
         if (template == null) return;
@@ -3088,18 +3194,8 @@ public class NetworkPlayer : NetworkBehaviour
         if (inst == null) inst = card.AddComponent<CardInstance>();
         inst.InitFromTemplate(template, 0);
         ApplyReturnedCardState(inst, srcState);
-        inst.currentAttack = Mathf.Max(0, inst.baseAttack);
-        inst.currentHealth = Mathf.Max(0, inst.baseHealth);
-        inst.currentMaxHealth = Mathf.Max(0, inst.baseMaxHealth);
-        inst.currentTier = inst.baseTier;
-        inst.tempAttackBoost = 0;
-        inst.tempHealthBoost = 0;
-        // 回手清光环标记：英雄离场周期结束，再进场可重新获得智者(03503)/皇帝(01501) buff
-        inst.buffedBySage = false;
-        inst.buffedByEmperor = false;
-        // 护盾 = 场上状态：离场即清除，重掷从干净状态开始
-        inst.RemoveShield();
-        inst.handledReturnToHand = false;
+        ApplyKeptCardState(inst, cardProto);    // 减费 / 永久数值 / 前缀 / 授予特性 / 持续状态
+        ApplyReturnToHandRules(inst, template); // 与人类 / AI 侧同一套「回手即清」口径（只有这一处口径）
         CardDisplay2D display = card.GetComponent<CardDisplay2D>();
         if (display != null) display.RefreshWithInstance(inst);
         handCards.Add(card);
@@ -3134,6 +3230,33 @@ public class NetworkPlayer : NetworkBehaviour
                 }
             }
         }
+    }
+
+    /// <summary>把卡快照（CardStateProto.SerializeCard 的输出）套到实例上 —— 只写「回手 / 转移应当保留」的字段：
+    /// 费用 / base 与 current 数值 / 阶位 / 前缀 / 授予特性 / 持续状态 / 累计受伤。
+    /// 场上临时状态（temp* / 光环标记 / 护盾 / 来源状态）一律不套，由 ApplyReturnToHandRules 统一清。
+    /// 字段表与 BoardSyncManager 的板面同步应用保持一致（复用 ApplySyncedGrantedTraits / ApplySyncedActiveStatuses）。</summary>
+    static void ApplyKeptCardState(CardInstance inst, string protoRaw)
+    {
+        if (inst == null || string.IsNullOrEmpty(protoRaw)) return;
+        CardStateProto p = CardStateProto.DeserializeCard(protoRaw);
+        if (p.IsEmpty) return;
+        inst.currentCost = p.currentCost;
+        inst.currentAttack = p.currentAttack;
+        inst.currentHealth = p.currentHealth;
+        inst.currentMaxHealth = p.currentMaxHealth;
+        inst.baseAttack = p.baseAttack;
+        inst.baseHealth = p.baseHealth;
+        inst.baseMaxHealth = p.baseMaxHealth;
+        inst.currentTier = p.currentTier;
+        inst.baseTier = p.baseTier;
+        inst.prefixes = p.prefixes ?? "";
+        inst.lastGivenPrefix = p.lastGivenPrefix ?? "";
+        inst.totalDamageTaken = p.totalDamageTaken;
+        inst.hasBuff = p.hasBuff; inst.buffText = p.buffText ?? "";
+        inst.hasDebuff = p.hasDebuff; inst.debuffText = p.debuffText ?? "";
+        inst.ApplySyncedGrantedTraits(p.grantedTraits);
+        inst.ApplySyncedActiveStatuses(p.activeStatuses);
     }
 
     /// <summary>服务端→远端客户端：销毁指定槽位的板面模型。serverSlot 为服务端坐标(0-11)。</summary>
@@ -3337,7 +3460,7 @@ public class NetworkPlayer : NetworkBehaviour
     {
         List<string> handData = new List<string>();
 
-        if (oppNp == Local || oppNp == null)
+        if (oppNp == LocalHalfPlayer || oppNp == null)
         {
             foreach (var card in Local.handCards)
             {
@@ -3380,7 +3503,7 @@ public class NetworkPlayer : NetworkBehaviour
             CardData td = CardDatabase.Instance?.GetTemplate(tid);
             if (td != null && (td.spellType & SpellType.Evil) != 0)
             {
-                if (oppNp == Local || oppNp == null)
+                if (oppNp == LocalHalfPlayer || oppNp == null)
                     RemoveCardFromLocalHand(iid);
                 else if (oppNp.connectionToClient != null)
                     oppNp.TargetRemoveHandCard(oppNp.connectionToClient, iid);
@@ -3712,7 +3835,7 @@ public class NetworkPlayer : NetworkBehaviour
     {
         List<string> handData = new List<string>();
 
-        if (oppNp == Local)
+        if (oppNp == LocalHalfPlayer)
         {
             // 对手是主机：直接读 Local.handCards，不通过网络
             foreach (var card in Local.handCards)
@@ -3759,7 +3882,7 @@ public class NetworkPlayer : NetworkBehaviour
             string stolenIID = _thiefResult[1];
 
             // 从对手删除手牌
-            if (oppNp == Local)
+            if (oppNp == LocalHalfPlayer)
                 RemoveCardFromLocalHand(stolenIID);
             else if (oppNp.connectionToClient != null)
                 oppNp.TargetRemoveHandCard(oppNp.connectionToClient, stolenIID);

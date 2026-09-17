@@ -98,8 +98,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         set
         {
             _onTargetSelected = value;
-            Debug.LogWarning($"[AIDebug] onTargetSelected setter: value={value != null}, IsAIEvaluating={SimpleAI.IsAIEvaluating}, currentTargetType={currentTargetType}");
-            if (value != null && (SimpleAI.IsAIEvaluating || SimpleAI.forceAutoSelect))
+            Debug.LogWarning($"[AIDebug] onTargetSelected setter: value={value != null}, IsAIEvaluating={SimpleAI.IsAIEvaluating}, actorIsAI={enterEffectActorIsAI}, currentTargetType={currentTargetType}");
+            if (value != null && (SimpleAI.IsAIEvaluating || SimpleAI.forceAutoSelect || enterEffectActorIsAI))
                 AIResolveSelection();
         }
     }
@@ -120,6 +120,12 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public int slotTempAttackBoost;
     private GameObject _currentCard;
     public static bool isStrengtheningSlot = false;
+
+    /// <summary>当前进场窗口的发起方是否 AI 半场（StartOnEnterEffect 置位/还原，嵌套时保存还原）。
+    /// 进场效果里的目标选择据此自动裁决：AI 的卡可能在 SimpleAI.IsAIEvaluating=false 的非评估期进场
+    /// （战斗阶段被召唤 / 学者复制的进场 / 人类回合里被效果召唤），那时只认 IsAIEvaluating 会让选择
+    /// 永不裁决 → 等回调的协程永久挂起 → 进场窗口永不收尾。</summary>
+    public static bool enterEffectActorIsAI = false;
 
     /// <summary>退场后待处理的反击队列（同时窗口分界线）。
     /// 存储(死卡槽位ID, 反击效果文本, 伤害来源实例ID列表, 死亡者instanceID,
@@ -148,9 +154,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     /// </summary>
     public static void AIResolveSelection()
     {
-        if (!SimpleAI.IsAIEvaluating && !SimpleAI.forceAutoSelect)
+        if (!SimpleAI.IsAIEvaluating && !SimpleAI.forceAutoSelect && !enterEffectActorIsAI)
         {
-            Debug.LogWarning("[AIDebug] AIResolveSelection 被调用但 IsAIEvaluating=false 且非 forceAutoSelect，跳过");
+            Debug.LogWarning("[AIDebug] AIResolveSelection 被调用但 IsAIEvaluating=false 且非 forceAutoSelect/actorIsAI，跳过");
             return;
         }
         Debug.LogWarning("[AIDebug] AIResolveSelection 触发自动选择协程");
@@ -280,7 +286,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         NetworkPlayer targetOwner = BoardManager.GetOwnerPlayer(targetOwnerSlotID);
         if (targetOwner == null) yield break;
 
-        if (!NetworkServer.active || targetOwner == NetworkPlayer.Local)
+        if (!NetworkServer.active || targetOwner == NetworkPlayer.LocalHalfPlayer)
         {
             bool done = false;
             SelectionManager.Instance.BeginSelection(targetType, (s) => { onSelected?.Invoke(s); done = true; });
@@ -1202,9 +1208,12 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         // ── Step 3: 进场效果分发（新 → EffectRegistry，回退 → 旧 switch）──
         int enterDepth = NestingContext.Snapshot(); // 记录进入前深度，finally 恢复到该值
         NestingContext.Enter($"Enter_{template.templateID}");
+        // 记录本窗口的发起方半场：AI 半场的进场选择要能自动裁决（见 enterEffectActorIsAI 注释）
+        bool prevEnterActorIsAI = enterEffectActorIsAI;
+        enterEffectActorIsAI = SimpleAI.IsAISide(slotID);
         try
         {
-        if (inst != null) { inst._enterEffectRunning = true; inst._hadEnterEffect = true; }
+        if (inst != null) inst.BeginEnterEffect();
         var enterCtx = EffectContext.ForEnter(template, inst, this);
         if (EffectDispatcher.Dispatch(Trigger.Enter, enterCtx))
         {
@@ -1235,32 +1244,36 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             }
             // 同步型 handler 已在内部调用 CleanupAfterPlacement
             NestingContext.Exit();
-            // 仅最外层 StartOnEnterEffect 清除标记——嵌套调用不碰，防止破坏外层的 _enterEffectRunning
+            // 仅最外层 StartOnEnterEffect 处理放置收尾——嵌套调用不碰，防止破坏外层状态。
+            // 进场标记的清除统一交给 inst.EndEnterEffect()（深度计数，finally 里还有一次兜底），
+            // 这样"未注册卡回退"等分支也不会把标记永久留在 true。
             if (!NestingContext.IsNested)
             {
-                if (inst != null) inst._enterEffectRunning = false;
+                if (inst != null) inst.EndEnterEffect();   // 深度归零 → 清标记；若本卡已 ≤0 顺带补扫
                 isPlacingCard = false;
                 cardToPlace = null;
 
-                // 修复：进场标记已清除。死亡扫描(DeathCheckAction)此前会跳过 _enterEffectRunning 的
-                // 进场卡（见 scanDeaths 守卫），故上面 1177 的扫描扫不到"进场效果期间被打到 ≤0"的进场卡
-                // 本身（进场自伤/全场AOE/光环连锁致死等）。此处补扫并排空，兑现"进场效果结束后再判定死亡"。
+                // 窗口收尾时本卡已 ≤0 → 等死亡链排空再让调用方继续（原来挂在 1177 的补扫之后）
                 if (inst != null && inst.currentHealth <= 0)
-                {
-                    CheckAndHandleDeaths();
                     yield return ActionQueueManager.WaitForDrain();
-                }
             }
             yield break;
         }
 
         // ── 未注册卡回退 ───────────────────────────────────
-        Debug.LogWarning($"[StartOnEnterEffect] 未注册: {template.templateID}");
+        // 卡面 hasOnEnter=1 却没有对应的 Enter handler 时走到这里：卡面无效果（数据/注册不一致），
+        // 且旧版会把 _enterEffectRunning 永久留在 true（该卡永久免疫死亡）。现在 finally 会兜底收尾，
+        // 但这条仍是必须修的数据错误 —— 用 Error 而非 Warning 让它在 Console 里跳出来。
+        Debug.LogError($"[StartOnEnterEffect] 进场效果未注册：card 的 hasOnEnter=1，但 EffectRegistry 没有它的 " +
+            $"Trigger.Enter handler（卡面无效果 + 触发标志不一致）。tid={template.templateID} name={template.cardName} slot={slotID}");
         CleanupAfterPlacement();
         NestingContext.Exit();
         }
         finally
         {
+            enterEffectActorIsAI = prevEnterActorIsAI;
+            // 进场标记在这里兜底收尾（深度计数，幂等）：早退分支 / "未注册卡"回退 / 协程异常退出都不会再泄漏。
+            if (inst != null) inst.EndEnterEffect();
             // 安全网：恢复到进入前深度，而非 ForceClear 归零（归零会破坏外层嵌套计数，导致状态混乱）
             if (NestingContext.Depth > enterDepth)
             {
@@ -1278,16 +1291,12 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         if (currentCard3D != null)
         {
             var crd = currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-            // 嵌套内不清 _enterEffectRunning——仅最外层 StartOnEnterEffect 负责清理
+            // 嵌套内不清进场窗口——仅最外层 StartOnEnterEffect 负责收尾
             if (crd != null && !NestingContext.IsNested)
             {
-                bool wasEnterRunning = crd._enterEffectRunning;
-                crd._enterEffectRunning = false;
-                // 修复：清进场标记后补一次死亡扫描。此前死亡扫描会跳过 _enterEffectRunning 的进场卡；
-                // 若该卡在进场效果窗口内被扣到 ≤0（如血歌光环在敌方随从进场时即造成致死伤害，Aura 扣血
-                // 后不自扫），此清理路径是它"变成可死亡"的契机，须立刻登记扫描（动作异步由队列执行）。
-                if (wasEnterRunning && crd.currentHealth <= 0)
-                    CheckAndHandleDeaths();
+                // 深度归零才清标记；清除瞬间若该卡 ≤0 会补一次死亡扫描
+                // （窗口内被扣到 ≤0 的进场卡靠这一扫描兑现"窗口结束后再判定死亡"）
+                crd.EndEnterEffect();
             }
         }
         isPlacingCard = false;
@@ -1388,6 +1397,24 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         return false;
     }
 
+    /// <summary>该卡的进场窗口是否仍应阻止死亡判定。
+    /// true = 窗口仍在飞，本轮跳过；false = 可判定（本来就没有窗口，或检测到标记残留/悬挂并已强制解除）。
+    /// 兜底依据：_enterEffectRunning 的唯一置位点是 StartOnEnterEffect，而那里必定先 NestingContext.Enter——
+    /// 所以 NestingContext 深度为 0 时仍自称"进场中"的标记必为残留（协程死锁 / 异常退出）。
+    /// 不解除的后果就是这张卡永久免疫死亡（症状：召唤物生命值 ≤0 不退场）。</summary>
+    static bool EnterWindowStillActive(CardInstance ci)
+    {
+        if (ci == null || !ci._enterEffectRunning) return false;
+        float age = Time.time - ci._enterEffectStartTime;
+        bool orphaned = NestingContext.Depth == 0;                     // 没有任何进场窗口在飞 → 标记必为残留
+        bool hung = age > CardInstance.EnterEffectHangSeconds;         // 兜底：窗口开太久（协程死锁）
+        if (!orphaned && !hung) return true;
+        Debug.LogWarning($"[DeathScan] 进场窗口{ (orphaned ? "残留" : "悬挂") }，强制解除：tid={ci.templateID} " +
+            $"hp={ci.currentHealth} depth={NestingContext.Depth} age={age:F1}s");
+        ci.ForceEndEnterEffect();
+        return false;
+    }
+
     public static void CheckAndHandleDeaths()
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
@@ -1401,7 +1428,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             if (s?.currentCard3D == null) continue;
             var ci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
             if (ci == null || ci.currentHealth > 0) continue;
-            if (ci._enterEffectRunning) continue; // 进场中，不参与死亡/反击
+            if (EnterWindowStillActive(ci)) continue; // 进场中，不参与死亡/反击
             if (!ci.HasRevenge || string.IsNullOrEmpty(ci.revengeEffect)) continue; // 5.x 特性组：武装(未抑制)且反击类激活才收集
 
             var sourceIDs = new List<string>();
@@ -1447,8 +1474,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     var sc = c3d?.cardInstance;
                     if (sc != null && sc.currentHealth <= 0)
                     {
-                        // 进场效果执行中的卡跳过死亡扫描——等 CleanupAfterPlacement 后再判定
-                        if (sc._enterEffectRunning) continue;
+                        // 进场效果执行中的卡跳过死亡扫描——等进场窗口收尾后再判定
+                        if (EnterWindowStillActive(sc)) continue;
                         list.Add(new DeathInfo
                         {
                             slotID = s.slotID,
@@ -2366,7 +2393,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 while (!_rogueRpcDone && Time.time - t < 30f) yield return null;
                 _rogueRpcDone = false;
             }
-            else if (SimpleAI.IsAIMatch && owner == NetworkPlayer.Remote)
+            else if (SimpleAI.IsAIMatch && owner == NetworkPlayer.RemoteHalfPlayer)
             {
                 // [AI] 01309 无赖：AI 手牌 Hero(5/3/1) 自动召唤（同 01314）
                 yield return StartCoroutine(HeartthrobSummonAI());
@@ -5280,7 +5307,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         if (enemyCards.Count == 0) { yield break; }
 
         // AI 放窃贼（AI 半场）→ AI 自动窃取评分最高的一张，不弹 UI 给玩家选
-        bool isAIOwner = SimpleAI.IsAIMatch && owner == NetworkPlayer.Remote;
+        bool isAIOwner = SimpleAI.IsAIMatch && owner == NetworkPlayer.RemoteHalfPlayer;
         CardInstance selected = null;
         if (isAIOwner)
         {
@@ -5404,7 +5431,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         bool confirmed = false;
 
         // AI 放荣誉侍者（AI 半场）→ 跳过 UI 确认，直接弃掉所有邪恶法术
-        bool isAIOwner = SimpleAI.IsAIMatch && owner == NetworkPlayer.Remote;
+        bool isAIOwner = SimpleAI.IsAIMatch && owner == NetworkPlayer.RemoteHalfPlayer;
         if (!isAIOwner)
         {
             CardDisplayPanel.Instance.Show(enemyCards, ci => true, "确认");
@@ -5424,7 +5451,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             CardData td = CardDatabase.Instance?.GetTemplate(tid);
             if (td != null && (td.spellType & SpellType.Evil) != 0)
             {
-                if (oppNp == null || oppNp == owner || oppNp == NetworkPlayer.Local)
+                if (oppNp == null || oppNp == owner || oppNp == NetworkPlayer.LocalHalfPlayer)
                     NetworkPlayer.RemoveCardFromLocalHand(iid);
                 else if (oppNp.connectionToClient != null)
                     oppNp.TargetRemoveHandCard(oppNp.connectionToClient, iid);
@@ -5574,7 +5601,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         string newCopyType = null;
 
         // AI 放心灵学者（AI 半场）→ 跳过复制确认弹窗，避免 WaitUntil 挂起泄漏 NestingContext
-        bool isAIOwner = SimpleAI.IsAIMatch && BoardManager.GetOwnerPlayer(slotID) == NetworkPlayer.Remote;
+        bool isAIOwner = SimpleAI.IsAIMatch && BoardManager.GetOwnerPlayer(slotID) == NetworkPlayer.RemoteHalfPlayer;
         // [AI] 01511：直接复制 玩家(6-11) 3/1 费 进场/抛置（进场优先；不弹确认/选择面板），复用下方既有触发逻辑
         if (isAIOwner && giver.mindScholarCopyCount < 4 && !giver._mindScholarCopyPrompted)
         {

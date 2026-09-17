@@ -267,11 +267,11 @@ public static class EnterHandlers
         int srcIdx = src != null ? src.GetTraitIndexByKeyword("对对方一召唤物造成1伤害") : -1;
         string srcText = srcIdx > 0 ? src.GetTraitByIndex(srcIdx) : null;
         // [AI] 佣兵 01104：倾向 玩家方(敌) 5/3/1 费召唤物（5/3/1 只是优先级，非硬门槛）
-        if (SimpleAI.IsAIEvaluating)
-        {
-            SimpleAI.selectCostPref = new[] { 5, 3, 1 };
-            SimpleAI.selectExtraFilter = null;
-        }
+        // 用 SetAIAutoChoice（一并置 forceAutoSelect）而不是只写 selectCostPref：AI 半场的佣兵可能在
+        // SimpleAI.IsAIEvaluating=false 的非评估期进场（战斗阶段被召唤 / 学者复制的进场 / 人类回合里被
+        // 效果召唤），那时只认 IsAIEvaluating 就没人裁决这次选择，本协程的 WaitUntil(() => done) 永久挂起。
+        if (SimpleAI.IsAIEvaluating || SimpleAI.IsAISide(slot.slotID))
+            SimpleAI.SetAIAutoChoice(new[] { 5, 3, 1 });
         SM().BeginSelection(TargetType.SingleEnemy, (targetSlot) =>
         {
             if (targetSlot?.currentCard3D != null)

@@ -129,7 +129,7 @@ public static class SpellHandlers
     static void Handle02004(EffectContext ctx)
     {
         var cd = UnityEngine.Object.FindObjectOfType<CardDrag>();
-        SelectionManager.Instance.StartSafeCoroutine(cd.EmperorsApprovalEffectCoroutine());
+        SelectionManager.Instance.StartSafeCoroutine(cd.EmperorsApprovalEffectCoroutine(ctx.spellCasterIsHost));
     }
 
     static void Handle02006(EffectContext ctx)
@@ -148,7 +148,7 @@ public static class SpellHandlers
 
     static void Handle02010(EffectContext ctx)
     {
-        HM().StartCoroutine(HM().BetrayalEffect());
+        HM().StartCoroutine(HM().BetrayalEffect(ctx.spellCasterIsHost));
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -294,7 +294,7 @@ public static class SpellHandlers
 
     static void Handle02203(EffectContext ctx)
     {
-        HM().StartCoroutine(HM().GreatEvolutionEffect());
+        HM().StartCoroutine(HM().GreatEvolutionEffect(ctx.spellCasterIsHost));
     }
 
     /// <summary>征服者(01508)免疫·关卡3守卫：目标在敌方半场且为免疫卡 → 敌方法术不作用，返回 true（调用方直接 Cleanup 跳过）。</summary>
@@ -525,7 +525,7 @@ public static class SpellHandlers
 
     static void Handle02310(EffectContext ctx)
     {
-        HM().StartCoroutine(HM().SpotlightEffect());
+        HM().StartCoroutine(HM().SpotlightEffect(ctx.spellCasterIsHost));
     }
 
     static void Handle02311(EffectContext ctx)

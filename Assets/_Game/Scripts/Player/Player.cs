@@ -402,7 +402,7 @@ public class Player : MonoBehaviour
     {
         if (ci == null) return;
         if (ci.prefixes != null && ci.prefixes.Contains("灵能")) return;
-        HandManager.ApplyCorePsiAura(NetworkPlayer.Local);
+        HandManager.ApplyCorePsiAura(NetworkPlayer.LocalHalfPlayer);
     }
     // 商人(01520)/能量收割者(01528)：只认本机自己半场(6-11)的光环——AI 的商人/收割者只减 AI 手牌费
     bool IsMerchantOnField()

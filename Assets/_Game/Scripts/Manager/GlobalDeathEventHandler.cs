@@ -301,7 +301,7 @@ public static class GlobalDeathEventHandler
                     if (!string.IsNullOrEmpty(iid))
                     {
                         // 弃 discardTarget 的牌 → 如果 discardTarget 是本端则直接 RemoveCardFromLocalHand
-                        if (discardTarget == NetworkPlayer.Local || discardTarget == null)
+                        if (discardTarget == NetworkPlayer.LocalHalfPlayer || discardTarget == null)
                             NetworkPlayer.RemoveCardFromLocalHand(iid);
                         else if (Mirror.NetworkServer.active)
                             discardTarget.TargetRemoveHandCard(discardTarget.connectionToClient, iid);

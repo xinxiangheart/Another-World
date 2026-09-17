@@ -713,8 +713,31 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
     {
         BoardSyncManager.MarkDirty();
     }
-    public IEnumerator EmperorsApprovalEffectCoroutine()
+    /// <param name="casterIsHost">施法方是否为本地(主机)侧；false 且 AI 对局 → 施法方是 AI(Remote,0-5)。</param>
+    public IEnumerator EmperorsApprovalEffectCoroutine(bool casterIsHost = true)
     {
+        // [AI] 02004：AI 施法 → 只作用于 AI 自己（先场上 0-5、后 AI 手牌），不弹玩家面板。
+        // 旧写法借 BuildHandPlusFieldCardList（本机手牌 + 6-11 场）取候选，而 ShowWithCallback 在
+        // IsAIEvaluating 下自动确认第一张 → AI 的牌会给「玩家」的一张牌加渊前缀，再让玩家白摸 1 张。
+        if (SimpleAI.IsAIMatch && !casterIsHost)
+        {
+            CardInstance pick2004 = HandManager.PickAIOwnSummon(
+                ci => ci.prefixes == null || !ci.prefixes.Contains("渊"));
+            if (pick2004 != null)
+            {
+                pick2004.GivePrefix("渊");
+                HandManager.CommitAIOwnCardPrefix(pick2004, "渊");
+                Debug.Log($"[AI] 02004 皇帝的认可：{pick2004.instanceID} 附加「渊」前缀");
+            }
+            else
+            {
+                Debug.LogWarning("[AI] 02004 皇帝的认可：AI 己方无可加前缀的召唤物");
+            }
+            NetworkPlayer.Remote?.DrawCard();
+            CardDrag.CleanupSpellResources();
+            yield break;
+        }
+
         yield return null;
         HandManager hm = FindObjectOfType<HandManager>();
         // 手牌+场上混合弹窗（收藏家 01349 模式）：候选 = 己方召唤物(手牌6? 手牌一律 + 场上6-11)；排除已带渊
