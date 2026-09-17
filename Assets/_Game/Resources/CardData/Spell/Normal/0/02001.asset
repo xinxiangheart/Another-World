@@ -1,0 +1,57 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e77c23a617e634648ac601c13fb57c7e, type: 3}
+  m_Name: 02001
+  m_EditorClassIdentifier: 
+  templateID: 02001
+  cardName: "\u795E\u6069"
+  cardType: 1
+  copyCount: 5
+  addToMainDeck: 1
+  summonType: 0
+  baseCost: 0
+  baseTier: 0
+  prefix: "\u65E0"
+  baseHealth: 0
+  baseAttack: 0
+  hasFirstStrike: 0
+  hasOnEnter: 0
+  hasOnDeath: 0
+  hasActiveExit: 0
+  hasRevenge: 0
+  hasDiscard: 0
+  canAttach: 0
+  counterTiming: 0
+  counterTriggerCondition: 
+  counterEffect: 
+  counterDuration: 0
+  isXValue: 0
+  xHealthReadsHighest: 0
+  xAttackReadsHighest: 0
+  attacksFrontRow: 0
+  attacksBackRow: 0
+  revengeEffect: 
+  traits: 
+  traitProperties: 
+  traitEntries: []
+  traitsMigrated: 1
+  spellType: 0
+  effect: "1.\u6478\u4E00\u5F20\u795E\u9009\u8005\u724C"
+  card2DPrefab: {fileID: 0}
+  spell2DPrefab: {fileID: 1249189968934597795, guid: df1255eb9b4377e4b8e9490c535e2bfd, type: 3}
+  prefab3D: {fileID: 0}
+  spellPrefab3D: {fileID: 7870213810726454564, guid: 214f358cda1454a49b8c8d448b5eca35, type: 3}
+  hasBuff: 0
+  buffText: 
+  hasDebuff: 0
+  debuffText: 
+  targetType: 0

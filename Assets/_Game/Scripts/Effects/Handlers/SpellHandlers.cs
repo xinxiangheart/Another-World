@@ -24,6 +24,7 @@ public static class SpellHandlers
         _registered = true;
 
         // 0费/特殊费
+        Register("02001", Handle02001);
         Register("02002", Handle02002);
         Register("02004", Handle02004);
         Register("02006", Handle02006);
@@ -100,6 +101,23 @@ public static class SpellHandlers
     // ═══════════════════════════════════════════════════════════════════
     // 0费/特殊费
     // ═══════════════════════════════════════════════════════════════════
+
+    /// <summary>02001 神恩：从共享神选者牌堆摸一张神选者牌，加入施法者手牌。
+    /// 牌堆权威在服务器（ChosenOneManager 仅服务器初始化），本 handler 经 CmdResolveSpell /
+    /// 离线 Host 路径执行；牌堆抽空时无效果（牌堆共 7 张，开局双方各 1 张 → 余 5 张，天然对应
+    /// 规则「全局最多再抽 5 张神选者」）。</summary>
+    static void Handle02001(EffectContext ctx)
+    {
+        CardData chosenOne = ChosenOneManager.Instance?.DrawChosenOne();
+        if (chosenOne == null)
+        {
+            Debug.LogWarning("[02001 神恩] 神选者牌堆已空，本次不产生效果");
+            Cleanup();
+            return;
+        }
+        NetworkPlayer.Local?.AddCardToHand(chosenOne, chosenOne._instanceID);
+        Cleanup();
+    }
 
     static void Handle02002(EffectContext ctx)
     {
