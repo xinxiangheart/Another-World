@@ -86,6 +86,24 @@ public class GlobalEventManager : MonoBehaviour
         return false;
     }
 
+    /// <summary>是否有"归属指定方"的活跃 T 类光环（ownerIsHost=true → 本端 6-11 半场；false → 对手 0-5）。
+    /// 商人(01520)/能量收割者(01528)等"己方手牌减费"光环一律用它判归属——旧的 side-agnostic 判定会让
+    /// AI/对手放在自己半场的同类光环作用到本机（与中枢(03027)给玩家手牌加灵能前缀同族）。</summary>
+    public bool IsAuraActiveOwnedBy<T>(bool ownerIsHost) where T : AuraBase
+    {
+        var all = GetAllAuras();
+        if (all == null) return false;
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return false;
+        foreach (var a in all)
+        {
+            if (!(a is T) || !a.IsActive() || a.source == null) continue;
+            int slot = GetSlotOf(a.source, bm);
+            if (slot >= 0 && (slot >= 6) == ownerIsHost) return true;
+        }
+        return false;
+    }
+
     /// <summary>兜底：根据棋盘状态判断特性是否被狂热萨满(01515)/法官(01323)压制</summary>
     bool IsTraitBlockedByBoardState(CardInstance ci, string trait)
     {

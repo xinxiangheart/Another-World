@@ -395,57 +395,20 @@ public class Player : MonoBehaviour
         currentHealth = Mathf.Min(maxHealth, currentHealth + amount);
         UpdateUI();
     }
+    /// <summary>中枢(03027)灵能光环：只认本机(6-11)自己半场的中枢，作用于本机场上全体 + 手牌召唤物。
+    /// 结算统一走 HandManager.ApplyCorePsiAura —— 旧实现里 NetworkPlayer 侧扫全场 12 槽，
+    /// 会把 AI 放在 0-5 的中枢也算进来、给玩家新抽的牌加灵能前缀，这里不再各写一份。</summary>
     public void ApplyCorePrefix(CardInstance ci)
     {
         if (ci == null) return;
-        if (ci.prefixes.Contains("灵能")) return;
-
-        BoardManager bm = FindObjectOfType<BoardManager>();
-        if (bm == null) return;
-
-        bool coreOnField = false;
-        for (int i = 6; i <= 11; i++)
-        {
-            BoardSlot slot = bm.GetSlot(i);
-            if (slot?.currentCard3D == null) continue;
-            CardInstance fieldCI = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-            if (fieldCI != null && fieldCI.templateID == "03027")
-            {
-                coreOnField = true;
-                break;
-            }
-        }
-
-        if (coreOnField)
-        {
-            ci.GivePrefix("灵能", "03027");
-            CardDisplay2D d2d = ci.GetComponent<CardDisplay2D>();
-            d2d?.Refresh();
-            // 同步手牌前缀到服务器（打出时 ConsumeHandPrefixOverride 注入）
-            if (Mirror.NetworkClient.isConnected)
-                NetworkPlayer.Local?.CmdSetHandCardPrefix(ci.instanceID, "灵能");
-        }
+        if (ci.prefixes != null && ci.prefixes.Contains("灵能")) return;
+        HandManager.ApplyCorePsiAura(NetworkPlayer.Local);
     }
+    // 商人(01520)/能量收割者(01528)：只认本机自己半场(6-11)的光环——AI 的商人/收割者只减 AI 手牌费
     bool IsMerchantOnField()
-    {
-        var allAuras = GlobalEventManager.Instance?.GetAllAuras();
-        if (allAuras == null) return false;
-        foreach (var a in allAuras)
-        {
-            if (a is MerchantAura && a.IsActive()) return true;
-        }
-        return false;
-    }
+        => GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsAuraActiveOwnedBy<MerchantAura>(true);
     bool IsEnergyReaperOnField()
-    {
-        var allAuras = GlobalEventManager.Instance?.GetAllAuras();
-        if (allAuras == null) return false;
-        foreach (var a in allAuras)
-        {
-            if (a is EnergyReaperAura && a.IsActive()) return true;
-        }
-        return false;
-    }
+        => GlobalEventManager.Instance != null && GlobalEventManager.Instance.IsAuraActiveOwnedBy<EnergyReaperAura>(true);
 
    
     // ========== UI ==========

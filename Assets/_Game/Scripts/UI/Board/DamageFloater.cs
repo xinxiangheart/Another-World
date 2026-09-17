@@ -164,7 +164,11 @@ public class DamageFloater : MonoBehaviour
             _sharedCanvas.planeDistance = 5f;
         }
 
-        canvasGo.AddComponent<UnityEngine.UI.CanvasScaler>();
+        // 与全项目统一口径：1920×1080 + Match Height。
+        // 不这么做的话飘字画布是「恒定像素」尺寸，同一处伤害数字的视觉大小会随分辨率变、和其它 UI 不同步；
+        // 位置换算走 ScreenPointToLocalPointInRectangle，本来就按缩放系数处理，不受影响。
+        var scaler = canvasGo.AddComponent<UnityEngine.UI.CanvasScaler>();
+        GameSettings.ApplyScalerTo(scaler);
     }
 
     static DamageFloater CreateTemplate(Transform parent)

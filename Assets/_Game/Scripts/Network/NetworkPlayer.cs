@@ -1152,25 +1152,14 @@ public class NetworkPlayer : NetworkBehaviour
         RegistrySyncManager.Instance?.UpdateCard(instance, this == Local ? 0 : 1, CardZone.Hand, -1);
     }
 
-    /// <summary>中枢(03027)在场时为新抽取的召唤物附加灵能前缀并同步到服务器。</summary>
+    /// <summary>中枢(03027)在场时为新抽取的召唤物附加灵能前缀并同步到服务器。
+    /// 只认「抽牌者自己半场」的中枢（this == Local → 6-11，否则 0-5）——旧实现对全场 12 槽扫描，
+    /// 会把 AI 放在 0-5 的中枢误判成玩家的，给玩家新抽的牌加灵能前缀（离线模式已修复）。</summary>
     void ApplyCorePrefix(CardInstance ci)
     {
-        if (ci == null || ci.prefixes.Contains("灵能")) return;
-        BoardManager bm = FindObjectOfType<BoardManager>();
-        if (bm == null) return;
-        bool coreOnField = false;
-        for (int i = 0; i < 12; i++)
-        {
-            var s = bm.GetSlot(i);
-            if (s?.currentCard3D == null) continue;
-            var fci = s.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-            if (fci != null && fci.templateID == "03027") { coreOnField = true; break; }
-        }
-        if (!coreOnField) return;
-        ci.GivePrefix("灵能", "03027");
-        ci.GetComponent<CardDisplay2D>()?.Refresh();
-        if (NetworkClient.isConnected)
-            CmdSetHandCardPrefix(ci.instanceID, "灵能");
+        if (ci == null) return;
+        if (ci.prefixes != null && ci.prefixes.Contains("灵能")) return;
+        HandManager.ApplyCorePsiAura(this);
     }
 
     public void RemoveCardFromHand(GameObject card)
@@ -1411,23 +1400,16 @@ public class NetworkPlayer : NetworkBehaviour
 
     // ========== Helpers ==========
 
+    // 商人(01520)/能量收割者(01528)：只认「这手牌的主人自己半场」的光环。
+    // this == Local → 本端 6-11；否则 this 是服务端视角的对手 (0-5)。
+    // 旧实现 side-agnostic：AI 的商人/收割者会减玩家手牌的费。
     bool IsMerchantOnField()
-    {
-        var allAuras = GlobalEventManager.Instance?.GetAllAuras();
-        if (allAuras == null) return false;
-        foreach (var a in allAuras)
-            if (a is MerchantAura && a.IsActive()) return true;
-        return false;
-    }
+        => GlobalEventManager.Instance != null
+           && GlobalEventManager.Instance.IsAuraActiveOwnedBy<MerchantAura>(this == Local);
 
     bool IsEnergyReaperOnField()
-    {
-        var allAuras = GlobalEventManager.Instance?.GetAllAuras();
-        if (allAuras == null) return false;
-        foreach (var a in allAuras)
-            if (a is EnergyReaperAura && a.IsActive()) return true;
-        return false;
-    }
+        => GlobalEventManager.Instance != null
+           && GlobalEventManager.Instance.IsAuraActiveOwnedBy<EnergyReaperAura>(this == Local);
 
     public bool IsMerchantOnFieldPublic() => IsMerchantOnField();
     public bool IsEnergyReaperOnFieldPublic() => IsEnergyReaperOnField();
@@ -1485,6 +1467,9 @@ public class NetworkPlayer : NetworkBehaviour
         handCards.Add(card);
         handCardCount = handCards.Count;
         Debug.Log($"[NetworkPlayer] AddServerSideCard: {data.templateID} iid={instanceID}, handCount={handCardCount}");
+        // 中枢(03027)在「自己半场」时：新进手牌的召唤物补灵能前缀（AI 的中枢只作用于 AI 手牌）
+        if (data.cardType == CardType.Summon)
+            HandManager.ApplyCorePsiAura(this);
         // Registry: 手牌入区
         RegistrySyncManager.Instance?.UpdateCard(ci, this == Local ? 0 : 1, CardZone.Hand, -1);
     }

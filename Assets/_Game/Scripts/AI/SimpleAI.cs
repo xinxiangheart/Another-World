@@ -304,6 +304,9 @@ public class SimpleAI : MonoBehaviour
             if (td != null && td.hasOnEnter && boardInst != null)
                 yield return slot.StartOnEnterEffect(td, boardInst);
 
+            // 中枢(03027)在 AI 自己半场时：新进场的 AI 召唤物补灵能前缀（只作用于 AI 自己，不碰玩家）
+            HandManager.ApplyCorePsiAura(_ai);
+
             _ai.handCards.Remove(go);
             if (go != null) Destroy(go);
             _playedCard = true;

@@ -601,12 +601,15 @@ public class HandManager : MonoBehaviour
 
         BoardManager.SyncAttachedModels(newSlot);
     }
-    // 检测缄默神官是否在场
-    private bool IsSuppressorOnField()
+    // 检测缄默神官是否在场。sideSlotID >= 0 时只在「该槽位所在半场」搜索（0-5 AI / 6-11 本机），
+    // 否则按本机半场 6-11 搜。旧写法写死 6-11：AI 的英雄进场时会吃到玩家半场神官的阶位+1。
+    private bool IsSuppressorOnField(int sideSlotID = -1)
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
         if (bm == null) return false;
-        for (int i = 6; i <= 11; i++)
+        int start = 6, end = 11;
+        if (sideSlotID >= 0) BoardManager.GetSideRange(sideSlotID, out start, out end);
+        for (int i = start; i <= end; i++)
         {
             BoardSlot slot = bm.GetSlot(i);
             if (slot?.currentCard3D == null) continue;
@@ -629,6 +632,57 @@ public class HandManager : MonoBehaviour
             if (ci != null && ci.templateID == "03027") return true;
         }
         return false;
+    }
+
+    /// <summary>中枢(03027)灵能光环的唯一结算点：只有当 owner 自己半场(本机 6-11 / AI 0-5)有中枢时，
+    /// 才给其「场上全体 + 手牌中召唤物」附加灵能前缀。owner 必须显式传入 —— AI 放下的中枢只能作用于
+    /// AI 自己，不会再把前缀加到玩家手牌/场上（旧代码在这里写死 NetworkPlayer.Local.handCards）。
+    /// 幂等：已带灵能前缀的卡直接跳过。返回值 = 己方半场是否真有中枢。</summary>
+    public static bool ApplyCorePsiAura(NetworkPlayer owner)
+    {
+        if (owner == null) return false;
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return false;
+
+        int start = (owner == NetworkPlayer.Local) ? 6 : 0; // 6-11 = 本机半场；0-5 = 对手/AI 半场
+        int end = start + 5;
+
+        bool coreOnField = false;
+        for (int i = start; i <= end; i++)
+        {
+            CardInstance fieldCI = bm.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (fieldCI != null && fieldCI.templateID == "03027") { coreOnField = true; break; }
+        }
+        if (!coreOnField) return false;
+
+        // 场上：己方全体
+        for (int i = start; i <= end; i++)
+        {
+            BoardSlot slot = bm.GetSlot(i);
+            CardInstance ci = slot?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci == null || (ci.prefixes != null && ci.prefixes.Contains("灵能"))) continue;
+            ci.GivePrefix("灵能", "03027");
+            slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+        }
+
+        // 手牌：己方手牌中的召唤物（AI 手牌是 server-side 追踪对象，同样挂在 owner.handCards 上）
+        if (owner.handCards != null)
+        {
+            foreach (GameObject handCard in owner.handCards)
+            {
+                if (handCard == null) continue;
+                CardInstance ci = handCard.GetComponent<CardInstance>();
+                if (ci == null || (ci.prefixes != null && ci.prefixes.Contains("灵能"))) continue;
+                CardData cd = CardDatabase.Instance?.GetTemplate(ci.templateID);
+                if (cd == null || cd.cardType != CardType.Summon) continue;
+                ci.GivePrefix("灵能", "03027");
+                handCard.GetComponent<CardDisplay2D>()?.Refresh();
+                // 同步手牌前缀到服务器（打出时 ConsumeHandPrefixOverride 注入）
+                if (owner == NetworkPlayer.Local && NetworkClient.isConnected)
+                    owner.CmdSetHandCardPrefix(ci.instanceID, "灵能");
+            }
+        }
+        return true;
     }
 
     // BoardSlot.HandleDeath 完整方法
@@ -951,7 +1005,13 @@ public class HandManager : MonoBehaviour
         // ScreenToWorldPoint 的 z 参数是「相机前方深度」，正交时无关、透视时必须传正确深度，
         // 否则透视投影下 X 映射错误（曾导致抽牌从手牌区中央飞出而非屏幕右外）。
         float depth = Vector3.Dot(center - cam.transform.position, cam.transform.forward);
-        Vector3 rightEdgeWorld = cam.ScreenToWorldPoint(new Vector3(Screen.width + 200, 0, depth));
+
+        // 200 是「设计像素」（1920×1080 下的像素），必须按画布缩放系数换算成实际屏幕像素——
+        // 否则同一段距离在不同分辨率下占屏比例不同，抽牌起点会随分辨率漂移。
+        // 全项目画布统一为 1920×1080 + Match Height，故 scaleFactor 即 屏幕高 / 1080。
+        var ownerCanvas = GetComponentInParent<Canvas>();
+        float canvasScale = (ownerCanvas != null && ownerCanvas.scaleFactor > 0f) ? ownerCanvas.scaleFactor : 1f;
+        Vector3 rightEdgeWorld = cam.ScreenToWorldPoint(new Vector3(Screen.width + 200f * canvasScale, 0, depth));
         return new Vector3(rightEdgeWorld.x, center.y, center.z);
     }
 
@@ -1545,7 +1605,7 @@ public class HandManager : MonoBehaviour
         // 无赖：进场获得护盾（攻击回合开始消失）/ 压制者(03501)：英雄阶位+1
         if (sourceInstance != null && sourceInstance.summonType == SummonType.Hero)
         {
-            if (IsSuppressorOnField())
+            if (IsSuppressorOnField(slot.slotID))
             {
                 Card3DInstance hero3D = slot.currentCard3D?.GetComponent<Card3DInstance>();
                 if (hero3D?.cardInstance != null)
@@ -1580,41 +1640,10 @@ public class HandManager : MonoBehaviour
             if (NetworkClient.isConnected)
                 TurnManager.SyncMyBoardToOpponent();
         }
-        // 中枢：附加灵能前缀
+        // 中枢：为己方附加灵能前缀 —— owner 由落点解析：AI 放下的中枢只作用于 AI 自己
         if (sourceInstance != null && sourceInstance.templateID == "03027")
         {
-            BoardManager bm = FindObjectOfType<BoardManager>();
-            BoardManager.GetSideRange(slot.slotID, out int coreS, out int coreE);
-            for (int i = coreS; i <= coreE; i++)
-            {
-                BoardSlot coreSlot = bm?.GetSlot(i);
-                if (coreSlot?.currentCard3D == null) continue;
-                CardInstance ci = coreSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                if (ci != null && !ci.prefixes.Contains("灵能"))
-                {
-                        ci.GivePrefix("灵能", "03027");
-                    coreSlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
-                }
-            }
-            // 附加灵能前缀：手牌中召唤物
-            foreach (GameObject handCard in NetworkPlayer.Local.handCards)
-            {
-                if (handCard == null) continue;
-                CardInstance ci = handCard.GetComponent<CardInstance>();
-                if (ci != null)
-                {
-                    CardData cd = CardDatabase.Instance?.GetTemplate(ci.templateID);
-                    if (cd != null && cd.cardType == CardType.Summon && !ci.prefixes.Contains("灵能"))
-                    {
-                        ci.GivePrefix("灵能", "03027");
-                        CardDisplay2D d2d = handCard.GetComponent<CardDisplay2D>();
-                        d2d?.Refresh();
-                        // 同步手牌前缀到服务器（打出时 ConsumeHandPrefixOverride 注入）
-                        if (NetworkClient.isConnected)
-                            NetworkPlayer.Local?.CmdSetHandCardPrefix(ci.instanceID, "灵能");
-                    }
-                }
-            }
+            ApplyCorePsiAura(BoardManager.GetOwnerPlayer(slot.slotID));
         }
         // 中枢(03027)在场时，新进场的随从自动获得灵能前缀（持续生效）
         if (sourceInstance != null && sourceInstance.templateID != "03027")
@@ -2463,25 +2492,9 @@ public class HandManager : MonoBehaviour
                             tiAI.instanceID ?? CardZoneManager.GenerateInstanceID("03027"));
                     break;
                 }
-                // 灵能：AI 场上(0-5)
-                for (int s2 = 0; s2 <= 5; s2++)
-                {
-                    BoardSlot sl2 = bmAI2212.GetSlot(s2);
-                    CardInstance ci2 = sl2?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
-                    if (ci2 != null && (ci2.prefixes == null || !ci2.prefixes.Contains("灵能")))
-                    { ci2.GivePrefix("灵能", "03027"); sl2.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues(); }
-                }
             }
-            // 灵能：AI 手牌
-            NetworkPlayer aiH2212 = NetworkPlayer.Remote;
-            if (aiH2212 != null)
-                foreach (GameObject hc in aiH2212.handCards)
-                {
-                    if (hc == null) continue;
-                    CardInstance hci = hc.GetComponent<CardInstance>();
-                    if (hci != null && (hci.prefixes == null || !hci.prefixes.Contains("灵能")))
-                        hci.GivePrefix("灵能", "03027");
-                }
+            // 灵能：只作用于 AI 自己的半场(0-5)与 AI 手牌 —— 玩家手牌不受影响
+            ApplyCorePsiAura(NetworkPlayer.Remote);
             CardDrag.CleanupSpellResources();
             yield break;
         }
@@ -2523,35 +2536,8 @@ public class HandManager : MonoBehaviour
             BoardSlot.isPlacingCard = false;
             BoardSlot.isStrengtheningSlot = false;
 
-            for (int i = 6; i <= 11; i++)
-            {
-                BoardSlot slot = bm.GetSlot(i);
-                if (slot?.currentCard3D == null) continue;
-                CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                if (ci != null && !ci.prefixes.Contains("灵能"))
-                {
-                        ci.GivePrefix("灵能", "03027");
-                    slot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
-                }
-            }
-            // 附加灵能前缀：手牌中召唤物
-            foreach (GameObject handCard in NetworkPlayer.Local.handCards)
-            {
-                if (handCard == null) continue;
-                CardInstance ci = handCard.GetComponent<CardInstance>();
-                if (ci != null)
-                {
-                    CardData cd = CardDatabase.Instance?.GetTemplate(ci.templateID);
-                    if (cd != null && cd.cardType == CardType.Summon && !ci.prefixes.Contains("灵能"))
-                    {
-                        ci.GivePrefix("灵能", "03027");
-                        CardDisplay2D d2d = handCard.GetComponent<CardDisplay2D>();
-                        d2d?.Refresh();
-                        if (NetworkClient.isConnected)
-                            NetworkPlayer.Local?.CmdSetHandCardPrefix(ci.instanceID, "灵能");
-                    }
-                }
-            }
+            // 灵能：本方半场(6-11) + 本机手牌（与 AI 分支共用同一结算点）
+            ApplyCorePsiAura(NetworkPlayer.Local);
             foreach (GameObject card in NetworkPlayer.Local.handCards)
             {
                 if (card != null) card.SetActive(true);

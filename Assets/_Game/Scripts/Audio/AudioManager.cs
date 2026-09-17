@@ -94,7 +94,8 @@ public class AudioManager : MonoBehaviour
         if (_clips != null && _clips.TryGetValue(type, out var clip))
         {
             _sfxSource.pitch = pitch;
-            _sfxSource.PlayOneShot(clip, volume);
+            // 音效音量走玩家设置（默认 100%）；主音量由 AudioListener.volume 承担
+            _sfxSource.PlayOneShot(clip, volume * GameSettings.SfxVolume);
             _sfxSource.pitch = 1f; // 播完恢复默认，避免影响后续
         }
         else

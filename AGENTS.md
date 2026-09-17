@@ -796,3 +796,99 @@ python Tools/imagegen/purge_key.py <src.png> <dst.png> 45 pink     # 按色相
 - 正文里**另附一份纯文本路径**（放进行内代码），作为兜底：用户可以直接点开文件
 - 图还是显示不出来时，改用 Codex 面板打开（`open_in_codex`，target = file / path），不要再反复重发同一串路径
 - 自查：发图前看一眼自己写的那行，**只要出现 `\` 就改掉**
+
+---
+
+## 分辨率 / UI 缩放口径（2026-09-17 定，改 UI 前必读）
+
+### 一、CanvasScaler 全项目统一：1920×1080 + **Match Height（matchWidthOrHeight = 1）**
+
+- `Game.unity` / `Lobby.unity` / `Welcome.unity` 三个主画布**一律** `m_UiScaleMode: 1`、`m_ReferenceResolution: {x: 1920, y: 1080}`、`m_MatchWidthOrHeight: 1`。
+- **理由**：主相机是「**垂直 FOV 固定**」的透视相机，其 `像素 / 世界单位 ∝ 屏幕高`；Match Height 的画布 `像素 / 画布单位` 也同样 `∝ 屏幕高` —— 两者是同一条公式，3D 棋盘与 UI 才会在各分辨率下保持相对位置。
+- **此前的问题**：`Game.unity` 是 Match 0.5（`∝ √(W·H)`）、`Lobby` / `Welcome` 是 Match 0（`∝ 宽`）—— 三套公式互不相容。16:10 下 UI 与 3D 错开约 **5%**，21:9 下错开约 **16%**，这就是「换个分辨率组件就偏移」的根因。
+- **Match Height 的含义**：画布**高恒为 1080 参考单位**，宽度随宽高比变（16:9→1920、16:10→1728、21:9→2580）。所以：
+  - 锚在**上/下边**的元素在任何分辨率下都待在原处（这是想要的）；
+  - **居中锚定 + 固定宽度 ≥ 1728 的元素会在窄屏溢出** —— 全屏铺满的容器必须用**拉伸锚**（`anchorMin (0,0)` / `anchorMax (1,1)` + `sizeDelta 0`），不要用「居中 + 固定 1920×1080」。Lobby 的 `StatsPanel` / `GameIntroPanel` / `Scroll View` 已于 2026-09-17 按此改写（16:9 下矩形与改前逐像素相同）。
+- **新的画布一律用** `GameSettings.ApplyScalerTo(canvasScaler)`，不要 `AddComponent<CanvasScaler>()` 用默认值（默认是 ConstantPixelSize，会随分辨率改变视觉大小）。
+- **World Space 画布**（棋盘槽位）不参与这条，保持世界尺寸。
+
+### 二、贴图导入设置：**缩小必预过滤，放大才用 Point**
+
+判据一句话：**屏幕像素 < 源像素（缩小显示）→ 双线性 + mipmap；屏幕像素 > 源像素（放大显示）→ Point。**
+
+- 卡图源图 1152×1536，实画在 ~90×118 的卡面（缩小 12.8~18 倍）；图标 511×511 画在 ~21px（缩小 24 倍）—— 这批**必须** `filterMode: Bilinear` + `enableMipMap: 1`，否则缩小采样只命中极少数纹素，出现「马赛克 / 抖动」。
+- 反之 `Resources/UI` 里的 `OverUI / GetUI / EyeUI / PlayerEnergyUI / PlayerHealthUI / StartUI` 是**被放大**显示的，必须保持 `Point` + 无 mipmap，加了反而糊。
+- 卡图还要开 `mipMapsPreserveCoverage: 1`（`alphaTestReferenceValue: 0.5`）—— 卡图走 alpha-test 裁切（`CardCutout.shader` / `CardFaceSprite.shader` 的 `clip(a - cutoff)`），不保留 alpha 覆盖的话缩小后卡牌边缘会「化开」。
+- **自动执行**：`Assets/_Game/Editor/TextureImportSettingsGuard.cs` 的 `AssetPostprocessor` 会对新导入的贴图自动套用；菜单 `Tools/设置/贴图导入设置体检 & 修复` 可随时重跑（幂等）；`Tools/设置/贴图导入设置体检报告（只读）` 只报告不改。
+- 历史对照：归档在 `Assets/_Game/Art/Old/` 的旧图当年就是双线性 + mipmap，所以它们在缩略图里反而比新图清楚 —— 这就是判断依据的来源。
+
+### 三、字体：**绝对不要**给字体图集加 mipmap（2026-09-17 踩过并已回滚）
+
+- 项目 7 个中文字体（`Assets/_Game/Fonts/NotoSerifCJKsc-* SDF.asset`）的 `m_AtlasRenderMode` = **4165 = `SDFAA`**，**本来就是真正的 SDF**；`LiberationSans SDF` 的 4169 = `SDFAA_HINTED`，两者只差 hinting，**不存在「位图 vs SDF」的画风差异**，别再按「重烘成 SDF」去改。
+- **图集 `m_MipCount: 1` 是正常的、必须保持。** 别把「贴图缩小时要预过滤」那条规律套到字体上 —— 2026-09-17 就这么错过一次：给 7 个图集加了 13 级 mip 链，结果**整片 UI 文字变软**，当天已 `git restore Assets/_Game/Fonts` 回滚，并删掉了那个工具（`TMPFontAtlasMipFixer.cs`，连自动运行一起删，免得再犯）。
+- **为什么反着来才对**：TMP 的 SDF shader 假设采样到的是**未被平均过的**距离场，靠 `_GradientScale`（= padding + 1）把灰度还原成边缘。mip 是对距离场做盒式平均 —— 梯度斜率被压平、边缘过渡被拉宽 → 文字变软。Unity 自带的 `LiberationSans SDF` 与 TMP 生成器都产出 `m_MipCount: 1`，那是设计，不是疏忽。
+- 量化（Lobby 实测）：图集按 36pt 烘焙，Lobby 主力字号 24pt（23 处）。**文字在屏上占几个设备像素 = 设计字号 × 画布倍率**，而画布倍率 = 屏幕高 / (1080 / 界面缩放) —— 编辑器 Game view 只有 992×558 时倍率是 **0.52**，24pt 正文落到 **12px**，笔画被抗锯齿吃掉 —— 这才是「字体发糊」的真因（**不是** mip，也**不是** filterMode）。实测过程见下面「五、清晰度（像素预算）」。
+- **「把图集点号从 36 降到 24」这条 2026-09-17 作废**（当时是按「缩小比靠近 1」推的，方向错了）：图集点号定的是 **SDF 距离场的细节上限**，采样点号应 ≈ 文字可能出现的**最大**像素高；往下调只会让大字号先坏。当前 1080 基准 + 图集 36 正好对齐 2560×1600 原生全屏（24pt × 1.48 = 35.6px ≈ 36）—— **不要动**。真要重烘图集，必须保持 GUID 不变，否则预制体引用会断。
+- 另：`TMP Settings.asset` 的 `m_fallbackFontAssets` 已补上 `NotoSerifCJKsc-Regular SDF`（此前是空数组，缺字会直接掉到没有中文的 LiberationSans）—— 这条与 mipmap 无关，保留有效。
+- **新增 UI 文案前先查缺字**：字体图集是按 `Assets/_Game/Fonts/GameCharacters.txt`（4275 字）**静态**烘焙的，**不在这个集合里的字会渲染成空白 / 豆腐块**。已知缺 `×`(U+00D7)、`÷`、`²`、`≥`、`∝`、`→` —— 分辨率文案因此统一写 ASCII `x`（`1920x1080`），关闭按钮写 `X`。加新文案前把字往 `GameCharacters.txt` 里补并重烘。
+
+### 四、设置面板（2026-09-17 新增）
+
+- `Assets/_Game/Scripts/Settings/`：`GameSettings.cs`（PlayerPrefs 持久化 + 应用）、`SettingsPanel.cs`（运行时构建的设置 UI）、`SettingsRuntime.cs`（启动应用 + F10 热键 + 屏幕尺寸监听）、`SettingsLauncher.cs`（自动接线场景里名为 `Setting` 的按钮）。
+- **入口不需要改场景**：`SettingsLauncher` 每次加载场景都扫一遍，名为 `Setting` 且没有 `SettingsButton` 的按钮 → 直接开关设置面板（Lobby 的预留按钮走这条）；已有 `SettingsButton` 的（Game 场景的投降面板）→ 往它的面板底部注入一个「游戏设置」按钮。
+- **画质 / 帧率 / 垂直同步 / 窗口模式 / 音量 / 界面缩放一律走 `GameSettings`**，`GPUOptimizer` 只负责「不进设置面板的渲染开关」（MSAA=2、各向异性、相机 HDR）。别再把 `SetQualityLevel(5)` / `vSyncCount` / `targetFrameRate` 硬编码回去 —— 那会在每次加载场景时覆盖玩家设置。
+- 顺序要求：`SetQualityLevel` 会重写 `vSyncCount` / `targetFrameRate` / `antiAliasing` / `anisotropicFiltering`，所以这几项**必须放在它之后**设（已封在 `GameSettings.ApplyQuality()` / `ApplyFrameRate` 里）。
+
+- **配色：白底（浅色）主题**（2026-09-17 定）：`SettingsPanel` 的 `ColPanel` = 纯白，靠**灰阶差**分层而不是边框（`ColBox` #F3F3F5 / `ColBtn` #E5E5E9），文字近黑、次级文字中灰。两条容易踩的：
+  - 按钮的 hover / pressed **一律往暗里走**（`NewButton` 里乘 0.94 / 0.86）。深色主题那套「乘 1.45 提亮」在白底上会顶到纯白 —— 按钮一悬停就消失。
+  - 遮罩 `ColBackdrop`（黑 72%）**保持深色**：大厅背景本身接近纯白，没有深色压底就看不出面板边界。
+  - 注入到 Game 场景投降面板的入口按钮单独用 `ColHostBtn` / `ColHostTxt`（宿主面板是深色的），别跟着白底主题走。
+
+### 五、清晰度（像素预算）：改分辨率 / 字号 / 缩放前必读（2026-09-17 定）
+
+一句话：**清晰度 = 设备像素够不够用。** 文字与图案是两条独立预算，各有下限，且**互不补偿**（把字放大救不了被拉大的位图，反之亦然）。
+
+| 对象 | 屏上像素 | 下限 | 上限 |
+|---|---|---|---|
+| 文字（TMP SDF） | 设计字号 × 画布倍率 | **≥ 24px**（汉字笔画才站得住） | **≤ 图集点号 36**（再大距离场细节不够，边缘发虚） |
+| 图案（位图） | 设计尺寸 × 画布倍率 | —— | **≤ 源像素**（超过就是放大，必糊；缩小倒是没问题，靠 mipmap + 双线性） |
+
+- **画布倍率 = 屏幕高 / (1080 / 界面缩放)**（Match Height，所以只看屏幕高）。倍率 1.0 = 与设计稿 1:1。
+  - `GameSettings.RenderScale` 就是这个值；`GameSettings.DescribePixelBudget()` 把「屏上像素 + 档位」拼成一行 —— 启动时打一次 Console，设置面板「界面」栏也常驻显示（**改完设置先看这行落在哪一档**）。
+- **编辑器 Game view 的实际渲染分辨率 = 视图的逻辑尺寸（点），不是物理像素。** 2026-09-17 实测（本机 2560×1600 / 150% 显示缩放）：`UserSettings/Layouts/default-2022.dwlt` 里 Game view 的 `m_Pos` = 992×657 点、`m_TargetSize` = **992×558**、`m_ZoomArea.m_Scale` = 1.5（= 该屏的 `pixelsPerPoint`）；用户截图里游戏区实测 1475×823 物理像素 ≈ 992×558 × 1.5 —— 即游戏只渲染 **992×558**，再被 **1.5×** 放大到屏幕上，倍率 **0.52**、24pt 正文只有 **12px**，于是「怎么调都糊」。
+  - 所以**这不是项目设置的问题**：同一份工程构建后按原生分辨率跑，倍率 1.48、24pt = 35.6px，已经在最佳档。
+  - 预览要看清：把 Game view 拉大 / 勾 `Maximize on Play` / 分辨率选 `Fixed Resolution 1920×1080`。
+- **编辑器预览糊的根因（2026-09-17 逐像素实测确认）：Game view 工具栏里 Aspect 下拉旁那个方块按钮 `Low Resolution Aspect Ratios` 开着。** 它开着时 Unity **忽略 DPI**，把渲染分辨率压到视图的「逻辑尺寸」而不是物理尺寸 —— 即 **992×558**（逻辑）而不是 **1488×837**（物理），再被 **1.5×** 放大铺满屏幕。Scene 视图没有这道中间缓冲（UI 直接按最终像素栅格化），所以同一个界面在 Scene 视图里清晰、在 Game 视图里发虚。
+  - **一眼判据**：Game 视图 `Scale` 滑条的**最小值 = `pixelsPerPoint`**（本机 150% 显示缩放 → 最低就是 `1.5x`）就是这个开关开着的标志 —— 最低档已经在「放大 1.5 倍」了。
+  - **量化**（同一屏、同一处文字，两张截图逐像素测）：Game 视图「随机匹配」外框 72×16px、暗像素平均亮度 **144**；Scene 视图 73×17px、平均亮度 **106**。**尺寸几乎一样、笔画却浅一大截 = 被重采样糊过**（纯放大，不是字变小）。标题更明显：Game **110** / Scene **46**。
+  - **修法**：关掉那个方块按钮 → 渲染分辨率 992×558 → 1488×837（像素量 ×2.25），立刻回到 Scene 视图的清晰度；想更狠再选 `Fixed Resolution 1920×1080` 或勾 `Maximize on Play`。
+  - **一键验证**：Game 视图工具栏 `Stats` 面板里的 `Screen: W x H`，以及启动后 Console 那行 `[清晰度]` —— 现在应报 992x558，改完应报 1488x837 或 1920x1080。
+  - **已按此处理（2026-09-17）**：`UserSettings/Layouts/{default-2022,CurrentMaximizeLayout}.dwlt` 里的 `m_LowResolutionForAspectRatios` 已整条清零（改前是 `01 00 00 …`，只有第 0 档是开的）。同一状态也可以在 Unity 里用菜单读写：`Tools/设置/Game 视图清晰度诊断（只读）` / `Tools/设置/Game 视图：关闭低分辨率渲染`（`Assets/_Game/Editor/GameViewClarityCheck.cs`，用 `SerializedObject` 直接读写那个字段，不需要反射）。
+  - **`.dwlt` 是用户偏好、不入库**（`UserSettings/` 不在版本控制里），换机器 / 换工程不会带走 —— 所以别只靠手改文件，新环境先点一次那个诊断菜单。
+- **界面缩放（`UiScale`）是唯一安全的旋钮**：范围 0.5~1.5，只改「参考分辨率 = 1920/UiScale」。调大 → 字更大更清楚、位图被拉大；调小 → 两边一起变差（**所以别把 UI 往小调来「腾地方」**）。
+- **不要为了「字更清楚」去降设计分辨率或调大字号**：24pt 正文在 1600p 原生全屏已贴住图集 36；再往上（4K 全屏 = 48px）反而超过图集先坏。要动就必须同时重烘图集并同步 `GameSettings.TextAtlasPointSize`。
+- **全屏一律跟随桌面原生分辨率**（`ApplyDisplay` 里写死，面板在非窗口化时禁用分辨率档）：让玩家用非原生分辨率顶全屏是「系统先渲染再缩放」，比窗口化还糊。
+
+---
+
+## 光环 / 持续效果的归属判定（2026-09-17 定，写效果前必读）
+
+一句话：**「己方」效果只作用于来源所在的那半边场，而且 owner 必须显式传进来，不许在函数里写死 `6..11` 或扫全场 `0..11`。**
+
+- 半场约定（`BoardManager`）：**0-5 = 对手 / AI，6-11 = 本机**；`IsAllySide(slotID)`、`GetSideRange(slotID, out s, out e)`、`GetOwnerPlayer(slotID)`、`GetEnemySideRange` 就是给这件事用的。跨端时服务端把远端玩家的「自己的半场」镜像到 0-5，所以 `this == NetworkPlayer.Local ? 6 : 0` 这套换算在服务端也成立。
+- 光环查询：用 `GlobalEventManager.IsAuraActiveOwnedBy<T>(ownerIsHost)`（商人 01520 / 能量收割者 01528 已改用它）。**不要**再写「遍历 `GetAllAuras()` 找到任意一个 `MerchantAura` 就返回 true」——那是 side-agnostic，AI 放在 0-5 的商人会减玩家手牌的费。
+- 前缀光环：中枢(03027)的灵能前缀**只有一个结算点** —— `HandManager.ApplyCorePsiAura(NetworkPlayer owner)`（场上全体 + 手牌召唤物，幂等）。`Player.ApplyCorePrefix` / `NetworkPlayer.ApplyCorePrefix` 都是薄包装，`HandManager.ProcessAuras` 里按 `BoardManager.GetOwnerPlayer(slot.slotID)` 调它；AI 那侧另在 `SimpleAI.TryPlayOneCard`（AI 新召唤物进场）与 `NetworkPlayer.AddServerSideCard`（AI 抽牌）补调。
+- `HandManager.IsSuppressorOnField(sideSlotID)`：缄默神官(03501)的阶位+1 只认「进场者自己半场」的神官（**旧写法写死 6-11，AI 的英雄进场会白吃玩家神官的 +1**）。
+
+### 离线模式已修的错位 bug（2026-09-17，症状：AI 放的牌作用到玩家身上）
+
+| 症状 | 根因（改前） | 修法 |
+|---|---|---|
+| AI 放的中枢给**玩家手牌**加灵能前缀 | `NetworkPlayer.ApplyCorePrefix` 扫全场 `0..11` 找 03027；`HandManager.ProcessAuras` 的手牌段写死 `NetworkPlayer.Local.handCards` | 两者统一改走 `HandManager.ApplyCorePsiAura(owner)`，owner 由落点/抽牌者解析 |
+| AI 放的中枢给**玩家手牌**加灵能前缀（第二条入口） | `HandManager.SummonCoreEffect` 的 AI 分支里 `PlaceCardToSlot` → `ProcessAuras` 又对 `Local.handCards` 跑了一遍 | 同上；AI 分支改为显式 `ApplyCorePsiAura(NetworkPlayer.Remote)` |
+| AI 的英雄进场吃到**玩家**缄默神官的阶位+1 | `IsSuppressorOnField()` 写死 `6..11` | 加 `sideSlotID` 参数，`ProcessAuras` 传 `slot.slotID` |
+| AI 的商人/收割者减**玩家**手牌费 | `IsMerchantOnField` / `IsEnergyReaperOnField` side-agnostic | 统一改走 `IsAuraActiveOwnedBy<T>(this == Local)` |
+
+**判据（改效果时自查）**：写完问一句 —— 「这张牌是对手放的，它会不会作用到我这半边？」只要函数里出现 `NetworkPlayer.Local`、写死的 `6..11` 或 `0..11`，就大概率是错的。`Player` 组件是本机单例（6-11），`NetworkPlayer.Remote` 是 AI/远端（0-5）。
+
+**未覆盖**：附着物（`BoardManager.attachedModels`）不参与 03027 的中枢光环，只扫 12 个槽位（与原实现一致）。
