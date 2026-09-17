@@ -58,32 +58,20 @@ jobs:
           if not exist Library mkdir Library
           xcopy "C:\Users\22589\Documents\GitHub\Another-World\Library\*" "Library\" /E /Y /Q 2>nul
 
-      # Unity's UPM state (Library/PackageManager/ProjectCache) embeds absolute paths
-      # plus an md5 of itself. Copied from another checkout those paths do not belong to
-      # this project, so the editor discards the cache and tries a fresh resolve - which
-      # fails on this machine ("The \"path\" argument must be of type string").
+      # Unity's UPM state (Library/PackageManager/ProjectCache) embeds absolute paths and
+      # an md5 of itself. Copied from another checkout those paths do not belong to this
+      # project, so the editor discards the cache and tries a fresh resolve - and a fresh
+      # resolve fails on this machine (the path argument must be of type string).
       # Rewrite the paths to this workspace, refresh the md5, and pin the two Packages
       # files to the local repo's bytes and timestamps so the cached state still
       # describes them and the build reuses Library instead of resolving.
+      # Inline powershell on purpose: `shell: powershell` dot-sources a .ps1 file, which
+      # this machine's execution policy blocks.
       - name: Fix up UPM cache for this workspace
-        shell: powershell
+        shell: cmd
         run: |
-          $src = 'C:\Users\22589\Documents\GitHub\Another-World'
-          $dst = $env:GITHUB_WORKSPACE
-          foreach ($f in 'manifest.json', 'packages-lock.json') {
-            Copy-Item (Join-Path $src "Packages\$f") (Join-Path $dst "Packages\$f") -Force
-          }
-          $pc = Join-Path $dst 'Library\PackageManager\ProjectCache'
-          if (-not (Test-Path $pc)) {
-            Write-Host '[UPM] ProjectCache not found - nothing to rewrite'
-            exit 0
-          }
-          $text = [IO.File]::ReadAllText($pc)
-          $patched = $text.Replace($src.Replace('\', '/'), $dst.Replace('\', '/')).Replace($src, $dst)
-          [IO.File]::WriteAllText($pc, $patched, (New-Object Text.UTF8Encoding($false)))
-          $md5 = (Get-FileHash $pc -Algorithm MD5).Hash.ToLower()
-          [IO.File]::WriteAllText("$pc.md5", $md5, (New-Object Text.UTF8Encoding($false)))
-          Write-Host "[UPM] ProjectCache rewritten for $dst (md5 $md5)"
+          set "SRC=C:\Users\22589\Documents\GitHub\Another-World"
+          powershell -NoProfile -Command "$src='%SRC%'; $dst=$env:GITHUB_WORKSPACE; foreach ($f in 'manifest.json','packages-lock.json') { Copy-Item (Join-Path $src ('Packages\'+$f)) (Join-Path $dst ('Packages\'+$f)) -Force }; $pc=Join-Path $dst 'Library\PackageManager\ProjectCache'; if (-not (Test-Path $pc)) { Write-Host '[UPM] ProjectCache not found - nothing to rewrite'; exit 0 }; $text=[IO.File]::ReadAllText($pc); $patched=$text.Replace($src.Replace('\','/'),$dst.Replace('\','/')).Replace($src,$dst); [IO.File]::WriteAllText($pc,$patched,(New-Object Text.UTF8Encoding($false))); $md5=[System.BitConverter]::ToString([System.Security.Cryptography.MD5]::Create().ComputeHash([System.IO.File]::ReadAllBytes($pc))).Replace('-','').ToLower(); if ($md5.Length -ne 32) { Write-Host '[UPM] md5 computation failed'; exit 1 }; [IO.File]::WriteAllText($pc+'.md5',$md5,(New-Object Text.UTF8Encoding($false))); Write-Host ('[UPM] ProjectCache rewritten for '+$dst+' (md5 '+$md5+')')"
 
       - name: Build Windows Player
         shell: cmd
