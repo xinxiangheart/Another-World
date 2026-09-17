@@ -3044,7 +3044,7 @@ public class NetworkPlayer : NetworkBehaviour
     /// <summary>远程客户端→服务器：01511死亡回手。state 由客户端序列化——服务端的 ci 从未跑过 MindScholarEnterEffect，状态为空。
     /// cardProto = 客户端那张卡的完整快照（CardStateProto），随 RPC 一起带回客户端重建手牌用。</summary>
     [Command]
-    public void CmdReturnScholarToHand(string scholarInstanceID, int clientSideSlotID, string scholarState, string cardProto = "")
+    public void CmdReturnScholarToHand(string scholarInstanceID, int clientSideSlotID, string scholarState, string cardProto)
     {
         int serverSlot = isLocalPlayer ? clientSideSlotID : clientSideSlotID - 6;
         BoardManager bm = FindObjectOfType<BoardManager>();
@@ -3180,7 +3180,7 @@ public class NetworkPlayer : NetworkBehaviour
     /// <summary>服务端→远端：01117/01511等卡牌回手。srcState = 心灵学者专属字段；
     /// cardProto = 整张卡快照（CardStateProto）——远端手牌是重建出来的，没有它就会退回模板值。</summary>
     [TargetRpc]
-    public void TargetReceiveReturnedCard(NetworkConnectionToClient target, string templateID, string srcState, string cardProto = "")
+    public void TargetReceiveReturnedCard(NetworkConnectionToClient target, string templateID, string srcState, string cardProto)
     {
         CardData template = CardDatabase.Instance?.GetTemplate(templateID);
         if (template == null) return;
