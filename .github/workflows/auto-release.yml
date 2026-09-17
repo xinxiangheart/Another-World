@@ -13,10 +13,47 @@ jobs:
   check-and-tag:
     runs-on: self-hosted
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+      # 源码从本机工作仓库同步，不再走 actions/checkout（理由同 build-release.yml：
+      # 本仓库工作树约 730 MB，浅克隆在慢线路上会卡住发版）。
+      - name: Sync source from local repo
+        shell: cmd
+        run: |
+          set "SRC=C:\Users\22589\Documents\GitHub\Another-World"
+          set "DST=%GITHUB_WORKSPACE%"
+          if not exist "%SRC%\.git" (
+            echo [ERROR] Local source repo not found: %SRC%
+            exit /b 1
+          )
+          if not exist "%DST%" mkdir "%DST%"
+          rem A shallow .git left by actions/checkout cannot be synced incrementally - rebuild it
+          if exist "%DST%\.git\shallow" (
+            echo [Sync] Removing shallow .git left by actions/checkout
+            rmdir /s /q "%DST%\.git"
+          )
+          if exist "%DST%\.git\shallow" (
+            echo [ERROR] Failed to remove shallow repo: %DST%\.git
+            exit /b 1
+          )
+          if not exist "%DST%\.git" git init -q "%DST%"
+          git -C "%DST%" remote remove local >nul 2>nul
+          git -C "%DST%" remote add local "%SRC%"
+          git -C "%DST%" fetch -q --prune --tags --force local "+refs/heads/*:refs/remotes/local/*"
+          git -C "%DST%" checkout -q --force --detach %GITHUB_SHA%
+          git -C "%DST%" clean -ffdxq
+          git -C "%DST%" log --oneline -1
+
+      # 建 tag 需要能推到 GitHub：origin 指向远端，并写入 actions/checkout 原本
+      # 会写的那条 extraheader 凭据（默认 GITHUB_TOKEN，与改前行为一致）。
+      - name: Set up origin and push credentials
+        shell: cmd
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set "DST=%GITHUB_WORKSPACE%"
+          git -C "%DST%" remote remove origin >nul 2>nul
+          git -C "%DST%" remote add origin "https://github.com/${{ github.repository }}"
+          powershell -NoProfile -Command "$b=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('x-access-token:'+$env:GH_TOKEN)); git -C '%DST%' config --local 'http.https://github.com/.extraheader' ('AUTHORIZATION: basic '+$b)"
+          git -C "%DST%" config --local --get "http.https://github.com/.extraheader" >nul && echo Push credentials configured
 
       - name: Extract version and create tag if new
         id: detect

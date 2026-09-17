@@ -12,8 +12,36 @@ jobs:
   build-windows:
     runs-on: self-hosted
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      # 源码从本机工作仓库同步，不再走 actions/checkout。
+      # 本仓库带大量卡图（工作树约 730 MB），actions/checkout 的浅克隆每次都
+      # 要重下一整棵树；在慢线路上会卡住整个发版流程。本地对象库是硬链接/本地
+      # 拷贝，实测 fetch 约 30 秒、checkout 约 5 秒。
+      - name: Sync source from local repo
+        shell: cmd
+        run: |
+          set "SRC=C:\Users\22589\Documents\GitHub\Another-World"
+          set "DST=%GITHUB_WORKSPACE%"
+          if not exist "%SRC%\.git" (
+            echo [ERROR] Local source repo not found: %SRC%
+            exit /b 1
+          )
+          if not exist "%DST%" mkdir "%DST%"
+          rem A shallow .git left by actions/checkout cannot be synced incrementally - rebuild it
+          if exist "%DST%\.git\shallow" (
+            echo [Sync] Removing shallow .git left by actions/checkout
+            rmdir /s /q "%DST%\.git"
+          )
+          if exist "%DST%\.git\shallow" (
+            echo [ERROR] Failed to remove shallow repo: %DST%\.git
+            exit /b 1
+          )
+          if not exist "%DST%\.git" git init -q "%DST%"
+          git -C "%DST%" remote remove local >nul 2>nul
+          git -C "%DST%" remote add local "%SRC%"
+          git -C "%DST%" fetch -q --prune --tags --force local "+refs/heads/*:refs/remotes/local/*"
+          git -C "%DST%" checkout -q --force --detach %GITHUB_SHA%
+          git -C "%DST%" clean -ffdxq
+          git -C "%DST%" log --oneline -1
 
       - name: Write version.txt from tag
         shell: cmd
