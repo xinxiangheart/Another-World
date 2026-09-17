@@ -35,6 +35,7 @@ jobs:
             exit /b 1
           )
           if not exist "%DST%\.git" git init -q "%DST%"
+          git -C "%DST%" config core.autocrlf false
           git -C "%DST%" remote remove local >nul 2>nul
           git -C "%DST%" remote add local "%SRC%"
           git -C "%DST%" fetch -q --prune --tags --force local "+refs/heads/*:refs/remotes/local/*"
@@ -88,6 +89,29 @@ jobs:
         run: |
           if not exist Library mkdir Library
           xcopy "C:\Users\22589\Documents\GitHub\Another-World\Library\*" "Library\" /E /Y /Q 2>nul
+
+      # See the same step in build-release.yml: the copied UPM state points at the local
+      # checkout, so the editor would discard it and hit the broken fresh resolve.
+      - name: Fix up UPM cache for this workspace
+        if: steps.detect.outputs.TAG_CREATED == 'true'
+        shell: powershell
+        run: |
+          $src = 'C:\Users\22589\Documents\GitHub\Another-World'
+          $dst = $env:GITHUB_WORKSPACE
+          foreach ($f in 'manifest.json', 'packages-lock.json') {
+            Copy-Item (Join-Path $src "Packages\$f") (Join-Path $dst "Packages\$f") -Force
+          }
+          $pc = Join-Path $dst 'Library\PackageManager\ProjectCache'
+          if (-not (Test-Path $pc)) {
+            Write-Host '[UPM] ProjectCache not found - nothing to rewrite'
+            exit 0
+          }
+          $text = [IO.File]::ReadAllText($pc)
+          $patched = $text.Replace($src.Replace('\', '/'), $dst.Replace('\', '/')).Replace($src, $dst)
+          [IO.File]::WriteAllText($pc, $patched, (New-Object Text.UTF8Encoding($false)))
+          $md5 = (Get-FileHash $pc -Algorithm MD5).Hash.ToLower()
+          [IO.File]::WriteAllText("$pc.md5", $md5, (New-Object Text.UTF8Encoding($false)))
+          Write-Host "[UPM] ProjectCache rewritten for $dst (md5 $md5)"
 
       - name: Build Windows Player
         if: steps.detect.outputs.TAG_CREATED == 'true'
