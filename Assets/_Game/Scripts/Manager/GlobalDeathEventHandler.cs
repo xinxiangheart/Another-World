@@ -318,8 +318,11 @@ public static class GlobalDeathEventHandler
 
         // ===== 8. 复生造物(01513)：标记需要召唤杂兵 =====
         dyingCI._rebornSummon = false;
-        // 不限定 isAlly——01513 可在任一方，IsOnSameSide 确保同侧触发
-        if (dyingCI != null && dyingCI.templateID != "03004")
+        // 不限定 isAlly——01513 可在任一方，IsOnSameSide 确保同侧触发。
+        // 规则边界（2026-09-18 定）：① 01513 自身退场不触发自己的复生（它一走光环即灭，不给自己补杂兵）；
+        // ② 与 01513「同时」退场的那一批：只要 01513 自己也在这批里（isDead / 血量≤0），光环同样不再生效；
+        // ③ 机械：杂兵(03004)自身退场不触发（卡面已排除）。
+        if (dyingCI != null && dyingCI.templateID != "03004" && dyingCI.templateID != "01513")
         {
             bool hasEnemySource = dyingCI.enemyDamageSourceIDs.Count > 0;
             // 纯客户端：回退到 damageSourceInstanceIDs 判断敌方来源
@@ -335,11 +338,23 @@ public static class GlobalDeathEventHandler
                     }
                 }
             }
-            Debug.Log($"[01513-DEBUG] hasEnemySource={hasEnemySource}");
             if (hasEnemySource)
             {
-                CardInstance reborn = FindByTemplateID_AnySide(bm, "01513");
-                if (reborn != null && !IsSilenced(reborn) && IsOnSameSide(bm, reborn, slotID))
+                // 光环来源必须是「仍活着的同侧 01513」：自己 / 同批退场(血量≤0 或已 isDead) 都不算，
+                // 否则同批退场会重复补杂兵、01513 自己退场也给自己补一只。
+                bool hasLiveReborn = false;
+                for (int rb = 0; rb < 12; rb++)
+                {
+                    CardInstance rci = bm.GetSlot(rb)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                    if (rci == null || rci.templateID != "01513") continue;
+                    if (rci == dyingCI || rci.isDead || rci.currentHealth <= 0) continue;
+                    if (IsSilenced(rci)) continue;
+                    if (!IsOnSameSide(bm, rci, slotID)) continue;
+                    hasLiveReborn = true;
+                    break;
+                }
+                Debug.Log($"[01513-DEBUG] dying={dyingCI.templateID} hasEnemySource={hasEnemySource} liveReborn={hasLiveReborn}");
+                if (hasLiveReborn)
                 {
                     dyingCI._rebornSummon = true;
                 }

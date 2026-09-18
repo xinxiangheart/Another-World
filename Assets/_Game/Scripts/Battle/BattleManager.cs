@@ -188,7 +188,7 @@ public class BattleManager : MonoBehaviour
             CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
             if (ci == null || !ci.HasFirstStrike) continue;
             // AI 对局：AI 半场（0-5）的交互式先手需要 AI 自动选择
-            SimpleAI.IsAIEvaluating = (i < 6 && SimpleAI.IsAIMatch);
+            SimpleAI.IsAIEvaluating = SimpleAI.SlotIsAI(i);
 
         // 检查对方是否有合法目标
             if (ci.templateID == "01124")
@@ -366,7 +366,7 @@ public class BattleManager : MonoBehaviour
             CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
             if (ci == null || !ci.HasFirstStrike) continue;
             // AI 对局：AI 半场（0-5）的交互式先手需要 AI 自动选择
-            SimpleAI.IsAIEvaluating = (i < 6 && SimpleAI.IsAIMatch);
+            SimpleAI.IsAIEvaluating = SimpleAI.SlotIsAI(i);
 
         // 检查对方是否有合法目标
             if (ci.templateID == "03012")
@@ -601,18 +601,18 @@ public class BattleManager : MonoBehaviour
             CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
             if (ci == null || !ci.HasFirstStrike) continue;
             // AI 对局：AI 半场（0-5）的交互式先手需要 AI 自动选择
-            SimpleAI.IsAIEvaluating = (i < 6 && SimpleAI.IsAIMatch);
+            SimpleAI.IsAIEvaluating = SimpleAI.SlotIsAI(i);
 
             // 毒巫：清除护盾+中毒
             if (ci.templateID == "03502")
             {
-                if (i < 6 && !SimpleAI.IsAIMatch) continue; // 非 AI 对局：AI 半场跳过（远程客户端处理）；AI 对局：AI 半场也执行
+                if (i < 6 && !SimpleAI.SlotIsAI(i)) continue; // 非 AI 操控的半场跳过（交给对端客户端处理）
                 int myStart = i >= 6 ? 0 : 6;
                 bool hasEnemy = false;
                 for (int j = myStart; j < myStart + 6; j++) if (allSlots[j]?.currentCard3D != null) { hasEnemy = true; break; }
                 if (!hasEnemy) continue;
                 // [AI] 03502：先手直选 敌方 神选者优先，否则玩家方 5/3/1（不弹窗）
-                if (SimpleAI.IsAIMatch && i < 6)
+                if (SimpleAI.SlotIsAI(i))
                 {
                     int pEnemyStart3502 = i < 6 ? 6 : 0;
                     CardInstance best3502 = null;
@@ -652,6 +652,7 @@ public class BattleManager : MonoBehaviour
                     BoardSyncManager.MarkDirty();
                     continue;
                 }
+                Debug.Log($"[03502] 弹玩家选择框: slot={i} slotIsAI={SimpleAI.SlotIsAI(i)} owner={BoardManager.GetOwnerPlayer(i)?.gameObject.name ?? "null"} isLocalHalf={BoardManager.GetOwnerPlayer(i) == NetworkPlayer.LocalHalfPlayer}");
                 bool poisonDone = false;
                 SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (targetSlot) =>
                 {
@@ -682,7 +683,7 @@ public class BattleManager : MonoBehaviour
         // 万象镜面：单次伤害最高为1
             if (ci.templateID == "01318")
             {
-                if (i < 6 && !SimpleAI.IsAIMatch) continue; // 非 AI 对局：AI 半场跳过（远程客户端处理）；AI 对局：AI 半场也执行
+                if (i < 6 && !SimpleAI.SlotIsAI(i)) continue; // 非 AI 操控的半场跳过（交给对端客户端处理）
                 bool anyTarget = false;
                 for (int j = 0; j < 12; j++)
                 {
@@ -691,7 +692,7 @@ public class BattleManager : MonoBehaviour
                 if (!anyTarget) continue;
 
                 // [AI] 01318：选 玩家方(6-11) 攻击力最高 召唤物（SingleAny 不镜像→默认会自伤错侧，故直选）
-                if (SimpleAI.IsAIMatch && i < 6)
+                if (SimpleAI.SlotIsAI(i))
                 {
                     Card3DInstance bestC318 = null;
                     int bestAtk318 = -1;

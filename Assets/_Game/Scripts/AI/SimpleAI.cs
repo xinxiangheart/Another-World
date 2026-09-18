@@ -40,6 +40,20 @@ public class SimpleAI : MonoBehaviour
     /// <summary>槽位是否属于 AI 侧（AI 视角：AI方 = 0-5）。</summary>
     public static bool IsAISide(int slotID) => IsAIMatch && slotID >= 0 && slotID < 6;
 
+    /// <summary>该槽位上的牌是否由 AI 操控（本机负责替它结算先手/特性选择）。
+    /// 在 IsAISide 之外加一层「归属」兜底：槽位归属者是无客户端连接的玩家且不是本机半边 ——
+    /// 这样即使 IsAIMatch 被 RunAsLocal / 静态标志翻转，AI 自己的牌也不会落进玩家选择框
+    /// （表现：AI 打出毒巫(03502) 等先手牌时弹出玩家选择框）。
+    /// 纯客户端（NetworkServer 未激活）不做兜底，避免把主机侧的真人对手误判成 AI。</summary>
+    public static bool SlotIsAI(int slotID)
+    {
+        if (slotID < 0 || slotID >= 12) return false;
+        if (IsAIMatch && slotID < 6) return true;
+        if (!Mirror.NetworkServer.active) return false;
+        NetworkPlayer owner = BoardManager.GetOwnerPlayer(slotID);
+        return owner != null && owner != NetworkPlayer.LocalHalfPlayer && owner.connectionToClient == null;
+    }
+
     /// <summary>为一次"归属 AI 的选择"设置：费用优先 + 可选过滤 + 强制 AI 自动选。消费后由 AIResolve/ClearAIAutoChoice 清空。
     /// extraIsPreference=true：extra 只是「尽量挑这种」，一个都不满足时退回不带过滤再挑一次 ——
     /// 否则 AI 会传 null 结束选择，该特性整场不生效（缄默神官 03501 的沉默就是这么丢的）。
