@@ -18,8 +18,13 @@ public class SimpleAI : MonoBehaviour
     /// <summary>AI 正在评估/出牌/先手选择期间为 true。选择/确认等 UI 入口检测此标志走自动分支。</summary>
     public static bool IsAIEvaluating { get; set; }
 
-    /// <summary>是否离线 AI 对局（Remote 是 server-only AI，无客户端连接）。</summary>
-    public static bool IsAIMatch => NetworkPlayer.Remote != null && NetworkPlayer.Remote.connectionToClient == null;
+    /// <summary>是否离线 AI 对局（Remote 是 server-only AI，无客户端连接）。
+    /// 必须走 RemoteHalfPlayer 而不是 NetworkPlayer.Remote —— RunAsLocal（服务器替某方执行：AI 施法、
+    /// AI 落位、纯客户端施法都在其中）会把 Local/Remote 临时对调，此时 Remote 指向人类，IsAIMatch 在
+    /// AI 自己的行动里会瞬间变 false：handler 里所有「IsAIMatch 且 非主机侧」的 AI 分支全部退回人类分支
+    /// （表现：AI 的法术 / 特性不结算、弹出玩家选择框后永久挂起、背叛不落位）。
+    /// RemoteHalfPlayer 是 RunAsLocal 之前记下的固定配对，不受对调影响。</summary>
+    public static bool IsAIMatch => NetworkPlayer.RemoteHalfPlayer != null && NetworkPlayer.RemoteHalfPlayer.connectionToClient == null;
 
     // ── 费用优先选择钩子（AI 视角：AI方=0-5 / 玩家方=6-11）────────────────
     // 卡牌 handler 在 AI 触发选择前设置 selectCostPref（如 {5,3,1}=先挑5费；非硬门槛），

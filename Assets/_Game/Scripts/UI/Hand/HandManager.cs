@@ -757,9 +757,12 @@ public class HandManager : MonoBehaviour
 
     // BoardSlot.HandleDeath 完整方法
 
+    /// <summary>智者(03503)落位光环：card 所在半场若有智者在场，给该英雄 +2/+2/+1（每张只加成一次）。
+    /// 半场按 card 的 slotID 动态取（0-5 / 6-11）—— 旧写法写死 6-11，AI 的英雄在 0-5 进场时
+    /// 直接早退，AI 的智者光环整类不生效（表现：AI 打智者后，自己的英雄永远吃不到 +2+1）。</summary>
     void ApplySageAura(CardInstance card, int slotID)
     {
-        if (card == null || slotID < 6 || slotID > 11 || card.summonType != SummonType.Hero)
+        if (card == null || slotID < 0 || slotID > 11 || card.summonType != SummonType.Hero)
             return;
         if (card.buffedBySage)
             return;
@@ -767,8 +770,9 @@ public class HandManager : MonoBehaviour
         BoardManager bm = FindObjectOfType<BoardManager>();
         if (bm == null) return;
 
+        BoardManager.GetSideRange(slotID, out int sageStart, out int sageEnd);
         bool sageOnField = false;
-        for (int i = 6; i <= 11; i++)
+        for (int i = sageStart; i <= sageEnd; i++)
         {
             BoardSlot slot = bm.GetSlot(i);
             if (slot?.currentCard3D == null) continue;
@@ -3815,8 +3819,10 @@ public class HandManager : MonoBehaviour
         }
     }
   /// <param name="casterIsHost">施法方是否为本地(主机)侧；false 且 AI 对局 → 施法方是 AI(Remote,0-5)。</param>
-  public  IEnumerator BetrayalEffect(bool casterIsHost = true)
+  /// <param name="caster">本次施法者（AI 分支要用它走 ServerPlayCard）；缺省回退 NetworkPlayer.Local。</param>
+  public  IEnumerator BetrayalEffect(bool casterIsHost = true, NetworkPlayer caster = null)
     {
+        if (caster == null) caster = NetworkPlayer.Local;
         bool casterIsAI2010 = SimpleAI.IsAIMatch && !casterIsHost;
         BoardManager bm = FindObjectOfType<BoardManager>();
 
@@ -3834,7 +3840,7 @@ public class HandManager : MonoBehaviour
 
         if (!hasEmpty)
         {
-                Debug.Log("对方场上没有召唤物，阴阳无法打出");
+            Debug.Log("对方场上已满员，叛徒无法召唤（02010）");
             CardDrag.CleanupSpellResources();
             yield break;
         }
@@ -3842,24 +3848,24 @@ public class HandManager : MonoBehaviour
         CardData traitorTemplate = CardDatabase.Instance?.GetTemplate("03025");
         if (traitorTemplate?.prefab3D == null) { CardDrag.CleanupSpellResources(); yield break; }
 
-        // [AI] 02010：AI 施法 → 直放叛徒到 玩家方(6-11) 首个空槽（不弹玩家；人类侧敌方为 0-5）
+        // [AI] 02010：AI 施法 → 叛徒直落 AI 的对方区域 = 玩家半场（服务器槽位 6-11）首个空槽，不弹选择。
+        // 走 ServerPlayCard —— 与 SimpleAI 出召唤物同源的服务端权威落位（建模型 / 180° 朝向 / 打出展示 /
+        // 幂等进场通知）。旧写法是玩家侧路径（PlaceCardToSlot + NetworkPlayer.Local.CmdPlayCard）：AI 局里
+        // 那个 Command 落在「非本地玩家」对象上被丢弃，NetworkClient.isConnected 为假时更是整段跳过 ——
+        // 叛徒从不出现。ServerPlayCard 把入参当「远程玩家本地坐标」再取反（0-5 → 6-11），所以传 s - 6。
         if (casterIsAI2010)
         {
-            BoardManager bmAI2010 = FindObjectOfType<BoardManager>();
+            string traitorIid = CardZoneManager.GenerateInstanceID("03025");
             for (int s = 6; s <= 11; s++)
             {
-                BoardSlot sl = bmAI2010?.GetSlot(s);
+                BoardSlot sl = bm?.GetSlot(s);
                 if (sl == null || sl.hasCard || sl.isBlocked || sl.prisonBlocked || sl.permaBlocked) continue;
                 GameObject tempAI = new GameObject("TempTraitorAI");
                 CardInstance tiAI = tempAI.AddComponent<CardInstance>();
-                tiAI.InitFromTemplate(traitorTemplate, 0);
-                PlaceCardToSlot(sl, tempAI);
+                tiAI.InitFromTemplate(traitorTemplate, 0, traitorIid);
+                caster?.ServerPlayCard("03025", s - 6,
+                    tiAI.baseAttack, tiAI.baseHealth, tiAI.baseMaxHealth, tiAI.currentCost, traitorIid);
                 Destroy(tempAI);
-                sl.currentCard3D.transform.rotation = Quaternion.Euler(0, 180, 0);
-                if (NetworkClient.isConnected)
-                    NetworkPlayer.Local?.CmdPlayCard("03025", sl.slotID,
-                        tiAI.baseAttack, tiAI.baseHealth, tiAI.baseMaxHealth, tiAI.currentCost,
-                        tiAI.instanceID ?? CardZoneManager.GenerateInstanceID("03025"));
                 break;
             }
             CardDrag.CleanupSpellResources();
@@ -3893,7 +3899,7 @@ public class HandManager : MonoBehaviour
                 int maxHp = ti.baseMaxHealth;
                 int cost = ti.currentCost;
                 string iid = ti.instanceID ?? CardZoneManager.GenerateInstanceID("03025");
-                NetworkPlayer.Local?.CmdPlayCard("03025", selectedSlot.slotID, atk, hp, maxHp, cost, iid);
+                (caster ?? NetworkPlayer.Local)?.CmdPlayCard("03025", selectedSlot.slotID, atk, hp, maxHp, cost, iid);
             }
 
             placed = true;

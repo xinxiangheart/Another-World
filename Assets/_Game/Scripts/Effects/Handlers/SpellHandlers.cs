@@ -148,7 +148,9 @@ public static class SpellHandlers
 
     static void Handle02010(EffectContext ctx)
     {
-        HM().StartCoroutine(HM().BetrayalEffect(ctx.spellCasterIsHost));
+        // 施法者显式传下去：AI 施法时这里在 RunAsLocal 内同步执行，NetworkPlayer.Local 就是 AI ——
+        // AI 分支靠它走服务端权威落位(ServerPlayCard)；只靠 spellCasterIsHost 反推会漏掉 AI。
+        HM().StartCoroutine(HM().BetrayalEffect(ctx.spellCasterIsHost, NetworkPlayer.Local));
     }
 
     // ═══════════════════════════════════════════════════════════════════
