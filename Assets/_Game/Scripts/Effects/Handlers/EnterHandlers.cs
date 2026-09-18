@@ -132,7 +132,7 @@ public static class EnterHandlers
             {
                 var c3501 = s?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
                 return c3501 != null && (c3501.currentAttack >= 3 || c3501.HasOnEnter || c3501.HasFirstStrike);
-            });
+            }, true); // 只是"优先"：都不满足也得沉默一个，否则这张牌白打
         SM().BeginSelection(TargetType.SingleEnemy, (targetSlot) =>
         {
             if (targetSlot?.currentCard3D != null)
@@ -309,7 +309,7 @@ public static class EnterHandlers
                 {
                     var c1313 = s?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
                     return c1313 != null && c1313.HasActiveExit;
-                });
+                }, true); // 只是"优先"：没有主动退场的也照选一个，别整张牌白打
             var jdLayerId = SM().BeginSelection(TargetType.SingleAlly, null);
             BoardSlot.onTargetSelected = (targetSlot) =>
             {
@@ -563,7 +563,7 @@ public static class EnterHandlers
             {
                 var c1317 = s?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
                 return c1317 != null && (c1317.HasFirstStrike || c1317.HasOnDeath || c1317.HasActiveExit || c1317.HasRevenge);
-            });
+            }, true); // 只是"优先"：没有特殊特性的也照复制一个
         SM().BeginSelection(TargetType.SingleEnemy, (targetSlot) =>
         {
             if (targetSlot?.currentCard3D != null)

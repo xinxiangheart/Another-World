@@ -1192,6 +1192,11 @@ public partial class TurnManager : MonoBehaviour
     /// </summary>
     IEnumerator AutoEndEnemyTurn()
     {
+        // 玩家手里可能还挂着选择（守望者 01339 等「由玩家点选」的选择在 AI 回合前就弹了）：
+        // 先等玩家点完再让 AI 回合的触发器动手，否则阶段开始触发的选择 / 面板会压掉它。
+        if (SimpleAI.Instance != null)
+            yield return SimpleAI.Instance.WaitPlayerSelectionIdle();
+
         // AI 回合开始：先处理 AI 半场(0-5)的「回合开始」特性（01105/01315/01129/01511/01302 等）
         TriggerMyTurnStartEffects(false);
 

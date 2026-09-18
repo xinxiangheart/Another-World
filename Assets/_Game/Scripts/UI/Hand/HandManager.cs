@@ -280,6 +280,51 @@ public class HandManager : MonoBehaviour
         return handCards.Count;
     }
 
+    /// <summary>离线「本端手牌打出」的归属侧：-1=当前没有本端手牌打出在飞；0=代打（视为对方打出，
+    /// 触发本端守望者）；1=本端打出（触发对侧守望者）。由 CardDrag 通过前置校验后登记，
+    /// NotifyOpponentCardPlayed 在真正成交时按它触发（同一次打出衍生的嵌套代打共用同一归属侧）；
+    /// 打出失败时由 CardDrag 调 ClearOfflinePlaySide 撤销 —— 打不出去、回手的牌不该让守望者生效。</summary>
+    static int _offlinePlaySide = -1;
+
+    /// <summary>登记「本次本端手牌打出」的归属侧（仅离线；联机由 RPC 交给对端判定）。</summary>
+    public static void SetOfflinePlaySide(bool asEnemyPlay) => _offlinePlaySide = asEnemyPlay ? 0 : 1;
+
+    /// <summary>撤销登记（本次打出被判为打不出去：能量不足 / 条件不满足 / 无合法目标 …）。</summary>
+    public static void ClearOfflinePlaySide() => _offlinePlaySide = -1;
+
+    /// <summary>守望者(01339)：「本端玩家打出/使用了一张真手牌」→ 让对侧那端判定它自己的守望者。
+    /// fromRealHand=false（效果直接生成的 Token/衍生体）不算「打出一张牌」，直接跳过。
+    /// 联机主机 → TargetRpc 交给客户端；联机客户端 → Cmd 交给服务器；
+    /// 离线 → 本端自己判定（判据 = SetOfflinePlaySide 登记的归属侧；AI 的出牌由 SimpleAI 各分支触发，不走这里）。</summary>
+    public static void NotifyOpponentCardPlayed(bool fromRealHand)
+    {
+        if (!fromRealHand) return;
+        if (NetworkServer.active)
+        {
+            NetworkConnectionToClient conn = NetworkPlayer.Remote != null ? NetworkPlayer.Remote.connectionToClient : null;
+            if (conn != null) NetworkPlayer.Local?.TargetNotifyOpponentCardPlayed(conn);
+            return;
+        }
+        if (NetworkClient.isConnected)
+        {
+            NetworkPlayer.Local?.CmdNotifyOpponentCardPlayed();
+            return;
+        }
+
+        // 离线：只处理「本端手牌打出」这一条线。
+        // - AI 的出牌有自己的 TriggerOpponentWatcher 入口（含它自己的嵌套代打），这里必须跳过，否则同一张牌触发两次；
+        //   判据：AI 回合 IsAIEvaluating=true；AI 的进场窗口（辉煌法师/学徒代打都在其中）enterEffectActorIsAI=true。
+        // - _offlinePlaySide < 0 表示没有本端手牌打出在飞（AI / 效果驱动的打出）→ 跳过。
+        // 刻意不在触发后清空：同一次打出衍生的嵌套代打（01521 辉煌法师 / 01329 学徒逐张免费施放）也会走到这里，
+        // 用同一个归属侧各触发一次 —— 与联机（每张代打法术一次通知）口径一致。
+        // 归属侧在下一次拖牌时被覆盖，打出失败时由 CardDrag 调 ClearOfflinePlaySide 撤销。
+        if (SimpleAI.IsAIEvaluating || BoardSlot.enterEffectActorIsAI) return;
+        if (_offlinePlaySide < 0) return;
+        bool playedByLocalSide = _offlinePlaySide == 1;
+        HandManager hmWatcher = FindObjectOfType<HandManager>();
+        if (hmWatcher != null) hmWatcher.StartCoroutine(hmWatcher.WatcherDelayedCheckFor(playedByLocalSide));
+    }
+
     // HandManager.PlaceCardToSlot 完整方法
     public void PlaceCardToSlot(BoardSlot slot, GameObject cardObject)
     {
@@ -459,6 +504,8 @@ public class HandManager : MonoBehaviour
             NetworkPlayer.Local?.CmdPlayCard(sourceInstance.templateID, slot.slotID, atk, hp, maxHp, cost, iid);
         }
         BoardSyncManager.MarkDirty();
+        // 守望者(01339)：本端从手牌打出一张召唤物 → 对侧守望者判定（效果生成的 Token 无 CardView，不算「打出」）
+        NotifyOpponentCardPlayed(cardObject != null && cardObject.GetComponent<CardView>() != null);
         if (instance3D != null) instance3D.UpdateValues();
         // 阴阳独立打出检查
         if (sourceInstance.isXValue && sourceInstance.templateID == "03012")
@@ -491,71 +538,10 @@ public class HandManager : MonoBehaviour
             }
         }
         // ===== 阴/阳合成检测 + 召唤限制 =====
+        // 合体逻辑抽到 TryMergeYinYang：AI 侧落位（SimpleAI 出召唤物）也要走同一段，原先只写在玩家侧。
         if (sourceInstance.isXValue && (sourceInstance.templateID == "01306" || sourceInstance.templateID == "01307"))
         {
-           
-            string otherID = sourceInstance.templateID == "01306" ? "01307" : "01306";
-            BoardManager bmMerge = FindObjectOfType<BoardManager>();
-            BoardSlot otherSlot = null;
-            for (int i = 6; i <= 11; i++)
-            {
-                BoardSlot s = bmMerge?.GetSlot(i);
-                CardInstance ci = s?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
-                if (ci != null && ci.templateID == otherID)
-                {
-                    otherSlot = s;
-                    break;
-                }
-            }
-    // HandManager.PlaceCardToSlot 完整方法
-            if (otherSlot != null)
-            {
-                // 转移附着物到后进场的槽位
-                TransferAttachments(otherSlot, slot);
-
-                // 销毁阴和阳
-                Destroy(otherSlot.currentCard3D);
-                otherSlot.SetCard(null);
-                Destroy(model);
-                slot.SetCard(null);
-
-                CardData yinYangData = CardDatabase.Instance?.GetTemplate("03012");
-                if (yinYangData?.prefab3D != null)
-                {
-                    Vector3 mergePos = GetSlotWorldPosition(slot.slotID);
-                    GameObject mergeModel = Instantiate(yinYangData.prefab3D, mergePos, Quaternion.Euler(0, 180, 0));
-                    Card3DInstance.PlaySummonOn(mergeModel); // 召唤动画
-                    Player.Scale3DModel(mergeModel);
-                    mergeModel.name = "03012_merged";
-                    Card3DInstance mergeInst = mergeModel.GetComponent<Card3DInstance>();
-                    if (mergeInst != null)
-                    {
-                        CardInstance mergeCard = mergeModel.AddComponent<CardInstance>();
-                        mergeCard.templateID = "03012";
-                        mergeCard.instanceID = "03012_merged";
-                        mergeCard.isXValue = true;
-                        mergeCard.xAttackReadsHighest = true;
-                        mergeCard.xHealthReadsHighest = true;
-                        mergeCard.currentCost = yinYangData.baseCost;
-                        mergeCard.currentTier = yinYangData.baseTier;
-                        mergeCard.summonType = SummonType.Special;
-                        mergeCard.hasFirstStrike = true;
-                        mergeCard.isYinYang = true;
-                        mergeInst.cardInstance = mergeCard;
-                        mergeInst.UpdateValues();
-                        mergeCard.xInitialHealth = mergeCard.currentHealth;
-                    }
-                    slot.SetCard(mergeModel);
-                    UpdateXValues(mergeInst.cardInstance);
-                }
-                CardView cvMerge = cardObject.GetComponent<CardView>();
-                if (cvMerge != null) RemoveCard(cvMerge);
-
-                // Sync merged 阴阳 + cleared slot to opponent
-                TurnManager.SyncMyBoardToOpponent();
-                return;
-            }
-
+            if (TryMergeYinYang(slot, sourceInstance, cardObject)) return;
             UpdateXValues(sourceInstance);
         }
 
@@ -585,6 +571,82 @@ public class HandManager : MonoBehaviour
        
     }
    
+    /// <summary>阴/阳(01306/01307)合体：新落位的阴或阳若与「同一半场」的另一张配对 → 两张合成阴阳(03012)。
+    /// 玩家侧落位（PlaceCardToSlot）与 AI 侧落位（SimpleAI 出召唤物）共用同一段 —— 旧写法只写在玩家侧，
+    /// AI 打出的阴/阳各自落位、永远不合体（卡面「阴+阳→合体」在 AI 手里不成立）。
+    /// 返回 true = 已合体，调用方不要再对该槽做后续落位处理。handCardObject 仅玩家侧需要（移除手牌视图）。</summary>
+    public bool TryMergeYinYang(BoardSlot slot, CardInstance sourceInstance, GameObject handCardObject = null)
+    {
+        if (slot == null || sourceInstance == null || !sourceInstance.isXValue) return false;
+        if (sourceInstance.templateID != "01306" && sourceInstance.templateID != "01307") return false;
+
+        string otherID = sourceInstance.templateID == "01306" ? "01307" : "01306";
+        BoardManager bmMerge = FindObjectOfType<BoardManager>();
+        if (bmMerge == null) return false;
+        BoardManager.GetSideRange(slot.slotID, out int mergeS, out int mergeE);
+        BoardSlot otherSlot = null;
+        for (int i = mergeS; i <= mergeE; i++)
+        {
+            BoardSlot s = bmMerge.GetSlot(i);
+            CardInstance ci = s?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci != null && ci.templateID == otherID) { otherSlot = s; break; }
+        }
+        if (otherSlot == null) return false;
+
+        GameObject placedModel = slot.currentCard3D;
+        GameObject otherModel = otherSlot.currentCard3D;
+        if (placedModel == null || otherModel == null) return false;
+
+        // 转移附着物到后进场的槽位
+        TransferAttachments(otherSlot, slot);
+
+        // 销毁阴和阳
+        Destroy(otherModel);
+        otherSlot.SetCard(null);
+        Destroy(placedModel);
+        slot.SetCard(null);
+
+        CardData yinYangData = CardDatabase.Instance?.GetTemplate("03012");
+        if (yinYangData?.prefab3D == null)
+        {
+            TurnManager.SyncMyBoardToOpponent();
+            return true;
+        }
+
+        Vector3 mergePos = GetSlotWorldPosition(slot.slotID);
+        GameObject mergeModel = Instantiate(yinYangData.prefab3D, mergePos, Quaternion.Euler(0, 180, 0));
+        Card3DInstance.PlaySummonOn(mergeModel); // 召唤动画
+        Player.Scale3DModel(mergeModel);
+        mergeModel.name = "03012_merged";
+        Card3DInstance mergeInst = mergeModel.GetComponent<Card3DInstance>();
+        if (mergeInst != null)
+        {
+            CardInstance mergeCard = mergeModel.AddComponent<CardInstance>();
+            mergeCard.templateID = "03012";
+            mergeCard.instanceID = "03012_merged";
+            mergeCard.isXValue = true;
+            mergeCard.xAttackReadsHighest = true;
+            mergeCard.xHealthReadsHighest = true;
+            mergeCard.currentCost = yinYangData.baseCost;
+            mergeCard.currentTier = yinYangData.baseTier;
+            mergeCard.summonType = SummonType.Special;
+            mergeCard.hasFirstStrike = true;
+            mergeCard.isYinYang = true;
+            mergeInst.cardInstance = mergeCard;
+            mergeInst.UpdateValues();
+            mergeCard.xInitialHealth = mergeCard.currentHealth;
+        }
+        slot.SetCard(mergeModel);
+        if (mergeInst != null) UpdateXValues(mergeInst.cardInstance);
+
+        CardView cvMerge = handCardObject != null ? handCardObject.GetComponent<CardView>() : null;
+        if (cvMerge != null) RemoveCard(cvMerge);
+
+        // 同步合体后的阴阳 + 已清空的另一格
+        TurnManager.SyncMyBoardToOpponent();
+        return true;
+    }
+
     void TransferAttachments(BoardSlot oldSlot, BoardSlot newSlot)
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
@@ -1183,7 +1245,6 @@ public class HandManager : MonoBehaviour
             slot.SetCard(null);
             return;
         }
-
         if (NetworkClient.isConnected)
         {
             string iid = instance3D?.cardInstance?.instanceID ?? sourceInstance.instanceID ?? CardZoneManager.GenerateInstanceID(sourceInstance.templateID);
@@ -1192,6 +1253,8 @@ public class HandManager : MonoBehaviour
             NetworkPlayer.Local?.CmdPlayCard(sourceInstance.templateID, slot.slotID, -1, -1, -1, cost, iid);
         }
         BoardSyncManager.MarkDirty();
+        // 守望者(01339)：本端从手牌打出一张牌（附着卡走独立落位也在这条路径）→ 对侧守望者判定
+        NotifyOpponentCardPlayed(cardObject != null && cardObject.GetComponent<CardView>() != null);
 
         ProcessAuras(slot, sourceInstance);
 
@@ -1221,6 +1284,9 @@ public class HandManager : MonoBehaviour
     }
     private void PlaceAttachedCard(BoardSlot slot, CardInstance sourceInstance, CardData template, BoardSlot hostSlot, GameObject cardObject)
     {
+        // 守望者(01339)：本端从手牌打出一张附着牌 → 对侧守望者判定（cardObject=null 是效果复用路径，不算「打出」）
+        NotifyOpponentCardPlayed(cardObject != null && cardObject.GetComponent<CardView>() != null);
+
         // 计算附着偏移
         int attachOrder = 0;
         BoardManager bm = FindObjectOfType<BoardManager>();
@@ -1599,7 +1665,10 @@ public class HandManager : MonoBehaviour
             hostSlot.StartCoroutine(hostSlot.StartOnEnterEffect(td, sourceInst));
     }
 
-    private void ProcessAuras(BoardSlot slot, CardInstance sourceInstance)
+    /// <summary>落位光环统一结算点（智者 03503 / 缄默神官 03501 / 皇帝 01501 / 中枢 03027 / 无赖护盾……）。
+    /// 玩家侧落位路径（PlaceCardToSlot / PlaceIndependentCard）与 AI 侧召唤分支（SimpleAI 出召唤物）
+    /// 都必须调用 —— 只在玩家侧调用时，AI 放下的光环牌整类不生效。</summary>
+    public void ProcessAuras(BoardSlot slot, CardInstance sourceInstance)
     {
         // 智者自身进场光环
         bool sageBuffed = false;
@@ -1800,6 +1869,22 @@ public class HandManager : MonoBehaviour
                     UpdateXValues(ciSync);
             }
         }
+        // 召唤物「进场完成」通知（猩红圣徒 01533 等「敌进场」类入场光环）：只对没有进场效果的卡在这里发 ——
+        // 有进场效果的卡等 StartOnEnterEffect 收尾再发，这样玩家侧 / AI 侧顺序一致（光环伤害都在进场效果之后）。
+        if (sourceInstance != null && !sourceInstance.hasOnEnter)
+            NotifyMinionEntered(slot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance ?? sourceInstance);
+    }
+
+    /// <summary>召唤物「进场完成」的唯一通知点（幂等，每实例一次）：敌方进场类光环（猩红圣徒 01533 等）
+    /// 据此结算。此前 GlobalEventManager.TriggerMinionEntered 没有任何调用者 → 这类特性整类不触发。
+    /// 玩家侧（PlaceCardToSlot / PlaceIndependentCard / StartOnEnterEffect 收尾）与 AI 侧（SimpleAI 出召唤物、
+    /// 服务端给远程客户端建模型）都走这里。纯客户端不发：服务端权威结算后随 SyncNow 同步，避免两端各算一次。</summary>
+    public static void NotifyMinionEntered(CardInstance ci)
+    {
+        if (ci == null || ci.minionEnterNotified) return;
+        if (NetworkClient.isConnected && !NetworkServer.active) return;
+        ci.minionEnterNotified = true;
+        GlobalEventManager.Instance?.TriggerMinionEntered(ci);
     }
     private void CleanupAfterSelection()
     {
@@ -3529,28 +3614,98 @@ public class HandManager : MonoBehaviour
     {
         selectedCK = cc;
     }
-    public IEnumerator WatcherDelayedCheck()
+    /// <summary>旧入口（无侧别信息）：语义等同「对方打出」→ 触发本端(6-11)的守望者。</summary>
+    public IEnumerator WatcherDelayedCheck() => WatcherDelayedCheckFor(false);
+
+    /// <summary>对方打出牌、效果结算完成后触发守望者(01339)。
+    /// playedByLocalSide=true：打出者是本端(6-11) → 守望者必在 0-5（离线 AI 对局：玩家出牌 → AI 的守望者）；
+    /// false：打出者是对手 → 守望者在本端 6-11（联机对端出牌 / 离线代打 / 对方打出反制牌）。</summary>
+    public IEnumerator WatcherDelayedCheckFor(bool playedByLocalSide)
     {
+        // 「非攻击回合」防线：攻击回合(BattlePhase)双方只结算不出牌。相位在「打出时刻」取，
+        // 不能等结算后再取 —— 结算期间可能已经跨过相位边界。
+        bool playedInBattle = TurnManager.Instance != null
+            && TurnManager.Instance.currentPhase == TurnManager.TurnPhase.BattlePhase;
+
+        // 关键：以「打出时刻」的嵌套深度为基线 —— 只等本次打出自己的结算子树回到基线，
+        // 而不是等全局 depth==0。AI 回合里若有更早的长活嵌套 / 阶段收尾占着全局深度，
+        // 等零会把触发拖到下一阶段（表现为「AI 打出后要等攻击回合才结算」）。
+        int baseDepth = NestingContext.Snapshot();
+        Debug.Log($"[W01339] 排队 side={(playedByLocalSide ? "本端" : "对方")} phase={(TurnManager.Instance != null ? TurnManager.Instance.currentPhase.ToString() : "?")} baseDepth={baseDepth}");
+
         yield return null;
-        yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
-        yield return null;
-        WatcherCheckAndTriggerCore(-1);
+        yield return WaitBoardSettled(baseDepth);
+        if (playedInBattle) yield break;
+        WatcherCheckAndTriggerCore(playedByLocalSide ? 0 : 6);
     }
 
-    /// <summary>对方打出牌/反制、效果结算后触发守望者(01339)。
-    /// playedByHost=true：打出者是本地玩家(6-11) → 守望者必在 0-5(AI)；false：打出者是 AI → 守望者在 6-11。</summary>
-    public IEnumerator WatcherDelayedCheckFor(bool playedByHost)
+    /// <summary>等待「出牌 → 放置/顶替 → 进场效果子树 → 目标选择 → 动作队列」全部静默。
+    /// 嵌套深度按 baseDepth（打出时刻的深度）相对判定：只等「本次打出新增的嵌套」退掉，
+    /// 不被更早的长活嵌套卡住；12s 兜底，兜底时仍会等当前选择收尾。
+    /// 等待中每秒打印一次忙项（placing/attach/selecting/depth/queue），便于定位拖后触发的原因。</summary>
+    IEnumerator WaitBoardSettled(int baseDepth)
     {
+        float start = Time.time;
+        float deadline = start + 12f;
+        float nextLog = start + 1f;
+        while (Time.time < deadline)
+        {
+            bool placing = BoardSlot.isPlacingCard;
+            bool attach = BoardSlot.isAttachSelectMode;
+            bool selecting = SelectionManager.Instance != null && SelectionManager.Instance.IsSelecting;
+            int depth = NestingContext.Depth;
+            bool queueBusy = !ActionQueueManager.IsIdle;
+            // 打出展示动画 / 战斗动画也算「没结算完」：展示还在播就弹守望者选择，
+            // 观感上等于「对方刚打出牌就立刻进选择」（展示 ≈1.4s，比进场/法术结算本身还长）。
+            bool reveal = PlayRevealManager.IsPlaying;
+            bool animating = BattleAnimator.Instance != null && BattleAnimator.Instance.IsAnimating;
+            bool busy = placing || attach || selecting || depth > baseDepth || queueBusy || reveal || animating;
+            if (!busy)
+            {
+                if (Time.time - start > 0.2f)
+                    Debug.Log($"[W01339] 结算静默 baseDepth={baseDepth} 用时={Time.time - start:F2}s");
+                yield break;
+            }
+            if (Time.time >= nextLog)
+            {
+                nextLog = Time.time + 1f;
+                Debug.LogWarning($"[W01339] 等待结算 {Time.time - start:F1}s: placing={placing} attach={attach} selecting={selecting} depth={depth}(base={baseDepth}) queue={queueBusy} reveal={reveal} anim={animating}");
+            }
+            yield return null;
+        }
+        // 12s 兜底：板面仍未静默（嵌套法术链 / 面板等待中最常见）。此时也不能直接触发——
+        // BeginSelection 会覆盖 BoardSlot.onTargetSelected，若别的选择还挂着，会把它的回调顶掉，
+        // 等它的协程就永远拿不到结果（例：01521 辉煌法师代打法术的选目标）。
+        // 故兜底只放宽「结算静默」，仍必须等当前选择收尾；嵌套链会在自己的 WaitWhile(IsSelecting) 处让位。
+        bool stillSelecting = SelectionManager.Instance != null && SelectionManager.Instance.IsSelecting;
+        Debug.LogWarning($"[Watcher01339] 等待结算静默超时(12s)，改为等待当前选择收尾（depth={NestingContext.Depth}, selecting={stillSelecting}）");
+        float selectionDeadline = Time.time + 60f;
+        while (SelectionManager.Instance != null && SelectionManager.Instance.IsSelecting && Time.time < selectionDeadline)
+            yield return null;
+        if (SelectionManager.Instance != null && SelectionManager.Instance.IsSelecting)
+        {
+            Debug.LogWarning("[Watcher01339] 选择仍未收尾(60s)，放弃本次触发");
+            yield break;
+        }
         yield return null;
-        yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
-        yield return null;
-        WatcherCheckAndTriggerCore(playedByHost ? 0 : 6);
     }
 
-    public void WatcherImmediateCheck()
+    /// <summary>反制牌专用入口：「打出后就造成伤害」—— 刻意不等板面结算静默（这正是与普通牌的差别：
+    /// 普通牌要等被反制的牌结算完，反制牌不等）。只让出一帧并等当前选择收尾，避免在别的选择面板上叠层。
+    /// playedByLocalSide 语义同 WatcherDelayedCheckFor。</summary>
+    public IEnumerator WatcherCounterCheckFor(bool playedByLocalSide)
     {
-        WatcherCheckAndTriggerCore(-1);
+        if (TurnManager.Instance != null
+            && TurnManager.Instance.currentPhase == TurnManager.TurnPhase.BattlePhase) yield break;
+
+        yield return null;
+        yield return new WaitWhile(() => SelectionManager.Instance != null && SelectionManager.Instance.IsSelecting);
+        yield return null;
+        WatcherCheckAndTriggerCore(playedByLocalSide ? 0 : 6);
     }
+
+    /// <summary>旧入口（无侧别信息）：等价「对方打出反制牌 → 本端守望者」。</summary>
+    public void WatcherImmediateCheck() => StartCoroutine(WatcherCounterCheckFor(false));
 
     /// <param name="forceWatcherSideStart">≥0=只在该半场找守望者（打出者的对侧）；-1=旧行为(0-5 优先)。</param>
     void WatcherCheckAndTriggerCore(int forceWatcherSideStart)
@@ -3610,10 +3765,13 @@ public class HandManager : MonoBehaviour
                     BattleManager.Instance.ApplyDamageToMinionPublic(t3d.cardInstance, 1, null);
                     t3d.UpdateValues();
                     BoardSlot.CheckAndHandleDeaths();
+                    BoardSyncManager.MarkDirty(); // 主机侧：改的是对端半场，必须标记同步，否则对端看不到掉血
                 }
             }
             return;
         }
+
+        if (SelectionManager.Instance == null) return;
 
         bool hasEnemy = false;
         for (int i = tStart; i < tStart + 6; i++)
@@ -3621,13 +3779,17 @@ public class HandManager : MonoBehaviour
         if (!hasEnemy) return;
 
         // 玩家自己的守望者：AI 回合中 IsAIEvaluating=true 会让 onTargetSelected setter 自动代选
-        // （镜像成 SingleAlly 会误打玩家自己半场）→ 选目标期间临时关闭 AI 自动选择
+        // （镜像成 SingleAlly 会误打玩家自己半场）→ 选目标期间临时关闭 AI 自动选择。
+        // 另置 humanSelectionGuard：AI 的自动选择协程带 0.5s 延时，上一张 AI 卡留下的那个协程
+        // 会在玩家点之前替他把目标选掉（表现成「该等玩家点选时 AI 却继续行动」），必须一并挡住。
+        BoardSlot.humanSelectionGuard = true;
         bool prevAIEvaluating = SimpleAI.IsAIEvaluating;
         SimpleAI.IsAIEvaluating = false;
         try
         {
             SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (target) =>
             {
+                BoardSlot.humanSelectionGuard = false; // 玩家点完 / 选择被取消 → 放行 AI 自动选择
                 if (target?.currentCard3D != null)
                 {
                     Card3DInstance t3d = target.currentCard3D.GetComponent<Card3DInstance>();
@@ -3638,7 +3800,14 @@ public class HandManager : MonoBehaviour
                     }
                 }
                 BoardSlot.CheckAndHandleDeaths();
+                BoardSyncManager.MarkDirty(); // 主机侧：改的是对端半场，必须标记同步，否则对端看不到掉血
             }, SelectionKind.Damage); // 01339 守望者：对对方一召唤物造成1伤害 —— 伤害红
+        }
+        catch
+        {
+            // BeginSelection 自身抛错（不该发生）：别把 humanSelectionGuard 漏着，否则 AI 自动选择永久失效
+            BoardSlot.humanSelectionGuard = false;
+            throw;
         }
         finally
         {

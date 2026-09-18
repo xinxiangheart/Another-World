@@ -91,6 +91,13 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     /// <summary>选择模式最近一次目标点击时间（3D 射线与 UI OnPointerClick 双路径防重触发）。</summary>
     public static float lastTargetClickTime = -1f;
     static Action<BoardSlot> _onTargetSelected;
+
+    /// <summary>「这次选择必须由玩家点」挂起中（守望者 01339 让玩家选打击目标）。置位期间 AI 自动选择一律让路：
+    /// AIResolveSelectionCoroutine 带一帧 + 0.5s 延时，上一张 AI 卡留下的协程会在玩家点之前替他把目标选掉
+    /// （镜像过的目标类型还会打错半场），表现成「该等玩家点选时 AI 却继续行动」。
+    /// 由 HandManager.WatcherCheckAndTriggerCore 置位，玩家点完 / 选择被取消时在回调里复位。</summary>
+    public static bool humanSelectionGuard = false;
+
     /// <summary>选择回调。AI 环境下赋值时自动触发 AIResolveSelection（选第一个合法目标）。</summary>
     public static Action<BoardSlot> onTargetSelected
     {
@@ -99,7 +106,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         {
             _onTargetSelected = value;
             Debug.LogWarning($"[AIDebug] onTargetSelected setter: value={value != null}, IsAIEvaluating={SimpleAI.IsAIEvaluating}, actorIsAI={enterEffectActorIsAI}, currentTargetType={currentTargetType}");
-            if (value != null && (SimpleAI.IsAIEvaluating || SimpleAI.forceAutoSelect || enterEffectActorIsAI))
+            if (value != null && !humanSelectionGuard
+                && (SimpleAI.IsAIEvaluating || SimpleAI.forceAutoSelect || enterEffectActorIsAI))
                 AIResolveSelection();
         }
     }
@@ -168,9 +176,34 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             Debug.LogWarning("[AIDebug] AIResolveSelection 被调用但 IsAIEvaluating=false 且非 forceAutoSelect/actorIsAI，跳过");
             return;
         }
+        // 玩家正在点选（守望者 01339 的选目标）→ 让路，别替玩家把目标选掉
+        if (humanSelectionGuard)
+        {
+            Debug.LogWarning("[AIDebug] AIResolveSelection 让路：humanSelectionGuard（玩家点选中）");
+            return;
+        }
         Debug.LogWarning("[AIDebug] AIResolveSelection 触发自动选择协程");
         if (SimpleAI.Instance != null)
             SimpleAI.Instance.StartCoroutine(AIResolveSelectionCoroutine());
+    }
+
+    /// <summary>费用优先挑一张：合法目标里按 costPref 顺序取（未命中该费用的排最后，非硬门槛）。filter 可选。</summary>
+    static BoardSlot PickByCostPref(BoardManager bm, TargetType aiType, int[] costPref, System.Func<BoardSlot, bool> filter)
+    {
+        BoardSlot best = null;
+        int bestRank = int.MaxValue;
+        foreach (var slot in bm.GetAllSlots())
+        {
+            if (slot == null || slot.currentCard3D == null) continue;
+            if (!slot.IsValidTarget(aiType)) continue;
+            if (filter != null && !filter(slot)) continue;
+            var tci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+            if (tci == null) continue;
+            int rank = System.Array.IndexOf(costPref, tci.currentCost);
+            if (rank < 0) rank = costPref.Length; // 非优先费用放最后（非硬门槛）
+            if (rank < bestRank) { bestRank = rank; best = slot; }
+        }
+        return best;
     }
 
     static System.Collections.IEnumerator AIResolveSelectionCoroutine()
@@ -178,10 +211,17 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         // 顶部快照并复位钩子（forceAutoSelect/费用优先/过滤），避免任何分支结束后泄漏
         var aiCostPref = SimpleAI.selectCostPref;
         var aiExtraFilter = SimpleAI.selectExtraFilter;
+        bool aiExtraIsPref = SimpleAI.selectExtraIsPreference; // 过滤只是「优先」→ 无命中时退回不带过滤再挑
         SimpleAI.ClearAIAutoChoice();
 
         yield return null; // 延迟一帧
         yield return new WaitForSeconds(0.5f); // AI 思考间隔：选中目标前停 0.5s，避免瞬间选中（模拟人类思考）
+        // 这段等待里玩家可能抢到了选择（守望者 01339）→ 放弃，别替玩家点
+        if (humanSelectionGuard)
+        {
+            Debug.LogWarning("[AIDebug] AIResolveSelectionCoroutine 让路：humanSelectionGuard（玩家点选中）");
+            yield break;
+        }
         BoardManager bm = FindObjectOfType<BoardManager>();
         if (bm == null) yield break;
 
@@ -194,19 +234,14 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         // 在 aiType 对应的合法召唤物里按优先级(数组顺序，未命中放最后)选一个；aiExtraFilter 可再过滤。
         if (aiCostPref != null)
         {
-            BoardSlot best = null;
-            int bestRank = int.MaxValue;
-            foreach (var slot in bm.GetAllSlots())
+            BoardSlot best = PickByCostPref(bm, aiType, aiCostPref, aiExtraFilter);
+            // 过滤只是「优先」时（extraIsPreference）：一个都没命中就退回不带过滤再挑一次 ——
+            // 否则会传 null 结束选择，该特性整场不生效（03501 缄默神官的沉默没了就是这么来的）。
+            if (best == null && aiExtraIsPref)
             {
-                if (slot == null || slot.currentCard3D == null) continue;
-                if (!slot.IsValidTarget(aiType)) continue;
-                if (aiExtraFilter != null && !aiExtraFilter(slot)) continue;
-                var tci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                if (tci == null) continue;
-                int c = tci.currentCost;
-                int rank = System.Array.IndexOf(aiCostPref, c);
-                if (rank < 0) rank = aiCostPref.Length; // 非优先费用放最后（非硬门槛）
-                if (rank < bestRank) { bestRank = rank; best = slot; }
+                best = PickByCostPref(bm, aiType, aiCostPref, null);
+                if (best != null)
+                    Debug.LogWarning($"[AIDebug] 费用过滤无命中 → 退回第一个合法目标 slot={best.slotID}");
             }
             Debug.LogWarning($"[AIDebug] 费用优先选中 slot={(best != null ? best.slotID : -1)}");
             onTargetSelected?.Invoke(best); // 无合法目标传 null 结束选择
@@ -1369,6 +1404,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             enterEffectActorIsAI = prevEnterActorIsAI;
             // 进场标记在这里兜底收尾（深度计数，幂等）：早退分支 / "未注册卡"回退 / 协程异常退出都不会再泄漏。
             if (inst != null) inst.EndEnterEffect();
+            // 召唤物「进场完成」通知（猩红圣徒 01533 等）：放在真正的「进场窗口收尾」处，
+            // 保证光环伤害在进场效果结算之后；附着牌（本槽自己的牌不是 inst）不算一次召唤物进场。
+            CardInstance enteredCI = currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (enteredCI != null && enteredCI == inst) HandManager.NotifyMinionEntered(enteredCI);
             // 安全网：恢复到进入前深度，而非 ForceClear 归零（归零会破坏外层嵌套计数，导致状态混乱）
             if (NestingContext.Depth > enterDepth)
             {
@@ -1470,10 +1509,18 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         else slotImage.color = normalColor;
     }
 
-    public bool HasEnemyTarget()
+    /// <summary>敌方半场是否有可指定目标。按本槽所属半场判侧别（本槽 6-11 → 敌 0-5；本槽 0-5 → 敌 6-11）。
+    /// 旧写法写死 0-5（Host 视角）：AI 侧(0-5)发起的进场 / 抛置守门会去查自己半场，
+    /// 于是「AI 自己场上没牌」会被误判成「对方没目标」，整段效果被提前跳过。</summary>
+    public bool HasEnemyTarget() => HasEnemyTarget(slotID);
+
+    /// <summary>按指定发起方槽位判敌方半场（sourceSlotID 小于 0 时退回旧行为：查 0-5）。</summary>
+    public bool HasEnemyTarget(int sourceSlotID)
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
-        for (int id = 0; id <= 5; id++)
+        int start = 0, end = 5;
+        if (sourceSlotID >= 0) BoardManager.GetEnemySideRange(sourceSlotID, out start, out end);
+        for (int id = start; id <= end; id++)
         {
             BoardSlot slot = bm?.GetSlot(id);
             if (slot != null && !slot.isBlocked && slot.hasCard) return true;
@@ -1481,10 +1528,18 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         return false;
     }
 
-    public bool HasAllyTargetExceptSelf()
+    /// <summary>己方半场除自身外是否有可指定目标。按本槽所属半场判侧别（与 HasEnemyTarget 同规）。
+    /// 旧写法写死 6-11：AI 侧(0-5)的碎片(01110) / 指挥家(01311) / 雾隐(01313) / 生命祭司(01507) 进场
+    /// 会去查玩家半场 —— 玩家空场而 AI 自己有随从时，这段效果会被整段跳过。</summary>
+    public bool HasAllyTargetExceptSelf() => HasAllyTargetExceptSelf(slotID);
+
+    /// <summary>按指定发起方槽位判己方半场（sourceSlotID 小于 0 时退回旧行为：查 6-11）。</summary>
+    public bool HasAllyTargetExceptSelf(int sourceSlotID)
     {
         BoardManager bm = FindObjectOfType<BoardManager>();
-        for (int id = 6; id <= 11; id++)
+        int start = 6, end = 11;
+        if (sourceSlotID >= 0) BoardManager.GetSideRange(sourceSlotID, out start, out end);
+        for (int id = start; id <= end; id++)
         {
             BoardSlot slot = bm?.GetSlot(id);
             if (slot != null && !slot.isBlocked && slot.hasCard && slot != this) return true;
@@ -3657,11 +3712,13 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         {
             if ((spellT1329.spellType & SpellType.Counter) != 0)
             {
-                CounterManager.Instance?.PlayCounter(selGO1329, false); // AI 反制 = Host 敌方
+                Coroutine wcnt1329 = CounterManager.Instance?.PlayCounter(selGO1329, false); // AI 反制 = Host 敌方
                 var ec1329 = CounterManager.Instance?.enemyCounters;
                 var ctr1329 = (ec1329 != null && ec1329.Count > 0) ? ec1329[ec1329.Count - 1] : null;
                 if (ctr1329 != null) ctr1329.noCostOnTrigger = true;
                 ai1329.handCards.Remove(selGO1329);
+                // 守望者(01339)：等这次反制判定把玩家的选目标弹出来再往下走（同 AI_BrilliantCast）
+                if (wcnt1329 != null) yield return wcnt1329;
             }
             else if (spellT1329.targetType == TargetType.None)
             {
@@ -3971,7 +4028,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             {
                 var c110 = s?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
                 return c110 != null && c110.HasActiveExit;
-            });
+            }, true); // 「有主动退场」只是优先：一个都没有也得牺牲一个，否则这张牌白打（回调里已排除自身）
 
         BoardSlot selectedTarget = null;
         bool done = false;
@@ -4019,13 +4076,14 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     {
         if (!HasAllyTargetExceptSelf()) { CleanupAfterPlacement(); yield break; }
 
-        // [AI] 01311 进场：AI 侧(0-5) → 自动选 己方 5/3/1 且 HasActiveExit 的召唤物（修复原先 done=true 空转）
+        // [AI] 01311 指挥家：卡面只写「使己方一召唤物退场」，不要求目标自带主动退场 —— HasActiveExit 只是「优先」
+        // （退场效果x2 才有东西可翻）。硬过滤会让 AI 在有随从、但随从都没有主动退场时整张牌白打。
         if (SimpleAI.IsAIMatch && slotID < 6)
             SimpleAI.SetAIAutoChoice(new[] { 5, 3, 1 }, s =>
             {
                 var c1311 = s?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
                 return c1311 != null && c1311.HasActiveExit && s != this;
-            });
+            }, true);
 
         CardInstance targetCI = null;
         bool done = false;
@@ -5098,10 +5156,13 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
             if ((td1521.spellType & SpellType.Counter) != 0)
             {
-                CounterManager.Instance?.PlayCounter(ci1521.gameObject, false); // AI 反制 = Host 敌方
+                Coroutine wcnt1521 = CounterManager.Instance?.PlayCounter(ci1521.gameObject, false); // AI 反制 = Host 敌方
                 var ec1521 = CounterManager.Instance?.enemyCounters;
                 var ctr1521 = (ec1521 != null && ec1521.Count > 0) ? ec1521[ec1521.Count - 1] : null;
                 if (ctr1521 != null) ctr1521.noCostOnTrigger = true;
+                // 守望者(01339) 的反制判定要等一帧才弹玩家的选目标：在这里 await 住，
+                // 否则本循环会立刻开始下一张代打，BeginSelection 会把玩家这次选择顶掉
+                if (wcnt1521 != null) yield return wcnt1521;
             }
             else if (td1521.targetType == TargetType.None)
             {

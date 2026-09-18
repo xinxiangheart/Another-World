@@ -24,10 +24,10 @@ public class CounterManager : MonoBehaviour
     }
 
     // ========== 打出一张反制牌 ==========
-   public void PlayCounter(GameObject cardObject, bool isMine)
+   public Coroutine PlayCounter(GameObject cardObject, bool isMine)
 {
     CardInstance inst = cardObject.GetComponent<CardInstance>();
-    if (inst == null) return;
+    if (inst == null) return null;
 
     CardData template = CardDatabase.Instance?.GetTemplate(inst.templateID);
     Debug.Log($"PlayCounter 被调用：inst.templateID={inst.templateID}, template={template?.cardName}");
@@ -38,7 +38,7 @@ public class CounterManager : MonoBehaviour
     if (prefab == null)
     {
         Debug.Log("PlayCounter 失败：prefab 为 null");
-        return;
+        return null;
     }
 
     int count = isMine ? myCounters.Count : enemyCounters.Count;
@@ -119,12 +119,15 @@ public class CounterManager : MonoBehaviour
 
     Debug.Log($"反制牌已生成，己方数量：{myCounters.Count}");
         // 守望者(01339)：对方打出反制牌立即触发 —— isMine=false 表示 Remote/AI 打出 → 守望者在本地(6-11)
+        // 返回这次判定的协程，交给调用方（SimpleAI 反制分支）await：
+        // 反制判定要等一帧才弹玩家的选目标，AI 不等就会抢在玩家点选前出下一张牌 / 结束回合。
         if (!isMine)
         {
+            // 反制牌「打出后就造成伤害」→ 即时触发（不等结算静默）
             HandManager hmWatcher = FindObjectOfType<HandManager>();
-            if (hmWatcher != null)
-                hmWatcher.StartCoroutine(hmWatcher.WatcherDelayedCheckFor(false));
+            if (hmWatcher != null) return hmWatcher.StartCoroutine(hmWatcher.WatcherCounterCheckFor(false));
         }
+        return null;
     }
 
     // ========== 即时触发检测（离线模式，FakeEnemyPlayButton 调用） ==========

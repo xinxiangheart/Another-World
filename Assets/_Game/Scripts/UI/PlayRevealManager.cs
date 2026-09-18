@@ -36,6 +36,11 @@ public class PlayRevealManager : MonoBehaviour
         return h != null && h.isHidden;
     }
 
+    /// <summary>展示卡还在播（含队列里尚未开播的）。打出展示 ≈ growIn+holdShow+fadeOut ≈ 1.4s，
+    /// 比进场/法术结算本身还长；守望者(01339) 的触发判定据此等展示播完再弹选择
+    /// （见 HandManager.WaitBoardSettled），否则观感上是「对方刚打出牌就立刻进选择」。</summary>
+    public static bool IsPlaying => Instance != null && (Instance._playing || Instance._queue.Count > 0);
+
     public static void Show(CardData td, bool back)
     {
         if (td == null) return;

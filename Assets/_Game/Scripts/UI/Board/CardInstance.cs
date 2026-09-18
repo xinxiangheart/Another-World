@@ -94,8 +94,10 @@ public class CardInstance : MonoBehaviour
     public GameObject _conquerorTargetEnemyCard;
     /// <summary>记录此卡被放置到槽位的时间（用于同步保护）。后续由 placementGeneration 替代。</summary>
     [System.NonSerialized] public float _placedAtTime = -999f;
-    /// <summary>卡牌放置的单调递增世代号。用于替代时间窗口去重（如 EnsureCard 2s 保护）。</summary>
     [System.NonSerialized] public int placementGeneration;
+    /// <summary>本实例的「进场完成」事件（GlobalEventManager.TriggerMinionEntered）是否已发过。
+    /// 猩红圣徒 01533「敌进场后受血歌数伤」这类入场光环的触发依据；同一次落位只发一次（幂等）。</summary>
+    [System.NonSerialized] public bool minionEnterNotified;
     /// <summary>此卡是否已被 HandleDeath 处理过。用于替代 lastHandleDeathTime 时间窗口。</summary>
     [System.NonSerialized] public bool isDead;
     /// <summary>退场前最后站位的世界坐标（本体离槽后，粒子/浮字/退场效果据此从原位置出发）。HandleDeath 置位记录。</summary>

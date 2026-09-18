@@ -213,19 +213,21 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
             FakeEnemyPlayButton.OnCardPlayed(template);
         }
 
-        if (isEnemyPlay)
+        // 守望者(01339)：反制牌「打出后就造成伤害」→ 即时触发。紧随其后的反制分支会 return，
+        // 这里就是成交点（其后没有能让本牌回手的校验），所以放在这里不会误触发。
+        bool isCounterCard = template.cardType == CardType.Spell && (template.spellType & SpellType.Counter) != 0;
+        if (isCounterCard && (isEnemyPlay || SimpleAI.IsAIMatch))
         {
-            HandManager hmWatcher = FindObjectOfType<HandManager>();
-            if (hmWatcher != null)
-                hmWatcher.StartCoroutine(hmWatcher.WatcherDelayedCheck());
+            // 离线代打（本端替对手打出）→ 守望者在本端 6-11；离线 AI 对局（本端打出）→ AI 侧守望者 0-5
+            HandManager hmCounterWatcher = FindObjectOfType<HandManager>();
+            if (hmCounterWatcher != null)
+                hmCounterWatcher.StartCoroutine(hmCounterWatcher.WatcherCounterCheckFor(!isEnemyPlay));
         }
-        else if (SimpleAI.IsAIMatch)
-        {
-            // 离线 AI 对局：玩家(6-11)从手牌打出 → 触发 AI 侧守望者(01339)，效果结算后自动打玩家一召唤物
-            HandManager hmWatcher = FindObjectOfType<HandManager>();
-            if (hmWatcher != null)
-                hmWatcher.StartCoroutine(hmWatcher.WatcherDelayedCheckFor(true));
-        }
+
+        // 非反制牌的守望者判定不再在这里触发：此处早于下面的能量 / 法术条件 / 合法目标校验，
+        // 打不出去、回手的牌也会让守望者生效。改为「真正成交时」触发 ——
+        // 联机由 HandManager（落板）/ ResolveSpellEffect（施法）通知对端；离线在这里只登记归属侧，
+        // 成交时由 HandManager.NotifyOpponentCardPlayed 的离线分支按它触发（同次打出的嵌套代打共用）。
 
         if (template.cardType == CardType.Spell && (template.spellType & SpellType.Counter) != 0)
         {
@@ -311,12 +313,18 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
             handManager.RefreshLayout(true);
             return;
         }
+        // 守望者(01339)离线：登记本次打出的归属侧（成交时由 NotifyOpponentCardPlayed 按它触发，
+        // 同一次打出衍生的嵌套代打共用；打出失败由下面两道校验撤销）。
+        // 只登记、不触发 —— 其后还有法术条件 / 合法目标两道校验，失败回手的牌不该让守望者生效。
+        if (!NetworkServer.active && !NetworkClient.isConnected)
+            HandManager.SetOfflinePlaySide(isEnemyPlay);
         if (template.cardType == CardType.Spell)
     {
         if (!CheckSpellCondition(template))
         {
             Debug.Log("不满足法术释放条件！");
             player.AddEnergy(inst.currentCost);
+            HandManager.ClearOfflinePlaySide(); // 本牌打不出去 → 撤销守望者登记
             SetButtonsInteractable(true);
             transform.SetParent(originalParent);
             rectTransform.anchoredPosition = Vector2.zero;
@@ -341,6 +349,7 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
         {
             Debug.Log("没有合法目标，法术无法打出！");
             player.AddEnergy(inst.currentCost);
+            HandManager.ClearOfflinePlaySide(); // 本牌打不出去 → 撤销守望者登记
             SetButtonsInteractable(true);
             transform.SetParent(originalParent);
             rectTransform.anchoredPosition = Vector2.zero;
@@ -488,6 +497,9 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
         if (template != null)
             PlayRevealManager.Show(template, false);
 
+        // 守望者(01339)：本端打出一张法术牌 → 对侧守望者判定（法术一律按「打出」计，含 01521 辉煌法师代打）
+        HandManager.NotifyOpponentCardPlayed(true);
+
         Debug.Log($"ResolveSpellEffect 进入：effect=\"{template.effect}\"");
 
         // 纯客户端：委托服务器权威执行法术效果。
@@ -528,39 +540,50 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
             SetSpellPending(spellCtx.SupervisorCoroutine ?? spellCtx.StartedCoroutine);
 
             // ── 通用法术收尾（仅 Host/离线/客户端 UI 法术）────────────
-            if (template != null && (template.spellType & SpellType.Evil) != 0)
-            {
-                BoardManager bm = FindObjectOfType<BoardManager>();
-                BoardSlot[] slots = bm?.GetAllSlots();
-                if (slots != null)
-                {
-                    foreach (BoardSlot slot in slots)
-                    {
-                        if (slot?.currentCard3D != null)
-                        {
-                            CardInstance cardInst = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                            if (cardInst != null && cardInst.templateID == "03503")
-                            {
-                                NetworkPlayer.Local.TakeDamage(1, cardInst.templateID, cardInst.instanceID); // 智者(03503)惩罚
-                                Debug.Log("智者效果：对方打出邪恶法术，扣1血");
-                            }
-                        }
-                    }
-                }
-            }
+            // 智者惩罚 + 法术进坟场抽到 CardDrag.ApplySagePunishment / RecordSpellToGraveyard：
+            // AI 路径（SimpleAI.PlaySpell）与纯客户端 CmdResolveSpell 也调它们 ——
+            // 原先只有这条路径有这段，那两条路径整段缺失（AI 打邪恶法术时对方的智者不惩罚）。
+            ApplySagePunishment(template, NetworkPlayer.Local);
         }
 
-        CardInstance spellInst2 = GetComponent<CardInstance>();
-        if (spellInst2 != null)
-        {
-            GraveEntry spellData = new GraveEntry();
-            spellData.templateID = spellInst2.templateID;
-            spellData.instanceID = spellInst2.instanceID;
-            GraveyardManager.Instance?.AddToGraveyard(spellData);
-        }
+        RecordSpellToGraveyard(GetComponent<CardInstance>());
 
         // 法术已造成死亡 → 启动嵌套树结算。GameObject 可能已被销毁，挂到 BattleManager
         BattleManager.Instance?.StartCoroutine(WaitForSpellTreeCoroutine());
+    }
+
+    /// <summary>智者(03503)惩罚：场上「对方」的智者在对方打出邪恶法术时扣施法者 1HP。
+    /// 玩家侧 ResolveSpellEffect、纯客户端 CmdResolveSpell、AI SimpleAI.PlaySpell 都要走 ——
+    /// 原先只有 ResolveSpellEffect 有这段，AI / 纯客户端施法整段缺失。
+    /// caster：本次施法者（谁打出这张法术）；缺省回退 NetworkPlayer.Local（RunAsLocal 期间就是施法者）。</summary>
+    public static void ApplySagePunishment(CardData template, NetworkPlayer caster)
+    {
+        if (template == null || (template.spellType & SpellType.Evil) == 0) return;
+        NetworkPlayer punished = caster != null ? caster : NetworkPlayer.Local;
+        if (punished == null) return;
+        BoardManager bm = Object.FindObjectOfType<BoardManager>();
+        BoardSlot[] slots = bm?.GetAllSlots();
+        if (slots == null) return;
+        foreach (BoardSlot slot in slots)
+        {
+            CardInstance cardInst = slot?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (cardInst == null || cardInst.templateID != "03503") continue;
+            // 只算「对方」的智者：自己场上的智者不惩罚自己（旧写法不分归属 → 自己打邪恶法术自己掉血）
+            NetworkPlayer sageOwner = BoardManager.GetOwnerPlayer(slot.slotID);
+            if (sageOwner == punished) continue;
+            punished.TakeDamage(1, cardInst.templateID, cardInst.instanceID); // 智者(03503)惩罚
+            Debug.Log("智者效果：对方打出邪恶法术，扣1血");
+        }
+    }
+
+    /// <summary>法术进坟场（统一入口）：玩家侧 ResolveSpellEffect / AI SimpleAI.PlaySpell 共用。</summary>
+    public static void RecordSpellToGraveyard(CardInstance spellInst)
+    {
+        if (spellInst == null) return;
+        GraveEntry spellData = new GraveEntry();
+        spellData.templateID = spellInst.templateID;
+        spellData.instanceID = spellInst.instanceID;
+        GraveyardManager.Instance?.AddToGraveyard(spellData);
     }
 
     static IEnumerator WaitForSpellTreeCoroutine()

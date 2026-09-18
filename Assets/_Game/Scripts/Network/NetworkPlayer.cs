@@ -686,6 +686,8 @@ public class NetworkPlayer : NetworkBehaviour
                 var spellCtx = EffectContext.ForSpell(template, targetSlot);
                 spellCtx.spellCasterIsHost = casterHostSide;
                 EffectDispatcher.Dispatch(Trigger.Spell, spellCtx);
+                // 法术结算收尾（智者 03503 惩罚）与玩家侧同源：原先纯客户端施法这条路径整段缺失
+                CardDrag.ApplySagePunishment(template, this);
             }
             BoardSlot.CheckAndHandleDeaths();
             BoardSyncManager.MarkDirty();
@@ -832,6 +834,11 @@ public class NetworkPlayer : NetworkBehaviour
                             Card3DHover.SetHidden(model, true, false);
                         // [打出展示] Host 视角看到远程/AI 召唤物落地 → 展示（卡背读模型统一隐藏源）
                         PlayRevealManager.Show(template, PlayRevealManager.IsHiddenBack(model));
+                        // 召唤物「进场完成」通知（猩红圣徒 01533 等「敌进场」类光环）：服务端权威版。
+                        // 真·远程客户端（有连接）的卡不在服务端跑进场效果（客户端本地跑），所以在这里补发；
+                        // AI（离线、无连接）走 SimpleAI 出召唤物分支通知（那边在进场效果之后发，顺序一致）。
+                        if (placedCI != null && connectionToClient != null)
+                            HandManager.NotifyMinionEntered(placedCI);
                     }
                 }
             }
@@ -1710,6 +1717,24 @@ public class NetworkPlayer : NetworkBehaviour
         Debug.Log($"[NetworkPlayer] TargetSpawnCard3D: {templateID} to enemySlot={enemySlot}");
     }
 
+    /// <summary>Server → client：对手(主机)打出了一张牌 → 客户端判定自己的守望者(01339)。
+    /// 客户端自己半场就是 6-11，守望者目标也由客户端自己选（主机不代跑远端守望者）。</summary>
+    [TargetRpc]
+    public void TargetNotifyOpponentCardPlayed(NetworkConnectionToClient _)
+    {
+        HandManager hmWatcher = FindObjectOfType<HandManager>();
+        if (hmWatcher != null) hmWatcher.StartCoroutine(hmWatcher.WatcherDelayedCheckFor(false));
+    }
+
+    /// <summary>Client → server：本客户端打出了一张牌（落板/法术提交后调用）→ 主机侧守望者(01339)判定。
+    /// 反制牌不走这里（CmdPlayCounter → CounterManager 即时触发）。</summary>
+    [Command]
+    public void CmdNotifyOpponentCardPlayed()
+    {
+        HandManager hmWatcher = FindObjectOfType<HandManager>();
+        if (hmWatcher != null) hmWatcher.StartCoroutine(hmWatcher.WatcherDelayedCheckFor(false));
+    }
+
     /// <summary>
     /// Server tells a client to spawn an enemy counter card.
     /// Position is mirrored across the screen center axis automatically by CounterManager.
@@ -1752,6 +1777,10 @@ public class NetworkPlayer : NetworkBehaviour
         else
             counter.decreaseTiming = template.counterTiming;
         cm.enemyCounters.Add(counter);
+
+        // 守望者(01339)：对方(主机)打出反制牌 → 「打出后就造成伤害」= 即时触发（不等结算静默）
+        HandManager hmWatcherCard = FindObjectOfType<HandManager>();
+        if (hmWatcherCard != null) hmWatcherCard.StartCoroutine(hmWatcherCard.WatcherCounterCheckFor(false));
 
         Debug.Log($"[NetworkPlayer] TargetSpawnCounterCard: {templateID} at {pos}");
     }

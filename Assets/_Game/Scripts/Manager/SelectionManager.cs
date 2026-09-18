@@ -165,6 +165,7 @@ public class SelectionManager : MonoBehaviour
 
         if (layerStack.Count == 0)
         {
+            BoardSlot.humanSelectionGuard = false; // 层栈清空 = 玩家点选（守望者 01339）已收尾：兜底放行 AI 自动选择
             BoardSlot.ClearAllHighlights();
             BoardSlot.extraTargetFilter = null;
             BoardSlot.currentTargetType = TargetType.None;
@@ -199,6 +200,7 @@ public class SelectionManager : MonoBehaviour
         // Handle01104Coroutine 卡在 WaitUntil(() => done)，StartOnEnterEffect 永不收尾，
         // _enterEffectRunning 永远为 true → 该卡从此不参与死亡扫描 → 生命值 ≤0 也不退场。
         CancelPendingSelections();
+        BoardSlot.humanSelectionGuard = false; // 强制收尾：放行 AI 自动选择（见 humanSelectionGuard）
         BoardSlot.ClearAllHighlights();
         layerStack.Clear();
         SyncCurrentKind();

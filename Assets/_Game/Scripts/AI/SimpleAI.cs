@@ -26,6 +26,8 @@ public class SimpleAI : MonoBehaviour
     // BoardSlot.AIResolveSelectionCoroutine 消费一次后自动清空。selectExtraFilter 可选额外过滤(如 有主动退场)。
     public static int[] selectCostPref;
     public static System.Func<BoardSlot, bool> selectExtraFilter;
+    /// <summary>selectExtraFilter 只是「优先」而非硬约束：过滤后一个合法目标都不剩时，退回不带过滤再挑一次。</summary>
+    public static bool selectExtraIsPreference;
 
     /// <summary>非 AI 回合也强制走 AI 自动选择（owner 属 AI 但 IsAIEvaluating=false 的"被迫主动退场"等选择）。</summary>
     public static bool forceAutoSelect;
@@ -33,11 +35,15 @@ public class SimpleAI : MonoBehaviour
     /// <summary>槽位是否属于 AI 侧（AI 视角：AI方 = 0-5）。</summary>
     public static bool IsAISide(int slotID) => IsAIMatch && slotID >= 0 && slotID < 6;
 
-    /// <summary>为一次"归属 AI 的选择"设置：费用优先 + 可选过滤 + 强制 AI 自动选。消费后由 AIResolve/ClearAIAutoChoice 清空。</summary>
-    public static void SetAIAutoChoice(int[] costPref, System.Func<BoardSlot, bool> extra = null)
+    /// <summary>为一次"归属 AI 的选择"设置：费用优先 + 可选过滤 + 强制 AI 自动选。消费后由 AIResolve/ClearAIAutoChoice 清空。
+    /// extraIsPreference=true：extra 只是「尽量挑这种」，一个都不满足时退回不带过滤再挑一次 ——
+    /// 否则 AI 会传 null 结束选择，该特性整场不生效（缄默神官 03501 的沉默就是这么丢的）。
+    /// 硬约束（如「排除自身」）不要置 true。</summary>
+    public static void SetAIAutoChoice(int[] costPref, System.Func<BoardSlot, bool> extra = null, bool extraIsPreference = false)
     {
         selectCostPref = costPref;
         selectExtraFilter = extra;
+        selectExtraIsPreference = extraIsPreference && extra != null;
         forceAutoSelect = true;
     }
 
@@ -46,6 +52,7 @@ public class SimpleAI : MonoBehaviour
     {
         selectCostPref = null;
         selectExtraFilter = null;
+        selectExtraIsPreference = false;
         forceAutoSelect = false;
     }
 
@@ -85,6 +92,10 @@ public class SimpleAI : MonoBehaviour
         IsAIEvaluating = true;
         try
         {
+            // 0. 玩家侧的选择可能正挂着 —— 守望者(01339) 这类「由玩家点选」的选择在 AI 回合里也会弹，
+            //    AI 必须先等玩家点完，否则后面的抽牌 / 抛置 / 出牌会把玩家的选择压掉（AI 行动不阻塞）。
+            yield return WaitPlayerSelectionIdle();
+
             // 1. 抽牌（评分制：按能量+手牌+神选者留费决定张数）
             int drawCount = DecideDrawCount();
             for (int i = 0; i < drawCount; i++)
@@ -93,13 +104,16 @@ public class SimpleAI : MonoBehaviour
             }
 
             // 1.5 主动抛置决策：满足 ShouldAIDiscard 的抛置卡抛一次（01136 低血打1；01135 不抛）
+            yield return WaitPlayerSelectionIdle(); // 抛置本身也要走选择，别叠在玩家正在点的选择上
             TryAIDiscard();
 
             // 2. 循环出牌，直到能量不足或无可出的牌
             while (_ai.currentEnergy > 0)
             {
+                yield return WaitPlayerSelectionIdle(); // 上一张牌触发的玩家选择还没点完 → 等
                 yield return TryPlayOneCard();
                 if (!_playedCard) break;
+                yield return WaitPlayerSelectionIdle(); // 本张牌触发的守望者选择点完再继续
                 // AI 思考间隔：两张牌之间停 0.5s，避免连续秒出（模拟人类节奏）
                 yield return new WaitForSeconds(0.5f);
             }
@@ -109,8 +123,28 @@ public class SimpleAI : MonoBehaviour
             IsAIEvaluating = false;
         }
 
-        // 3. 结束回合（走 ServerEndTurn 校验 currentPhase==EnemyTurn && player==Remote）
+        // 3. 结束回合前：同样等玩家点完，否则选择会被相位推进（SafeBattle → ForceEndAll）冲掉。
+        //    先让两帧：反制牌的守望者判定（WatcherCounterCheckFor）是让一帧后才弹玩家选择的，
+        //    不等它出现就结束回合，这次判定会在攻击回合被 ForceEndAll 收掉。
+        yield return null;
+        yield return null;
+        yield return WaitPlayerSelectionIdle();
+
+        // 4. 结束回合（走 ServerEndTurn 校验 currentPhase==EnemyTurn && player==Remote）
         TurnManager.Instance?.ServerEndTurn(_ai);
+    }
+
+    /// <summary>等「需要玩家点选」的选择收尾（守望者 01339 的选目标、反制触发等都会在 AI 回合里挂住）。
+    /// 选择期间 AI 必须停手：出牌 / 抛置 / 结束回合任何一个先走，玩家手里的选择就作废了。
+    /// 60s 兜底只告警，不永久卡死 AI 回合；遗留选择交给 SafeBattle 的 ForceEndAll 收尾。</summary>
+    public IEnumerator WaitPlayerSelectionIdle()
+    {
+        if (SelectionManager.Instance == null) yield break;
+        float deadline = Time.time + 60f;
+        while (SelectionManager.Instance.IsSelecting && Time.time < deadline)
+            yield return null;
+        if (SelectionManager.Instance.IsSelecting)
+            Debug.LogWarning("[SimpleAI] 等待玩家选择收尾超时(60s)，继续 AI 回合");
     }
 
     /// <summary>AI 抽一张牌：能量够才抽，走 server-only 手牌追踪（无 UI prefab）。</summary>
@@ -226,7 +260,7 @@ public class SimpleAI : MonoBehaviour
                     {
                         var c1346 = s?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
                         return c1346 != null && (c1346.currentMaxHealth - c1346.currentHealth) >= 3;
-                    });
+                    }, true); // 「扣血≥3」只是优先：都满血也照治一个，别把这次抛置白扔
                     break;
                 default: // 01136/01343/01344 → 玩家方(6-11) 5/3/1
                     SimpleAI.SetAIAutoChoice(new[] { 5, 3, 1 });
@@ -272,10 +306,13 @@ public class SimpleAI : MonoBehaviour
         if (cntCI != null && cntGO != null)
         {
             // 反制：打出不扣费、触发时才扣费（与人类一致；只有辉煌法师/学徒等明确免费的牌才置 noCostOnTrigger）
-            CounterManager.Instance?.PlayCounter(cntGO, false); // AI 反制 = Host 敌方
+            Coroutine wcnt = CounterManager.Instance?.PlayCounter(cntGO, false); // AI 反制 = Host 敌方
             _ai.handCards.Remove(cntGO);
             if (cntGO != null) Destroy(cntGO);
             _playedCard = true;
+            // 守望者(01339) 的反制判定是「打出后即时」，但要等一帧才弹玩家的选目标：
+            // 这里 await 它，否则 AI 会抢在玩家点选前出下一张牌 / 结束回合。
+            if (wcnt != null) yield return wcnt;
             yield break;
         }
 
@@ -292,7 +329,7 @@ public class SimpleAI : MonoBehaviour
                 _ai.handCards.Remove(ago);
                 if (ago != null) Destroy(ago);
                 _playedCard = true;
-                TriggerOpponentWatcher(); // AI 打出附着卡 → 玩家守望者(01339)
+                yield return TriggerOpponentWatcher(); // AI 打出附着卡 → 玩家守望者(01339)
             }
             else _ai.AddEnergy(acost);
             yield break;
@@ -323,8 +360,28 @@ public class SimpleAI : MonoBehaviour
             CardData td = CardDatabase.Instance?.GetTemplate(ci.templateID);
             BoardSlot slot = FindObjectOfType<BoardManager>()?.GetSlot(serverSlot);
             CardInstance boardInst = slot?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
-            if (td != null && td.hasOnEnter && boardInst != null)
-                yield return slot.StartOnEnterEffect(td, boardInst);
+
+            // 阴/阳(01306/01307)合体：与玩家侧 PlaceCardToSlot 同源（都走 HandManager.TryMergeYinYang）。
+            // 旧代码没有这一段 → AI 打出的阴 / 阳各自落位、永远不合体。合体后不再走阴 / 阳自己的进场 / 落位处理。
+            HandManager hmMerge = FindObjectOfType<HandManager>();
+            bool yinYangMerged = hmMerge != null && slot != null && hmMerge.TryMergeYinYang(slot, ci);
+            if (!yinYangMerged)
+            {
+                if (td != null && td.hasOnEnter && boardInst != null)
+                    yield return slot.StartOnEnterEffect(td, boardInst);
+
+                // 召唤物「进场完成」通知（猩红圣徒 01533「敌进场后受血歌数伤」这类敌进场光环）：
+                // 有进场效果的卡已由 StartOnEnterEffect 的 finally 发过（NotifyMinionEntered 幂等，不会重复）；
+                // 没有进场效果的卡只在这里发 —— 原先 AI 侧整条路径都不发，这类光环对 AI 召唤物整类不生效。
+                if (boardInst != null) HandManager.NotifyMinionEntered(boardInst);
+
+                // 落位光环结算（与玩家侧 PlaceCardToSlot / PlaceIndependentCard 的 ProcessAuras 同源）：
+                // 智者(03503) +2/+2/+1、缄默神官(03501) 己方英雄阶位+1、皇帝(01501) 渊前缀+1+1、中枢/无赖……
+                // 旧代码只在玩家侧落位路径里调用它 → AI 放下的光环牌整类不生效。
+                HandManager hmAuras = FindObjectOfType<HandManager>();
+                if (hmAuras != null && slot != null && boardInst != null)
+                    hmAuras.ProcessAuras(slot, boardInst);
+            }
 
             // 中枢(03027)在 AI 自己半场时：新进场的 AI 召唤物补灵能前缀（只作用于 AI 自己，不碰玩家）
             HandManager.ApplyCorePsiAura(_ai);
@@ -332,7 +389,7 @@ public class SimpleAI : MonoBehaviour
             _ai.handCards.Remove(go);
             if (go != null) Destroy(go);
             _playedCard = true;
-            TriggerOpponentWatcher(); // AI 打出召唤物 → 玩家守望者(01339)
+            yield return TriggerOpponentWatcher(); // AI 打出召唤物 → 玩家守望者(01339)
             yield break;
         }
 
@@ -348,15 +405,17 @@ public class SimpleAI : MonoBehaviour
             _ai.handCards.Remove(sgo);
             if (sgo != null) Destroy(sgo);
             _playedCard = true;
-            TriggerOpponentWatcher(); // AI 打出法术 → 玩家守望者(01339)
+            yield return TriggerOpponentWatcher(); // AI 打出法术 → 玩家守望者(01339)
         }
     }
 
-    /// <summary>AI 打出牌（召唤/法术/附着）后触发玩家侧守望者(01339)：效果结算后由玩家（或自动）对 AI 召唤物造成1伤。</summary>
-    void TriggerOpponentWatcher()
+    /// <summary>AI 打出牌（召唤/法术/附着）后触发玩家侧守望者(01339)：效果结算后由玩家（或自动）对 AI 召唤物造成1伤。
+    /// 这里 await 它的完整判定（含玩家要点选的守望者选择被创建出来）—— 不等的话 AI 会立刻打出下一张牌，
+    /// 玩家还没点，这次判定就废了。</summary>
+    IEnumerator TriggerOpponentWatcher()
     {
         HandManager hm = FindObjectOfType<HandManager>();
-        if (hm != null) hm.StartCoroutine(hm.WatcherDelayedCheckFor(false));
+        if (hm != null) yield return hm.StartCoroutine(hm.WatcherDelayedCheckFor(false));
     }
 
     /// <summary>找一张可打的附着卡 + AI 侧(0-5)宿主槽。
@@ -623,9 +682,14 @@ public class SimpleAI : MonoBehaviour
         bool casterHostSide = _ai == NetworkPlayer.Local;
         _ai.RunAsLocal(() =>
         {
+            // [打出展示] AI 法术：与人类 ResolveSpellEffect 同款正面展示（原先只走效果、不展示 → 法术不闪烁）
+            PlayRevealManager.Show(td, false);
             var ctx = EffectContext.ForSpell(td, capturedTarget);
             ctx.spellCasterIsHost = casterHostSide;
             EffectDispatcher.Dispatch(Trigger.Spell, ctx);
+            // 法术结算收尾（与人类路径同源）：智者(03503)惩罚 + 法术进坟场 —— AI 路径原先整段缺失
+            CardDrag.ApplySagePunishment(td, _ai);
+            CardDrag.RecordSpellToGraveyard(sci);
             BoardSlot.CheckAndHandleDeaths();
             BoardSyncManager.MarkDirty();
         });

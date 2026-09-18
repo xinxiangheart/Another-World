@@ -119,7 +119,7 @@ public static class DiscardHandlers
                 {
                     var c1346h = s?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
                     return c1346h != null && (c1346h.currentMaxHealth - c1346h.currentHealth) >= 3;
-                });
+                }, true); // 只是"优先"：都满血也照治一个，别把这次抛置白扔
             BoardSlot.StartDiscardSelection(TargetType.SingleAlly, discardSlotID, (target) =>
             {
                 if (target?.currentCard3D != null)
