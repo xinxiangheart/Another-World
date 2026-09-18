@@ -410,7 +410,7 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
                     BoardSlot.extraTargetFilter = null;
                     SetButtonsInteractable(true);
                     if (hm != null) { hm.SetHandAreaRaycast(true); hm.ShowAllCards(); }
-                });
+                }, SelectionKindRules.Classify(template));
                 handManager.HideAllCards();
                 handManager.SetHandAreaRaycast(false);
                 SetButtonsInteractable(false);

@@ -676,7 +676,7 @@ public class BattleManager : MonoBehaviour
                         }
                     }
                     poisonDone = true;
-                });
+                }, SelectionKind.Debuff); // 03502 毒巫：中毒 + 无法获得护盾 —— 减益紫
                 while (!poisonDone) yield return null;
             }
         // 万象镜面：单次伤害最高为1
@@ -732,7 +732,7 @@ public class BattleManager : MonoBehaviour
                         }
                     }
                     done = true;
-                });
+                }, SelectionKind.Debuff); // 01318 弱化棱晶：攻击力临时变为1 —— 减益紫
                 yield return new WaitUntil(() => done);
             }
             // 万人迷：对手+1能量
@@ -1513,7 +1513,7 @@ public class BattleManager : MonoBehaviour
                         targetSlot.SyncVisual();
                     }
                     onDone();
-                });
+                }, SelectionKind.Debuff); // 选定格子：临时+0-1 且每阶段扣1生命 —— 减益紫
                 BoardSlot.isStrengtheningSlot = true;
             }));
             if (Mirror.NetworkServer.active) BoardSyncManager.MarkDirty();
@@ -1609,7 +1609,7 @@ public class BattleManager : MonoBehaviour
                                     if (ts != null && !ts.isBlocked)
                                     { ApplyDeepSeaDebuff(ts, deadInstanceID); ts.deepSeaMarked = true; ts.SyncVisual(); }
                                     onDone();
-                                });
+                                }, SelectionKind.Debuff); // 选定格子：临时+0-1 且每阶段扣1生命 —— 减益紫
                                 BoardSlot.isStrengtheningSlot = true;
                             }));
                         }
@@ -2039,7 +2039,7 @@ public class BattleManager : MonoBehaviour
                 }
             }
             done = true;
-        });
+        }, SelectionKind.Debuff); // 01308 麻烦制造者：给对方塞「扣己方玩家1生命值」的先手 —— 减益紫
 
         yield return new WaitUntil(() => done);
     }
@@ -2261,7 +2261,7 @@ public class BattleManager : MonoBehaviour
                     targetCI = targetSlot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
                 }
                 done = true;
-            });
+            }, SelectionKind.Damage); // 01535 执行之剑：消耗法术费用对对方召唤物造成伤害 —— 伤害红
 
             yield return new WaitUntil(() => done);
 

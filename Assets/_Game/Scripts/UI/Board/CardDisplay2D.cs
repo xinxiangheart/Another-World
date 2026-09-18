@@ -97,4 +97,21 @@ public class CardDisplay2D : MonoBehaviour
             if (img != null) img.sprite = backSprite;
         }
     }
+
+    /// <summary>卡背图铺满整张卡面。预制体里 CardBackImage 的 RectTransform 原本是 20×20 的居中占位，
+    /// 于是所有「展示卡背」的场合（反制牌揭示 / 隐藏卡 / 面板卡背）都只显示一小块方图。
+    /// 这里统一把卡背改成铺满父级（BackFace 本身已铺满整卡）；幂等——已是铺满状态直接返回。
+    /// 卡背贴图 Back.png 为 768×1344，与卡面 83.33×146.33 的比例几乎一致，拉伸不失真。</summary>
+    public static void StretchBackToCard(UnityEngine.UI.Image backImage)
+    {
+        if (backImage == null) return;
+        RectTransform rt = backImage.rectTransform;
+        if (rt == null) return;
+        if (rt.anchorMin == Vector2.zero && rt.anchorMax == Vector2.one
+            && rt.offsetMin == Vector2.zero && rt.offsetMax == Vector2.zero) return;
+        rt.anchorMin = Vector2.zero;
+        rt.anchorMax = Vector2.one;
+        rt.offsetMin = Vector2.zero;
+        rt.offsetMax = Vector2.zero;
+    }
 }

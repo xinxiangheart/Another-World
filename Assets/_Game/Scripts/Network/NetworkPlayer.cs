@@ -3997,7 +3997,8 @@ public class NetworkPlayer : NetworkBehaviour
     [TargetRpc]
     public void TargetShowEffectText(NetworkConnectionToClient target, string templateID, string cardName, string traitCN)
     {
-        EffectDispatcher.ShowDebugText(cardName, traitCN);
+        // 带上模板ID：客户端本地选择指示器据此判定选择类型（伤害/治愈/减益）并着色
+        EffectDispatcher.ShowDebugText(templateID, cardName, traitCN);
     }
 
     [TargetRpc]

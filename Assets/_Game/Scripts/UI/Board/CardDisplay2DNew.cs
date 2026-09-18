@@ -344,6 +344,7 @@ public class CardDisplay2DNew : MonoBehaviour
         if (backFace != null) backFace.SetActive(true);
         if (cardBackImage != null)
         {
+            CardDisplay2D.StretchBackToCard(cardBackImage);   // 卡背铺满卡面（预制体旧值 20×20 只显示一小块）
             cardBackImage.sprite = PickSprite(cardBackSprite, cardBackPath);
             cardBackImage.enabled = true;
         }

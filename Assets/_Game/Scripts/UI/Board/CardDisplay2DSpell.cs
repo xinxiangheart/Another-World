@@ -118,6 +118,7 @@ public class CardDisplay2DSpell : CardDisplay2D
         if (cardBackImage != null)
         {
             Sprite back = cardBackSprite != null ? cardBackSprite : LoadSprite(cardBackPath);
+            CardDisplay2D.StretchBackToCard(cardBackImage);   // 卡背铺满卡面（预制体旧值 20×20 只显示一小块）
             cardBackImage.sprite = back;
             cardBackImage.enabled = true;
         }

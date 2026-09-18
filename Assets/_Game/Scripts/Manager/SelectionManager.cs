@@ -8,7 +8,12 @@ public class SelectionManager : MonoBehaviour
     public static SelectionManager Instance { get; private set; }
 
     private Stack<string> layerStack = new Stack<string>();
+    private readonly Stack<SelectionKind> kindStack = new Stack<SelectionKind>();
     private int idCounter;
+
+    /// <summary>当前选择层的语义类型（伤害/治愈/减益/中性）。槽位选择指示器据此决定颜色；
+    /// 不在选择状态时一律为 Neutral。层栈清空时复位。</summary>
+    public static SelectionKind CurrentKind { get; private set; } = SelectionKind.Neutral;
 
     /// <summary>待裁决选择的"取消钩子"：layerId → 把 null 结果喂给等待者（幂等，只触发一次）。
     /// 供 ForceEndAll / 清栈等强制收尾路径使用，保证不会有协程永远等一个再也不会到来的选择。</summary>
@@ -55,6 +60,37 @@ public class SelectionManager : MonoBehaviour
         Instance = this;
     }
 
+    /// <summary>入栈一个选择层并刷新 <see cref="CurrentKind"/>。
+    /// kind = Auto 时按「当前正在执行的特性是哪张卡」自动判定（见 SelectionKindRules），判不出即中性。</summary>
+    void PushKind(SelectionKind kind)
+    {
+        SelectionKind resolved = kind != SelectionKind.Auto ? kind : ResolveAutoKind();
+        kindStack.Push(resolved);
+        CurrentKind = resolved;
+    }
+
+    /// <summary>Auto 判定：抛置语境（抛置特性触发的选择）一律绿色；否则按「当前正在执行的特性是哪张卡」判种类。</summary>
+    static SelectionKind ResolveAutoKind()
+    {
+        if (EffectDispatcher.HasCurrentEffect && EffectDispatcher.CurrentEffectTrigger == Trigger.Discard)
+            return SelectionKind.Discard;
+        return SelectionKindRules.Classify(EffectDispatcher.CurrentEffectTemplateID);
+    }
+
+    /// <summary>层栈收尾后把 kindStack 对齐到 layerStack，空栈时复位为中性。</summary>
+    void SyncCurrentKind()
+    {
+        while (kindStack.Count > layerStack.Count) kindStack.Pop();
+        CurrentKind = kindStack.Count > 0 ? kindStack.Peek() : SelectionKind.Neutral;
+    }
+
+    void Update()
+    {
+        // 选择期压暗：不允许选择的格子（含其 2D 格子底与 3D 卡牌）与不可选的手牌压暗，合法目标保持原色。
+        // 非选择期只需在退出时复原一次，Tick 内部自行短路。
+        SelectionDim.Tick(IsSelecting);
+    }
+
     // 目标选择模式不再在这里做 3D 射线穿透检测格子。
     // 新行为：悬停卡牌 → 高亮对应格子、点击卡牌 → 选中，全部由卡牌模型的鼠标事件驱动
     // （Card3DHover.OnMouseEnter/OnMouseOver/OnMouseUp，卡牌命中 → 映射所在槽位 → HighlightRow）。
@@ -63,7 +99,8 @@ public class SelectionManager : MonoBehaviour
     /// <summary>
     /// 强制退出所有选择
     /// </summary>
-    public string BeginSelection(TargetType targetType, Action<BoardSlot> onSelected)
+    public string BeginSelection(TargetType targetType, Action<BoardSlot> onSelected,
+        SelectionKind kind = SelectionKind.Auto)
     {
         Debug.Log($"BeginSelection 被调用: targetType={targetType}\n{UnityEngine.StackTraceUtility.ExtractStackTrace()}");
         BoardSlot.isPlacingCard = false;
@@ -71,6 +108,7 @@ public class SelectionManager : MonoBehaviour
         BoardSlot.isReplaceMode = false;
         string id = "sel_" + (++idCounter);
         layerStack.Push(id);
+        PushKind(kind);
 
         BoardSlot.currentTargetType = targetType;
         RegisterSelectionCallback(id, onSelected);
@@ -90,7 +128,8 @@ public class SelectionManager : MonoBehaviour
     /// <summary>
     /// 强制退出所有选择
     /// </summary>
-    public string BeginOpenSelection(TargetType targetType, Action<BoardSlot> onSelected)
+    public string BeginOpenSelection(TargetType targetType, Action<BoardSlot> onSelected,
+        SelectionKind kind = SelectionKind.Auto)
     {
         Debug.Log($"BeginOpenSelection 被调用: targetType={targetType}");
         BoardSlot.isPlacingCard = false;
@@ -98,6 +137,7 @@ public class SelectionManager : MonoBehaviour
         BoardSlot.isReplaceMode = false;
         string id = "open_" + (++idCounter);
         layerStack.Push(id);
+        PushKind(kind);
 
         BoardSlot.currentTargetType = targetType;
         RegisterSelectionCallback(id, onSelected);
@@ -121,6 +161,7 @@ public class SelectionManager : MonoBehaviour
             CancelPendingSelections();
         }
         else layerStack.Pop();
+        SyncCurrentKind();
 
         if (layerStack.Count == 0)
         {
@@ -160,6 +201,7 @@ public class SelectionManager : MonoBehaviour
         CancelPendingSelections();
         BoardSlot.ClearAllHighlights();
         layerStack.Clear();
+        SyncCurrentKind();
         BoardSlot.currentTargetType = TargetType.None;
         BoardSlot.isStrengtheningSlot = false;
         BoardSlot.isPlacingCard = false;

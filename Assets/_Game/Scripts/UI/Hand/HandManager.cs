@@ -800,15 +800,48 @@ public class HandManager : MonoBehaviour
     EndTurnButton _endBtnCache;
     DrawCardUI _drawUiCache;
 
+    /// <summary>选择模式（SelectionManager 层栈非空）期间，抽牌 / 结束回合按钮强制隐藏——
+    /// 不跟随"显示/隐藏"按钮，只有退出选择模式才恢复。</summary>
+    public static bool SelectionForcesTurnButtonsHidden =>
+        SelectionManager.Instance != null && SelectionManager.Instance.IsSelecting;
+
+    /// <summary>选择模式下"强制隐藏"是否正在生效（用于识别退出选择的下降沿，把按钮交还给显示/隐藏逻辑）。</summary>
+    bool _selectionForceHidden;
+
+    /// <summary>选择模式期间把抽牌 / 结束回合按钮固定按死为隐藏：每帧跑（任何路径重新打开都立刻收回），
+    /// 只在退出选择的那一帧按"手牌是否处于隐藏态"交还给原有显隐规则。</summary>
+    void SyncSelectionTurnButtonsHidden()
+    {
+        bool force = SelectionForcesTurnButtonsHidden;
+        if (force != _selectionForceHidden)
+        {
+            _selectionForceHidden = force;
+            if (!force)
+            {
+                // 退出选择：交还显隐规则——选择期间手牌若被"显示/隐藏"藏了，按钮仍应保持隐藏
+                SetTurnButtonsVisible(!_handCardsHidden);
+                return;
+            }
+        }
+        if (!force) return;
+
+        if (_endBtnCache == null) _endBtnCache = FindObjectOfType<EndTurnButton>(true);
+        if (_drawUiCache == null) _drawUiCache = FindObjectOfType<DrawCardUI>(true);
+        if (_endBtnCache != null && _endBtnCache.gameObject.activeSelf) _endBtnCache.gameObject.SetActive(false);
+        if (_drawUiCache != null && _drawUiCache.gameObject.activeSelf) _drawUiCache.gameObject.SetActive(false);
+    }
+
     /// <summary>抽牌与结束回合按钮显隐（手牌隐藏期间防误触）。只切 activeSelf；各自 interactable/回合门逻辑不受影响。
     /// 必须缓存引用：FindObjectOfType 不命中已隐藏(inactive)的对象——首次调用(隐藏)时对象仍激活即可缓存，此后直接 SetActive 恢复。</summary>
     void SetTurnButtonsVisible(bool visible)
     {
         if (_endBtnCache == null) _endBtnCache = FindObjectOfType<EndTurnButton>(true);
         if (_drawUiCache == null) _drawUiCache = FindObjectOfType<DrawCardUI>(true);
-        if (_endBtnCache != null) _endBtnCache.gameObject.SetActive(visible);
-        if (_drawUiCache != null) _drawUiCache.gameObject.SetActive(visible);
-        if (visible) TurnButtonGate.Refresh(); // 重新显示后立刻按当前状态刷一次，避免残留隐藏前的禁用态
+        // 选择模式优先：无论调用方要显示还是隐藏，选择期间一律隐藏
+        bool effective = visible && !SelectionForcesTurnButtonsHidden;
+        if (_endBtnCache != null) _endBtnCache.gameObject.SetActive(effective);
+        if (_drawUiCache != null) _drawUiCache.gameObject.SetActive(effective);
+        if (effective) TurnButtonGate.Refresh(); // 重新显示后立刻按当前状态刷一次，避免残留隐藏前的禁用态
     }
 
     /// <summary>
@@ -920,6 +953,7 @@ public class HandManager : MonoBehaviour
         ReconcileHandDimState(); // 回合/选择状态变化 → 整手压暗或还原（边缘检测）
         TurnButtonGate.Tick();   // 结束回合/抽牌：按"阶段权威 + UI 交互锁"每帧派生（修掉偶发锁死）
         ReconcileTurnButtonsVisible(); // 手牌已恢复显示但隐藏标志未清 → 补回被一起隐藏的两个按钮
+        SyncSelectionTurnButtonsHidden(); // 选择模式：抽牌/结束回合按钮固定隐藏（不受显示/隐藏按钮影响，退出选择才恢复）
         if (handCards == null || handCards.Count == 0) return;
         bool hasNull = false;
         for (int i = 0; i < handCards.Count; i++)
@@ -3604,7 +3638,7 @@ public class HandManager : MonoBehaviour
                     }
                 }
                 BoardSlot.CheckAndHandleDeaths();
-            });
+            }, SelectionKind.Damage); // 01339 守望者：对对方一召唤物造成1伤害 —— 伤害红
         }
         finally
         {

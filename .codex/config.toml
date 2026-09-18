@@ -1,0 +1,5 @@
+# Another-World 项目级配置（Codex 桌面端读作 "project" 层，仅对本项目生效）。
+# 目的：本项目内给完全权限、且不再弹审批询问。
+# 撤销：删掉本文件，或在 桌面端 设置 → 配置 里选中本项目改回默认。
+approval_policy = "never"
+sandbox_mode = "danger-full-access"

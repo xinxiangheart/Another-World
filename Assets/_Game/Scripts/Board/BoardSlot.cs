@@ -106,6 +106,15 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
     private Vector3 originalScale;
     public Image slotImage;
+    /// <summary>选择指示（四角括号 + 脉动）：只在"允许被选择 且 鼠标正悬停"的槽位上出现，运行时生成；
+    /// 颜色随选择类型变（伤害红 / 治愈绿 / 减益紫 / 中性金 / 抛置绿，见 SelectionKindRules）。</summary>
+    SlotSelectionIndicator _selectionIndicator;
+    /// <summary>选择期压暗黑幕（覆盖格子底 + 格上 3D 卡牌）；只在「不被允许选择」时启用。</summary>
+    Image _dimOverlay;
+    /// <summary>是否有鼠标 / 拖拽停留在本格上（选择期「框选」只在悬停时出现，见 IsSelectionHovered）。</summary>
+    bool _pointerHovered;
+    /// <summary>整排 / 整片悬停（HighlightRow 设置）：鼠标停在其中一个格或格上卡牌时，同组其它格一起算悬停。</summary>
+    bool _groupHovered;
     Color _origCardColor = Color.white;  // 高亮时卡牌材质原色（恢复用）
     bool _cardColorStored;
     public Color normalColor;
@@ -623,6 +632,23 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         slotImage = GetComponent<Image>();
         originalScale = transform.localScale;
         normalColor = slotImage.color;
+
+        // 选择指示：四角直角括号 + 呼吸式脉动，挂在槽位自身之下（随槽位移动 / 缩放）。
+        // 尺寸取槽位矩形（BoardManager.CreateSlot 已设好 sizeDelta），保证括号贴着格子四角外侧。
+        RectTransform slotRt = transform as RectTransform;
+        Vector2 slotSize = new Vector2(1.25f, 2.22f); // 兜底：与 BoardManager.CreateSlot 的尺寸一致
+        if (slotRt != null)
+        {
+            Vector2 rectSize = slotRt.rect.size;
+            if (rectSize.x > 0.0001f && rectSize.y > 0.0001f) slotSize = rectSize;
+            else if (slotRt.sizeDelta.x > 0.0001f && slotRt.sizeDelta.y > 0.0001f) slotSize = slotRt.sizeDelta;
+        }
+        _selectionIndicator = SlotSelectionIndicator.AttachTo(this, slotSize);
+
+        // 选择期压暗黑幕：覆盖槽位底色 + 格上的 3D 卡牌（卡牌在槽位更靠前，所以黑幕要压得更前）。
+        // 只做视觉遮蔽，不改格子底色的优先级链（封锁 / 囚牢 / 瘟疫 / 渊印记照旧），退出选择即整块撤掉。
+        _dimOverlay = SelectionDim.CreateSlotOverlay(transform, slotSize, -0.25f);
+        _dimOverlay.gameObject.SetActive(false);
     }
     // 从CardInstance提取数据包
     public class DeathEffectData
@@ -760,6 +786,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     }
     public void OnPointerEnter(PointerEventData eventData)
     {
+        _pointerHovered = true;
         if (isBlocked) return;
 
         if (prisonBlocked)
@@ -818,8 +845,6 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             if (currentTargetType == TargetType.SingleAlly || currentTargetType == TargetType.SingleEnemy || currentTargetType == TargetType.AllMinions || currentTargetType == TargetType.SingleAny)
             {
                 transform.localScale = originalScale * 1.15f;
-                slotImage.color = highlightColor;
-                SetCardHighlight(true);
             }
             else
             {
@@ -829,6 +854,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     }
     public void OnPointerExit(PointerEventData eventData)
     {
+        _pointerHovered = false;
         if (isBlocked)
         {
             slotImage.color = Color.black;
@@ -925,6 +951,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             }
             ignoreNextClickSlot = -1;
 
+            SelectionDim.NotifyPlacementResolved();  // 已落子 → 收起召唤放置期的压暗
+
             string playTemplateID = "";
             CardInstance ciPre = cardToPlace?.GetComponent<CardInstance>();
             if (ciPre != null) playTemplateID = ciPre.templateID;
@@ -1007,6 +1035,47 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
     }
 
+    /// <summary>
+    /// 本槽位此刻是否「允许被选择」——选择指示（四角括号）与选择期压暗（SelectionDim）共用的唯一判据，
+    /// 与格上是空格还是有卡牌无关。框选只在「允许选择 且 悬停」时出现；「能不能选」由压暗表达。
+    /// 判定口径与 OnPointerClick 的落点条件一致：目标选择走 IsValidTarget；拖拽放置走「范围 + 空格/替换 + 未封锁」；
+    /// 附着选择照 isAttachSelectMode。这里只回答「能不能选」，不改动任何点击 / 高亮行为。
+    /// </summary>
+    public bool CanBeSelected()
+    {
+        // ⓪ 抛置悬停提示中的格子：本次抛置的合法落点（框选走绿色，见 SlotSelectionIndicator）
+        if (_discardHighlighted) return true;
+
+        // ① 选择模式（法术开选、进场效果选目标、强化放置选格、附着选宿主）——一律以 IsValidTarget 为准
+        if (isTargetingMode && currentTargetType != TargetType.None)
+            return IsValidTarget(currentTargetType);
+
+        // ② 拖拽出牌放置：允许落子范围 且 按「是否替换」决定要空格还是要卡格，且未被封锁
+        if (isPlacingCard)
+        {
+            FakeEnemyPlayButton.GetSlotRange(out int minSlot, out int maxSlot);
+            if (slotID < minSlot || slotID > maxSlot) return false;
+            if (isReplaceMode) return hasCard;
+            if (hasCard || isBlocked || permaBlocked) return false;
+            if (prisonBlocked) return slotID >= 6 && prisonAllowYuan && IsPlacingYuanCard();
+            return true;
+        }
+
+        // ③ 附着选择（兜底：正常流程已由 ① 的 IsValidTarget 覆盖）
+        if (isAttachSelectMode)
+            return slotID >= 6 && slotID <= 11 && (hasCard || attachCanBeIndependent);
+
+        return false;
+    }
+
+    /// <summary>当前待放置的卡是不是「渊」前缀（囚牢格放渊的特殊许可用）。</summary>
+    bool IsPlacingYuanCard()
+    {
+        if (cardToPlace == null) return false;
+        CardInstance ci = cardToPlace.GetComponent<CardInstance>();
+        return ci != null && !string.IsNullOrEmpty(ci.prefixes) && ci.prefixes.Contains("渊");
+    }
+
     public bool IsValidTarget(TargetType type)
     {
         if (isAttachSelectMode)
@@ -1081,28 +1150,54 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         return new int[0];
     }
 
+    /// <summary>
+    /// 悬停命中「本次点击会影响的一组格子」：单选类型 = 本格；整排 / 全体类型 = 对应那几格。
+    /// 只做两件事：① 打悬停标记（选择期四角框选据此显示，取代旧的整体黄框高亮）；② 轻微放大提示。
+    /// 不再改格子底色与卡牌材质 ——「哪些格能选」改由 SelectionDim 的压暗表达（合法目标保持原色）。
+    /// 封锁 / 囚牢 / 瘟疫 / 渊印记等持续高亮不经过本方法，保持原样。
+    /// </summary>
     public void HighlightRow(bool highlight)
     {
         if (currentTargetType == TargetType.SingleAlly || currentTargetType == TargetType.SingleEnemy || currentTargetType == TargetType.SingleAny)
         {
-            transform.localScale = highlight ? originalScale * 1.15f : originalScale;
-            slotImage.color = highlight ? highlightColor : normalColor;
-            // 3D 卡牌在槽位上方（z=-5.7 vs 槽位 -5.9）——同步高亮卡牌材质，否则被卡牌遮挡不可见
-            SetCardHighlight(highlight);
+            SetHoverHighlight(highlight);
             return;
         }
         int[] rowSlots = GetRowSlots(currentTargetType);
         if (rowSlots == null) return;
+        BoardManager bm = FindObjectOfType<BoardManager>();
         foreach (int id in rowSlots)
-        {
-            BoardSlot slot = FindObjectOfType<BoardManager>()?.GetSlot(id);
-            if (slot != null)
-            {
-                slot.transform.localScale = highlight ? originalScale * 1.15f : originalScale;
-                slot.slotImage.color = highlight ? highlightColor : normalColor;
-                slot.SetCardHighlight(highlight);
-            }
-        }
+            bm?.GetSlot(id)?.SetHoverHighlight(highlight);
+    }
+
+    /// <summary>悬停标记 + 放大：框选（SlotSelectionIndicator）显示依据之一。</summary>
+    void SetHoverHighlight(bool hover)
+    {
+        _groupHovered = hover;
+        transform.localScale = hover ? originalScale * 1.15f : originalScale;
+    }
+
+    /// <summary>清掉悬停标记并还原缩放（选择结束 / 强制收尾用）。</summary>
+    public void ClearHoverState()
+    {
+        _groupHovered = false;
+        _pointerHovered = false;
+        transform.localScale = originalScale;
+    }
+
+    /// <summary>选择期「框选」是否显示在本格：允许被选择 且 鼠标（或拖拽）正停在上面 / 属于被悬停的那一组。
+    /// 抛置悬停（_discardHighlighted）本身就是一次悬停提示，一并算悬停（框选走绿色）。</summary>
+    public bool IsSelectionHovered => _pointerHovered || _groupHovered || _discardHighlighted;
+
+    /// <summary>本格此刻是否处于抛置悬停提示（框选绿色）。</summary>
+    public bool IsDiscardHinted => _discardHighlighted;
+
+    /// <summary>选择期压暗：把本格（格子底 + 格上 3D 卡牌）整块压暗或复原。
+    /// 用独立黑幕实现，绝不改格子底色的状态链与卡牌材质，退出选择即复原。</summary>
+    public void SetSelectionDim(bool dim)
+    {
+        if (_dimOverlay != null && _dimOverlay.gameObject.activeSelf != dim)
+            _dimOverlay.gameObject.SetActive(dim);
     }
 
     /// <summary>高亮槽上 3D 卡牌模型材质（卡牌在格子上方，仅变 slotImage 被卡牌遮挡）。恢复原色。
@@ -1823,7 +1918,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             BoardSlot slot = bm.GetSlot(i);
             if (slot != null)
             {
-                slot.transform.localScale = slot.originalScale;
+                // 悬停标记与缩放先清掉（框选只在悬停时出现），再走状态色优先级链复原
+                slot.ClearHoverState();
                 // 使用 SyncVisual 的优先级链复原颜色，而非粗暴写死 normalColor——
                 // 否则 deepSeaMarked/prisonBlocked/hasPlague 的视觉状态被 EndSelection 抹除
                 slot.SyncVisual();
@@ -2008,6 +2104,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
     private void ExecuteReplace(BoardSlot targetSlot)
     {
+        SelectionDim.NotifyPlacementResolved();  // 已落子（顶替完成）→ 收起召唤放置期的压暗
         GameObject oldCard = targetSlot.currentCard3D;
         HandManager hm = FindObjectOfType<HandManager>();
         hm.PlaceCardToSlot(targetSlot, cardToPlace);
@@ -3685,7 +3782,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     {
                         SpellEffectExecutor.Execute(spellTemplate, slot);
                         targetSelected = true;
-                    });
+                    }, SelectionKindRules.Classify(spellTemplate));
                     float tgtDeadline = Time.time + 30f;
                     while (!targetSelected && Time.time < tgtDeadline)
                         yield return null;
@@ -5193,7 +5290,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 {
                     CardDrag.ExecuteSpellEffect(td, slot);
                     targetDone = true;
-                });
+                }, SelectionKindRules.Classify(td));
                 // AI 放辉煌法师 → 自动完成选目标；非 AI 30s 超时
                 if (isAI) targetDone = true;
                 float mageTgtDeadline = Time.time + 30f;
