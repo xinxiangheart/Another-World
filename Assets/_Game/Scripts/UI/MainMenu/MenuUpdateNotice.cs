@@ -51,6 +51,12 @@ public class MenuUpdateNotice : MonoBehaviour, IPointerClickHandler, IPointerEnt
     [Header("链接")]
     public string url = "https://github.com/xinxiangheart/Another-World/releases";
 
+    [Header("音效")]
+    [Tooltip("鼠标移上来一响（和菜单项同一个音）")]
+    public float hoverVolume = 0.45f;
+    [Tooltip("点击音量")]
+    public float clickVolume = 0.8f;
+
     enum State { Hidden, Sliding, Holding, Fading }
 
     static MenuUpdateNotice _instance;
@@ -225,11 +231,16 @@ public class MenuUpdateNotice : MonoBehaviour, IPointerClickHandler, IPointerEnt
     public void OnPointerClick(PointerEventData eventData)
     {
         if (string.IsNullOrEmpty(url)) return;
+        AudioManager.Instance?.Play(SoundEffectType.ButtonClick, clickVolume, Random.Range(0.97f, 1.03f));
         Application.OpenURL(url);
         Debug.Log($"[MenuUpdateNotice] 打开下载页: {url}");
     }
 
-    public void OnPointerEnter(PointerEventData eventData) { _hover = true; }
+    public void OnPointerEnter(PointerEventData eventData)
+    {
+        if (!_hover) AudioManager.Instance?.Play(SoundEffectType.ButtonHover, hoverVolume, Random.Range(0.97f, 1.03f));
+        _hover = true;
+    }
     public void OnPointerExit(PointerEventData eventData) { _hover = false; }
 
     // ── 圆角贴图（运行时生成，九宫格）───────────────────────────────

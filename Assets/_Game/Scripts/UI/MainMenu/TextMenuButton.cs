@@ -52,8 +52,19 @@ public class TextMenuButton : MonoBehaviour,
     [Tooltip("变色 / 缩放速度，越大越快")]
     public float colorSpeed = 16f;
 
+    [Header("音效")]
+    [Tooltip("鼠标移上来 / 手柄选中时播一响（清脆的短音）")]
+    public bool hoverSfx = true;
+    [Tooltip("点击时播一响")]
+    public bool clickSfx = true;
+    [Tooltip("悬停音量——比点击轻，鼠标一路划过去才不吵")]
+    public float hoverVolume = 0.45f;
+    public float clickVolume = 0.8f;
+
     Button _button;
     bool _highlighted;
+    bool _wasOn;                    // 上一帧是不是亮着的：只在「暗→亮」那一刻出音
+
     float _p;                       // 0 = 隐藏在生成位置, 1 = 已贴回落点
     float _hintWidth = 56f;
 
@@ -131,7 +142,14 @@ public class TextMenuButton : MonoBehaviour,
     /// </summary>
     public void OnPointerClick(PointerEventData eventData)
     {
-        if (!Interactable) MenuUpdateNotice.FlashIfOutdated();
+        if (!Interactable) { MenuUpdateNotice.FlashIfOutdated(); return; }
+        if (clickSfx) PlaySfx(SoundEffectType.ButtonClick, clickVolume);
+    }
+
+    /// <summary>音调抖一点点，连点 / 连着划过去不会听着像复读机。</summary>
+    static void PlaySfx(SoundEffectType type, float volume)
+    {
+        AudioManager.Instance?.Play(type, volume, Random.Range(0.97f, 1.03f));
     }
 
     void Update()
@@ -140,6 +158,8 @@ public class TextMenuButton : MonoBehaviour,
         float tc = 1f - Mathf.Exp(-colorSpeed * dt);
 
         bool on = _highlighted && Interactable;
+        if (on && !_wasOn && hoverSfx) PlaySfx(SoundEffectType.ButtonHover, hoverVolume);
+        _wasOn = on;
         if (!Interactable) _highlighted = false;    // 变成不可点击后不会再收到 Exit，自己清掉
 
         if (label != null)

@@ -11,6 +11,7 @@ public enum SoundEffectType
     Death,             // 死亡
     TurnStart,         // 回合开始
     TurnEnd,           // 回合结束
+    ButtonHover,       // UI 悬停（清脆的一响）
     ButtonClick,       // UI按钮
     Victory,           // 胜利
     Defeat,            // 失败

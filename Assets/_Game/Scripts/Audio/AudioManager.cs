@@ -37,6 +37,8 @@ public class AudioManager : MonoBehaviour
         (SoundEffectType.DrawCard, "Audio/SFX/DrawCard"),
         (SoundEffectType.Attack,   "Audio/SFX/Attack"),
         (SoundEffectType.AttackHero, "Audio/SFX/Attack"),   // 打英雄复用攻击音效
+        (SoundEffectType.ButtonHover, "Audio/SFX/ButtonHover"),
+        (SoundEffectType.ButtonClick, "Audio/SFX/ButtonClick"),
     };
 
     /// <summary>场景未挂载时自动创建单例（游戏启动即生效，无需手动拖场景）。</summary>
