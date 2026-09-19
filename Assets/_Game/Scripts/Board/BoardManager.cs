@@ -71,6 +71,7 @@ public class BoardManager : MonoBehaviour
     }
 
     readonly SlotRevealState[] _revealStates = new SlotRevealState[12];
+    bool _revealStarted;
 
     /// <summary>浮现出场顺序（由下往上）：己方后排 → 己方前排 → 敌方前排 → 敌方后排。</summary>
     static readonly int[] RevealOrder = { 9, 10, 11, 6, 7, 8, 0, 1, 2, 3, 4, 5 };
@@ -115,7 +116,9 @@ public class BoardManager : MonoBehaviour
         slotCanvasTransform = slotCanvasObj.transform;
         GenerateSlots();
 
-        if (playRevealOnStart) StartCoroutine(RevealSlotsRoutine());
+        // 入场浮现：有入场镜头（GameIntroCamera）时由它在「快到位」那一刻喊 PlaySlotReveal，
+        // 否则相机会在槽位已经浮出来之后才飞到位，两段动画打架。
+        if (playRevealOnStart && !GameIntroCamera.Playing) PlaySlotReveal();
     }
 
 
@@ -177,6 +180,14 @@ public class BoardManager : MonoBehaviour
                 endLocalPos = rt.localPosition,
                 endScale = rt.localScale,
             };
+    }
+
+    /// <summary>开始槽位入场浮现（幂等）。入场镜头到位前会调它；场景里没有入场镜头时就自己开始。</summary>
+    public void PlaySlotReveal()
+    {
+        if (_revealStarted || !playRevealOnStart) return;
+        _revealStarted = true;
+        StartCoroutine(RevealSlotsRoutine());
     }
 
     /// <summary>进入 Game 场景时槽位预制体依次浮现：整格淡入 + 轻微放大 + 从下方浮起。

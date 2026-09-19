@@ -1573,6 +1573,14 @@ public class NetworkPlayer : NetworkBehaviour
     public void TargetReceiveInitialCards(NetworkConnectionToClient target, string[] templateIDs, string[] instanceIDs)
     {
         if (templateIDs == null || templateIDs.Length == 0) return;
+        StartCoroutine(ReceiveInitialCardsRoutine(templateIDs, instanceIDs));
+    }
+
+    /// <summary>发初始手牌（客户端）。先等战斗场景入场镜头把 2D 界面浮出来 ——
+    /// 否则牌会在还全透明的手牌区里就位，入场结束后只剩一次没头没尾的重新布局。</summary>
+    IEnumerator ReceiveInitialCardsRoutine(string[] templateIDs, string[] instanceIDs)
+    {
+        yield return GameIntroCamera.WaitRevealed();
 
         var newCards = new List<CardView>();
         for (int i = 0; i < templateIDs.Length; i++)

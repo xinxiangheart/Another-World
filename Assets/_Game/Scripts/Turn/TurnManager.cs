@@ -47,6 +47,9 @@ public partial class TurnManager : MonoBehaviour
     {
         yield return null;
 
+        // 战斗场景入场镜头没走完先不抽牌：那会儿 2D 界面还是全透明的，飞牌动画没人看得见
+        yield return GameIntroCamera.WaitRevealed();
+
         if (NetworkServer.active)
         {
             // 等 Local + Remote 都就绪：在线等真实对手连接，离线等 OfflineAIHost 创建 AI。
