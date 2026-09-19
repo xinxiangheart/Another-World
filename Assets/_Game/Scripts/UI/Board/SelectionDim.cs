@@ -4,20 +4,30 @@ using UnityEngine.UI;
 
 /// <summary>
 /// 选择期「压暗」：进入选择阶段（<see cref="SelectionManager.IsSelecting"/>）或召唤放置窗口（<see cref="IsPlacementChoosing"/>）后，
-/// 不被允许选择的槽位（格子底 + 格上 3D 卡牌）与不可点的手牌压成暗色，合法目标保持原色。
+/// 不被允许选择的槽位（格子底 + 格上 3D 卡牌 + 挂在该格上的附着物）与不可点的手牌压成暗色，合法目标保持原色。
 /// 它取代了旧的「合法目标全部黄框高亮」这一表达方式（旧的槽位高亮逐步退场，见 BoardSlot.HighlightRow）。
 ///
-/// 实现是覆盖式黑幕：槽位黑幕挂在槽位之下、压在卡牌更靠前的位置，因此一格黑幕同时压暗
-/// 「2D 格子底」与「3D 卡牌模型」，两者压暗程度天然一致；手牌则各铺一层黑幕 Image。
-/// 黑幕只做遮蔽，不改任何既有状态色（封锁 / 囚牢 / 瘟疫 / 渊印记）与卡牌材质，退出选择即整体撤掉。
+/// 实现是「本体压暗」：槽位把**格子底色（线层由 SlotEdgeOverlay 镜像，跟着走）**乘一个系数，
+/// 格上的 3D 卡牌与**挂在该格上的附着物**把**卡面本体**各图形（卡面三层 / 角标 / 三排图标 = SpriteRenderer，攻防文字 = TMP）
+/// 各乘同一个系数；2D 手牌仍是铺一层黑幕 Image（卡面是 UGUI，改色会与悬停 / 图标的 tint 打架）。
+/// 三处共用同一个系数 <see cref="DimMul"/>，压暗程度天然一致。
+/// 压暗只乘 RGB、不动 alpha：封锁 / 囚牢 / 瘟疫 / 渊印记这些状态色照旧参与（黑仍黑、紫仍紫，只是更暗），
+/// 退出选择即整体还原。
 /// </summary>
 public static class SelectionDim
 {
-    /// <summary>压暗程度：黑幕不透明度（0 = 不压暗，1 = 全黑）。手牌与场上用同一档。</summary>
+    /// <summary>手牌黑幕的不透明度（0 = 不压暗，1 = 全黑）。</summary>
     public const float Alpha = 0.55f;
 
-    /// <summary>黑幕比槽位矩形略大，保证把格上卡牌（≈1.26×2.24，略大于槽位 1.25×2.22）整块盖住。</summary>
-    const float OverlayScale = 1.12f;
+    /// <summary>
+    /// 本体压暗的亮度系数：各图形自己的 RGB 乘它，alpha 不动。
+    /// 0.45 = 旧黑幕（0.55 不透明度叠黑）的等效乘数（lerp(c, 黑, 0.55) = c × 0.45），
+    /// 所以换成「本体压暗」后整体明暗与改前一致，只是形状 / 描边不再被黑框吃掉。三处共用这一条。
+    /// </summary>
+    public const float DimMul = 0.45f;
+
+    /// <summary>把一个颜色压暗（RGB × DimMul，alpha 原样）。</summary>
+    public static Color Dim(Color c) => new Color(c.r * DimMul, c.g * DimMul, c.b * DimMul, c.a);
 
     static bool _applied;      // 上一帧是否处于压暗状态（退出时还要再跑一遍复原）
     static BoardManager _bm;   // 缓存棋盘（选择期每帧要用，退出时用来复原）
@@ -81,29 +91,6 @@ public static class SelectionDim
         if (card == null) return false;
         CardClickHandler handler = card.GetComponent<CardClickHandler>();
         return handler != null && handler.onClick != null;
-    }
-
-    /// <summary>给槽位造一块黑幕（子物体，比槽位略大、比卡牌更靠前），由 BoardSlot 在 Start 里挂好。</summary>
-    public static Image CreateSlotOverlay(Transform parent, Vector2 slotSize, float zOffset)
-    {
-        GameObject go = new GameObject(OverlayName, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
-        RectTransform rt = go.GetComponent<RectTransform>();
-        rt.SetParent(parent, false);
-        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
-        rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.anchoredPosition = Vector2.zero;
-        rt.sizeDelta = slotSize * OverlayScale;
-        rt.localPosition = new Vector3(0f, 0f, zOffset);
-        rt.localRotation = Quaternion.identity;
-        rt.localScale = Vector3.one;
-
-        Image img = go.GetComponent<Image>();
-        img.sprite = null;                 // 无 sprite → 纯色硬边矩形（与槽位高亮同一套平涂语言）
-        img.color = DimColor;
-        img.raycastTarget = false;         // 绝不抢槽位 / 卡牌的悬停与点击
-        img.maskable = false;
-        img.useSpriteMesh = false;
-        return img;
     }
 
     // ── 2D 卡（手牌）：在卡面上铺一层黑幕，不碰卡本身的任何颜色与透明度 ──

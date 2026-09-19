@@ -4,7 +4,7 @@ using UnityEngine.UI;
 /// <summary>
 /// 卡槽线层：底板（Slot_0 根节点的 Image）只负责"淡底"，本组件把线层颜色镜像成底板颜色，
 /// 于是线随状态同色；底板处于常态淡底（alpha 很低）时线不显示。
-/// 底板颜色由 BoardSlot 各处直接写 slotImage.color，所以每帧镜像一次即可覆盖全部状态。
+/// 底板颜色一律经 BoardSlot.SetSlotColor 写（含选择期压暗），所以每帧镜像一次即可覆盖全部状态。
 /// </summary>
 [RequireComponent(typeof(Image))]
 public class SlotEdgeOverlay : MonoBehaviour

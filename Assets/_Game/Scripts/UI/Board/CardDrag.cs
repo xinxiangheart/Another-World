@@ -363,17 +363,21 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
                 BoardSlot.extraTargetFilter = null;
                 if (template.effect.Contains("生命值>=4"))
                 {
-                    BoardSlot.extraTargetFilter = (slot) =>
+                    // 血拼 02110：只能选己方生命值>=4的召唤物。预检必须带上这条过滤，
+                    // 否则"己方有召唤物但都<4血"时会通过预检 → 空放（能量已花、牌已消耗）。
+                    System.Func<BoardSlot, bool> bloodbathFilter = (slot) =>
                     {
                         if (slot?.currentCard3D == null) return false;
                         CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
                         return ci != null && ci.currentHealth >= 4;
                     };
+                    BoardSlot.extraTargetFilter = bloodbathFilter;
 
-                    if (!HasValidTarget((TargetType)template.targetType))
+                    if (!HasValidTarget((TargetType)template.targetType, bloodbathFilter))
                     {
-                        Debug.Log("没有合法目标，无法打出");
+                        Debug.Log("没有合法目标（己方无生命值>=4的召唤物），血拼无法打出");
                         player.AddEnergy(inst.currentCost);
+                        HandManager.ClearOfflinePlaySide(); // 本牌打不出去 → 撤销守望者登记
                         SetButtonsInteractable(true);
                         transform.SetParent(originalParent);
                         rectTransform.anchoredPosition = Vector2.zero;
@@ -409,6 +413,22 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
                     if (cc != null && cc.ImmuneToEnemySpells && slot.slotID < 6) return false;
                     return true;
                 };
+                // 通用兜底预检：本次法术的全部过滤（含上面叠加的免疫过滤）都要参与，
+                // 过滤后无合法目标 → 退费回手，避免"能打出却无处可选"的空放 / 选择卡死。
+                if (!HasValidTarget((TargetType)template.targetType, BoardSlot.extraTargetFilter))
+                {
+                    Debug.Log("没有合法目标（过滤后），法术无法打出");
+                    player.AddEnergy(inst.currentCost);
+                    HandManager.ClearOfflinePlaySide(); // 本牌打不出去 → 撤销守望者登记
+                    BoardSlot.extraTargetFilter = null;
+                    SetButtonsInteractable(true);
+                    transform.SetParent(originalParent);
+                    rectTransform.anchoredPosition = Vector2.zero;
+                    transform.localScale = originalScale;
+                    handManager.SetHandAreaRaycast(true);
+                    handManager.RefreshLayout(true);
+                    return;
+                }
                 SelectionManager.Instance.BeginOpenSelection((TargetType)template.targetType, (slot) =>
                 {
                     CardView cv = GetComponent<CardView>();
@@ -615,10 +635,14 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
     }
 
     /// <summary>预检：槽位能否作为"法术目标"。己方(6-11)放行；敌方(0-5)的免疫卡(征服者01508)不可选——
-    /// 排除后仍无目标 → HasValidTarget 返 false → 空发退费（征服者免疫残余UX修复）。</summary>
-    bool HasValidSpellTarget(BoardSlot slot)
+    /// 排除后仍无目标 → HasValidTarget 返 false → 空发退费（征服者免疫残余UX修复）。
+    /// extra：本次法术自带的额外过滤（如血拼 02110 的"己方生命值>=4"）。预检必须与选择期
+    /// （BoardSlot.CanBeSelected 走 extraTargetFilter）同口径，否则会出现"过滤后无合法目标却
+    /// 仍允许打出"——02110 空放，02206/02207 全场只剩附着物时无处可选。</summary>
+    bool HasValidSpellTarget(BoardSlot slot, System.Func<BoardSlot, bool> extra = null)
     {
         if (slot == null || slot.isBlocked || !slot.hasCard) return false;
+        if (extra != null && !extra(slot)) return false;
         if (slot.slotID < 6)
         {
             CardInstance ci = slot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
@@ -627,7 +651,7 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
         return true;
     }
 
-    bool HasValidTarget(TargetType type)
+    bool HasValidTarget(TargetType type, System.Func<BoardSlot, bool> extra = null)
     {
         Debug.Log($"HasValidTarget 被调用：type={type}");
         BoardManager bm = FindObjectOfType<BoardManager>();
@@ -638,7 +662,7 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
             case TargetType.SingleEnemy:
                 for (int id = 0; id <= 5; id++)
                 {
-                    if (HasValidSpellTarget(bm.GetSlot(id)))
+                    if (HasValidSpellTarget(bm.GetSlot(id), extra))
                         return true;
                 }
                 return false;
@@ -648,26 +672,26 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
                 {
                     BoardSlot slot = bm.GetSlot(id);
                     Debug.Log($"检查槽位{id}：slot={slot != null}, hasCard={slot?.hasCard}, isBlocked={slot?.isBlocked}");
-                    if (HasValidSpellTarget(slot))
+                    if (HasValidSpellTarget(slot, extra))
                         return true;
                 }
                 return false;
             case TargetType.EnemyAnyRow:
                 for (int id = 0; id <= 5; id++)
                 {
-                    if (HasValidSpellTarget(bm.GetSlot(id))) return true;
+                    if (HasValidSpellTarget(bm.GetSlot(id), extra)) return true;
                 }
                 return false;
             case TargetType.AllyAnyRow:
                 for (int id = 6; id <= 11; id++)
                 {
-                    if (HasValidSpellTarget(bm.GetSlot(id))) return true;
+                    if (HasValidSpellTarget(bm.GetSlot(id), extra)) return true;
                 }
                 return false;
             case TargetType.AllMinions:
                 for (int id = 0; id <= 11; id++)
                 {
-                    if (HasValidSpellTarget(bm.GetSlot(id)))
+                    if (HasValidSpellTarget(bm.GetSlot(id), extra))
                         return true;
                 }
                 return false;
@@ -675,7 +699,7 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
                 // 任意目标：敌方(0-5)或己方(6-11)任一召唤物可施放（敌方免疫卡排除）
                 for (int id = 0; id <= 11; id++)
                 {
-                    if (HasValidSpellTarget(bm.GetSlot(id)))
+                    if (HasValidSpellTarget(bm.GetSlot(id), extra))
                         return true;
                 }
                 return false;
@@ -684,7 +708,7 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
                 int[] ids = GetTargetSlots(type, -1);
                 foreach (int id in ids)
                 {
-                    if (HasValidSpellTarget(bm.GetSlot(id)))
+                    if (HasValidSpellTarget(bm.GetSlot(id), extra))
                         return true;
                 }
                 return false;

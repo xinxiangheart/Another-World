@@ -397,7 +397,7 @@ public static class DeathHandlers
             {
                 s.prisonBlocked = false;
                 s.prisonAllowYuan = false;
-                s.slotImage.color = s.isBlocked ? Color.gray : s.normalColor;
+                s.SetSlotColor(s.isBlocked ? Color.black : s.normalColor);
             }
         }
         if (ctx.source.prisonEnemySlot >= 0)
@@ -407,7 +407,7 @@ public static class DeathHandlers
             {
                 s.prisonBlocked = false;
                 s.prisonAllowYuan = false;
-                s.slotImage.color = s.isBlocked ? Color.gray : s.normalColor;
+                s.SetSlotColor(s.isBlocked ? Color.black : s.normalColor);
             }
         }
     }

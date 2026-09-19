@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Mirror;
+using TMPro;
 using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -117,8 +118,20 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     /// <summary>选择指示（四角括号 + 脉动）：只在"允许被选择 且 鼠标正悬停"的槽位上出现，运行时生成；
     /// 颜色随选择类型变（伤害红 / 治愈绿 / 减益紫 / 中性金 / 抛置绿，见 SelectionKindRules）。</summary>
     SlotSelectionIndicator _selectionIndicator;
-    /// <summary>选择期压暗黑幕（覆盖格子底 + 格上 3D 卡牌）；只在「不被允许选择」时启用。</summary>
-    Image _dimOverlay;
+    /// <summary>格子底色的"未压暗"值：状态链每次写色都经 SetSlotColor 刷新它，压暗 / 复原都以它为准。</summary>
+    Color _slotColorBase = Color.white;
+    /// <summary>本格是否处于选择期压暗（压暗直接作用在格子底 / 线层 / 格上卡牌的自身颜色上）。</summary>
+    bool _selectionDim;
+    /// <summary>本格的压暗目标：格上的 3D 卡牌 + 挂在本格上的附着物
+    /// （附着物是独立 GameObject，贴在宿主旁边而不在宿主层级下，必须按 hostSlotID 单独收进来）。</summary>
+    readonly List<GameObject> _dimTargets = new List<GameObject>();
+    /// <summary>抓原色时目标集的指纹：目标换人（卡死亡换新卡 / 附着物增减）时重抓。</summary>
+    int _dimSig;
+    /// <summary>压暗目标的原色缓存（进入压暗时抓一次，退出 / 换人时还原）。</summary>
+    SpriteRenderer[] _cardDimSprites;
+    Color[] _cardDimSpriteColors;
+    TMP_Text[] _cardDimTexts;
+    Color[] _cardDimTextColors;
     /// <summary>是否有鼠标 / 拖拽停留在本格上（选择期「框选」只在悬停时出现，见 IsSelectionHovered）。</summary>
     bool _pointerHovered;
     /// <summary>整排 / 整片悬停（HighlightRow 设置）：鼠标停在其中一个格或格上卡牌时，同组其它格一起算悬停。</summary>
@@ -667,6 +680,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         slotImage = GetComponent<Image>();
         originalScale = transform.localScale;
         normalColor = slotImage.color;
+        _slotColorBase = normalColor;
 
         // 选择指示：四角直角括号 + 呼吸式脉动，挂在槽位自身之下（随槽位移动 / 缩放）。
         // 尺寸取槽位矩形（BoardManager.CreateSlot 已设好 sizeDelta），保证括号贴着格子四角外侧。
@@ -679,11 +693,6 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             else if (slotRt.sizeDelta.x > 0.0001f && slotRt.sizeDelta.y > 0.0001f) slotSize = slotRt.sizeDelta;
         }
         _selectionIndicator = SlotSelectionIndicator.AttachTo(this, slotSize);
-
-        // 选择期压暗黑幕：覆盖槽位底色 + 格上的 3D 卡牌（卡牌在槽位更靠前，所以黑幕要压得更前）。
-        // 只做视觉遮蔽，不改格子底色的优先级链（封锁 / 囚牢 / 瘟疫 / 渊印记照旧），退出选择即整块撤掉。
-        _dimOverlay = SelectionDim.CreateSlotOverlay(transform, slotSize, -0.25f);
-        _dimOverlay.gameObject.SetActive(false);
     }
     // 从CardInstance提取数据包
     public class DeathEffectData
@@ -832,18 +841,18 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 if (ci != null && ci.prefixes.Contains("渊"))
                 {
                     transform.localScale = originalScale * 1.15f;
-                    slotImage.color = highlightColor;
+                    SetSlotColor(highlightColor);
                     return;
                 }
             }
             transform.localScale = originalScale;
-            slotImage.color = new Color(0.6f, 0.2f, 0.8f);
+            SetSlotColor(new Color(0.6f, 0.2f, 0.8f));
             return;
         }
 
         if (hasPlague)
         {
-            slotImage.color = Color.green;
+            SetSlotColor(Color.green);
             return;
         }
 
@@ -853,7 +862,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             if (slotID >= minSlot && slotID <= maxSlot && !hasCard)
             {
                 transform.localScale = originalScale * 1.15f;
-                slotImage.color = highlightColor;
+                SetSlotColor(highlightColor);
             }
         }
         if (isPlacingCard && isReplaceMode)
@@ -862,7 +871,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             if (slotID >= minSlot && slotID <= maxSlot && hasCard)
             {
                 transform.localScale = originalScale * 1.15f;
-                slotImage.color = highlightColor;
+                SetSlotColor(highlightColor);
                 SetCardHighlight(true); // 替换模式选有卡格子 → 卡牌在格子上方，同步高亮
             }
         }
@@ -871,7 +880,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             if (hasCard || (attachCanBeIndependent && !hasCard))
             {
                 transform.localScale = originalScale * 1.15f;
-                slotImage.color = highlightColor;
+                SetSlotColor(highlightColor);
                 if (hasCard) SetCardHighlight(true); // 附着选宿主（有卡）
             }
         }
@@ -892,25 +901,25 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         _pointerHovered = false;
         if (isBlocked)
         {
-            slotImage.color = Color.black;
+            SetSlotColor(Color.black);
             return;
         }
 
         if (prisonBlocked)
         {
-            slotImage.color = new Color(0.6f, 0.2f, 0.8f);
+            SetSlotColor(new Color(0.6f, 0.2f, 0.8f));
             return;
         }
 
         if (hasPlague)
         {
-            slotImage.color = Color.green;
+            SetSlotColor(Color.green);
             return;
         }
 
         if (deepSeaMarked)
         {
-            slotImage.color = Color.blue;
+            SetSlotColor(Color.blue);
             return;
         }
 
@@ -924,13 +933,13 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         {
             // 抛置悬停绿优先——鼠标在卡牌碰撞体内跨出格子矩形时，格子 OnPointerExit 不清除高亮（含 1.15x 缩放）
             transform.localScale = originalScale * 1.15f;
-            slotImage.color = discardHighlightColor;
+            SetSlotColor(discardHighlightColor);
         }
-        else if (isBlocked) slotImage.color = Color.black;   // 封锁者/封锁 = 纯黑（与永封同色）
-        else if (prisonBlocked) slotImage.color = new Color(0.6f, 0.2f, 0.8f);
-        else if (hasPlague) slotImage.color = Color.green;
-        else if (deepSeaMarked) slotImage.color = Color.blue;
-        else slotImage.color = normalColor;
+        else if (isBlocked) SetSlotColor(Color.black);   // 封锁者/封锁 = 纯黑（与永封同色）
+        else if (prisonBlocked) SetSlotColor(new Color(0.6f, 0.2f, 0.8f));
+        else if (hasPlague) SetSlotColor(Color.green);
+        else if (deepSeaMarked) SetSlotColor(Color.blue);
+        else SetSlotColor(normalColor);
     }
     public void OnPointerClick(PointerEventData eventData)
     {
@@ -1227,12 +1236,126 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     /// <summary>本格此刻是否处于抛置悬停提示（框选绿色）。</summary>
     public bool IsDiscardHinted => _discardHighlighted;
 
-    /// <summary>选择期压暗：把本格（格子底 + 格上 3D 卡牌）整块压暗或复原。
-    /// 用独立黑幕实现，绝不改格子底色的状态链与卡牌材质，退出选择即复原。</summary>
+    /// <summary>选择期压暗：把本格（格子底 + 线层 + 格上 3D 卡牌 + 挂在本格的附着物）按**自身颜色**压暗或复原。
+    /// 不再盖黑幕：圆形徽记 / 纹路 / 卡牌剪影都完整保留，只是整体暗一档；退出选择即还原。
+    /// 格子底色一律走 <see cref="SetSlotColor"/> 写 —— 绕过它直接写 slotImage.color 会让压暗淡掉。</summary>
     public void SetSelectionDim(bool dim)
     {
-        if (_dimOverlay != null && _dimOverlay.gameObject.activeSelf != dim)
-            _dimOverlay.gameObject.SetActive(dim);
+        if (_selectionDim != dim)
+        {
+            _selectionDim = dim;
+            SetSlotColor(_slotColorBase);   // 用未压暗色重落一次（格子底 + 线层）
+        }
+        // 卡牌压暗每帧重申：选择期间格上的卡可能被换掉（死亡 → 新召唤），换了就重抓原色
+        SetCard3DDim(dim);
+    }
+
+    /// <summary>格子底色（slotImage.color）的唯一写入口：先记下未压暗色，再按当前压暗状态落到 slotImage。
+    /// 线层与它同色（SlotEdgeOverlay 每帧镜像底板），所以只写这一个地方就够。</summary>
+    public void SetSlotColor(Color c)
+    {
+        _slotColorBase = c;
+        slotImage.color = _selectionDim ? SelectionDim.Dim(c) : c;
+    }
+
+    /// <summary>格上 3D 卡牌压暗：卡面三层 / 角标 / 三排图标（SpriteRenderer）与攻防文字（TMP）各乘同一系数。
+    /// 目标不止宿主卡 —— **挂在本格的附着物一并压暗**（附着物是独立 GameObject，贴着宿主摆位，不在宿主层级下）。
+    /// 只碰这些"卡面本体"，不动模型网格材质 —— 模型网格的 _Color 被 Card3DHover 的抛置黄占着，动它会打架。</summary>
+    void SetCard3DDim(bool dim)
+    {
+        if (!dim)
+        {
+            RestoreDimColors();
+            ClearCardDimCache();
+            return;
+        }
+
+        CollectDimTargets();
+        if (_dimTargets.Count == 0) { ClearCardDimCache(); return; }
+
+        if (_cardDimSprites == null || _dimSig != DimTargetsSignature())
+        {
+            // 目标集换人（卡死亡换新卡 / 附着物增减）→ 旧目标先还原，免得旧卡停在压暗色上
+            RestoreDimColors();
+            CaptureDimColors();
+        }
+        if (_cardDimSprites == null) return;
+
+        for (int i = 0; i < _cardDimSprites.Length; i++)
+            if (_cardDimSprites[i] != null) _cardDimSprites[i].color = SelectionDim.Dim(_cardDimSpriteColors[i]);
+        for (int i = 0; i < _cardDimTexts.Length; i++)
+            if (_cardDimTexts[i] != null) _cardDimTexts[i].color = SelectionDim.Dim(_cardDimTextColors[i]);
+    }
+
+    /// <summary>收齐本格的压暗目标：格上的卡 + 挂在本格上的附着物（附着物贴着宿主摆位，不在宿主层级下）。</summary>
+    void CollectDimTargets()
+    {
+        _dimTargets.Clear();
+        if (currentCard3D != null) _dimTargets.Add(currentCard3D);
+
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null || bm.attachedModels == null) return;
+        for (int i = 0; i < bm.attachedModels.Count; i++)
+        {
+            GameObject obj = bm.attachedModels[i];
+            if (obj == null) continue;
+            CardInstance ci = obj.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci != null && ci.isAttached && ci.hostSlotID == slotID) _dimTargets.Add(obj);
+        }
+    }
+
+    /// <summary>_dimTargets 的指纹：换人时触发重抓原色（目标个数 + 各目标实例 ID）。</summary>
+    int DimTargetsSignature()
+    {
+        int sig = 17 + _dimTargets.Count;
+        for (int i = 0; i < _dimTargets.Count; i++)
+            sig = sig * 31 + (_dimTargets[i] != null ? _dimTargets[i].GetInstanceID() : 0);
+        return sig;
+    }
+
+    /// <summary>抓压暗目标各图形的原色（进压暗时抓一次）。含 inactive：卡面被雾隐翻到背面时同样要还原。</summary>
+    void CaptureDimColors()
+    {
+        List<SpriteRenderer> sprites = new List<SpriteRenderer>();
+        List<TMP_Text> texts = new List<TMP_Text>();
+        for (int i = 0; i < _dimTargets.Count; i++)
+        {
+            GameObject go = _dimTargets[i];
+            if (go == null) continue;
+            sprites.AddRange(go.GetComponentsInChildren<SpriteRenderer>(true));
+            texts.AddRange(go.GetComponentsInChildren<TMP_Text>(true));
+        }
+
+        _cardDimSprites = sprites.ToArray();
+        _cardDimSpriteColors = new Color[_cardDimSprites.Length];
+        for (int i = 0; i < _cardDimSprites.Length; i++) _cardDimSpriteColors[i] = _cardDimSprites[i].color;
+
+        _cardDimTexts = texts.ToArray();
+        _cardDimTextColors = new Color[_cardDimTexts.Length];
+        for (int i = 0; i < _cardDimTexts.Length; i++) _cardDimTextColors[i] = _cardDimTexts[i].color;
+
+        _dimSig = DimTargetsSignature();
+    }
+
+    /// <summary>把缓存的原色写回各目标（退出压暗 / 目标集换人时调用）。</summary>
+    void RestoreDimColors()
+    {
+        if (_cardDimSprites != null)
+            for (int i = 0; i < _cardDimSprites.Length; i++)
+                if (_cardDimSprites[i] != null) _cardDimSprites[i].color = _cardDimSpriteColors[i];
+        if (_cardDimTexts != null)
+            for (int i = 0; i < _cardDimTexts.Length; i++)
+                if (_cardDimTexts[i] != null) _cardDimTexts[i].color = _cardDimTextColors[i];
+    }
+
+    void ClearCardDimCache()
+    {
+        _dimSig = 0;
+        _dimTargets.Clear();
+        _cardDimSprites = null;
+        _cardDimSpriteColors = null;
+        _cardDimTexts = null;
+        _cardDimTextColors = null;
     }
 
     /// <summary>高亮槽上 3D 卡牌模型材质（卡牌在格子上方，仅变 slotImage 被卡牌遮挡）。恢复原色。
@@ -1453,7 +1576,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public void SetBlocked(bool blocked)
     {
         isBlocked = blocked;
-        slotImage.color = blocked ? Color.black : normalColor;   // 封锁 = 纯黑
+        SetSlotColor(blocked ? Color.black : normalColor);   // 封锁 = 纯黑
     }
 
     public void SetCard(GameObject card3D)
@@ -1487,7 +1610,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             // 与黄色选择高亮同尺寸：1.15x 放大。卡牌在格子上方（z=-5.7 vs -5.9）且不是格子子物体，
             // 不缩放卡牌，放大后的格子环形绿色边缘能越过卡牌四周露出来（不放大则被卡牌完全挡住）。
             transform.localScale = originalScale * 1.15f;
-            slotImage.color = discardHighlightColor;
+            SetSlotColor(discardHighlightColor);
         }
         else
         {
@@ -1500,13 +1623,13 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public void SyncVisual()
     {
         // 抛置悬停激活中 → 保持绿色。同步/EndSelection 触发的 SyncVisual 不能把悬停高亮清掉。
-        if (_discardHighlighted) { slotImage.color = discardHighlightColor; return; }
-        if (permaBlocked) slotImage.color = Color.black;
-        else if (isBlocked) slotImage.color = Color.black;   // 封锁者/封锁 = 纯黑（与永封同色）
-        else if (prisonBlocked) slotImage.color = new Color(0.6f, 0.2f, 0.8f);
-        else if (hasPlague) slotImage.color = Color.green;
-        else if (deepSeaMarked) slotImage.color = Color.blue;
-        else slotImage.color = normalColor;
+        if (_discardHighlighted) { SetSlotColor(discardHighlightColor); return; }
+        if (permaBlocked) SetSlotColor(Color.black);
+        else if (isBlocked) SetSlotColor(Color.black);   // 封锁者/封锁 = 纯黑（与永封同色）
+        else if (prisonBlocked) SetSlotColor(new Color(0.6f, 0.2f, 0.8f));
+        else if (hasPlague) SetSlotColor(Color.green);
+        else if (deepSeaMarked) SetSlotColor(Color.blue);
+        else SetSlotColor(normalColor);
     }
 
     /// <summary>敌方半场是否有可指定目标。按本槽所属半场判侧别（本槽 6-11 → 敌 0-5；本槽 0-5 → 敌 6-11）。
@@ -3138,12 +3261,12 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         myPrison.prisonBlocked = true;
         myPrison.prisonAllowYuan = true;
-        myPrison.slotImage.color = new Color(0.6f, 0.2f, 0.8f);
+        myPrison.SetSlotColor(new Color(0.6f, 0.2f, 0.8f));
         myPrison.prisonSourceInstanceID = giver.instanceID; // 4.3 囚牢来源
 
         enemyPrison.prisonBlocked = true;
         enemyPrison.prisonAllowYuan = false;
-        enemyPrison.slotImage.color = new Color(0.6f, 0.2f, 0.8f);
+        enemyPrison.SetSlotColor(new Color(0.6f, 0.2f, 0.8f));
         enemyPrison.prisonSourceInstanceID = giver.instanceID; // 4.3 囚牢来源
 
         giver.prisonMySlot = myPrison.slotID;
@@ -3307,7 +3430,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     }
     public void SetHighlightColor(Color color)
     {
-        slotImage.color = color;
+        SetSlotColor(color);
     }
 
     public Color GetNormalColor()
