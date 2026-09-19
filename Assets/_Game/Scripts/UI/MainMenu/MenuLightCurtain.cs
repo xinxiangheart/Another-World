@@ -105,18 +105,24 @@ public class MenuLightCurtain : MonoBehaviour
         return best;
     }
 
-    /// <summary>插到最后一个「铺满全屏的 Image」后面（那通常是背景图）。</summary>
+    /// <summary>
+    /// 插到第一张「铺满全屏的 Image」（背景图）后面。
+    ///
+    /// 画布子物体的顺序就是绘制顺序，最底下那张全屏图就是背景，
+    /// 光幕要压在它上面、其余 UI 下面。切勿改成「最后一张」：
+    /// 渐入黑幕（SceneIntro 的全屏遮罩）也是全屏 Image 且永远在最上层，
+    /// 取最后一张会把光幕垫到黑幕之上、标题与菜单之上。
+    /// </summary>
     static int InsertIndex(Transform canvasTr)
     {
-        int idx = -1;
         for (int i = 0; i < canvasTr.childCount; i++)
         {
             var rt = canvasTr.GetChild(i) as RectTransform;
             if (rt == null || rt.GetComponent<Image>() == null) continue;
             if (Mathf.Approximately(rt.anchorMin.x, 0f) && Mathf.Approximately(rt.anchorMin.y, 0f) &&
-                Mathf.Approximately(rt.anchorMax.x, 1f) && Mathf.Approximately(rt.anchorMax.y, 1f)) idx = i;
+                Mathf.Approximately(rt.anchorMax.x, 1f) && Mathf.Approximately(rt.anchorMax.y, 1f)) return i + 1;
         }
-        return idx < 0 ? 0 : idx + 1;
+        return 0;
     }
 
     // ── 搭建 ───────────────────────────────────────────────────────────────
