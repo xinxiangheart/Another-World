@@ -28,6 +28,8 @@ public class TextMenuButton : MonoBehaviour,
     public Color normalColor = new Color32(0xFA, 0xFA, 0xF6, 0xFF);
     [Tooltip("选中：金色")]
     public Color highlightColor = new Color32(0xFF, 0xD8, 0x88, 0xFF);
+    [Tooltip("不可点击（Button.interactable = false）时的文字颜色")]
+    public Color disabledColor = new Color32(0x6E, 0x71, 0x76, 0xFF);
 
     [Tooltip("悬停时的放大倍率（只轻微放大）")]
     public float highlightScale = 1.06f;
@@ -50,6 +52,7 @@ public class TextMenuButton : MonoBehaviour,
     [Tooltip("变色 / 缩放速度，越大越快")]
     public float colorSpeed = 16f;
 
+    Button _button;
     bool _highlighted;
     float _p;                       // 0 = 隐藏在生成位置, 1 = 已贴回落点
     float _hintWidth = 56f;
@@ -63,6 +66,7 @@ public class TextMenuButton : MonoBehaviour,
     void Awake()
     {
         if (labelRoot == null && label != null) labelRoot = label.rectTransform;
+        _button = GetComponent<Button>();
         if (labelRoot != null) _labelBaseScale = labelRoot.localScale;
 
         // 引用丢了也能自愈：按名字找子节点
@@ -104,9 +108,21 @@ public class TextMenuButton : MonoBehaviour,
         ApplyInstant(false);
     }
 
-    public void OnPointerEnter(PointerEventData eventData) { _highlighted = true; }
+    /// <summary>
+    /// Button 关掉（interactable = false）就是「灰掉、不可选」的状态：
+    /// 文字用 disabledColor，不变色、不放大、也不出指示标。
+    /// </summary>
+    bool Interactable { get { return _button == null || _button.interactable; } }
+
+    public void OnPointerEnter(PointerEventData eventData) { if (Interactable) _highlighted = true; }
     public void OnPointerExit(PointerEventData eventData)  { _highlighted = false; }
-    public void OnSelect(BaseEventData eventData)          { _highlighted = true; }
+    public void OnSelect(BaseEventData eventData)
+    {
+        if (!Interactable) return;
+        // 进场那一帧 EventSystem 会拿 FirstSelected 自动选中一次（带的是空的 BaseEventData），
+        // 不是玩家操作，不能点亮；只有方向键导航（AxisEventData）和鼠标点选（PointerEventData）才点亮。
+        if (eventData is AxisEventData || eventData is PointerEventData) _highlighted = true;
+    }
     public void OnDeselect(BaseEventData eventData)        { _highlighted = false; }
 
     void Update()
@@ -114,14 +130,18 @@ public class TextMenuButton : MonoBehaviour,
         float dt = Time.unscaledDeltaTime;
         float tc = 1f - Mathf.Exp(-colorSpeed * dt);
 
+        bool on = _highlighted && Interactable;
+        if (!Interactable) _highlighted = false;    // 变成不可点击后不会再收到 Exit，自己清掉
+
         if (label != null)
-            label.color = Color.Lerp(label.color, _highlighted ? highlightColor : normalColor, tc);
+            label.color = Color.Lerp(label.color,
+                on ? highlightColor : (Interactable ? normalColor : disabledColor), tc);
 
         if (labelRoot != null)
             labelRoot.localScale = Vector3.Lerp(labelRoot.localScale,
-                _labelBaseScale * (_highlighted ? highlightScale : 1f), tc);
+                _labelBaseScale * (on ? highlightScale : 1f), tc);
 
-        float target = _highlighted ? 1f : 0f;
+        float target = on ? 1f : 0f;
         float dur = _highlighted ? hintInTime : hintOutTime;
         _p = dur > 0.0001f ? Mathf.MoveTowards(_p, target, dt / dur) : target;
 
@@ -140,11 +160,12 @@ public class TextMenuButton : MonoBehaviour,
     /// <summary>不做插值，直接落到某个状态（Awake / OnDisable 用）。</summary>
     void ApplyInstant(bool highlighted)
     {
-        _p = highlighted ? 1f : 0f;
+        bool on = highlighted && Interactable;
+        _p = on ? 1f : 0f;
         float e = EaseOutCubic(_p);
 
-        if (label != null) label.color = highlighted ? highlightColor : normalColor;
-        if (labelRoot != null) labelRoot.localScale = _labelBaseScale * (highlighted ? highlightScale : 1f);
+        if (label != null) label.color = on ? highlightColor : (Interactable ? normalColor : disabledColor);
+        if (labelRoot != null) labelRoot.localScale = _labelBaseScale * (on ? highlightScale : 1f);
         ApplyHint(e, e);
     }
 

@@ -21,13 +21,13 @@ public class SceneIntro : MonoBehaviour
     [Header("黑幕")]
     public Graphic overlay;
     [Tooltip("开场纯黑停留时长（秒）：留 0 就是一进场就开始褪黑")]
-    public float blackHold = 0.18f;
-    public float overlayFade = 0.5f;
+    public float blackHold = 0.12f;
+    public float overlayFade = 0.33f;
 
     [Header("标题")]
     public CanvasGroup titleGroup;
     public RectTransform titleRect;
-    public float titleDelay = 0.05f;
+    public float titleDelay = 0.03f;
     public float titleFade = 0.85f;
     [Tooltip("标题从下方浮上来的距离")]
     public float titleRise = 14f;

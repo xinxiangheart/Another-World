@@ -24,6 +24,8 @@ public class UpdateManager : MonoBehaviour
 
     [Header("UI")]
     public TMP_Text versionText;
+    [Tooltip("非最新版本时版本号的颜色")]
+    public Color outdatedVersionColor = new Color32(0xE8, 0x4B, 0x4B, 0xFF);
     public Button updateButton;
     public TMP_Text updateButtonText;
     public TMP_Text downloadStatusText;
@@ -31,8 +33,17 @@ public class UpdateManager : MonoBehaviour
     public Button manualDownloadButton;
     public TMP_Text manualDownloadButtonText;
 
+    [Header("版本门槛")]
+    [Tooltip("非最新版本时置灰 + 不可点击的「开始游戏」")]
+    public Button startButton;
+
+    [Header("调试")]
+    [Tooltip("在编辑器里也真的去查一次（默认关，避免每次 Play 都走网络）")]
+    public bool checkInEditor = false;
+
     private string _latestTag;
     private string _downloadUrl;
+    private Color _versionColor = Color.white;
 
     string GetDownloadUrl()
     {
@@ -50,7 +61,11 @@ public class UpdateManager : MonoBehaviour
 
     private void Start()
     {
-        if (versionText != null) versionText.text = $"当前版本：{currentVersion}";
+        if (versionText != null)
+        {
+            _versionColor = versionText.color;
+            versionText.text = currentVersion;      // 只显示版本号：如 0.2.0
+        }
         if (updateButton != null) updateButton.gameObject.SetActive(false);
         if (manualDownloadButton != null) manualDownloadButton.gameObject.SetActive(false);
         if (downloadStatusText != null) downloadStatusText.gameObject.SetActive(false);
@@ -70,7 +85,7 @@ public class UpdateManager : MonoBehaviour
 
     private IEnumerator CheckForUpdates()
     {
-        if (Application.isEditor) { yield break; }
+        if (Application.isEditor && !checkInEditor) { yield break; }
 
         SetStatus("");
         var url = $"https://api.github.com/repos/{repoOwner}/{repoName}/releases/latest";
@@ -110,10 +125,12 @@ public class UpdateManager : MonoBehaviour
             if (latestVer <= curVer)
             {
                 Debug.Log($"[UpdateManager] 已是最新版本 ({currentVersion})");
+                SetOutdated(false);
                 yield break;
             }
 
             Debug.Log($"[UpdateManager] 发现新版本 {_latestTag}");
+            SetOutdated(true);
             SetStatus($"最新版本：{_latestTag}");
 
             if (updateButton != null) updateButton.gameObject.SetActive(true);
@@ -121,6 +138,18 @@ public class UpdateManager : MonoBehaviour
             if (manualDownloadButton != null) manualDownloadButton.gameObject.SetActive(true);
             if (manualDownloadButtonText != null) manualDownloadButtonText.text = "手动下载";
         }
+    }
+
+    /// <summary>
+    /// 版本过期：版本号变红「开始游戏」置灰且不可点击
+    /// （置灰后 TextMenuButton 不再变色、不再放大、也不出指示标）。
+    /// </summary>
+    private void SetOutdated(bool outdated)
+    {
+        if (versionText != null)
+            versionText.color = outdated ? outdatedVersionColor : _versionColor;
+        if (startButton != null)
+            startButton.interactable = !outdated;
     }
 
     // ==================== 下载 ====================
