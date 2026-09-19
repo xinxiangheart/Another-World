@@ -17,7 +17,7 @@ using TMPro;
 /// </summary>
 [DisallowMultipleComponent]
 public class TextMenuButton : MonoBehaviour,
-    IPointerEnterHandler, IPointerExitHandler, ISelectHandler, IDeselectHandler
+    IPointerEnterHandler, IPointerExitHandler, ISelectHandler, IDeselectHandler, IPointerClickHandler
 {
     [Header("文字")]
     [Tooltip("会被缩放的文字节点（留空则用 label 自己）")]
@@ -124,6 +124,15 @@ public class TextMenuButton : MonoBehaviour,
         if (eventData is AxisEventData || eventData is PointerEventData) _highlighted = true;
     }
     public void OnDeselect(BaseEventData eventData)        { _highlighted = false; }
+
+    /// <summary>
+    /// 灰掉（不可点击）时点它：Button 不会发 onClick，但要把版本提示窗叫出来。
+    /// 对开始游戏以外的项没有影响（它们本来就是可点的）。
+    /// </summary>
+    public void OnPointerClick(PointerEventData eventData)
+    {
+        if (!Interactable) MenuUpdateNotice.FlashIfOutdated();
+    }
 
     void Update()
     {

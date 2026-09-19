@@ -47,6 +47,9 @@ public class SceneIntro : MonoBehaviour
     [Tooltip("这么久之前的输入不算（刚进场的杂散输入不能把入场跳掉）")]
     public float skipGrace = 0.25f;
 
+    /// <summary>入场时间轴是否已走完（其他 UI 靠这个判断什么时候能接管画面）。</summary>
+    public bool Finished { get; private set; }
+
     float _t;
     float _total;
     Vector2 _titleBase;
@@ -97,7 +100,7 @@ public class SceneIntro : MonoBehaviour
                   blackHold + itemDelay + itemStagger * i, itemFade, itemRise);
         }
 
-        if (_t > _total + 0.05f) enabled = false;
+        if (_t > _total + 0.05f) { Finished = true; enabled = false; }
     }
 
     void Apply(CanvasGroup g, RectTransform rt, Vector2 basePos, float delay, float dur, float rise)
