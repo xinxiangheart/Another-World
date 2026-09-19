@@ -234,7 +234,8 @@ public class MenuUpdateNotice : MonoBehaviour, IPointerClickHandler, IPointerEnt
 
     // ── 圆角贴图（运行时生成，九宫格）───────────────────────────────
 
-    static Sprite MakeRoundedSprite(float radius)
+    /// <summary>运行时生成圆角九宫格贴图。MenuSteamNotice 也用它，两窗同款圆角。</summary>
+    public static Sprite MakeRoundedSprite(float radius)
     {
         float r = Mathf.Clamp(radius, 2f, 60f);
         int size = Mathf.CeilToInt(r) * 2 + 8;
