@@ -61,6 +61,8 @@ public class AudioManager : MonoBehaviour
     static readonly (string scene, string path)[] _sceneMusic = new[]
     {
         ("Welcome", "Audio/Music/MenuAmbient"),
+        ("Lobby",   "Audio/Music/LobbyAmbient"),
+        ("Lobby",   "Audio/Music/LobbyAmbient"),
     };
 
     /// <summary>场景未挂载时自动创建单例（游戏启动即生效，无需手动拖场景）。</summary>

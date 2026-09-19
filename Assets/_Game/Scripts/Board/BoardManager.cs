@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
@@ -25,6 +26,18 @@ public class BoardManager : MonoBehaviour
     [Header("槽位预制体")]
     public GameObject slotPrefab;
 
+    [Header("入场浮现（进入 Game 场景时槽位预制体浮现）")]
+    [Tooltip("关掉则槽位直接显示，不播浮现")]
+    public bool playRevealOnStart = true;
+    [Tooltip("单个槽位的浮现时长（秒）")]
+    public float revealDuration = 0.5f;
+    [Tooltip("槽位之间的错峰（秒）")]
+    public float revealStagger = 0.05f;
+    [Tooltip("起手缩放（相对终态，1 = 不缩放）")]
+    public float revealFromScale = 0.86f;
+    [Tooltip("起手纵向偏移（世界单位，负值 = 从下方浮起）")]
+    public float revealFromDrop = -0.28f;
+
     [Header("敌方前排")]
     public Vector2 enemyFrontRight = new Vector2(109, 45.5f);
     public Vector2 enemyFrontCenter = new Vector2(0, 45.5f);
@@ -46,6 +59,21 @@ public class BoardManager : MonoBehaviour
     public Vector2 myBackLeft = new Vector2(-109, -129.8f);
 
     private BoardSlot[] allSlots = new BoardSlot[12];
+
+    /// <summary>浮现中的单个槽位：本体的 RectTransform + 整格透明度的 CanvasGroup + 终态位姿。</summary>
+    class SlotRevealState
+    {
+        public RectTransform rt;
+        public CanvasGroup group;
+        public Vector3 endLocalPos;
+        public Vector3 endScale;
+        public bool done;
+    }
+
+    readonly SlotRevealState[] _revealStates = new SlotRevealState[12];
+
+    /// <summary>浮现出场顺序（由下往上）：己方后排 → 己方前排 → 敌方前排 → 敌方后排。</summary>
+    static readonly int[] RevealOrder = { 9, 10, 11, 6, 7, 8, 0, 1, 2, 3, 4, 5 };
     private Transform slotCanvasTransform;
     private HandManager handManager;
     // 槽位 Z 坐标：相机 z=-16.22 看向 +Z，越负越靠近相机。
@@ -86,6 +114,8 @@ public class BoardManager : MonoBehaviour
 
         slotCanvasTransform = slotCanvasObj.transform;
         GenerateSlots();
+
+        if (playRevealOnStart) StartCoroutine(RevealSlotsRoutine());
     }
 
 
@@ -131,6 +161,66 @@ public class BoardManager : MonoBehaviour
         slot.opponentSlotID = opponentID;
         slot.currentCard3D = null;
         allSlots[slotID] = slot;
+
+        // 入场浮现：CanvasGroup 统一控制整格（底板 + 线层 + 选择指示）的透明度，
+        // 不碰槽位的状态色链（封锁 / 囚牢 / 瘟疫 / 压暗都照旧）。
+        // 起始位姿不在这里摆——BoardSlot.Start 会把当时的 localScale 记成 originalScale（高亮按它缩放），
+        // 所以缩放 / 位移留给浮现协程，等它 Start 跑完再上（见 RevealSlotsRoutine）。
+        CanvasGroup group = slotObj.GetComponent<CanvasGroup>();
+        if (group == null) group = slotObj.AddComponent<CanvasGroup>();
+        group.alpha = playRevealOnStart ? 0f : 1f;
+        if (playRevealOnStart)
+            _revealStates[slotID] = new SlotRevealState
+            {
+                rt = rt,
+                group = group,
+                endLocalPos = rt.localPosition,
+                endScale = rt.localScale,
+            };
+    }
+
+    /// <summary>进入 Game 场景时槽位预制体依次浮现：整格淡入 + 轻微放大 + 从下方浮起。
+    /// 用 unscaled 时间（暂停也照走），结束后把位姿写回终态。</summary>
+    IEnumerator RevealSlotsRoutine()
+    {
+        // 等一帧：BoardSlot.Start 先跑完，把终态 localScale 记成 originalScale
+        yield return null;
+
+        for (int i = 0; i < _revealStates.Length; i++)
+        {
+            SlotRevealState st = _revealStates[i];
+            if (st == null || st.rt == null) continue;
+            st.rt.localScale = st.endScale * revealFromScale;
+            st.rt.localPosition = st.endLocalPos + new Vector3(0f, revealFromDrop, 0f);
+        }
+
+        float startTime = Time.unscaledTime;
+        float duration = Mathf.Max(0.0001f, revealDuration);
+        while (true)
+        {
+            float now = Time.unscaledTime - startTime;
+            bool allDone = true;
+            for (int i = 0; i < RevealOrder.Length; i++)
+            {
+                SlotRevealState st = _revealStates[RevealOrder[i]];
+                if (st == null || st.done) continue;
+                float t = Mathf.Clamp01((now - i * revealStagger) / duration);
+                ApplyRevealStep(st, t);
+                if (t >= 1f) st.done = true; else allDone = false;
+            }
+            if (allDone) yield break;
+            yield return null;
+        }
+    }
+
+    /// <summary>把单个槽位摆到浮现进度 t（0 = 起始位姿 / 全透明，1 = 终态 / 不透明）。</summary>
+    void ApplyRevealStep(SlotRevealState st, float t)
+    {
+        float e = 1f - Mathf.Pow(1f - t, 3f);   // ease-out cubic：先快后慢，收尾不拖沓
+        st.group.alpha = Mathf.Clamp01(t * 1.6f);   // 透明度稍早到位，别让"半透明糊影"停太久
+        st.rt.localScale = Vector3.LerpUnclamped(st.endScale * revealFromScale, st.endScale, e);
+        st.rt.localPosition = Vector3.LerpUnclamped(
+            st.endLocalPos + new Vector3(0f, revealFromDrop, 0f), st.endLocalPos, e);
     }
 
     public BoardSlot GetSlot(int id)
