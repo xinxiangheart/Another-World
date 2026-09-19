@@ -1116,7 +1116,8 @@ public class HandManager : MonoBehaviour
 
         // 200 是「设计像素」（1920×1080 下的像素），必须按画布缩放系数换算成实际屏幕像素——
         // 否则同一段距离在不同分辨率下占屏比例不同，抽牌起点会随分辨率漂移。
-        // 全项目画布统一为 1920×1080 + Match Height，故 scaleFactor 即 屏幕高 / 1080。
+        // 全项目画布统一为 1920×1080，match 按宽高比切换（GameSettings.SafeMatch）：
+        // 宽屏 scaleFactor = 屏幕高/1080，窄屏 = 屏幕宽/1920 —— 直接读 Canvas.scaleFactor 即可，别自己按高度算。
         var ownerCanvas = GetComponentInParent<Canvas>();
         float canvasScale = (ownerCanvas != null && ownerCanvas.scaleFactor > 0f) ? ownerCanvas.scaleFactor : 1f;
         Vector3 rightEdgeWorld = cam.ScreenToWorldPoint(new Vector3(Screen.width + 200f * canvasScale, 0, depth));

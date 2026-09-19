@@ -14,10 +14,15 @@ public enum WindowModeSetting
 /// <summary>
 /// 全局设置：显示 / 画质 / 界面缩放 / 音量。持久化走 PlayerPrefs。
 ///
-/// 缩放口径（重要）：全项目 CanvasScaler 统一为 1920×1080 + Match Height(1)。
-/// 主相机是"垂直 FOV 固定"的透视相机，其 像素/世界单位 ∝ 屏幕高；
-/// Match Height 的画布 像素/画布单位 也同样 ∝ 屏幕高 —— 两者同一条公式，
-/// 因此 3D 棋盘与 UI 在 16:9 / 16:10 / 21:9 下都保持相对位置不变（此前 Match 0.5 在 16:10 会错开 5.4%，21:9 错开 13%）。
+/// 缩放口径（重要）：全项目 CanvasScaler 统一为 1920×1080，matchWidthOrHeight **按宽高比切换**（见 SafeMatch）：
+/// · 宽屏（≥ 16:9）Match Height(1)：画布高恒为 1080、宽随宽高比变宽 —— 相机锁垂直 FOV，两者 像素/单位 都 ∝ 屏幕高；
+/// · 窄屏（< 16:9）Match Width(0)：画布宽恒为 1920、高随宽高比变高 —— 相机改锁水平 FOV，两者 像素/单位 都 ∝ 屏幕宽。
+/// 两种口径下 3D 棋盘与 UI 都走同一条公式，因此在各分辨率下保持相对位置不变
+/// （此前 Match 0.5 在 16:10 会错开 5.4%，21:9 错开 13%）。
+///
+/// 2026-09-19 改：窄屏此前固定 Match Height，画布宽只有 1080 × 宽高比（16:10 → 1728 < 1920），
+/// 居中锚定 + 固定宽度的元素（Game 场景右列四个按钮 x = 810、Setting x = -813 等）会被挤出屏幕。
+/// 现在窄屏改用 Match Width，画布宽恒为 1920，1920×1080 设计稿**整幅**可见，多出来的余量转给屏幕高。
 ///
 /// 所有 Apply* 都是幂等的，可重复调用。
 /// </summary>
@@ -26,8 +31,21 @@ public static class GameSettings
     // ---- 设计基准 ----
     public const float BaseWidth = 1920f;
     public const float BaseHeight = 1080f;
-    public const float BaseMatch = 1f;              // CanvasScaler.matchWidthOrHeight
+    /// <summary>宽屏（≥ 16:9）的 matchWidthOrHeight；窄屏见 SafeMatch（会切到 0）。</summary>
+    public const float BaseMatch = 1f;
     public static readonly Vector2 BaseReference = new Vector2(BaseWidth, BaseHeight);
+
+    /// <summary>
+    /// 画布的 matchWidthOrHeight —— **按宽高比切换**，保证 1920×1080 设计稿整幅可见。
+    /// · 宽屏（≥ 16:9）→ 1（Match Height）：画布 1920×1080 起，宽度随宽高比变宽（16:9→1920、21:9→2580）；
+    /// · 窄屏（&lt; 16:9）→ 0（Match Width）：画布宽恒为 1920，高度随宽高比变高（16:10→1200、4:3→1440）。
+    /// 两种口径都只是「把多出来的余量给宽还是给高」，都不会再把内容挤出屏幕。
+    /// 相机必须同步切换锁定轴（见 SettingsRuntime.FittedFov）—— 两边不同步就会 3D 与 UI 错位。
+    /// </summary>
+    public static float SafeMatch
+    {
+        get { return Screen.width * 9 >= Screen.height * 16 ? 1f : 0f; }
+    }
 
     // ---- 清晰度基准（改这几个数之前先读 DescribePixelBudget 的注释）----
     /// <summary>设计稿正文字号（Lobby 主力字号）。文字清不清就看它在屏上占几个像素。</summary>
@@ -207,6 +225,8 @@ public static class GameSettings
 
     /// <summary>
     /// 界面缩放：把每个"跟随屏幕尺寸"的 CanvasScaler 的参考分辨率除以缩放系数。
+    /// matchWidthOrHeight 同时按当前宽高比重算一遍（宽屏 Match Height / 窄屏 Match Width，见 SafeMatch），
+    /// 所以拖动窗口改变宽高比、切全屏都由这里兜住。
     /// World Space 画布（棋盘槽位）不参与，否则会改变世界尺寸。
     /// </summary>
     public static void ApplyUiScale()
@@ -223,7 +243,7 @@ public static class GameSettings
 
             cs.referenceResolution = new Vector2(BaseWidth / s, BaseHeight / s);
             cs.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
-            cs.matchWidthOrHeight = BaseMatch;
+            cs.matchWidthOrHeight = SafeMatch;
         }
         UiScaleChanged?.Invoke();
     }
@@ -236,7 +256,7 @@ public static class GameSettings
         cs.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         cs.referenceResolution = new Vector2(BaseWidth / s, BaseHeight / s);
         cs.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
-        cs.matchWidthOrHeight = BaseMatch;
+        cs.matchWidthOrHeight = SafeMatch;
         cs.referencePixelsPerUnit = 100f;
     }
 
@@ -245,8 +265,9 @@ public static class GameSettings
     /// <summary>
     /// 画布倍率：一个「设计单位」最终会占多少设备像素。
     ///
-    /// 画布是 Match Height（matchWidthOrHeight = 1），所以 CanvasScaler 的 scaleFactor
-    /// = 屏幕高 / 参考高 = Screen.height / (1080 / UiScale) —— 就是这条公式。
+    /// CanvasScaler 的 scaleFactor = 屏幕基准边长 / 参考边长，基准边长与 SafeMatch 同轴：
+    /// 宽屏（Match Height）= Screen.height / (1080 / UiScale)，窄屏（Match Width）= Screen.width / (1920 / UiScale)。
+    /// 两者都等于 ScreenScale × UiScale。
     ///
     /// 1.00 = 与 1920×1080 设计稿 1:1（最理想）；&lt;1 表示内容被压到设计稿以下，字会变小变糊；
     /// &gt;1 表示内容被放大（字更清楚，但位图会被拉大）。
@@ -256,8 +277,17 @@ public static class GameSettings
         get
         {
             Load();
-            return Screen.height / BaseHeight * Mathf.Clamp(UiScale, UiScaleMin, UiScaleMax);
+            return ScreenScale * Mathf.Clamp(UiScale, UiScaleMin, UiScaleMax);
         }
+    }
+
+    /// <summary>
+    /// 屏幕本身给出的倍率（不含界面缩放）：宽屏 = 屏幕高 / 1080，窄屏 = 屏幕宽 / 1920。
+    /// 它同时是「3D 像素/世界单位」与「UI 像素/画布单位」的公共因子 —— 两边同轴，3D 与 UI 才不会错位。
+    /// </summary>
+    public static float ScreenScale
+    {
+        get { return SafeMatch > 0f ? Screen.height / BaseHeight : Screen.width / BaseWidth; }
     }
 
     /// <summary>
@@ -293,7 +323,7 @@ public static class GameSettings
         string need = string.Empty;
         if (px < 24)
         {
-            int needPct = Mathf.CeilToInt(24f / (DesignBodyFontSize * Screen.height / BaseHeight) * 100f);
+            int needPct = Mathf.CeilToInt(24f / (DesignBodyFontSize * ScreenScale) * 100f);
             need = string.Format("  (拉高窗口 或 界面缩放>={0}%)", needPct);
         }
         return string.Format("{0}x{1}  倍率 {2:0.00}x  24pt={3}px  {4}{5}",

@@ -926,7 +926,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             transform.localScale = originalScale * 1.15f;
             slotImage.color = discardHighlightColor;
         }
-        else if (isBlocked) slotImage.color = Color.gray;
+        else if (isBlocked) slotImage.color = Color.black;   // 封锁者/封锁 = 纯黑（与永封同色）
         else if (prisonBlocked) slotImage.color = new Color(0.6f, 0.2f, 0.8f);
         else if (hasPlague) slotImage.color = Color.green;
         else if (deepSeaMarked) slotImage.color = Color.blue;
@@ -1453,7 +1453,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public void SetBlocked(bool blocked)
     {
         isBlocked = blocked;
-        slotImage.color = blocked ? Color.gray : normalColor;
+        slotImage.color = blocked ? Color.black : normalColor;   // 封锁 = 纯黑
     }
 
     public void SetCard(GameObject card3D)
@@ -1502,7 +1502,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         // 抛置悬停激活中 → 保持绿色。同步/EndSelection 触发的 SyncVisual 不能把悬停高亮清掉。
         if (_discardHighlighted) { slotImage.color = discardHighlightColor; return; }
         if (permaBlocked) slotImage.color = Color.black;
-        else if (isBlocked) slotImage.color = Color.gray;
+        else if (isBlocked) slotImage.color = Color.black;   // 封锁者/封锁 = 纯黑（与永封同色）
         else if (prisonBlocked) slotImage.color = new Color(0.6f, 0.2f, 0.8f);
         else if (hasPlague) slotImage.color = Color.green;
         else if (deepSeaMarked) slotImage.color = Color.blue;

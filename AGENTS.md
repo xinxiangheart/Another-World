@@ -799,16 +799,22 @@ python Tools/imagegen/purge_key.py <src.png> <dst.png> 45 pink     # 按色相
 
 ---
 
-## 分辨率 / UI 缩放口径（2026-09-17 定，改 UI 前必读）
+## 分辨率 / UI 缩放口径（2026-09-17 定、2026-09-19 改，改 UI 前必读）
 
-### 一、CanvasScaler 全项目统一：1920×1080 + **Match Height（matchWidthOrHeight = 1）**
+### 一、CanvasScaler 全项目统一：1920×1080 + **按宽高比切换 match（宽屏 Match Height / 窄屏 Match Width）**
 
-- `Game.unity` / `Lobby.unity` / `Welcome.unity` 三个主画布**一律** `m_UiScaleMode: 1`、`m_ReferenceResolution: {x: 1920, y: 1080}`、`m_MatchWidthOrHeight: 1`。
-- **理由**：主相机是「**垂直 FOV 固定**」的透视相机，其 `像素 / 世界单位 ∝ 屏幕高`；Match Height 的画布 `像素 / 画布单位` 也同样 `∝ 屏幕高` —— 两者是同一条公式，3D 棋盘与 UI 才会在各分辨率下保持相对位置。
+- `Game.unity` / `Lobby.unity` / `Welcome.unity` 三个主画布**一律** `m_UiScaleMode: 1`、`m_ReferenceResolution: {x: 1920, y: 1080}`；场景里的 `m_MatchWidthOrHeight: 1` 只是**宽屏默认值**，运行时由 `GameSettings.ApplyUiScale()` 按当前宽高比重写（`GameSettings.SafeMatch`）。所以**手改场景里那个 1 没有意义**，要改就改 `SafeMatch`。
+- **两种口径**：
+  - `宽高比 ≥ 16:9 → match = 1`（Match Height）：画布**高恒为 1080**，宽随宽高比变宽（16:9→1920、21:9→2580）；
+  - `宽高比 < 16:9 → match = 0`（Match Width）：画布**宽恒为 1920**，高随宽高比变高（16:10→1200、4:3→1440）。
+  - 两种都保证 **1920×1080 设计稿整幅可见**，区别只是多出来的余量给宽还是给高。
+- **理由**：3D 与 UI 必须走同一条公式。相机随之切换锁定轴（`SettingsRuntime.FittedFov` / `FittedOrthoSize`，自动挂在所有相机上，无需手动挂）：宽屏锁**垂直** FOV（`像素 / 世界单位 ∝ 屏幕高`），窄屏锁**水平** FOV（`∝ 屏幕宽`）—— 与画布的 `像素 / 画布单位` 同轴，3D 棋盘与 UI 才会在各分辨率下保持相对位置。
 - **此前的问题**：`Game.unity` 是 Match 0.5（`∝ √(W·H)`）、`Lobby` / `Welcome` 是 Match 0（`∝ 宽`）—— 三套公式互不相容。16:10 下 UI 与 3D 错开约 **5%**，21:9 下错开约 **16%**，这就是「换个分辨率组件就偏移」的根因。
-- **Match Height 的含义**：画布**高恒为 1080 参考单位**，宽度随宽高比变（16:9→1920、16:10→1728、21:9→2580）。所以：
+- **2026-09-19 修的是另一个方向的毛病**：窄屏此前也一律 Match Height，画布宽只有 `1080 × 宽高比`（16:10 → **1728 < 1920**），于是**居中锚定 + 固定宽度**的元素被挤出屏幕。Game 场景实测：右列 `EndTurnButton` / `DrawCardButton` / `ToggleHandButton` / `ConfirmSelectionButton`（`x = 810`、宽 180，右缘 900 > 画布半宽 864）、左列 `Setting`（`x = -813`）在 16:10 全屏下各被切掉约 36 单位，开发者 Game 视图（16:9）却完好 —— 这就是「实际全屏与开发状态显示宽度不一样」的根因。窄屏改 Match Width 后画布宽恒为 1920，这批元素全部回到屏内。
+- **仍需守的规矩**：
   - 锚在**上/下边**的元素在任何分辨率下都待在原处（这是想要的）；
-  - **居中锚定 + 固定宽度 ≥ 1728 的元素会在窄屏溢出** —— 全屏铺满的容器必须用**拉伸锚**（`anchorMin (0,0)` / `anchorMax (1,1)` + `sizeDelta 0`），不要用「居中 + 固定 1920×1080」。Lobby 的 `StatsPanel` / `GameIntroPanel` / `Scroll View` 已于 2026-09-17 按此改写（16:9 下矩形与改前逐像素相同）。
+  - **居中锚定 + 固定宽度**的元素，只要 `|x| + w/2 ≤ 960` 就永远安全（画布左右各 960 单位在任何宽高比下都在屏内）—— 摆位时按这条量，不要按 16:9 的 960 之外还要靠边量；
+  - 全屏铺满的容器仍必须用**拉伸锚**（`anchorMin (0,0)` / `anchorMax (1,1)` + `sizeDelta 0`），不要用「居中 + 固定 1920×1080」。Lobby 的 `StatsPanel` / `GameIntroPanel` / `Scroll View` 已于 2026-09-17 按此改写（16:9 下矩形与改前逐像素相同）。
 - **新的画布一律用** `GameSettings.ApplyScalerTo(canvasScaler)`，不要 `AddComponent<CanvasScaler>()` 用默认值（默认是 ConstantPixelSize，会随分辨率改变视觉大小）。
 - **World Space 画布**（棋盘槽位）不参与这条，保持世界尺寸。
 
@@ -853,7 +859,7 @@ python Tools/imagegen/purge_key.py <src.png> <dst.png> 45 pink     # 按色相
 | 文字（TMP SDF） | 设计字号 × 画布倍率 | **≥ 24px**（汉字笔画才站得住） | **≤ 图集点号 36**（再大距离场细节不够，边缘发虚） |
 | 图案（位图） | 设计尺寸 × 画布倍率 | —— | **≤ 源像素**（超过就是放大，必糊；缩小倒是没问题，靠 mipmap + 双线性） |
 
-- **画布倍率 = 屏幕高 / (1080 / 界面缩放)**（Match Height，所以只看屏幕高）。倍率 1.0 = 与设计稿 1:1。
+- **画布倍率 = 屏幕基准边 / (基准长度 / 界面缩放)**：宽屏用屏幕高（基准 1080），窄屏用屏幕宽（基准 1920）—— 见 `GameSettings.ScreenScale`。倍率 1.0 = 与设计稿 1:1。
   - `GameSettings.RenderScale` 就是这个值；`GameSettings.DescribePixelBudget()` 把「屏上像素 + 档位」拼成一行 —— 启动时打一次 Console，设置面板「界面」栏也常驻显示（**改完设置先看这行落在哪一档**）。
 - **编辑器 Game view 的实际渲染分辨率 = 视图的逻辑尺寸（点），不是物理像素。** 2026-09-17 实测（本机 2560×1600 / 150% 显示缩放）：`UserSettings/Layouts/default-2022.dwlt` 里 Game view 的 `m_Pos` = 992×657 点、`m_TargetSize` = **992×558**、`m_ZoomArea.m_Scale` = 1.5（= 该屏的 `pixelsPerPoint`）；用户截图里游戏区实测 1475×823 物理像素 ≈ 992×558 × 1.5 —— 即游戏只渲染 **992×558**，再被 **1.5×** 放大到屏幕上，倍率 **0.52**、24pt 正文只有 **12px**，于是「怎么调都糊」。
   - 所以**这不是项目设置的问题**：同一份工程构建后按原生分辨率跑，倍率 1.48、24pt = 35.6px，已经在最佳档。
