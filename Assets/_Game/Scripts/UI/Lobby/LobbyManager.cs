@@ -1,7 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
-using UnityEngine.SceneManagement;
 
 public static class LobbyConfig
 {
@@ -116,7 +115,7 @@ public class LobbyManager : MonoBehaviour
     public void ReturnToWelcome()
     {
         Debug.Log("[Lobby] ReturnToWelcome");
-        SceneManager.LoadScene("Welcome");
+        SceneTransition.LoadScene("Welcome");   // 黑条扫屏切回开局场景
     }
 
     public void LeaveGame()

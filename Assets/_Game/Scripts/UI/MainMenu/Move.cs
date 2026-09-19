@@ -1,12 +1,11 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 
 public class GoToGameScene : MonoBehaviour
 {
+    /// <summary>开始游戏：黑条扫屏切到大厅
+    /// （黑条推进 / 全黑等待 / 渐入都由 SceneTransition 负责）。</summary>
     public void StartGame()
     {
-        SceneManager.LoadScene("Lobby");
+        SceneTransition.LoadScene("Lobby");
     }
 }
