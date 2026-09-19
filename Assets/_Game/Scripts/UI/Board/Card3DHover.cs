@@ -343,4 +343,26 @@ public class Card3DHover : MonoBehaviour
         if (hover != null)
             hover.isHidden = hidden;
     }
+
+    /// <summary>
+    /// 统一设置某一半场（6 个槽位 + 挂在这些槽位宿主上的附着牌）的隐藏态。
+    /// halfStart 用本端槽号：本端 0-5 即“对方那半边”（Host：Remote/AI 的卡；纯客户端：Host 的卡）。
+    /// 附着牌按宿主槽归属判定 —— 雾隐(01517) 要连附着一起盖住，否则附着牌会把被隐藏宿主的信息漏出去。
+    /// </summary>
+    public static void SetHalfHidden(BoardManager bm, int halfStart, bool hidden)
+    {
+        if (bm == null) return;
+        for (int i = halfStart; i <= halfStart + 5; i++)
+        {
+            GameObject card = bm.GetSlot(i)?.currentCard3D;
+            if (card != null) SetHidden(card, hidden, false);
+        }
+        foreach (GameObject obj in bm.attachedModels)
+        {
+            var ci = obj?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci == null || !ci.isAttached) continue;
+            if (ci.hostSlotID < halfStart || ci.hostSlotID > halfStart + 5) continue;
+            SetHidden(obj, hidden, true);
+        }
+    }
 }

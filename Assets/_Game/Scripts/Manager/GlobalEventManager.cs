@@ -70,18 +70,37 @@ public class GlobalEventManager : MonoBehaviour
 
     /// <summary>是否有"归属指定方"的活跃雾隐(01517)。ownerIsHost=true → 本端(6-11)半场拥有；false → 对手(0-5)。
     /// 雾隐只隐藏"拥有者"的召唤物，故收发两端必须按归属侧判定——旧的 side-agnostic 判定会隐藏错误半场
-    /// （Remote 有雾隐时把 Host 的卡隐藏给客户端看，而 Host 侧自己的 0-5 从不隐藏）。</summary>
+    /// （Remote 有雾隐时把 Host 的卡隐藏给客户端看，而 Host 侧自己的 0-5 从不隐藏）。
+    /// 另：雾隐特性本身被完全沉默 / 对位封锁（能量骇客 01335 等）时特性失效，不再隐藏——与狂热萨满/法官
+    /// 光环一样走 IsFullySilenced 门；封锁解除（骇客退场/被沉默）后同一谓词会重新返回 true，隐藏随之恢复。</summary>
     public bool IsMistHiderActiveOwnedBy(bool ownerIsHost)
     {
-        var all = GetAllAuras();
-        if (all == null) return false;
         BoardManager bm = FindObjectOfType<BoardManager>();
         if (bm == null) return false;
-        foreach (var a in all)
+
+        // 本端注册过的光环实例（本端/AI 打出的雾隐）
+        var all = GetAllAuras();
+        if (all != null)
         {
-            if (!(a is MistHiderAura) || !a.IsActive() || a.source == null) continue;
-            int slot = GetSlotOf(a.source, bm);
-            if (slot >= 0 && (slot >= 6) == ownerIsHost) return true;
+            foreach (var a in all)
+            {
+                if (!(a is MistHiderAura) || !a.IsActive() || a.source == null) continue;
+                int slot = GetSlotOf(a.source, bm);
+                if (slot < 0 || (slot >= 6) != ownerIsHost) continue;
+                if (IsFullySilenced(a.source)) continue; // 被能量骇客对位封锁 → 特性失效
+                return true;
+            }
+        }
+
+        // 网络兜底：真·远程客户端打出的雾隐只在该客户端注册光环，本端没有实例 ——
+        // 按已同步的板面找 01517（与 IsTraitBlockedByBoardState 同款手法）。
+        int start = ownerIsHost ? 6 : 0;
+        for (int i = start; i < start + 6; i++)
+        {
+            var ci = bm.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci == null || ci.templateID != "01517") continue;
+            if (IsFullySilenced(ci)) continue;
+            return true;
         }
         return false;
     }

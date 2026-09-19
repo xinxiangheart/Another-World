@@ -125,11 +125,8 @@ public class BoardSyncManager : MonoBehaviour
         // Host 本地：对手(Remote/AI, 0-5)有活跃雾隐 → 隐藏其卡（与客户端 ApplySync 隐藏 0-5 对称）。
         // 同步写 EnemyCardsAreHidden，供 ServerPlayCard 新落地卡在展示前判终态。
         Card3DHover.EnemyCardsAreHidden = remoteMistHider;
-        for (int i = 0; i <= 5; i++)
-        {
-            GameObject card = bm.GetSlot(i)?.currentCard3D;
-            if (card != null) Card3DHover.SetHidden(card, remoteMistHider, false);
-        }
+        // 槽位卡与挂在这些宿主上的附着牌一起切——雾隐要盖住"己方召唤物"的全部信息，附着牌同样不许见
+        Card3DHover.SetHalfHidden(bm, 0, remoteMistHider);
 
         foreach (var kv in NetworkServer.connections)
             if (kv.Value != NetworkPlayer.LocalHalfPlayer?.connectionToClient)
@@ -191,11 +188,8 @@ public class BoardSyncManager : MonoBehaviour
         // Server's 6-11 maps to this client's 0-5. If server has MistHider, enemy cards are hidden.
         // Apply in both directions: hide when active, unhide when aura expires.
         Card3DHover.EnemyCardsAreHidden = mistHiderActive;
-        for (int i = 0; i <= 5; i++)
-        {
-            GameObject card = bm.GetSlot(i)?.currentCard3D;
-            if (card != null) Card3DHover.SetHidden(card, mistHiderActive, false);
-        }
+        // 槽位卡与挂在这些宿主上的附着牌一起切（与 Host 侧 SyncNow 对称）
+        Card3DHover.SetHalfHidden(bm, 0, mistHiderActive);
 
         // attachments — 不再盲目清空重建，做 diff
         SyncAttachmentsFromBlock(bm, hm, attachBlock, mistHiderActive);
@@ -271,6 +265,8 @@ public class BoardSyncManager : MonoBehaviour
                 var eci = existing.GetComponent<Card3DInstance>()?.cardInstance;
                 if (eci != null) eci.hostSlotID = cs;
                 existing.transform.position = HandManager.GetAttachWorldPos(cs, o);
+                // 已有附着牌也要跟随雾隐态翻转——旧写法只在新建时设一次，光环生效/失效后不更新
+                Card3DHover.SetHidden(existing, mistHiderActive && cs <= 5, true);
                 continue;
             }
 
@@ -292,7 +288,8 @@ public class BoardSyncManager : MonoBehaviour
                 c.cardInstance = n; c.UpdateValues();
                 c.PlayAttachSlideIn(HandManager.GetAttachWorldPos(cs, o + 1), HandManager.GetAttachWorldPos(cs, o)); // 附着滑入（仅表现）
             }
-            Card3DHover.SetHidden(m, mistHiderActive, true);
+            // 只有挂在被隐藏半场（本端 0-5 = Host 的卡）上的附着牌才隐藏——本端自己的附着牌照常可见
+            Card3DHover.SetHidden(m, mistHiderActive && cs <= 5, true);
             CardDisplay3D d2 = m.GetComponent<CardDisplay3D>();
             if (d2 != null)
             {
