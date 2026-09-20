@@ -204,7 +204,9 @@ public class HandManager : MonoBehaviour
         float lay = _handDimmed ? dimScale : 1f;
         float cardW = cardWidth * lay;
         float maxW = maxWidth * lay;
-        float hovSpace = hoverSpacingOffset * lay;
+        // 悬停让位一律给足**未缩放**间距：压暗态下悬停的那张会脱出压暗（还原到原始大小 ×HOVER_SCALE），
+        // 按 dimScale 缩过的让位量不够，放大的卡会压住邻卡。
+        float hovSpace = hoverSpacingOffset;
         float arcRadius = radius * lay;
 
         float overlap = Mathf.Lerp(0f, maxOverlapRatio, (float)(count - 1) / 19f);

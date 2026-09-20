@@ -25,8 +25,16 @@ public class CardView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
     /// <summary>当前是否被悬停（HandManager 布局让位用）。</summary>
     public bool IsHovered => _hovered;
 
+    /// <summary>压暗是否真的落在这张卡上：**悬停期间一律视作未压暗** —— 鼠标压上来这张卡就脱出压暗
+    /// （还原到原始大小 / 原始高度 / 原色），展示与非压暗态完全一致；鼠标离开后随 _dimOn 淡回压暗态。
+    /// 让位间距由 HandManager 按未缩放值给足（压暗态下悬停卡是满尺寸）。</summary>
+    bool DimOn => _dimOn && !_hovered;
+    /// <summary>压暗视觉的当前目标强度（悬停中为 0）。</summary>
+    float DimTargetAmount => DimOn ? _dimTargetAmount : 0f;
+
     // ── 整手"非己方回合"压暗态（HandManager 统一驱动）─────────────
-    // _dimScale<1 整手缩小（悬停放大仍在此倍率基础上 ×HOVER_SCALE）；_dimOffsetY<0 整手下移，部分移出视野。
+    // _dimScale<1 整手缩小；_dimOffsetY<0 整手下移，部分移出视野。
+    // 悬停中的那一张不吃这套（见 DimOn）：鼠标压上来即还原原始大小/高度/原色，移开才回落。
     float _dimScale = 1f;
     float _dimOffsetY = 0f;
 
@@ -96,18 +104,18 @@ public class CardView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
         originalScale = transform.localScale;
     }
 
-    // ── 整手压暗目标位/倍率 ──────────────────────────────────────
+    // ── 整手压暗目标位/倍率（悬停中的卡按未压暗处理，见 DimOn）─────
     Vector3 DesiredPos()
     {
-        Vector3 p = new Vector3(targetPos.x, targetPos.y + _dimOffsetY, 0);
-        if (_hovered) p.y += HOVER_RAISE; // 悬停上浮加在压暗后的休息位之上
+        Vector3 p = new Vector3(targetPos.x, targetPos.y + (DimOn ? _dimOffsetY : 0f), 0);
+        if (_hovered) p.y += HOVER_RAISE; // 悬停上浮加在（压暗时的）休息位之上
         return p;
     }
-    Vector3 DesiredScale() => originalScale * _dimScale * (_hovered ? HOVER_SCALE : 1f);
+    Vector3 DesiredScale() => originalScale * (DimOn ? _dimScale : 1f) * (_hovered ? HOVER_SCALE : 1f);
 
     /// <summary>整手压暗/还原（HandManager 统一驱动）。dim=true：倍率 scale(<1 缩小)+下移 offsetY+去饱和压暗
     /// （强度 amount 0-1，卡面与文字一起按它缩放）；false：还原到 1.0×/原位/原色。
-    /// 悬停期间的压暗卡仍放大，但保持缩小基数与压暗强度。</summary>
+    /// 悬停中的卡不吃这一套（DimOn=false）：鼠标压上来即还原大小/高度/原色，移开才回落。</summary>
     public void SetGroupDim(bool dim, float scale, float offsetY, float amount = 1f)
     {
         _dimScale = dim ? scale : 1f;
@@ -119,7 +127,7 @@ public class CardView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
         // 未激活（隐藏/待飞入）与飞行中的牌没有 Update 驱动淡入，直接落到目标强度
         if (!gameObject.activeInHierarchy || IsFlying)
         {
-            _dimAmount = _dimTargetAmount;
+            _dimAmount = DimTargetAmount;
             ApplyDimVisual(_dimAmount);
         }
 
@@ -214,7 +222,7 @@ public class CardView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
     /// 协程版淡入会在悬停那一刻被打断卡在半灰。</summary>
     void StepDimFade(float dt)
     {
-        float target = _dimOn ? _dimTargetAmount : 0f;
+        float target = DimTargetAmount;   // 悬停中的卡目标是 0（脱出压暗）
         if (_dimAmount == target) return;
         _dimAmount = Mathf.Lerp(_dimAmount, target, Mathf.Clamp01(dt * Mathf.Max(0.01f, dimFadeSpeed)));
         if (Mathf.Abs(_dimAmount - target) < 0.004f) _dimAmount = target;
