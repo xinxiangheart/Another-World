@@ -7,10 +7,12 @@ using UnityEngine.UI;
 // HoverTagPrefabBuilder — 一键生成 3D 召唤物悬停标签预制体 TagLabel.prefab。
 // 结构（与需求一致）：
 //   TagLabel                        ← 根（RectTransform + HoverTagLabel + ContentSizeFitter）
-//   └─ BG                           ← Image（九宫格 Sliced，动态大小）
+//   └─ BG                           ← Image（纯色描边层，动态大小）
+//       ├─ Fill                     ← Image（深藏青半透明填充，四边内缩 2 露出描边）
 //       └─ Text                     ← TextMeshProUGUI（自动换行、跟随文字）
 // BG 撑满根；Text 内缩 tagPadding；根尺寸由 HoverTagLabel.SetText 按文字测量驱动。
-// BG 用 Unity 内置九宫格 UISprite（DetailPanel 同款白圆角），运行时仅取预制体引用。
+// 外观对齐 Welcome 场景警告弹窗（UpdateNotice/SteamNotice）的底色：金棕描边 #B9905A + 深藏青 #0E141F(α0.90)。
+// 这两处（本预制体与 DetailPanel 背景）共用同一套配色，改动请同步。
 // 菜单：Tools → 卡牌 → 生成悬停标签预制体
 // ============================================================================
 public static class HoverTagPrefabBuilder
@@ -30,16 +32,13 @@ public static class HoverTagPrefabBuilder
         TMP_FontAsset font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontPath);
         if (font == null) { Debug.LogError($"[HoverTag] 找不到字体: {FontPath}"); return; }
 
-        Sprite uiSprite = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/UISprite.psd");
-        if (uiSprite == null) Debug.LogWarning("[HoverTag] 未取到内置 UISprite，BG 回退纯色(Simple)。");
-
         // ── 根（中心锚点，运行时以 anchoredPosition 定位到 HoverTagLayer）──
         GameObject root = new GameObject("TagLabel", typeof(RectTransform));
         RectTransform rootRT = (RectTransform)root.transform;
         rootRT.anchorMin = rootRT.anchorMax = rootRT.pivot = new Vector2(0.5f, 0.5f);
         rootRT.sizeDelta = DefaultSize;
 
-        // ── BG（Image，Sliced 九宫格）─ 子物体、锚点拉伸铺满根 ──
+        // ── BG（描边层）─ 子物体、锚点拉伸铺满根 ──
         GameObject bgGo = new GameObject("BG", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
         RectTransform bgRT = (RectTransform)bgGo.transform;
         bgRT.SetParent(rootRT, false);
@@ -47,11 +46,26 @@ public static class HoverTagPrefabBuilder
         bgRT.offsetMin = Vector2.zero;  bgRT.offsetMax = Vector2.zero;
         bgRT.pivot = new Vector2(0.5f, 0.5f);
 
+        // 外观对齐 Welcome 场景警告弹窗底色：外层纯色描边 + 内层深藏青半透明填充，两层都不用 sprite。
         Image bg = bgGo.GetComponent<Image>();
-        bg.sprite = uiSprite;
-        bg.type = uiSprite != null ? Image.Type.Sliced : Image.Type.Simple;
-        bg.color = new Color(0.06f, 0.06f, 0.10f, 0.82f);
+        bg.sprite = null;
+        bg.type = Image.Type.Simple;
+        bg.color = new Color(0.7254902f, 0.5647059f, 0.3529412f, 1f);
         bg.raycastTarget = false;
+
+        // ── Fill（填充层）─ 四边内缩 2，露出 2px 描边；排在 Text 之前，文字仍在其上 ──
+        GameObject fillGo = new GameObject("Fill", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        RectTransform fillRT = (RectTransform)fillGo.transform;
+        fillRT.SetParent(bgRT, false);
+        fillRT.anchorMin = Vector2.zero; fillRT.anchorMax = Vector2.one;
+        fillRT.offsetMin = new Vector2(2f, 2f);  fillRT.offsetMax = new Vector2(-2f, -2f);
+        fillRT.pivot = new Vector2(0.5f, 0.5f);
+
+        Image fill = fillGo.GetComponent<Image>();
+        fill.sprite = null;
+        fill.type = Image.Type.Simple;
+        fill.color = new Color(0.05490196f, 0.078431375f, 0.1254902f, 0.9019608f);
+        fill.raycastTarget = false;
 
         // ── Text（TMP）─ 子物体、锚点拉伸、四周留 tagPadding 由 HoverTagLabel 运行时调 ──
         GameObject textGo = new GameObject("Text", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
