@@ -1760,7 +1760,7 @@ public class NetworkPlayer : NetworkBehaviour
         if (cm == null) return;
 
         int count = cm.enemyCounters.Count;
-        Vector3 pos = new Vector3(7.5f + count * 0.5f, 1f, -6f - count * 0.1f);
+        Vector3 pos = cm.GetCounterPosition(false, count);   // 与 CounterManager 共用一套坐标
 
         GameObject model = Instantiate(prefab, pos, Quaternion.Euler(0, 180, 0));
         Player.Scale3DModel(model);
@@ -3708,6 +3708,7 @@ public class NetworkPlayer : NetworkBehaviour
             {
                 if (list[i].model != null) Destroy(list[i].model);
                 list.RemoveAt(i);
+                cm.Reposition(listType == "mine");   // 与另一端的重排保持一致，不然两端会错位
                 Debug.Log($"[NetworkPlayer] TargetRemoveCounter: removed {templateID} from {listType}");
                 return;
             }

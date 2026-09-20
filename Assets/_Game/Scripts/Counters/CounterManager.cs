@@ -13,9 +13,25 @@ public class CounterManager : MonoBehaviour
     // 敌方打出的反制牌（己方视角看到牌背）
     public List<CounterCard> enemyCounters = new List<CounterCard>();
 
-    private float baseX = -7.5f;
-    private float baseY = 1f;
-    private float baseZ = -6f;
+    [Header("反制牌摆放（世界坐标；两摞都在屏幕左侧：己方在下、对方在上，沿棋盘中线 y=1 镜像）")]
+    [Tooltip("己方反制牌第一张的落点（左下；y 与 enemyCounterBase 关于 y=1 镜像，两摞共用同一条竖线）")]
+    [SerializeField] Vector3 myCounterBase = new Vector3(-7.1f, -0.4f, -6f);
+    [Tooltip("己方每多一张的偏移（+X = 往棋盘中间走，免得挤到屏幕外）")]
+    [SerializeField] Vector3 myCounterStep = new Vector3(0.5f, 0f, -0.1f);
+    [Tooltip("对方反制牌第一张的落点（左上）")]
+    [SerializeField] Vector3 enemyCounterBase = new Vector3(-7.1f, 2.4f, -6f);
+    [Tooltip("对方每多一张的偏移（+X = 往棋盘中间走）")]
+    [SerializeField] Vector3 enemyCounterStep = new Vector3(0.5f, 0f, -0.1f);
+
+    /// <summary>
+    /// 某一侧第 index 张反制牌的世界坐标。服务端与客户端共用这一份 ——
+    /// 以前 TargetSpawnCounterCard 自己写死过一份坐标，两边一改就对不上。
+    /// </summary>
+    public Vector3 GetCounterPosition(bool isMine, int index)
+    {
+        return isMine ? myCounterBase + myCounterStep * index
+                      : enemyCounterBase + enemyCounterStep * index;
+    }
 
     void Awake()
     {
@@ -42,8 +58,7 @@ public class CounterManager : MonoBehaviour
     }
 
     int count = isMine ? myCounters.Count : enemyCounters.Count;
-    float xPos = isMine ? baseX : -baseX;
-    Vector3 pos = new Vector3(xPos + count * 0.5f, baseY, baseZ - count * 0.1f);
+    Vector3 pos = GetCounterPosition(isMine, count);
 
     Quaternion rotation = isMine ? Quaternion.Euler(0, 180, 0) : Quaternion.Euler(0, 0, 0);
     GameObject model = Instantiate(prefab, pos, rotation);
@@ -520,13 +535,19 @@ public class CounterManager : MonoBehaviour
         Debug.Log($"反制牌已移除，己方数量：{myCounters.Count}");
     }
 
+    /// <summary>让某一侧剩下的牌重新靠拢（原来这里写死用己方的 baseX，对方那摞一重排就跑到己方这边）。</summary>
+    public void Reposition(bool isMine)
+    {
+        RepositionCounters(isMine);
+    }
+
     private void RepositionCounters(bool isMine)
     {
         List<CounterCard> list = isMine ? myCounters : enemyCounters;
         for (int i = 0; i < list.Count; i++)
         {
-            Vector3 pos = new Vector3(baseX + i * 0.5f, baseY, baseZ - i * 0.1f);
-            list[i].model.transform.position = pos;
+            if (list[i] == null || list[i].model == null) continue;
+            list[i].model.transform.position = GetCounterPosition(isMine, i);
         }
     }
     public void CheckOnPlayerDying()

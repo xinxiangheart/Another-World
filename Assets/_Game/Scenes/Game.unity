@@ -13257,6 +13257,15 @@ MonoBehaviour:
   drawDelay: 0.15
   playOnStart: 1
   hideUiDuringIntro: 1
+  deckCardPrefab: {fileID: 1094747110808969126, guid: e09968ed5c12f8f4c91568ea8122934f, type: 3}
+  showIntroDecks: 1
+  deckViewport: {x: 0.835, y: 0.5}
+  deckCardCount: 10
+  deckFirstLandAt: 0.3
+  deckFallDuration: 0.22
+  deckHoldAfterLand: 0.2
+  deckCollapseDuration: 0
+  deckPlaneZ: -5.7
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

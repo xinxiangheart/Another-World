@@ -17,6 +17,9 @@ using UnityEngine;
 ///   进度到 revealAt           槽位开始浮现 + UI 开始淡入
 ///   UI 淡入结束 + drawDelay   Revealed = true → 开局抽牌开始
 ///
+/// 入场两角的 3D 牌堆（右下＝己方 / 左上＝对方）也挂在这里：镜头飞行期间两摞牌从空中
+/// 迅速落下堆好，最后一张正好落在 UI 开始浮现那一刻，UI 淡完再收起。见 GameIntroDeck。
+///
 /// 槽位浮现不在这里做，只是替 BoardManager 喊一声（BoardManager.PlaySlotReveal），
 /// 免得相机还在飞的时候槽位就自己浮出来了。
 /// </summary>
@@ -43,6 +46,26 @@ public class GameIntroCamera : MonoBehaviour
     [Tooltip("入场期间隐藏全部 2D UI（CardCanvas 整块，含手牌与所有面板）")]
     public bool hideUiDuringIntro = true;
 
+    [Header("入场 3D 牌堆（右侧中央一摞，永远是卡背，默认留在场上）")]
+    [Tooltip("3D 卡牌预制体（Card00_New_3D）。留空、或关掉下面那个开关，就不出这段")]
+    public GameObject deckCardPrefab;
+    [Tooltip("入场期间掉一摞 3D 卡背")]
+    public bool showIntroDecks = true;
+    [Tooltip("牌堆在终态画面里的视口坐标，0-1（0.5 = 竖直居中，越大越靠右）")]
+    public Vector2 deckViewport = new Vector2(0.835f, 0.5f);
+    [Tooltip("每摞几张")]
+    public int deckCardCount = 10;
+    [Tooltip("第一张落地的时刻（占整段位移的比例 0-1）")]
+    [Range(0f, 1f)] public float deckFirstLandAt = 0.30f;
+    [Tooltip("单张从生成到落地用多久（秒）")]
+    public float deckFallDuration = 0.22f;
+    [Tooltip("最后一张落地后停多久再收起")]
+    public float deckHoldAfterLand = 0.2f;
+    [Tooltip("收起时长（秒）。0 = 不收起：牌堆一直留在场上（默认）")]
+    public float deckCollapseDuration = 0f;
+    [Tooltip("牌堆的 z：与场上卡同面 = -5.7（比槽位 -5.6、棋盘面 -5.5 都更靠相机）")]
+    public float deckPlaneZ = -5.7f;
+
     public static GameIntroCamera Instance { get; private set; }
 
     /// <summary>场景里有没有在跑入场（BoardManager 据此决定槽位浮现要不要交给入场来喊）。</summary>
@@ -64,6 +87,7 @@ public class GameIntroCamera : MonoBehaviour
     Vector3 _startPos, _endPos;
     Quaternion _startRot, _endRot;
     CanvasGroup _uiGroup;
+    GameIntroDeck _decks;
 
     void Awake()
     {
@@ -79,6 +103,8 @@ public class GameIntroCamera : MonoBehaviour
         _startRot = startPose.rotation;
         // 第一帧就摆到近景，否则会先闪一下终态再跳过去
         transform.SetPositionAndRotation(_startPos, _startRot);
+
+        if (showIntroDecks) BuildDecks();
 
         if (hideUiDuringIntro)
         {
@@ -102,6 +128,43 @@ public class GameIntroCamera : MonoBehaviour
     void Start()
     {
         if (_playing) StartCoroutine(Play());
+    }
+
+    void Update()
+    {
+        if (_decks == null) return;
+        _decks.Tick(Time.deltaTime);
+        if (_decks.Finished) { _decks.Dispose(); _decks = null; }   // 收起后整棵删掉，不残留
+    }
+
+    /// <summary>
+    /// 入场牌堆：落点按「终态画面的视口坐标」算，所以换分辨率也在同一个地方、也还离槽位有距离；
+    /// 最后一张的落地时刻 = revealAt 那一刻（UI 开始浮现）。默认不收起，一直留在场上。
+    /// </summary>
+    void BuildDecks()
+    {
+        if (deckCardPrefab == null) return;
+
+        Camera cam = GetComponent<Camera>();
+        if (cam == null) cam = Camera.main;
+        if (cam == null) return;
+
+        _decks = new GameIntroDeck
+        {
+            cardPrefab = deckCardPrefab,
+            cam = cam,
+            endCamPos = _endPos,
+            endCamRot = _endRot,
+            planeZ = deckPlaneZ,
+            cardCount = deckCardCount,
+            firstLandTime = moveDuration * deckFirstLandAt,
+            lastLandTime = moveDuration * revealAt,
+            fallDuration = deckFallDuration,
+            holdAfterLand = deckHoldAfterLand,
+            collapseDuration = deckCollapseDuration,
+            viewport = deckViewport,
+        };
+        _decks.Build();
     }
 
     IEnumerator Play()
