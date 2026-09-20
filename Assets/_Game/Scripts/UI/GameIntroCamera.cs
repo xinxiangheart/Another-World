@@ -1,5 +1,6 @@
 using System.Collections;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 /// <summary>
 /// 战斗场景入场镜头（2026-09-19）：相机从贴近棋盘的一处起始位姿出发，
@@ -217,22 +218,35 @@ public class GameIntroCamera : MonoBehaviour
         _uiFadeDone = true;
     }
 
-    /// <summary>2D 界面的总画布（Game 场景里叫 CardCanvas）。</summary>
-    static Canvas FindCardCanvas()
+    /// <summary>
+    /// 2D 界面的总画布（Game 场景里叫 CardCanvas）。
+    ///
+    /// 只认「本场景（Game）自己的」画布：过场层（SceneTransition）、设置面板（SettingsCanvas）、
+    /// 匹配等待条（NetworkWaiting）都是挂在 DontDestroyOnLoad 上的全屏根 Overlay 画布，
+    /// 切场景时它们还活着；一旦被挑中，入场淡入淡出的是它们，真正的 CardCanvas 反而没被藏起来。
+    /// </summary>
+    Canvas FindCardCanvas()
     {
+        Scene scene = gameObject.scene;                 // 本组件就在 Game 场景里
         Canvas[] canvases = FindObjectsOfType<Canvas>();
         for (int i = 0; i < canvases.Length; i++)
-            if (canvases[i] != null && canvases[i].gameObject.name == "CardCanvas") return canvases[i];
+            if (InScene(canvases[i], scene) && canvases[i].gameObject.name == "CardCanvas") return canvases[i];
 
         // 兜底一：与手牌同一个画布
         if (Player.Instance != null && Player.Instance.handArea != null)
         {
             Canvas c = Player.Instance.handArea.GetComponentInParent<Canvas>();
-            if (c != null) return c;
+            if (InScene(c, scene)) return c;
         }
-        // 兜底二：任意全屏叠加画布
+        // 兜底二：本场景里任意全屏叠加画布
         for (int i = 0; i < canvases.Length; i++)
-            if (canvases[i] != null && canvases[i].renderMode == RenderMode.ScreenSpaceOverlay) return canvases[i];
+            if (InScene(canvases[i], scene) && canvases[i].renderMode == RenderMode.ScreenSpaceOverlay) return canvases[i];
         return null;
+    }
+
+    /// <summary>画布存在、且与给定场景是同一个（跨场景的常驻层一律不算）。</summary>
+    static bool InScene(Canvas c, Scene scene)
+    {
+        return c != null && c.gameObject.scene == scene;
     }
 }

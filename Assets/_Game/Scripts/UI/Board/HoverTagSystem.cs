@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 // ============================================================================
 // HoverTagSystem — 3D 召唤物悬停文本标签系统（单例，懒创建）。
@@ -131,7 +132,7 @@ public class HoverTagSystem : MonoBehaviour
         Transform parentCanvas = t1 != null ? t1.transform.parent : null;
         if (parentCanvas == null)
         {
-            var cv = Object.FindObjectOfType<Canvas>();
+            var cv = FindOwnSceneCanvas();
             parentCanvas = cv != null ? cv.transform : null;
         }
         if (parentCanvas == null) return null;
@@ -158,6 +159,25 @@ public class HoverTagSystem : MonoBehaviour
         if (_prefab == null)
             Debug.LogWarning("[HoverTag] 未取得悬停标签预制体 —— 请先执行 Tools/卡牌/生成悬停标签预制体（生成 TagLabel.prefab + HoverTagConfig.asset）");
         return sys;
+    }
+
+    /// <summary>
+    /// 兜底画布：只认「本场景（Game）自己的」画布。
+    ///
+    /// 过场层（SceneTransition）、设置面板（SettingsCanvas）、匹配等待条（NetworkWaiting）都是挂在
+    /// DontDestroyOnLoad 上的全屏根 Overlay 画布，进 Game 时它们还活着；一旦被挑中，标签层就挂到了
+    /// 别的层级上（随后可能被过场层一起销毁）。
+    /// </summary>
+    static Canvas FindOwnSceneCanvas()
+    {
+        Scene scene = SceneManager.GetActiveScene();
+        Canvas[] canvases = Object.FindObjectsOfType<Canvas>();
+        for (int i = 0; i < canvases.Length; i++)
+            if (canvases[i] != null && canvases[i].gameObject.scene == scene
+                && canvases[i].renderMode == RenderMode.ScreenSpaceOverlay) return canvases[i];
+        for (int i = 0; i < canvases.Length; i++)
+            if (canvases[i] != null && canvases[i].gameObject.scene == scene) return canvases[i];
+        return null;
     }
 
     /// <summary>显示某张 3D 卡的悬停标签。anchor3D = 卡牌根 GameObject（世界锚点）。</summary>

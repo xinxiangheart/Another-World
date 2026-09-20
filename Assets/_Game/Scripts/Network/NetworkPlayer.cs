@@ -368,8 +368,8 @@ public class NetworkPlayer : NetworkBehaviour
     void RefreshUI()
     {
         if (isServer && !isClient) return;
-        if (_healthText != null) _healthText.text = isLocalPlayer ? $" {currentHealth}" : currentHealth.ToString();
-        if (_energyText != null) _energyText.text = isLocalPlayer ? $" {currentEnergy}/{maxEnergy}" : $"{currentEnergy}/{maxEnergy}";
+        if (_healthText != null) _healthText.text = currentHealth.ToString();
+        if (_energyText != null) _energyText.text = $"{currentEnergy}/{maxEnergy}";
     }
 
     // ========== Debug UI ==========

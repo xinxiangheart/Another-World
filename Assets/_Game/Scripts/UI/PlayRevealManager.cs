@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 /// <summary>
 /// 打出展示动画管理器：屏幕右侧 1/3 中心，FIFO 依次"闪烁→展示→淡出"。
@@ -74,10 +75,17 @@ public class PlayRevealManager : MonoBehaviour
             var c = Player.Instance.handArea.GetComponentInParent<Canvas>();
             if (c != null) return c.gameObject;
         }
+        // 兜底：只认「本端手牌所在场景」自己的画布 —— 过场层（SceneTransition）、
+        // 设置面板（SettingsCanvas）、匹配等待条（NetworkWaiting）都是 DontDestroyOnLoad 上的
+        // 全屏根 Overlay 画布，挑中它们展示卡就会挂错层（看不见 / 被过场一起销毁）。
+        Scene scene = Player.Instance != null ? Player.Instance.gameObject.scene
+                                              : SceneManager.GetActiveScene();
         var canvases = UnityEngine.Object.FindObjectsOfType<Canvas>();
         foreach (var c in canvases)
-            if (c != null && c.renderMode == RenderMode.ScreenSpaceOverlay) return c.gameObject;
-        if (canvases.Length > 0) return canvases[0].gameObject;
+            if (c != null && c.gameObject.scene == scene && c.renderMode == RenderMode.ScreenSpaceOverlay)
+                return c.gameObject;
+        foreach (var c in canvases)
+            if (c != null && c.gameObject.scene == scene) return c.gameObject;
         return null;
     }
 

@@ -416,9 +416,9 @@ public class Player : MonoBehaviour
     public void UpdateUI()
     {
         if (healthText != null)
-            healthText.text = $" {currentHealth}";
+            healthText.text = currentHealth.ToString();
         if (energyText != null)
-            energyText.text = $" {currentEnergy}/{maxEnergy}";
+            energyText.text = $"{currentEnergy}/{maxEnergy}";
     }
 
     /// <summary>Game 场景 2D 卡牌整体 ×3 + 补视觉层（预制体未 ×3，运行时补）</summary>

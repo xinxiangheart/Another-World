@@ -17,6 +17,9 @@ using UnityEngine.UI;
 /// 视差：鼠标位置（相对屏幕中心的偏移）驱动整层做小幅度反偏，越近的光斑偏得越多，
 /// 光幕偏得最少 —— 观感像手机陀螺仪那种「视角一动，前后景错开」的层次感。
 ///
+/// 挂载：只在「本场景自己的」根 Overlay 画布里挑一张（过场层是 DontDestroyOnLoad 上的全屏
+/// 画布，不能选它 —— 过场结束会自销毁，光幕会被一起带走）。
+///
 /// 位置 / 尺寸 / 速度一律用画布尺寸的比例表示，换分辨率观感一致；
 /// 可调参数集中在下面的常量区。只对 TargetScenes 里列出的场景生效。
 /// </summary>
@@ -71,17 +74,17 @@ public class MenuLightCurtain : MonoBehaviour
     {
         SceneManager.sceneLoaded -= OnSceneLoaded;
         SceneManager.sceneLoaded += OnSceneLoaded;
-        TryBuild(SceneManager.GetActiveScene().name);
+        TryBuild(SceneManager.GetActiveScene());
     }
 
-    static void OnSceneLoaded(Scene scene, LoadSceneMode mode) { TryBuild(scene.name); }
+    static void OnSceneLoaded(Scene scene, LoadSceneMode mode) { TryBuild(scene); }
 
-    static void TryBuild(string sceneName)
+    static void TryBuild(Scene scene)
     {
-        if (System.Array.IndexOf(TargetScenes, sceneName) < 0) return;
+        if (System.Array.IndexOf(TargetScenes, scene.name) < 0) return;
         if (FindObjectOfType<MenuLightCurtain>() != null) return;      // 已经建过
 
-        Canvas canvas = FindMenuCanvas();
+        Canvas canvas = FindMenuCanvas(scene);
         if (canvas == null) { Debug.LogWarning("[MenuLightCurtain] 没找到画布，光幕未创建"); return; }
 
         var go = new GameObject("MenuLightCurtain", typeof(RectTransform));
@@ -90,17 +93,27 @@ public class MenuLightCurtain : MonoBehaviour
         go.AddComponent<MenuLightCurtain>().Build();
     }
 
-    /// <summary>主菜单画布 = 面积最大的根 Overlay 画布。</summary>
-    static Canvas FindMenuCanvas()
+    /// <summary>
+    /// 主菜单画布 = 「本场景」里面积最大的根 Overlay 画布。
+    ///
+    /// 必须按场景筛：过场层（SceneTransition）是挂在 DontDestroyOnLoad 上的根 Overlay 画布，
+    /// 尺寸同样是整屏，切场景时它还活着；而不分场景只看面积的话，刚载入的 Welcome 画布
+    /// 这一刻尺寸还是 0（ScreenSpaceOverlay 的根 RectTransform 由 Canvas / CanvasScaler 在
+    /// 渲染前才写 sizeDelta，场景文件里存的就是 0），于是过场画布稳赢 ——
+    /// 光幕被挂到过场层下面，过场结束自销毁时把光幕一起带走
+    /// （表现为：从大厅返回开局场景，光幕 / 光粒一闪就没）。
+    /// </summary>
+    static Canvas FindMenuCanvas(Scene scene)
     {
-        Canvas best = null; float bestArea = 0f;
+        Canvas best = null; float bestArea = -1f;      // -1 而不是 0：尺寸还没写好的画布也认
         foreach (var c in FindObjectsOfType<Canvas>())
         {
             if (c == null || !c.isActiveAndEnabled || !c.isRootCanvas) continue;
             if (c.renderMode != RenderMode.ScreenSpaceOverlay) continue;
+            if (c.gameObject.scene != scene) continue; // 只认本场景的（跳过过场层 / DontDestroyOnLoad 层）
             var rt = (RectTransform)c.transform;
             float area = rt.rect.width * rt.rect.height;
-            if (area >= bestArea) { bestArea = area; best = c; }
+            if (area > bestArea) { bestArea = area; best = c; }
         }
         return best;
     }

@@ -18,8 +18,8 @@ public class PlayerStatsUI : MonoBehaviour
         // 己方：通过 Player.Instance 绑定（场景有两个 "Health" 同名对象，GameObject.Find 会找错）
         if (self != null && Player.Instance != null)
         {
-            UpdateOne(Player.Instance.healthText, " {0}", self.currentHealth);
-            UpdateOne(Player.Instance.energyText, " {0}/{1}", self.currentEnergy, self.maxEnergy);
+            UpdateOne(Player.Instance.healthText, "{0}", self.currentHealth);
+            UpdateOne(Player.Instance.energyText, "{0}/{1}", self.currentEnergy, self.maxEnergy);
         }
 
         // 对方：通过 EnemyPlayer.Instance 绑定
