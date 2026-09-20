@@ -1,25 +1,28 @@
 using System.Collections;
 using UnityEngine;
+using UnityEngine.UI;
 using Steamworks;
 
 /// <summary>
-/// 阶段轮盘：5 个环按角度环形分布（MaskArea 框定可见 3 个）。
+/// 阶段轮换（横向）：5 个环在一条水平线上滚动，中间 3 个为可见区。
 ///
-/// PhaseStart 与随后行动阶段（MyTurn/EnemyTurn）合二为一：PhaseStart 不触发旋转，
-/// 初始直接显示第一行动阶段，每轮只旋转 3 次（首行动→次行动→Battle→下轮首行动）。
+/// PhaseStart 与随后行动阶段（MyTurn/EnemyTurn）合二为一：PhaseStart 不触发滚动，
+/// 初始直接显示第一行动阶段，每轮只滚动 3 次（首行动→次行动→Battle→下轮首行动）。
 /// 内容模型（同一数据源 tm.currentPhase + tm.isMyTurnFirst）：
-///   - Prev      ：刚过去的单元（L 位）
-///   - Cur       ：当前单元（C 位）
-///   - Next      ：下一单元（R 位）
-///   - NextNext  ：下下单元（隐藏位预载，旋转后进 R 位显示"切换后的下一单元"）
+///   - Prev      ：刚过去的单元（L 位，左侧，缩小变淡）
+///   - Cur       ：当前单元（C 位，正中，最大最亮）
+///   - Next      ：下一单元（R 位，右侧，缩小变淡）
+///   - NextNext  ：下下单元（H2 位预载，滚动后进 R 位显示"切换后的下一单元"）
 ///
-/// 完整循环（严格"预载→旋转→清空→再预载"）：
-///   阶段切换时：
-///     ① 预载：隐藏环(H2) = NextNext（= NextOf(Next)，旋转后进 R 位显示新 Next）
-///     ② 旋转：所有环带图案滚动一位
-///     ③ 结果：原 NextNext → R 位（新 Next）；原 Next → C 位（新 Cur）；
-///               原 Cur → L 位（新 Prev）；原 Prev → H1 位（转出显示区）
-///     ④ 清空：H1（原 Prev）清空图案，为再下一轮准备（下次旋转前作为 H2 被预载）
+/// 布局（画布局域单位，行中心 y=0）：
+///   H1 = -2×slotStep（屏外，alpha 0）／L = -1×slotStep／C = 0／R = +1×slotStep／H2 = +2×slotStep（屏外）
+///
+/// 完整循环（严格"预载→滚动→清空→再预载"，滚动方向 = 从右向左）：
+///   ① 预载：隐藏环(H2) = NextNext（滚动后进 R 位显示新 Next）
+///   ② 瞬移：H1 位的环（原 Prev，此刻已在屏外且 alpha=0）直接挪到 H2 位 —— 两端都不可见，传送无痕
+///   ③ 滚动：其余 4 个环一起左移一位（位置 / 大小 / 淡出按连续角色位同步插值）
+///   ④ 结果：原 NextNext → R；原 Next → C；原 Cur → L；原 Prev → H1（转出显示区）
+///   ⑤ 清空：H1（原 Prev）清空图案，为再下一轮准备（下次滚动前作为 H2 被预载）
 ///   显示环（L/C/R）图案永不更新——只靠物理环带内容移动。
 ///
 /// 先后手交换（关键）：
@@ -28,60 +31,77 @@ using Steamworks;
 ///   （Next/NextNext）时 tm.isMyTurnFirst 已反映该阶段所在轮的先后手，直接读取即可
 ///   （见 IsFirstMineForPhase）。
 ///
-/// L 位是显示环（上一阶段）：只在 Start 初始态为空白，之后随旋转自然显示上一阶段，永不清空。
+/// 滚动校正：滚动动画期间阶段又变化时（回合边界 Battle→PhaseStart→MyTurn/EnemyTurn
+///   常在滚动窗口内连跳，但 PhaseStart 被合并不滚动），滚动结束后按最新阶段 + 最新先手
+///   补滚一次，避免五环内容滞后。被 _rotating 挡下的请求由 UpdateWheelContents 兜底预载。
 ///
-/// 旋转校正：旋转动画（0.4s）期间阶段又变化时（回合边界 Battle→PhaseStart→MyTurn/EnemyTurn
-///   常在旋转窗口内连跳，但 PhaseStart 被合并不旋转），旋转结束后按最新阶段 + 最新先手
-///   补转一次，避免五环内容滞后。
+/// 收起 / 展开：点金色隐藏按钮 → 只把「阶段底衬」（承载圆环的一条）上移 hideContentShift 藏出屏幕，
+///   木框与其它顶栏元素不动；吊在底衬下沿的按钮自己上移 hideButtonShift，收起后停在木框下沿，指标三角顺时针转 180°（向上 → 向下）；再点恢复。
 ///
 /// 头像显示（行动者视角，AI 对战与联机一致）：
 ///   - MyTurn（己方行动）→ 己方头像；EnemyTurn（对方行动）→ 对方头像（AI 无头像 → 空白环）。
 ///   - PhaseStart（准备阶段）→ 本回合先手头像（按 isMyTurnFirst）。
-/// 头像不可用（AI 先手/AI 回合/未加载）→ 空白环（绝不 SetAvatar(null) 残留）。
+///   头像不可用（AI 先手/AI 回合/未加载）→ 空白环（绝不 SetAvatar(null) 残留）。
 /// </summary>
 public class PhaseWheel : MonoBehaviour
 {
     public static PhaseWheel Instance { get; private set; }
 
     [Header("引用")]
-    public RectTransform wheelContainer;   // 旋转容器（本实现不旋转，保持 0）
+    public RectTransform wheelContainer;   // 环容器（MaskArea 下的窗框，仅作结构引用）
     public RingSlot[] slots;               // 5 个环，物理 index [0=Hidden1, 1=Left, 2=Center, 3=Right, 4=Hidden2]
+    [Tooltip("阶段行根（本组件所在 RectTransform）；空 = 自身")]
+    public RectTransform rowRoot;
+    [Tooltip("点隐藏时上移的内容 = 阶段底衬（圆环挂在它下面）")]
+    public RectTransform hideContent;
+    [Tooltip("金色隐藏按钮")]
+    public RectTransform hideButton;
+    [Tooltip("按钮上的三角指标（绕中心旋转）")]
+    public RectTransform hideArrow;
 
     [Header("配置")]
-    [Tooltip("旋转动画时长（秒）")]
+    [Tooltip("横向滚动动画时长（秒）")]
     public float rotateDuration = 0.4f;
     [Tooltip("攻击回合图标（两剑交叉）")]
     public Sprite battleIcon;
 
-    [Header("缩放脉冲动画")]
-    [Tooltip("静止（非转动）时轮盘整体倍率")]
-    public float restScale = 0.8f;
-    [Tooltip("转动时快速放大到的倍率（无论从多大开始，都放大到这个目标）")]
-    public float spinScale = 1f;
-    [Tooltip("放大耗时（秒）")]
-    public float growDuration = 0.12f;
-    [Tooltip("转完缩回 0.8 的耗时（秒）")]
-    public float shrinkDuration = 0.5f;
-    [Tooltip("轮盘根 RectTransform（缩放对象=包含底盘/环/图标/文字等全部美术的根；空=自身 RectTransform）")]
-    public RectTransform animRoot;
+    [Header("横向布局（Canvas 局域单位）")]
+    [Tooltip("相邻两环的中心间距")]
+    public float slotStep = 210f;
+    [Tooltip("中间环（当前阶段）倍率")]
+    public float centerScale = 1f;
+    [Tooltip("两侧环倍率（比中间小）")]
+    public float sideScale = 0.7f;
+    [Tooltip("两侧环不透明度（比中间淡）")]
+    public float sideAlpha = 0.6f;
+    [Tooltip("出屏环淡出到 0 的额外距离（角色位单位，1 = 一个 slotStep）")]
+    public float fadeSpan = 0.7f;
+
+    [Header("收起 / 展开")]
+    [Tooltip("底衬（承载圆环的那条）上移距离，= 底衬下沿距屏顶的距离，恰好完全藏出屏幕")]
+    public float hideContentShift = 57f;
+    [Tooltip("隐藏按钮上移距离（收起后按钮升到木框下沿）")]
+    public float hideButtonShift = 30f;
+    [Tooltip("收起 / 展开动画时长（秒）")]
+    public float hideDuration = 0.28f;
+    [Tooltip("指标旋转时长（秒）")]
+    public float arrowSpinDuration = 0.28f;
 
     static readonly TurnManager.TurnPhase[] ORDER = { TurnManager.TurnPhase.PhaseStart, TurnManager.TurnPhase.MyTurn, TurnManager.TurnPhase.EnemyTurn, TurnManager.TurnPhase.BattlePhase };
-    /// <summary>角色 → 世界角度（度）。H1=300(左上), L=240(左下), C=180(正下), R=120(右下), H2=60(右上)。
-    /// Left 在左、Right 在右；next 从右侧(120°)滑入中央(180°)，顺时针视觉。</summary>
-    static readonly float[] ROLE_ANGLE = { 300f, 240f, 180f, 120f, 60f };
 
     /// <summary>角色 → 物理环 index。[H1, L, C, R, H2]。</summary>
     int[] _roleSlot = { 0, 1, 2, 3, 4 };
     bool _rotating;
     TurnManager.TurnPhase? _lastPhase;
-    float _radius;
-    /// <summary>物理环 → 内容描述（跟随物理环，旋转时内容不变）。</summary>
+    /// <summary>物理环 → 内容描述（跟随物理环，滚动时内容不变）。</summary>
     string[] _slotDesc = new string[5];
+    /// <summary>物理环 → CanvasGroup（淡出用；Awake 自动补挂）。</summary>
+    CanvasGroup[] _groups = new CanvasGroup[5];
 
-    // 缩放脉冲动画状态
-    float _hTop;         // pivot 到顶部距离（未缩放 local 高度分量）
-    float _topPinLocalY; // 顶部固定点（parent 局部 Y）
-    Coroutine _scaleAnim;
+    // 收起 / 展开状态
+    bool _hidden;
+    Coroutine _hideAnim, _buttonAnim, _arrowAnim;
+    Vector2 _contentRestPos, _buttonRestPos;
 
     void LogWheel(string tag)
     {
@@ -102,18 +122,33 @@ public class PhaseWheel : MonoBehaviour
     {
         Instance = this;
         if (slots == null || slots.Length != 5) { Debug.LogError("[PhaseWheel] 需要 5 个 RingSlot 引用"); return; }
-        var rt0 = slots[0] != null ? slots[0].GetComponent<RectTransform>() : null;
-        _radius = rt0 != null ? rt0.anchoredPosition.magnitude : 125f;
+        if (rowRoot == null) rowRoot = GetComponent<RectTransform>();
+        for (int i = 0; i < slots.Length; i++)
+        {
+            if (slots[i] == null) continue;
+            CanvasGroup g = slots[i].GetComponent<CanvasGroup>();
+            if (g == null) g = slots[i].gameObject.AddComponent<CanvasGroup>();
+            g.interactable = false;
+            g.blocksRaycasts = false;
+            _groups[i] = g;
+        }
+        if (hideContent != null) _contentRestPos = hideContent.anchoredPosition;
+        if (hideButton != null)
+        {
+            _buttonRestPos = hideButton.anchoredPosition;
+            Button btn = hideButton.GetComponent<Button>();
+            if (btn != null) btn.onClick.AddListener(ToggleHidden);
+            else Debug.LogWarning("[PhaseWheel] 隐藏按钮上没有 Button 组件，点击无效");
+        }
     }
 
     void Start()
     {
-        InitScalePinning();
         var tm = TurnManager.Instance;
         if (tm == null) return;
         bool myFirst = tm.isMyTurnFirst;
         // PhaseStart 与随后行动阶段合二为一：初始直接显示第一行动阶段（MyTurn/EnemyTurn），
-        // 不把 PhaseStart 当独立节点。_lastPhase 记为 initial，使随后 PhaseStart→首行动 不触发旋转。
+        // 不把 PhaseStart 当独立节点。_lastPhase 记为 initial，使随后 PhaseStart→首行动 不触发滚动。
         TurnManager.TurnPhase initial = tm.currentPhase;
         if (initial == TurnManager.TurnPhase.PhaseStart)
             initial = myFirst ? TurnManager.TurnPhase.MyTurn : TurnManager.TurnPhase.EnemyTurn;
@@ -124,6 +159,8 @@ public class PhaseWheel : MonoBehaviour
         ApplyContent(_roleSlot[3], NextOfPhase(initial, myFirst), false); // R = Next
         slots[_roleSlot[0]].SetEmpty();
         slots[_roleSlot[4]].SetEmpty();
+        ApplyAllVisuals();
+        SetHiddenImmediate(false);
         LogWheel("[Start] 初始五环");
     }
 
@@ -166,121 +203,83 @@ public class PhaseWheel : MonoBehaviour
         return TurnManager.TurnPhase.PhaseStart;
     }
 
-    /// <summary>旋转一个环位：预载 NextNext → 物理环角度动画 → 角色轮转 → 清空刚转出的隐藏环。
+    /// <summary>滚动一个环位：预载 NextNext → 横向左移动画 → 角色轮转 → 清空刚转出的隐藏环。
     /// L 位是显示环（上一阶段），永不清空——只在 Start 初始态为空白。</summary>
     public void RotateToPhase(TurnManager.TurnPhase? previous, TurnManager.TurnPhase current, TurnManager.TurnPhase? next)
     {
         if (_rotating || slots == null || slots.Length != 5) { UpdateWheelContents(previous, current, next); return; }
-        BeginScalePulse(); // 真实转动 → 快速放大，旋转后较慢缩回 0.8（可中断重入）
         StartCoroutine(RotateRoutine(previous, current, next));
     }
 
     // ══════════════════════════════════════════════════════════════════
-    // 缩放脉冲：静止 0.8 → 转动快速放大 → 旋转保持大 → 较慢缩回 0.8。
-    // 中断重入：若仍在缩回/放大中途再次触发转动，停止旧协程，从"当前 localScale"起步，
-    // 仍放大到同一目标 spinScale（与从 0.8 开始一致）。顶边贴合：缩放时用位置补偿固定顶边。
+    // 横向摆位：把"角色位"（连续值，0=H1 1=L 2=C 3=R 4=H2）映射成
+    // 位置 / 大小 / 淡出。滚动动画就是对角色位做 1→0 的连续插值，
+    // 于是位移、缩放、透明度由同一根曲线带出来，不会各自为政。
     // ══════════════════════════════════════════════════════════════════
 
-    void InitScalePinning()
+    /// <summary>按角色位摆一个环（位置 + 大小 + 淡出）。rolePos 允许小数（动画中间态）。</summary>
+    void ApplyRoleVisual(int physIndex, float rolePos)
     {
-        if (animRoot == null)
+        if (physIndex < 0 || physIndex >= slots.Length || slots[physIndex] == null) return;
+        RectTransform rt = slots[physIndex].GetComponent<RectTransform>();
+        if (rt != null)
         {
-            // 缩放对象 = 轮盘美术根（底盘/环/图标/文字等全部子美术随根一起缩放）。
-            // 优先本组件所在 RectTransform；仅当自身不是 UI 容器时才退回 wheelContainer。
-            animRoot = GetComponent<RectTransform>();
-            if (animRoot == null) animRoot = wheelContainer;
+            rt.anchoredPosition = new Vector2((rolePos - 2f) * slotStep, 0f);
+            float sc = Mathf.Lerp(centerScale, sideScale, Mathf.Clamp01(Mathf.Abs(rolePos - 2f)));
+            rt.localScale = new Vector3(sc, sc, 1f);
         }
-        if (animRoot == null) return;
-        // pivot 到顶边的未缩放高度分量；顶边固定点 = 当前顶边在 parent 局部 Y
-        _hTop = (1f - animRoot.pivot.y) * animRoot.rect.height;
-        _topPinLocalY = animRoot.localPosition.y + _hTop * animRoot.localScale.y;
-        ApplyScale(restScale); // 静止态收敛到 0.8（幂等），顶边贴合不变
-    }
-
-    void ApplyScale(float s)
-    {
-        if (animRoot == null) return;
-        animRoot.localScale = Vector3.one * s;
-        // 缩放按 pivot 改变 pivot→顶边实际位移(hTop*s)，用位置补偿把顶边钉回 _topPinLocalY
-        var p = animRoot.localPosition;
-        animRoot.localPosition = new Vector3(p.x, _topPinLocalY - _hTop * s, p.z);
-    }
-
-    void BeginScalePulse()
-    {
-        if (animRoot == null) return;
-        if (_scaleAnim != null) StopCoroutine(_scaleAnim);
-        _scaleAnim = StartCoroutine(ScalePulseRoutine());
-    }
-
-    IEnumerator ScalePulseRoutine()
-    {
-        float from = animRoot.localScale.x;          // 中断重入：从当前大小起步
-        yield return ScaleAnim(from, spinScale, growDuration);        // 快速放大到同一目标
-        yield return new WaitForSeconds(rotateDuration);              // 旋转期间保持大
-        yield return ScaleAnim(spinScale, restScale, shrinkDuration); // 较慢缩回 0.8
-        _scaleAnim = null;
-    }
-
-    IEnumerator ScaleAnim(float from, float to, float dur)
-    {
-        if (dur <= 0f) { ApplyScale(to); yield break; }
-        float t = 0f;
-        while (t < dur)
+        CanvasGroup g = physIndex < _groups.Length ? _groups[physIndex] : null;
+        if (g != null)
         {
-            t += Time.deltaTime;
-            float p = Mathf.Clamp01(t / dur);
-            float e = 1f - (1f - p) * (1f - p); // ease-out：放大干脆、缩回收尾更缓
-            ApplyScale(Mathf.Lerp(from, to, e));
-            yield return null;
+            float d = Mathf.Abs(rolePos - 2f);          // 离正中的距离（角色位单位）
+            g.alpha = d <= 1f
+                ? Mathf.Lerp(1f, sideAlpha, d)                                            // 正中 → 两侧：变淡
+                : Mathf.Lerp(sideAlpha, 0f, Mathf.Clamp01((d - 1f) / Mathf.Max(0.01f, fadeSpan))); // 两侧 → 出屏：淡没
         }
-        ApplyScale(to);
+    }
+
+    /// <summary>5 个环全部按各自角色位重摆一遍（初始 / 兜底）。</summary>
+    void ApplyAllVisuals()
+    {
+        if (slots == null || slots.Length != 5) return;
+        for (int role = 0; role < 5; role++) ApplyRoleVisual(_roleSlot[role], role);
     }
 
     IEnumerator RotateRoutine(TurnManager.TurnPhase? previous, TurnManager.TurnPhase current, TurnManager.TurnPhase? next)
     {
         _rotating = true;
-        LogWheel($"[旋转] {DescribePhase(previous)} → {DescribePhase(current)} → {DescribePhase(next)}");
+        LogWheel($"[滚动] {DescribePhase(previous)} → {DescribePhase(current)} → {DescribePhase(next)}");
 
-        // ① 预载：隐藏环(H2) = next（切换后的下一阶段 = 切换前的 NextNext 下下阶段）。
-        //    旋转后 next 进 R 位显示"新的下一阶段"。
-        //    注意：先手翻转发生在 EndCurrentTurn 设 BattlePhase 之前，预载任何未来阶段时
-        //    tm.isMyTurnFirst 已反映该阶段所在轮的先后手，直接读取即可（见 IsFirstMineForPhase）。
+        // ① 预载：隐藏环(H2) = next（滚动后的"下一阶段" = 滚动前的 NextNext）。
         ApplyContent(_roleSlot[4], next, true);
         LogWheel($"[预载] 预载 H2={DescribePhase(next)}，五环");
 
-        // ② 旋转动画：物理环从当前角色位 → 新角色位（逆时针移一位，带内容移动）。
-        //    显示环（L/C/R）图案在动画期间不变。
-        float[] startA = new float[5], endA = new float[5];
-        for (int role = 0; role < 5; role++)
-        {
-            startA[role] = ROLE_ANGLE[role];
-            endA[role] = ROLE_ANGLE[(role + 4) % 5]; // 逆时针移一位：R→C, C→L, L→H1, H1→H2, H2→R
-        }
+        // ② 瞬移：H1 位的环（原 Prev）直接挪到 H2 位。此刻 H1 与 H2 都在屏幕外且 alpha=0，
+        //    传送没有任何可见痕迹；不这么做它会横穿整条可见带滑到右边。
+        ApplyRoleVisual(_roleSlot[0], 4f);
 
+        // ③ 滚动动画：其余 4 个环一起左移一位（role → role-1），位置/大小/淡出同步插值。
         float t = 0f;
         while (t < rotateDuration)
         {
             t += Time.deltaTime;
             float p = Mathf.Clamp01(t / rotateDuration);
             float e = 1f - (1f - p) * (1f - p); // ease-out
-            for (int role = 0; role < 5; role++)
-                SetPhysAngle(_roleSlot[role], Mathf.LerpAngle(startA[role], endA[role], e));
+            for (int role = 1; role < 5; role++)
+                ApplyRoleVisual(_roleSlot[role], Mathf.Lerp(role, role - 1f, e));
             yield return null;
         }
-        for (int role = 0; role < 5; role++)
-            SetPhysAngle(_roleSlot[role], endA[role]);
+        for (int role = 1; role < 5; role++) ApplyRoleVisual(_roleSlot[role], role - 1f);
 
-        // ③ 角色轮转：H1←L, L←C, C←R, R←H2, H2←H1
+        // ④ 角色轮转：H1←L, L←C, C←R, R←H2, H2←H1
         RotateRoles();
 
-        // ④ 清空"刚转出显示区"的隐藏环（当前 H1 位 = 原 Prev 环）。
-        //    显示环（L/C/R）已带正确内容到位，图案永不更新；L 位（上一阶段）永不清空。
+        // ⑤ 清空"刚滚出显示区"的隐藏环（当前 H1 位 = 原 Prev 环）。
         slots[_roleSlot[0]].SetEmpty();
         _slotDesc[_roleSlot[0]] = "空白";
+        ApplyRoleVisual(_roleSlot[0], 0f);
 
-        LogWheel("[旋转后] 五环");
-        // 下次旋转前，这个空隐藏环作为 H2 位被预载（① 预载已覆盖），循环闭合。
+        LogWheel("[滚动后] 五环");
         _rotating = false;
 
         // ⑤ 旋转校正：旋转动画期间阶段又变化（回合边界 Battle→PhaseStart→MyTurn/EnemyTurn
@@ -324,12 +323,86 @@ public class PhaseWheel : MonoBehaviour
         ApplyContent(_roleSlot[4], next, true);
     }
 
-    void SetPhysAngle(int physIndex, float angle)
+    // ══════════════════════════════════════════════════════════════════
+    // 收起 / 展开：整条顶栏上移藏出屏幕，按钮自己上移贴到屏幕顶端，
+    // 指标三角顺时针旋转 180°（向上 → 向下）。再点一次原路回来。
+    // ══════════════════════════════════════════════════════════════════
+
+    /// <summary>切换收起 / 展开（隐藏按钮的点击回调）。</summary>
+    public void ToggleHidden() { SetHidden(!_hidden); }
+
+    /// <summary>是否已收起（只露隐藏按钮）。</summary>
+    public bool IsHidden => _hidden;
+
+    /// <summary>收起 / 展开。</summary>
+    public void SetHidden(bool hidden)
     {
-        if (physIndex < 0 || physIndex >= slots.Length || slots[physIndex] == null) return;
-        float rad = angle * Mathf.Deg2Rad;
-        slots[physIndex].GetComponent<RectTransform>().anchoredPosition =
-            new Vector2(Mathf.Sin(rad) * _radius, Mathf.Cos(rad) * _radius);
+        _hidden = hidden;
+        if (hideContent != null)
+        {
+            if (_hideAnim != null) StopCoroutine(_hideAnim);
+            _hideAnim = StartCoroutine(MoveAnchoredY(hideContent,
+                _contentRestPos.y + (hidden ? hideContentShift : 0f), hideDuration));
+        }
+        if (hideButton != null)
+        {
+            if (_buttonAnim != null) StopCoroutine(_buttonAnim);
+            _buttonAnim = StartCoroutine(MoveAnchoredY(hideButton,
+                _buttonRestPos.y + (hidden ? hideButtonShift : 0f), hideDuration));
+        }
+        if (hideArrow != null)
+        {
+            if (_arrowAnim != null) StopCoroutine(_arrowAnim);
+            _arrowAnim = StartCoroutine(SpinArrowRoutine(hidden));
+        }
+    }
+
+    /// <summary>不做动画直接落到某一态（初始用）。</summary>
+    void SetHiddenImmediate(bool hidden)
+    {
+        _hidden = hidden;
+        if (hideContent != null)
+            hideContent.anchoredPosition = new Vector2(hideContent.anchoredPosition.x,
+                _contentRestPos.y + (hidden ? hideContentShift : 0f));
+        if (hideButton != null)
+            hideButton.anchoredPosition = new Vector2(hideButton.anchoredPosition.x,
+                _buttonRestPos.y + (hidden ? hideButtonShift : 0f));
+        if (hideArrow != null) hideArrow.localRotation = Quaternion.Euler(0f, 0f, hidden ? 180f : 0f);
+    }
+
+    IEnumerator MoveAnchoredY(RectTransform rt, float toY, float dur)
+    {
+        float fromY = rt.anchoredPosition.y;
+        if (dur <= 0f) { rt.anchoredPosition = new Vector2(rt.anchoredPosition.x, toY); yield break; }
+        float t = 0f;
+        while (t < dur)
+        {
+            t += Time.deltaTime;
+            float p = Mathf.Clamp01(t / dur);
+            float e = p * p * (3f - 2f * p); // smoothstep
+            rt.anchoredPosition = new Vector2(rt.anchoredPosition.x, Mathf.Lerp(fromY, toY, e));
+            yield return null;
+        }
+        rt.anchoredPosition = new Vector2(rt.anchoredPosition.x, toY);
+    }
+
+    /// <summary>指标旋转：始终顺时针 —— 收起 0→180，展开 180→360（视觉上回到正位）。</summary>
+    IEnumerator SpinArrowRoutine(bool down)
+    {
+        float from = hideArrow.localEulerAngles.z;
+        if (!down && from < 1f) { hideArrow.localRotation = Quaternion.identity; yield break; }
+        float to = down ? 180f : 360f;
+        float dur = Mathf.Max(0.01f, arrowSpinDuration);
+        float t = 0f;
+        while (t < dur)
+        {
+            t += Time.deltaTime;
+            float p = Mathf.Clamp01(t / dur);
+            float e = p * p * (3f - 2f * p);
+            hideArrow.localRotation = Quaternion.Euler(0f, 0f, Mathf.Lerp(from, to, e));
+            yield return null;
+        }
+        hideArrow.localRotation = Quaternion.Euler(0f, 0f, down ? 180f : 0f);
     }
 
     /// <summary>填充环内容。isNext=true 表示"未来阶段"（Next/NextNext 预载），需跨轮翻转先手。</summary>
