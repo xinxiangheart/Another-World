@@ -369,7 +369,7 @@ public class NetworkPlayer : NetworkBehaviour
     {
         if (isServer && !isClient) return;
         if (_healthText != null) _healthText.text = currentHealth.ToString();
-        if (_energyText != null) _energyText.text = $"{currentEnergy}/{maxEnergy}";
+        if (_energyText != null) _energyText.text = currentEnergy.ToString();
     }
 
     // ========== Debug UI ==========
@@ -1004,6 +1004,22 @@ public class NetworkPlayer : NetworkBehaviour
     /// by PlayerStatsUI polling NetworkPlayer.Local/Remote every frame.
     /// </summary>
     public void UpdateUI() => RefreshUI();
+
+    // ========== Hand Management ==========
+
+    /// <summary>
+    /// 手牌数对齐：handCardCount 是 SyncVar，但有多处直接改 handCards 列表的路径
+    /// （SimpleAI 的 Remove + Destroy、服务器侧替对手移除手牌等），逐处补写容易漏。
+    /// 服务器侧每帧从真源（非空引用个数）重算一次；值没变时 Mirror 不触发 hook、不置 dirty。
+    /// </summary>
+    void Update()
+    {
+        if (!NetworkServer.active) return;
+        int n = 0;
+        for (int i = 0; i < handCards.Count; i++)
+            if (handCards[i] != null) n++;
+        if (n != handCardCount) handCardCount = n;
+    }
 
     // ========== Hand Management ==========
 

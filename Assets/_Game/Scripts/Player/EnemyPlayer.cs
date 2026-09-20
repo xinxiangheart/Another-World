@@ -106,6 +106,6 @@ public class EnemyPlayer : MonoBehaviour
     public void UpdateUI()
     {
         if (healthText != null) healthText.text = currentHealth.ToString();
-        if (energyText != null) energyText.text = $"{currentEnergy}/{maxEnergy}";
+        if (energyText != null) energyText.text = currentEnergy.ToString();
     }
 }

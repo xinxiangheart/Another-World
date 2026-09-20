@@ -19,14 +19,14 @@ public class PlayerStatsUI : MonoBehaviour
         if (self != null && Player.Instance != null)
         {
             UpdateOne(Player.Instance.healthText, "{0}", self.currentHealth);
-            UpdateOne(Player.Instance.energyText, "{0}/{1}", self.currentEnergy, self.maxEnergy);
+            UpdateOne(Player.Instance.energyText, "{0}", self.currentEnergy);
         }
 
         // 对方：通过 EnemyPlayer.Instance 绑定
         if (enemy != null && EnemyPlayer.Instance != null)
         {
             UpdateOne(EnemyPlayer.Instance.healthText, "{0}", enemy.currentHealth);
-            UpdateOne(EnemyPlayer.Instance.energyText, "{0}/{1}", enemy.currentEnergy, enemy.maxEnergy);
+            UpdateOne(EnemyPlayer.Instance.energyText, "{0}", enemy.currentEnergy);
         }
     }
 
