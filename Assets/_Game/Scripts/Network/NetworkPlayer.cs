@@ -1342,6 +1342,10 @@ public class NetworkPlayer : NetworkBehaviour
         }
         else
         {
+            // owner 没解析出来（卡已离槽且调用方没传 knownOwner）→ 只能回退本机手牌。
+            // 这正是「AI 回手误进玩家手牌」的入口：新增调用方务必在退场前按槽位兜住 owner 再传进来。
+            if (owner == null)
+                UnityEngine.Debug.LogWarning($"[ReturnCardToOwner] owner 未解析 → 回退本机手牌 templateID={template.templateID} iid={oldInstance?.instanceID}");
             Local?.AddCardToHandFromInstance(template, oldInstance);
         }
     }

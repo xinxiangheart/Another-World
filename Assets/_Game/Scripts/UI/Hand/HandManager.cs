@@ -3041,6 +3041,11 @@ public class HandManager : MonoBehaviour
         BoardSlot returnSlot = FindSlotOf(returnTarget);
         BoardSlot refundSlot = FindSlotOf(refundTarget);
 
+        // 回手 owner 必须在 HandleDeath 之前按槽位半场捕获：HandleDeath 清槽后 ReturnCardToOwner
+        // 扫不到卡 → 回退 NetworkPlayer.Local(=玩家)，AI 的召唤物就进了玩家手牌。
+        // AI 走这条路（BoardSlot.RemnantEnterEffect 协程）本就在 RunAsLocal 作用域之外。
+        NetworkPlayer returnOwner = returnSlot != null ? BoardManager.GetOwnerPlayer(returnSlot.slotID) : null;
+
         if (returnSlot != null)
             returnSlot.HandleDeath(returnSlot.currentCard3D);
         if (refundSlot != null)
@@ -3048,7 +3053,7 @@ public class HandManager : MonoBehaviour
 
         returnTarget.handledReturnToHand = true;
         if (returnTemplate != null)
-            NetworkPlayer.ReturnCardToOwner(returnTemplate, returnTarget); // 回手按 owner 分流（AI→AI手牌）
+            NetworkPlayer.ReturnCardToOwner(returnTemplate, returnTarget, returnOwner); // 回手按 owner 分流（AI→AI手牌）
 
         // 01322 进场完成，恢复界面状态
         BoardSlot anySlot = FindSlotOf(returnTarget) ?? FindSlotOf(refundTarget) ?? returnSlot ?? refundSlot;

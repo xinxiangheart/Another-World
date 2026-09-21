@@ -321,12 +321,17 @@ public static class EnterHandlers
                     int atk = t3d.cardInstance.currentAttack;
                     int hp = t3d.cardInstance.currentHealth;
                     var targetInst = t3d.cardInstance;
+                    // owner 必须在 HandleDeath 之前按槽位半场捕获：HandleDeath 会清槽(SetCard(null))，
+                    // 之后 ReturnCardToOwner 扫描定位不到卡 → 回退 NetworkPlayer.Local(=玩家)，
+                    // AI 的召唤物就进了玩家手牌。AI 这条选中回调还跑在 RunAsLocal 之外
+                    // （BoardSlot.AIResolveSelectionCoroutine 延迟 ~0.5s 才 invoke），更押不住 Local。
+                    NetworkPlayer cardOwner = BoardManager.GetOwnerPlayer(targetSlot.slotID);
                     t3d.cardInstance.isActiveExit = true;
                     targetSlot.HandleDeath(t3d.gameObject);
                     if (!targetInst.handledReturnToHand)
                     {
                         var tt = CardDatabase.Instance?.GetTemplate(targetInst.templateID);
-                        if (tt != null) NetworkPlayer.ReturnCardToOwner(tt, targetInst); // 回手按 owner 分流（AI→AI手牌）
+                        if (tt != null) NetworkPlayer.ReturnCardToOwner(tt, targetInst, cardOwner); // 回手按 owner 分流（AI→AI手牌）
                     }
                     var self3D = slot.currentCard3D?.GetComponent<Card3DInstance>();
                     if (self3D != null)
