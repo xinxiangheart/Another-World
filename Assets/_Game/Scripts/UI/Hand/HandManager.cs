@@ -2643,13 +2643,12 @@ public class HandManager : MonoBehaviour
                     if (sl == null || sl.hasCard || sl.isBlocked || sl.prisonBlocked || sl.permaBlocked) continue;
                     GameObject tempAI = new GameObject("TempCoreAI");
                     CardInstance tiAI = tempAI.AddComponent<CardInstance>();
-                    tiAI.InitFromTemplate(template, 0);
+                    tiAI.InitFromTemplate(template, 0, CardZoneManager.GenerateInstanceID("03027"));
                     PlaceCardToSlot(sl, tempAI);
                     Destroy(tempAI);
-                    if (NetworkClient.isConnected)
-                        NetworkPlayer.Local?.CmdPlayCard("03027", sl.slotID,
-                            tiAI.baseAttack, tiAI.baseHealth, tiAI.baseMaxHealth, tiAI.currentCost,
-                            tiAI.instanceID ?? CardZoneManager.GenerateInstanceID("03027"));
+                    // AI 无客户端：PlaceCardToSlot 已把中枢放进服务器板面(0-5)，就是最终状态。
+                    // 这里若再以 Local 身份 CmdPlayCard，ServerPlayCard 会把参数当成"远程方本地槽位"
+                    // 再镜像一次(+6) → 玩家半场凭空多出一个中枢（双方各一个）。与 BoardSlot 影子召唤分支同处理。
                     break;
                 }
             }

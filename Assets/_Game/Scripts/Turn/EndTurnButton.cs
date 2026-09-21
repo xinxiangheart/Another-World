@@ -52,12 +52,28 @@ public class EndTurnButton : MonoBehaviour,
 
     void OnEnable()
     {
-        // 从隐藏恢复时把文字直接落到位，避免补一次翻转
+        // 隐藏期间回合可能已经变了（按钮是被 SetActive(false) 藏起来的，Update 停跑）。
+        // 重新显示时必须直接把文字落到当前阶段 —— 协程在失活时会被 Unity 掐掉，
+        // 若走 ApplyText 会从上一个阶段的残留文字再翻一次，表现为"先翻一下才显示正确回合"。
+        _hover = false;
         _shown = "";
-        _flipping = false;
         _pending = null;
-        ApplyText(DisplayOf(TurnManager.Instance != null ? TurnManager.Instance.currentPhase : TurnManager.TurnPhase.PhaseStart));
+        SnapText(DisplayOf(TurnManager.Instance != null ? TurnManager.Instance.currentPhase : TurnManager.TurnPhase.PhaseStart));
         ApplyColor();
+    }
+
+    /// <summary>把文字直接落到位（不走翻转动画），并复位翻转/点击残留状态。</summary>
+    void SnapText(string want)
+    {
+        _flipping = false;
+        if (_press != null) { StopCoroutine(_press); _press = null; }
+        ((RectTransform)transform).anchoredPosition = _basePos;
+        if (label != null)
+        {
+            label.rectTransform.localRotation = Quaternion.identity;
+            label.text = want;
+        }
+        _shown = want;
     }
 
     void Update()

@@ -238,7 +238,9 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
             if (NetworkServer.active && NetworkPlayer.Remote != null
                 && NetworkPlayer.Remote.connectionToClient != null)
                 NetworkPlayer.Remote.TargetSpawnCounterCard(NetworkPlayer.Remote.connectionToClient, template.templateID);
-            else if (NetworkClient.isConnected)
+            // 只有纯客户端才上报：离线 AI 局同样走 Host，NetworkClient.isConnected 也是 true，
+            // 而 CmdPlayCounter 在服务端无条件再生成一张"敌方"牌背 → 对方区域凭空多一张反面反制牌。
+            else if (NetworkClient.isConnected && !NetworkServer.active)
                 NetworkPlayer.Local?.CmdPlayCounter(template.templateID);
 
             CardView cv = GetComponent<CardView>();

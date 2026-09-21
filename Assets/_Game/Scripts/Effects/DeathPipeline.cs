@@ -194,7 +194,9 @@ public static class DeathPipeline
                 hm?.PlaceCardToSlot(slot, temp);
                 Object.Destroy(temp);
                 // Token 同步到服务器/对方——纯客户端不依赖 SyncNow 创建模型
-                if (NetworkClient.isConnected)
+                // 离线 AI 局里 AI 半场(0-5)的复生杂兵不再同步：PlaceCardToSlot 已落在服务器板面，
+                // ServerPlayCard 会把它当"远程方本地槽位"再镜像(+6) → 玩家半场凭空多一个杂兵。
+                if (NetworkClient.isConnected && !(NetworkServer.active && SimpleAI.IsAIMatch && slot.slotID < 6))
                     NetworkPlayer.Local?.CmdPlayCard("03004", slot.slotID, -1, -1, -1, -1, ti.instanceID);
             }
         }

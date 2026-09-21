@@ -3517,7 +3517,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         if (NetworkServer.active && NetworkPlayer.Remote != null
             && NetworkPlayer.Remote.connectionToClient != null)
             NetworkPlayer.Remote.TargetSpawnCounterCard(NetworkPlayer.Remote.connectionToClient, templateID);
-        else if (NetworkClient.isConnected)
+        // 纯客户端才上报：离线 AI 局也走 Host（NetworkClient.isConnected 同为 true），
+        // 再上报会让 CmdPlayCounter 在服务端多生成一张"敌方"牌背
+        else if (NetworkClient.isConnected && !NetworkServer.active)
             NetworkPlayer.Local?.CmdPlayCounter(templateID);
     }
     public IEnumerator BlockerEnterEffect(CardInstance giver)
@@ -3942,7 +3944,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     if (NetworkServer.active && NetworkPlayer.Remote != null
                         && NetworkPlayer.Remote.connectionToClient != null)
                         NetworkPlayer.Remote.TargetSpawnCounterCard(NetworkPlayer.Remote.connectionToClient, counterTID);
-                    else if (NetworkClient.isConnected)
+                    // 纯客户端才上报：离线 AI 局也走 Host（NetworkClient.isConnected 同为 true），
+                    // 再上报会让 CmdPlayCounter 在服务端多生成一张"敌方"牌背
+                    else if (NetworkClient.isConnected && !NetworkServer.active)
                         NetworkPlayer.Local?.CmdPlayCounter(counterTID);
                 }
                 else if (spellTemplate.targetType == TargetType.None)
@@ -4835,7 +4839,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             slot.SetCard(model);
 
             // Sync wolf to server/opponent — 必须传 override 保留叠加数值
-            if (NetworkClient.isConnected)
+            // 离线 AI 局里 AI 半场(0-5)的狼不再同步：PlaceCardToSlot 已落在服务器板面，
+            // 而 ServerPlayCard 会把 i 当成"远程方本地槽位"再镜像(+6) → 玩家半场凭空多出一匹狼。
+            if (NetworkClient.isConnected && !(NetworkServer.active && SimpleAI.IsAIMatch && i < 6))
                 NetworkPlayer.Local?.CmdPlayCard(wolfTemplate.templateID, i,
                     c3d?.cardInstance?.currentAttack ?? -1,
                     c3d?.cardInstance?.currentHealth ?? -1,
