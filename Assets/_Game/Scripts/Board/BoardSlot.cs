@@ -5144,6 +5144,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
         fairyCI.attachOrder = maxOrder + 1;
         bm.attachedModels.Add(fairy);
+        // 重附着（AI 侧宿主）落在被雾隐盖住的半场 → 妖精也直接以卡背落位，别先露一帧正面。
+        if (hostSlotID <= 5 && Card3DHover.EnemyCardsAreHidden)
+            Card3DHover.SetHidden(fairy, true, true);
         BoardSyncManager.MarkDirty();
 
         if (newHost.hasCard && newHost.currentCard3D != null)
@@ -5230,16 +5233,12 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         CleanupAfterPlacement();
         BoardSlot.SyncMistHiderDisplay();
     }
-    public static void SyncMistHiderDisplay()
-    {
-        var allAuras = GlobalEventManager.Instance?.GetAllAuras();
-        if (allAuras == null) return;
-        foreach (var a in allAuras)
-        {
-            if (a is MistHiderAura mist)
-                mist.IsActive(); // 触发同步
-        }
-    }
+    /// <summary>雾隐(01517) 隐藏态刷新（保留旧名，所有既有调用点沿用）。实际逻辑见
+    /// BoardSyncManager.RefreshMistHiderHiding。旧实现遍历光环调 MistHiderAura.IsActive()，
+    /// 而该方法只在 _isActive 翻转（= 雾隐源进出场）时才标脏 —— 「雾隐源没动、有效性变了」的
+    /// 情况（能量骇客对位封锁/退场、缄默神官阶段沉默生效/到期）一律不翻转，等于空操作，
+    /// 隐藏态只能等下一次无关的板面同步才翻转。</summary>
+    public static void SyncMistHiderDisplay() => BoardSyncManager.RefreshMistHiderHiding();
     /// <summary>[AI] 01521：AI 手牌(Remote) 贪心挑"和≤8尽量满(高费优先)"的法术子集，逐张免费施放/反制。
     /// 复刻本地辉煌法师的免费结算语义，但手牌/反制/目标都走 AI(server)。</summary>
     IEnumerator AI_BrilliantCast()

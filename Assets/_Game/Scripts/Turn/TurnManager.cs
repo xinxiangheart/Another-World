@@ -227,6 +227,9 @@ public partial class TurnManager : MonoBehaviour
         }
         // 4.2 光环受害者状态：阶段边界全板重算（消化 被完全沉默/新对位卡/源退场 的自愈）
         GlobalEventManager.Instance?.RefreshAuraStatusesForBoard();
+        // 阶段沉默到期（缄默神官 03501）→ 若被沉默的是雾隐(01517)，隐藏态要跟着回来。
+        // 与能量骇客对位封锁同族：雾隐源自身没动，但有效性翻回来了，必须显式重算隐藏。
+        BoardSlot.SyncMistHiderDisplay();
     }
 
     /// <summary>深海恶物(01338)：每阶段开始扣1生命值。只在 StartNewPhase 中调用，确保每阶段仅服务端执行一次。</summary>

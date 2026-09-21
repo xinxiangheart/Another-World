@@ -48,16 +48,17 @@ public class MistHiderAura : AuraBase
     }
     public void ApplyHide()
     {
-        // Visual hiding happens ONLY on the opponent client via BoardSync header.
-        // Server's own cards (6-11) must remain visible to the owner.
-        // Mark dirty so SyncNow picks up IsMistHiderActive=true → sends "1|" header.
-        BoardSyncManager.MarkDirty();
+        // 隐藏永远只发生在「非拥有者」那一侧的视角：
+        // · Host：本端 0-5（Remote/AI 的半场）· 纯客户端：本端 0-5（Host 的半场，由服务端头字段驱动）。
+        // 拥有者自己的半场（6-11）必须保持可见。
+        // 走统一入口：按实时谓词重算并立即套用 + 标脏让对端重算。
+        BoardSyncManager.RefreshMistHiderHiding();
     }
 
     public void RemoveHide()
     {
-        // Mark dirty so SyncNow sends "0|" header → opponent client un-hides.
-        BoardSyncManager.MarkDirty();
+        // 同上：雾隐失效（源退场 / 被能量骇客对位封锁 / 被阶段沉默）→ 对方半场立即恢复可见。
+        BoardSyncManager.RefreshMistHiderHiding();
     }
 }
 public class SageAura : AuraBase

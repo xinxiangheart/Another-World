@@ -178,6 +178,9 @@ public static class DeathHandlers
     {
         RemoveOppositeSlotStatus("01335", SourceSlotID(ctx)); // 4.2 能量骇客退场：移除对位受害者标签
         GlobalEventManager.Instance?.UnregisterAuraOfSource(ctx.source);
+        // 骇客退场/被消灭 → 对位雾隐(01517)重新生效：对方半场（含附着牌）要立即恢复隐藏。
+        // 与进场对称；同样不能指望 MistHiderAura.IsActive() 翻转（雾隐源没动，只是封锁没了）。
+        BoardSlot.SyncMistHiderDisplay();
     }
 
     static void Handle01515(EffectContext ctx)

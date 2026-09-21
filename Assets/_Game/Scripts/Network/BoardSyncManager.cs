@@ -16,6 +16,34 @@ public class BoardSyncManager : MonoBehaviour
     void Awake() { if (Instance != null) { Destroy(gameObject); return; } Instance = this; }
     public static void MarkDirty() { if (Instance != null) Instance._dirty = true; }
 
+    /// <summary>
+    /// 雾隐(01517) 隐藏态统一刷新入口：**所有会翻转「雾隐是否生效」的事件都要调它**。
+    /// 生效与否是实时谓词，不只取决于雾隐源在不在场：
+    ///   ① 雾隐源进出场；② 己方能量骇客(01335)对位封锁 / 骇客退场；③ 缄默神官(03501)阶段沉默生效或到期。
+    /// ②③ 都不会让 MistHiderAura 的 _isActive 翻转（它只跟 source != null 走），所以旧入口
+    /// （BoardSlot.SyncMistHiderDisplay → MistHiderAura.IsActive()）在 ②③ 下是纯空操作 ——
+    /// 症状：能量骇客封禁后对方卡牌仍对己方隐藏、封禁解除（骇客退场/被沉默）后不恢复隐藏。
+    /// 这里改为每次调用都按实时谓词重算，并立即套用到本端视角（Host：0-5 = 对手半场，槽位卡 + 附着牌一起切），
+    /// 再标脏让对端用同一谓词重算。纯客户端的 0-5 隐藏态由服务端同步头字段驱动（ApplySync），故只标脏。
+    /// 可重入安全：谓词内部触发 MistHiderAura.IsActive() 翻转时只会再进一层，内层已无翻转来源。
+    /// </summary>
+    public static void RefreshMistHiderHiding()
+    {
+        if (Instance == null) return;
+        if (NetworkServer.active)
+        {
+            BoardManager bm = FindObjectOfType<BoardManager>();
+            if (bm != null)
+            {
+                bool hidden = GlobalEventManager.Instance != null
+                              && GlobalEventManager.Instance.IsMistHiderActiveOwnedBy(false);
+                Card3DHover.EnemyCardsAreHidden = hidden; // 供新落地卡在展示前判终态（ServerPlayCard / TargetSpawnCard3D 同源）
+                Card3DHover.SetHalfHidden(bm, 0, hidden); // 槽位卡 + 宿主在本半场的附着牌
+            }
+        }
+        MarkDirty();
+    }
+
     void LateUpdate() { if (_dirty && NetworkServer.active) { _dirty = false; SyncNow(); } }
 
     void SyncNow()

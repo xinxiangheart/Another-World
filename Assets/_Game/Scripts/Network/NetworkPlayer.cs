@@ -2268,6 +2268,10 @@ public class NetworkPlayer : NetworkBehaviour
                 c.cardInstance = n; c.UpdateValues();
                 c.PlayAttachSlideIn(HandManager.GetAttachWorldPos(mapped, o + 1), HandManager.GetAttachWorldPos(mapped, o)); // 附着滑入（仅表现）
             }
+            // 落板即取终态：宿主在被隐藏半场（本端 0-5 = 对方半场）且雾隐态为开 → 附着牌直接以卡背落地，
+            // 不再先露一帧正面等下一次同步（与 HandManager.PlaceAttachedCard / BoardSyncManager 同一开关）。
+            if (mapped <= 5 && Card3DHover.EnemyCardsAreHidden)
+                Card3DHover.SetHidden(m, true, true);
             bm.attachedModels.Add(m);
         }
     }
@@ -2402,6 +2406,9 @@ public class NetworkPlayer : NetworkBehaviour
                     nci.isAttached = true; nci.hostSlotID = serverHostSlot; nci.attachOrder = o;
                     c3dAtt.cardInstance = nci; c3dAtt.UpdateValues();
                 }
+                // 落板即取终态：上报方若是被雾隐盖住的那半边（server 0-5），附着牌直接以卡背落地。
+                if (serverHostSlot <= 5 && Card3DHover.EnemyCardsAreHidden)
+                    Card3DHover.SetHidden(model, true, true);
                 bm.attachedModels.Add(model);
             }
         }

@@ -1626,6 +1626,12 @@ public class HandManager : MonoBehaviour
             // 统一刷新宿主显示
             hostSlot.currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
         }
+        // 落板即取终态：宿主在被隐藏半场（本端 0-5 = 对方半场）且该半场正被雾隐(01517)盖住时，
+        // 附着牌直接以卡背落地——否则会先露一帧正面，等下一次板面同步才翻背（表现为"雾隐生效但附着牌可见"）。
+        // 判据沿用 EnemyCardsAreHidden（Host=对手 0-5；纯客户端=Host 的 0-5），与 SyncNow / ApplySync 同一开关。
+        CardInstance placedAttachCI = model.GetComponent<Card3DInstance>()?.cardInstance;
+        if (placedAttachCI != null && placedAttachCI.hostSlotID <= 5 && Card3DHover.EnemyCardsAreHidden)
+            Card3DHover.SetHidden(model, true, true);
         bm.attachedModels.Add(model);
         BoardSyncManager.MarkDirty();
 

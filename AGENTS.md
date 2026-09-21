@@ -903,6 +903,17 @@ python Tools/imagegen/purge_key.py <src.png> <dst.png> 45 pink     # 按色相
 
 **判据（改效果时自查）**：写完问一句 —— 「这张牌是对手放的，它会不会作用到我这半边？」只要函数里出现 `NetworkPlayer.Local`、写死的 `6..11` 或 `0..11`，就大概率是错的。`Player` 组件是本机单例（6-11），`NetworkPlayer.Remote` 是 AI/远端（0-5）。
 
+### 雾隐(01517) 隐藏态：刷新入口是 `BoardSyncManager.RefreshMistHiderHiding()`（2026-09-21 定，改隐藏/沉默类效果前必读）
+
+**隐藏是实时谓词，不是一次性动作。** 「对方半场是否该盖住」由 `GlobalEventManager.IsMistHiderActiveOwnedBy(false)` 现算（本端 `0-5` = 对手半场，Host 与纯客户端同一口径），而它同时受三件事影响：① 雾隐源进出场；② 己方能量骇客(01335)对位封锁 / 骇客退场 / 骇客被沉默；③ 缄默神官(03501)阶段沉默生效或到期。**②③ 都不会让 `MistHiderAura._isActive` 翻转**（那只跟 `source != null` 走）。
+
+- 统一入口：`BoardSyncManager.RefreshMistHiderHiding()` —— 按实时谓词重算 + Host 侧立即套用到本端 `0-5`（槽位卡**与宿主在该半场的附着牌**一起切）+ `MarkDirty()` 让对端重算。新增/修改任何会改变「雾隐是否生效」的效果，**必须显式调它**（`BoardSlot.SyncMistHiderDisplay()` 是旧名别名，直接调也等价）。
+- 旧写法（已废）：`BoardSlot.SyncMistHiderDisplay()` 遍历光环调 `MistHiderAura.IsActive()`；该方法只在 `_isActive` 翻转时才标脏 → ②③ 下是纯空操作，隐藏态只能等下一次无关的板面同步才翻转（症状：骇客封禁后对方卡仍隐藏、封禁解除后不恢复、雾隐生效时附着牌不跟随）。
+- 附着牌：`SetHalfHidden` 按 `hostSlotID` 判归属，所以只有被隐藏那半场的附着牌会盖住。**新落地的附着牌要当场取终态**（`hostSlotID <= 5 && Card3DHover.EnemyCardsAreHidden` → `SetHidden(model, true, true)`），否则会先露一帧正面。已覆盖：`HandManager.PlaceAttachedCard`、`NetworkPlayer.ApplyAttachDiff` / `CmdReportMyBoard`、`BoardSlot.ApplyFairyReattachToSlot`。
+- 客户端方向：纯客户端（`NetworkServer.active == false`）不本地决定隐藏，`0-5` 由服务端同步头字段（`hostMistHider`）在 `ApplySync` 里驱动；`RefreshMistHiderHiding()` 在客户端只标脏、不动本端显示。
+- **隐藏归雾隐源，不归被隐藏的卡（2026-09-21 定）**：翻回正面**只有一个条件** —— **01517 自己被完全沉默**（`IsMistHiderActiveOwnedBy` → `IsFullySilenced(雾隐源)`）。01335 放在**被隐藏的卡**对位，只沉默那张卡自己的特性，**不动隐藏** —— 隐藏不是那张卡自己的属性，与「格子给予的效果 / 光环给的状态」同族，都不归它管。反之只要雾隐源 `IsFullySilenced` 为真就翻回正面（对位骇客 **或** 03501 阶段沉默都算），封锁解除（骇客退场/被沉默、阶段沉默到期）谓词自动回 `true`，隐藏随之恢复。
+- **附着状态的 01517 没有自己的槽位**：「对位」由 `GetSlotOf` 解析到宿主槽（`hostSlotID`），即骇客要落在**宿主槽的对位**才封锁得住雾隐；01335 自己附着时同理（按宿主槽去封锁对位），`IsSlotHackedByEnergyHacker` 两条都覆盖。不要另造一套「按视觉坐标判对位」的写法。
+
 ### `RunAsLocal` 与协程：`NetworkPlayer.Local` 只在同步段可信（2026-09-17 定，改法术 handler 前必读）
 
 `NetworkPlayer.RunAsLocal(action)` 会在 `action()` 执行期间把 `Local` 换成**施法者**、`Remote` 换成施法者的对手，`finally` 里还原。三条法术分发路径（`NetworkPlayer.CmdResolveSpell`、`SimpleAI.PlaySpell`、`CardDrag.ResolveSpellEffect`）都包在它里面。

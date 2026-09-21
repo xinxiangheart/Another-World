@@ -145,6 +145,9 @@ public static class EnterHandlers
                 Debug.Log($"[03501] 沉默目标: slot={targetSlot.slotID} tid={targetCI.templateID} instID={targetCI.instanceID}");
                 targetSlot.currentCard3D.GetComponent<Card3DInstance>().UpdateValues();
                 TurnManager.SyncMyBoardToOpponent();
+                // 被沉默的可能正是雾隐(01517)：阶段沉默一落就重算隐藏（对方半场含附着牌当场翻面）。
+                // 选择回调可能在本帧稍后才跑，所以除了函数尾部那次，这里也要再刷一次。
+                BoardSlot.SyncMistHiderDisplay();
             }
         });
         ctx.sourceSlot.CleanupAfterPlacement();
@@ -184,6 +187,9 @@ public static class EnterHandlers
         if (mySlot >= 0)
             GlobalEventManager.Instance.RegisterAura(new EnergyHackerAura { source = ctx.source, hostSlotID = mySlot, mySlotID = mySlot });
         GlobalEventManager.Instance?.RefreshAuraStatusesForBoard(); // 4.2 能量骇客进场：给对位目标补受害者状态
+        // 骇客进场 → 对位雾隐(01517)立即失效：对方半场（含附着牌）要当场翻回正面。
+        // 骇客只改「雾隐是否生效」，不会让 MistHiderAura 的 _isActive 翻转，所以必须显式刷新。
+        BoardSlot.SyncMistHiderDisplay();
         ctx.sourceSlot.CleanupAfterPlacement();
     }
 
