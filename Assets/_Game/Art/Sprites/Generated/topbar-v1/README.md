@@ -1,4 +1,9 @@
-# 顶栏套件 v1（暂存）
+# 顶栏套件 v1
+
+> **已于 2026-09-23 安装**：11 张覆盖到 `Assets/_Game/Art/Sprites/UI/`（9 张）与 `Assets/_Game/Resources/UI/`（2 张）。
+> 只覆盖 `.png`，**原 `.meta` 一律未动**（guid 不变 → 场景零改动）；另清了 5 个图标 meta 里那个无意义的 `spriteBorder: {x: 82, ...}`（图标是 Simple，`TopBorder` 的 82 保持不动）。
+> 覆盖前的原图备份在 `%TEMP%\topbar-backup-20260923-181347\`；也在 git 里（`git checkout -- Assets/_Game/Art/Sprites/UI Assets/_Game/Resources/UI` 可整体回退）。
+> 本目录保留为归档 / 对照稿。
 
 与 `board-layers-v2`（战场底板 v5）/ `CardFrameV6` 同一套语言：**深蓝黑石面 + 金细线**，金 = `#C8A44A`（与 CardFrameV6 描边金同值），面色梯度也沿用 CardFrameV6（顶 `#1E2938` → 底 `#0C111A`）。
 
