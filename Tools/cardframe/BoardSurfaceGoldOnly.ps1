@@ -1,10 +1,11 @@
 # Board_Surface 只保留金色边框（默认只出预览图，不动资产；加 -Apply 写入）
 #   2026-09-23 定案：只改这一层 —— 网格 / 磨蚀斑 / 裂痕 / 钢线镶嵌 / 法阵座圈 / 外圈短齿 /
-#   口袋内嵌 / 底沿下沉 全部不要，只留金边（主金框 + 内金线 + 铆点 + 四角斜线 + 口袋小菱形）。
-#   同日追加：金边整体外扩一圈，几乎抵住面板边框 —— 主金框内缩 $FR（原 84），内金线 $FRIN（原 62），
-#   两者间距仍是 22，铆点随主金框走，四角斜线的起点跟着挪到新版圆角弧内。
+#   口袋内嵌 / 底沿下沉 全部不要，只留金边。
+#   金边外扩并贴住面板四边：主金框内缩 $FR（原 84），上下左右一样贴。
+#   默认不再画那圈内金线（用户：「只有一层金边够了」），加 -KeepInnerLine 才画。
+#   铆点沿圆角路径按弧长等距排（原先是按矩形周长排，框一大角上的铆点会飘到框外）。
 
-param([switch]$Apply, [single]$FR = 20.0, [single]$FRIN = 42.0)
+param([switch]$Apply, [switch]$KeepInnerLine, [single]$FR = 10.0, [single]$FRIN = 32.0, [int]$Rivet = 40)
 
 foreach ($n in @('System.Drawing.dll','System.Drawing.Common.dll','System.Drawing.Primitives.dll','System.Private.Windows.Core.dll','System.Private.Windows.GdiPlus.dll')) {
   $p = Join-Path $PSHOME $n
@@ -12,7 +13,32 @@ foreach ($n in @('System.Drawing.dll','System.Drawing.Common.dll','System.Drawin
 }
 . "$PSScriptRoot/BoardLayersV2.ps1"
 
-function New-LayerSurfaceGoldOnly([string]$out, [single]$FR, [single]$FRIN) {
+function Get-PathPointsEven([System.Drawing.Drawing2D.GraphicsPath]$path, [int]$count) {
+  $flat = $path.Clone()
+  $flat.Flatten((New-Object System.Drawing.Drawing2D.Matrix), 0.15)
+  $pts = $flat.PathPoints
+  $lens = [System.Collections.Generic.List[double]]::new()
+  $lens.Add(0.0); $tot = 0.0
+  for ($i = 1; $i -lt $pts.Length; $i++) {
+    $dx = $pts[$i].X - $pts[$i-1].X; $dy = $pts[$i].Y - $pts[$i-1].Y
+    $tot += [Math]::Sqrt($dx*$dx + $dy*$dy)
+    $lens.Add($tot)
+  }
+  $out = [System.Collections.Generic.List[System.Drawing.PointF]]::new()
+  $k = 0
+  for ($n2 = 0; $n2 -lt $count; $n2++) {
+    $s = ($n2 + 0.5) / [double]$count * $tot
+    while (($k + 1) -lt $lens.Count -and $lens[$k+1] -lt $s) { $k++ }
+    if (($k + 1) -ge $lens.Count) { break }
+    $seg = $lens[$k+1] - $lens[$k]
+    $u = 0.0; if ($seg -gt 0.0) { $u = ($s - $lens[$k]) / $seg }
+    $out.Add((New-Object System.Drawing.PointF(($pts[$k].X + ($pts[$k+1].X - $pts[$k].X) * $u), ($pts[$k].Y + ($pts[$k+1].Y - $pts[$k].Y) * $u))))
+  }
+  $flat.Dispose()
+  return $out
+}
+
+function New-LayerSurfaceGoldOnly([string]$out, [single]$FR, [single]$FRIN, [int]$Rivet, [bool]$InnerLine) {
   $r = New-Layer $BW $BH $false @(0,0,0); $bmp = $r[0]; $g = $r[1]
 
   # ① 主金框 —— 原 Surface 的 $GOLD 76 / w5
@@ -21,26 +47,23 @@ function New-LayerSurfaceGoldOnly([string]$out, [single]$FR, [single]$FRIN) {
   $pen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
   $g.DrawPath($pen, $ip); $pen.Dispose()
 
-  # ② 内金线 —— 原 Surface 的 $GOLD_D 50 / w2，与主金框保持 22 的间距
-  $ip3 = New-ArenaPath $FRIN
-  $pen = New-Object System.Drawing.Pen ((New-Col $GOLD_D 50)), 2
-  $g.DrawPath($pen, $ip3); $pen.Dispose()
-
-  # ③ 主金框上的菱形铆点 40 枚 —— 原 Surface 的 $GOLD 70 / r6
-  for ($k = 0; $k -lt 40; $k++) {
-    $t4 = $k / 40.0 * 4.0
-    $x = $AR_L + $FR; $y = $AR_T + $FR
-    if ($t4 -lt 1.0) { $x = $AR_L + $FR + ($AR_W - 2*$FR) * $t4; $y = $AR_T + $FR }
-    elseif ($t4 -lt 2.0) { $x = $AR_L + $AR_W - $FR; $y = $AR_T + $FR + ($AR_H - 2*$FR) * ($t4 - 1.0) }
-    elseif ($t4 -lt 3.0) { $x = $AR_L + $AR_W - $FR - ($AR_W - 2*$FR) * ($t4 - 2.0); $y = $AR_T + $AR_H - $FR }
-    else { $x = $AR_L + $FR; $y = $AR_T + $AR_H - $FR - ($AR_H - 2*$FR) * ($t4 - 3.0) }
-    $dp = New-Diamond $x $y 6
-    $br = New-Object System.Drawing.SolidBrush (New-Col $GOLD 70)
-    $g.FillPath($br, $dp); $br.Dispose(); $dp.Dispose()
+  # ② 内金线（可选）—— 原 Surface 的 $GOLD_D 50 / w2
+  $ip3 = $null
+  if ($InnerLine) {
+    $ip3 = New-ArenaPath $FRIN
+    $pen = New-Object System.Drawing.Pen ((New-Col $GOLD_D 50)), 2
+    $g.DrawPath($pen, $ip3); $pen.Dispose()
   }
 
+  # ③ 主金框上的菱形铆点 —— 原 Surface 的 $GOLD 70 / r6
+  $br = New-Object System.Drawing.SolidBrush (New-Col $GOLD 70)
+  foreach ($pt in (Get-PathPointsEven $ip $Rivet)) {
+    $dp = New-Diamond $pt.X $pt.Y 6
+    $g.FillPath($br, $dp); $dp.Dispose()
+  }
+  $br.Dispose()
+
   # ④ 四角斜切金线 —— 原 Surface 的 $GOLD 86 w5 + $GOLD_D 60 w4
-  #    起点要落在新版圆角弧的内侧：圆角弧心到斜线起点的距离必须小于 (圆角半径)
   $dc = $FR + 96
   $cx1 = $AR_L + $dc; $cx2 = $AR_L + $AR_W - $dc
   $cy1 = $AR_T + $dc; $cy2 = $AR_T + $AR_H - $dc
@@ -58,7 +81,7 @@ function New-LayerSurfaceGoldOnly([string]$out, [single]$FR, [single]$FRIN) {
     $g.DrawPath($pen, $dd); $pen.Dispose(); $dd.Dispose()
   }
 
-  $ip.Dispose(); $ip3.Dispose()
+  $ip.Dispose(); if ($ip3) { $ip3.Dispose() }
   $g.Dispose(); $bmp.Save($out, [System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose()
   return $out
 }
@@ -70,9 +93,9 @@ $work    = "$env:TEMP\surface-gold-$((Get-Date -Format 'yyyyMMdd-HHmmss'))"
 New-Item -ItemType Directory -Force -Path $work | Out-Null
 
 $tmp = Join-Path $work 'Board_Surface_goldonly.png'
-[void](New-LayerSurfaceGoldOnly $tmp $FR $FRIN)
+[void](New-LayerSurfaceGoldOnly $tmp $FR $FRIN $Rivet ([bool]$KeepInnerLine))
 Copy-Item $tmp (Join-Path $prevDir 'board-surface-goldonly.png') -Force
-Write-Output "预览 -> $(Join-Path $prevDir 'board-surface-goldonly.png')  (主金框内缩 $FR / 内金线 $FRIN)"
+Write-Output "预览 -> $(Join-Path $prevDir 'board-surface-goldonly.png')  (主金框内缩 $FR / 内金线 $KeepInnerLine / 铆点 $Rivet)"
 
 if ($Apply) {
   Copy-Item (Join-Path $ldir 'Board_Surface.png') (Join-Path $work 'Board_Surface.before.png') -Force
