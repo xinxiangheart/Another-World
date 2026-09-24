@@ -197,14 +197,64 @@ public class DamageFloater : MonoBehaviour
 
     void UpdatePosition()
     {
-        if (_sharedCanvas == null) return;
-        Camera cam = _sharedCanvas.worldCamera != null ? _sharedCanvas.worldCamera : Camera.main;
-        if (cam == null) return;
-        var screen = RectTransformUtility.WorldToScreenPoint(cam, _worldPos);
-        RectTransformUtility.ScreenPointToLocalPointInRectangle(
-            (RectTransform)_sharedCanvas.transform, screen, cam, out var local);
-        _rt.anchoredPosition = local;
+        if (_rt == null || _sharedCanvas == null) return;
+
+        // 相机自检重绑（这段别删）：画布挂在 DontDestroyOnLoad 的池上、全局只建一次，
+        // EnsureInstance 里记下的那台 Camera.main 会随场景切换被销毁 —— 相机一死，Canvas 的
+        // 坐标空间就不再由它驱动（退回屏幕像素空间），而 update 里仍拿存活的 Camera.main 去
+        // 反算局部坐标，结果会整体塌到画布左下角：表现就是**飘字全堆在屏幕最左下角**，
+        // 而不是弹在卡槽上方。每帧查一次，是死引用就重绑当前主相机，Canvas 随即恢复。
+        Camera cam = _sharedCanvas.worldCamera;
+        bool reBound = false;
+        if (cam == null)
+        {
+            cam = Camera.main;
+            if (cam == null) return;
+            _sharedCanvas.worldCamera = cam;
+            reBound = true;
+        }
+        if (!Finite(_worldPos)) return;   // 坏坐标（NaN/Inf）→ 保持上一帧位置，别让它塌到原点
+
+        SyncAnchorToCanvas();
+
+        Vector2 screen = RectTransformUtility.WorldToScreenPoint(cam, _worldPos);
+        // 刚重绑的这一帧，画布还停在失效的坐标系里，正常反算给出的正是「左下角」那个错误值 ——
+        // 该帧改用屏幕像素换算兜底，等下一帧画布按新相机排布好，再走正常反算。
+        _rt.anchoredPosition = reBound ? PixelToCanvas(screen) : ScreenToCanvas(screen, cam);
     }
+
+    /// <summary>锚点与画布 pivot 同步：anchoredPosition 的参考点是「parentRect.min + anchor × 画布尺寸」，
+    /// 只有 anchor == 画布 pivot 时它才正好是画布中心，从屏幕像素反算出来的局部坐标才对得上；
+    /// 锚点若是 (0,0) 那种默认值而画布 pivot 不是，数字会整体偏出半个屏幕。</summary>
+    void SyncAnchorToCanvas()
+    {
+        Vector2 anchor = ((RectTransform)_sharedCanvas.transform).pivot;
+        if (_rt.anchorMin != anchor || _rt.anchorMax != anchor)
+            _rt.anchorMin = _rt.anchorMax = anchor;
+    }
+
+    /// <summary>屏幕像素 → 画布局部坐标（即 anchoredPosition）。反算失败或结果非法时走
+    /// PixelToCanvas 兜底 —— 宁可偏一点，也不能写进 NaN / 让数字塌到画布角上。</summary>
+    Vector2 ScreenToCanvas(Vector2 screen, Camera cam)
+    {
+        if (RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                (RectTransform)_sharedCanvas.transform, screen, cam, out Vector2 local))
+            if (Finite(local)) return local;
+        return PixelToCanvas(screen);
+    }
+
+    /// <summary>兜底换算：画布的局部原点（相机模式 / 叠加模式都一样）就在屏幕中心，
+    /// 故 局部 = (屏幕像素 − 屏幕中心) ÷ 画布缩放。</summary>
+    Vector2 PixelToCanvas(Vector2 screen)
+    {
+        float s = _sharedCanvas.scaleFactor;
+        if (s <= 0f) s = 1f;
+        return new Vector2(screen.x - Screen.width * 0.5f, screen.y - Screen.height * 0.5f) / s;
+    }
+
+    static bool Finite(float f)   => !float.IsNaN(f) && !float.IsInfinity(f);
+    static bool Finite(Vector2 v) => Finite(v.x) && Finite(v.y);
+    static bool Finite(Vector3 v) => Finite(v.x) && Finite(v.y) && Finite(v.z);
 
     // ═══════════════════════════════════════════════════════════════════
     // 字体 / 材质
@@ -359,6 +409,8 @@ public class DamageFloater : MonoBehaviour
         canvasGo.transform.SetParent(_poolRoot, false);
         _sharedCanvas = canvasGo.AddComponent<Canvas>();
         _sharedCanvas.renderMode = RenderMode.ScreenSpaceCamera;
+        // 注意：这只是「建池那一刻」的主相机，换场景会被销毁 → 变成死引用。
+        // 每帧由 UpdatePosition 自检重绑（见那里的说明），不要删掉那段逻辑。
         _sharedCanvas.worldCamera = Camera.main;
 
         var cfg = Config;
@@ -382,6 +434,11 @@ public class DamageFloater : MonoBehaviour
         var go = new GameObject("Floater");
         go.transform.SetParent(parent, false);
         var rt = go.AddComponent<RectTransform>();
+        // 中心 pivot：数字以「锚点位置」为中心显示。锚点本身不在这里写死，
+        // 由 UpdatePosition 每次落位前同步成画布的 pivot（见 ScreenToCanvas 的说明）——
+        // 锚点若和画布 pivot 不一致，anchoredPosition 的参考点就不是画布中心，数字会整体偏掉，
+        // (0,0) 这种默认值更是直接塌到画布左下角。
+        rt.pivot = new Vector2(0.5f, 0.5f);
         var cfg = Config;
         rt.sizeDelta = new Vector2(cfg != null ? cfg.boxWidth : 160f, cfg != null ? cfg.boxHeight : 60f);
 

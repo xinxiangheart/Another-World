@@ -1824,27 +1824,40 @@ public class BattleManager : MonoBehaviour
         else if (diff < 0)
             pendingDamageToMe += -diff;
 
-        // 存活差也是一笔伤害：同样从「赢的那半场」飞一个数字进对应面板，
-        // 面板的累计数才会和 FinalDamage 真正结算的净伤害对得上。
+        // 存活差也是一笔伤害：数字飞进对应面板，面板的累计数才会和 FinalDamage 真正结算的净伤害对得上。
+        // 这笔是「人数」算出来的场级伤害、不挂在任何一张牌上，所以既不从某张牌头顶冒、也不取半场质心，
+        // 而是固定从**槽位区整体右侧中点**弹出（左侧被攻击回合面板占着，从右边蹦出来再飞进面板，方向不打架）。
         if (diff != 0)
         {
             bool toOpponent = diff > 0;
-            int halfStart = toOpponent ? 6 : 0;
-            Vector3 origin = Vector3.zero;
-            int cnt = 0;
-            for (int i = halfStart; i < halfStart + 6; i++)
-            {
-                GameObject go = allSlots[i]?.currentCard3D;
-                if (go == null) continue;
-                origin += go.transform.position;
-                cnt++;
-            }
-            if (cnt > 0) origin /= cnt;
-            AttackTurnDamagePanel.ShowIncoming(origin, Mathf.Abs(diff),
+            AttackTurnDamagePanel.ShowIncoming(SlotAreaRightMid(), Mathf.Abs(diff),
                 toOpponent ? AttackTurnDamagePanel.SideOpponent : AttackTurnDamagePanel.SideSelf);
         }
 
         Debug.Log($"[战斗] 存活对比 己{my} vs 敌{enemy} 差{Mathf.Abs(diff)}");
+    }
+
+    /// <summary>槽位区（四排槽位合起来那一整块矩形）**整体右侧中点**的世界坐标，Z 取卡牌平面
+    /// （要和卡牌同深度，透视才对得上）。
+    /// 右缘 = 最右列槽心 + 半槽宽 + 一点余量（数字不压在槽位上）；纵向中点 = 上下两排槽心的中点
+    /// （= 棋盘布局中心 y）。槽心走 HandManager.GetSlotWorldPosition、半槽宽读槽位矩形的实际 rect，
+    /// 都随棋盘布局缩放走 —— 以后改 BoardLayoutScale 这里不用动。</summary>
+    Vector3 SlotAreaRightMid()
+    {
+        const float RightMargin = 0.45f;   // 世界单位：数字与最右列槽位之间留的缝
+        HandManager hm = FindObjectOfType<HandManager>();
+        if (hm == null) return Vector3.zero;
+
+        Vector3 rightMost = hm.GetSlotWorldPosition(0);   // 最右列槽心（敌我两排 x 相同）
+        float topY = hm.GetSlotWorldPosition(3).y;        // 敌方后排
+        float bottomY = hm.GetSlotWorldPosition(9).y;     // 己方后排
+
+        // 半槽宽：与 BoardManager.CreateSlot 的 1.25 × BoardLayoutScale 同源；拿不到槽位矩形就用算出来的值
+        float halfW = 0.5f * 1.25f * HandManager.BoardLayoutScale;
+        var slotRt = allSlots != null && allSlots[0] != null ? allSlots[0].GetComponent<RectTransform>() : null;
+        if (slotRt != null && slotRt.rect.width > 0.01f) halfW = slotRt.rect.width * 0.5f;
+
+        return new Vector3(rightMost.x + halfW + RightMargin, (topY + bottomY) * 0.5f, rightMost.z);
     }
 
     IEnumerator FinalDamageCoroutine()
