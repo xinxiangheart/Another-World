@@ -89,6 +89,15 @@ public class PickDrawUI : MonoBehaviour
     /// <summary>本端是否正开着择牌面板。</summary>
     public static bool IsOpen => Instance != null && Instance._visible;
 
+    /// <summary>选择者视角面板开着期间：面板外一律不吃输入。
+    ///
+    /// UGUI 那一半由整屏 Dim 挡（它盖住整个画布、raycastTarget 打开），
+    /// 但**场上的 3D 卡牌走的是碰撞体鼠标消息**（Card3DHover 的 OnMouseEnter/Over/Down/UpAsButton），
+    /// 那是原生鼠标消息、不经过 EventSystem，整屏挡板拦不住 —— 择牌时鼠标扫过棋盘照样会
+    /// 高亮卡牌、甚至触发抛置。这里给它们一个统一闸门（旁观者视角不锁，别抢对方操作）。
+    /// 注：只锁「进入 / 每帧 / 按下 / 抬起」，OnMouseExit 不锁 —— 它负责把悬停态与手牌区射线复原。</summary>
+    public static bool BlocksWorldInput => Instance != null && Instance._visible && Instance._chooser;
+
     /// <summary>选择者视角：亮出牌库顶若干张的正面，点哪张回调哪个下标。</summary>
     public static void ShowChooser(string[] templateIDs, Action<int> onPick)
     {

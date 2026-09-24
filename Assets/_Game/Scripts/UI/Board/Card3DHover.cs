@@ -34,6 +34,7 @@ public class Card3DHover : MonoBehaviour
 
     void OnMouseEnter()
     {
+        if (PickDrawUI.BlocksWorldInput) return;   // 择牌选择期间：屏蔽选择界面外的射线（碰撞体鼠标消息）
         Debug.Log($"OnMouseEnter 被调用：hasDiscard={cardInstance?.hasDiscard}, isMyTurn={FindObjectOfType<TurnManager>()?.IsMyTurn()}, isPlacingCard={BoardSlot.isPlacingCard}, isTargetingMode={BoardSlot.isTargetingMode}, isAttachSelectMode={BoardSlot.isAttachSelectMode}");
         _hovering = true;
         _dwellDetail = 0f; // 新进入：停留计时清零
@@ -71,6 +72,7 @@ public class Card3DHover : MonoBehaviour
 
     void OnMouseOver()
     {
+        if (PickDrawUI.BlocksWorldInput) return;   // 择牌选择期间：屏蔽选择界面外的射线（碰撞体鼠标消息）
         // 悬停+按住右键 → 显示 Test1Panel；右键松开 → 隐藏（边沿检测，防每帧重建）
         UpdateDetailPanel();
 
@@ -188,6 +190,7 @@ public class Card3DHover : MonoBehaviour
     /// 附着卡牌不可选；lastTargetClickTime 防与槽位 UI OnPointerClick 双触发。</summary>
     void OnMouseUpAsButton()
     {
+        if (PickDrawUI.BlocksWorldInput) return;   // 择牌选择期间：屏蔽选择界面外的射线（碰撞体鼠标消息）
         if (!BoardSlot.isTargetingMode || BoardSlot.currentTargetType == TargetType.None) return;
         if (cardInstance != null && cardInstance.isAttached) return; // 附着卡牌不可选
         BoardSlot slot = GetMySlot();
@@ -201,6 +204,7 @@ public class Card3DHover : MonoBehaviour
 
     void OnMouseDown()
     {
+        if (PickDrawUI.BlocksWorldInput) return;   // 择牌选择期间：屏蔽选择界面外的射线（碰撞体鼠标消息）
         if (!CanDiscard()) return;
 
         BoardSlot slot = GetMySlot();
