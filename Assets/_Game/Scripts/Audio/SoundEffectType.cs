@@ -13,6 +13,7 @@ public enum SoundEffectType
     TurnEnd,           // 回合结束
     ButtonHover,       // UI 悬停（清脆的一响）
     ButtonClick,       // UI按钮
+    CardHover,         // 鼠标移到手牌上（短促的一声）
     Victory,           // 胜利
     Defeat,            // 失败
     // 后续按需扩展

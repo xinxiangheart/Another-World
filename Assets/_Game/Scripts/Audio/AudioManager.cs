@@ -55,6 +55,7 @@ public class AudioManager : MonoBehaviour
         (SoundEffectType.AttackHero, "Audio/SFX/Attack"),   // 打英雄复用攻击音效
         (SoundEffectType.ButtonHover, "Audio/SFX/ButtonHover"),
         (SoundEffectType.ButtonClick, "Audio/SFX/ButtonClick"),
+        (SoundEffectType.CardHover, "Audio/SFX/CardHover"),
     };
 
     /// <summary>场景 → 该场景的背景音乐（Resources 路径）。没配的场景 = 静默（会把上一场景的音乐淡出）。</summary>

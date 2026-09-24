@@ -14,6 +14,11 @@ public class CardView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
 
     public static bool IsAnyCardDragging = false;
     public System.Action<CardInstance> OnCardClicked;
+
+    [Header("音效")]
+    [Tooltip("鼠标移到这张手牌上时的一声极轻响（0=关闭，0.45≈菜单悬停音同响度）")]
+    public float hoverVolume = 0.45f;
+
     private CanvasGroup canvasGroup;
     private Vector3 originalScale;
     private int originalSibling;
@@ -163,6 +168,7 @@ public class CardView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
     {
         if (IsAnyCardDragging) return;
         _hovered = true;
+        PlayHoverSfx();
         originalSibling = transform.GetSiblingIndex();
         transform.SetAsLastSibling();
         StopAllCoroutines();
@@ -180,6 +186,18 @@ public class CardView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
         StartCoroutine(SmoothTo(DesiredPos(), targetRotation, DesiredScale(), 0.15f));
         handManager?.RefreshLayout(false); // 触发相邻卡牌归位
         handManager?.MarkBoundsDirty();
+    }
+
+    /// <summary>手牌重叠时鼠标贴着边界滑会连着换卡，太密就成了「哒哒哒」：最快每 40ms 一声。</summary>
+    static float _lastHoverSfxTime = -99f;
+
+    /// <summary>鼠标移到这张手牌上的一声极轻响。音调抖一点，连着划过几张不会听着像复读机。</summary>
+    void PlayHoverSfx()
+    {
+        if (hoverVolume <= 0.0001f) return;
+        if (Time.unscaledTime - _lastHoverSfxTime < 0.04f) return;
+        _lastHoverSfxTime = Time.unscaledTime;
+        AudioManager.Instance?.Play(SoundEffectType.CardHover, hoverVolume, Random.Range(0.96f, 1.05f));
     }
 
     System.Collections.IEnumerator SmoothTo(Vector3 pos, Quaternion rot, Vector3 scale, float dur)
