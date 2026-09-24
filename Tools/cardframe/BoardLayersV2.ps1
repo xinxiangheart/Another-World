@@ -19,10 +19,10 @@
 #     （凹槽、板缝、磨损），视觉重心放在左右口袋区（x<600 / x>1440）。
 #  D. 动态基础：8 层同画布同锚点（中心对齐），可直接叠在同一次排序里：
 #     L1 Board_Plate      静态   整块底板：夜空底 + 面板内托 + 中心冷光池 + 四角压深（v1 配方原样烘焙）
-#     L2 Board_Surface    静态   板面刻纹：板缝 / 镶嵌 / 放射线 / 磨蚀 / 裂痕 / 口袋内嵌凹板
+#     L2 Board_Surface    明灭   金线（内圈跑道框 + 金珠 + 四角斜刻）；明灭与 L5 同步，走 Board_Surface.mat + BoardTrimPulse.shader
 #     L3 Board_Sigil      慢转   (建议 +3~5 度/秒)
 #     L4 Board_Rune       反转   (建议 -6~-8 度/秒)
-#     L5 Board_Ornament   静态   金框 / 角铁 / 铆钉 / 框上刻记
+#     L5 Board_Ornament   明灭   金框 / 角铁 / 铆钉 / 框上刻记（明灭走材质 Board_Ornament.mat + BoardTrimPulse.shader）
 #     L6 Board_Glow       脉冲   Additive 材质，亮度 0.6~1.4 呼吸
 #     L7 Board_Motes      漂移   可无缝平铺；数量/间隔见 BoardMotes.cs
 #     L8 Board_Foreground 视差   暗角 + 底沿，镜头抖动时反向轻微位移
@@ -491,7 +491,9 @@ function New-LayerRune([string]$out) {
 }
 
 # ══════════════════════════════════════════════════════════
-# L5 静态饰件：金框 / 角铁 / 铆钉 / 边符文 / 壁灯座   [静态]
+# L5 饰件：金框 / 角铁 / 铆钉 / 边符文 / 壁灯座   [静态贴图，运行时缓慢明灭]
+#    明灭（2026-09-24）由材质 Board_Ornament.mat 用 AnotherWorld/BoardTrimPulse 驱动，
+#    贴图本身一个字没动；周期 / 亮占比 / 暗态明度都在材质 Inspector 里调（_Period _Bright _Floor）。
 # ══════════════════════════════════════════════════════════
 function New-LayerOrnament([string]$out) {
   $r = New-Layer $BW $BH $false @(0,0,0); $bmp = $r[0]; $g = $r[1]
