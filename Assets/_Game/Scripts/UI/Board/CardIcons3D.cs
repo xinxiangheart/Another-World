@@ -49,6 +49,8 @@ public class CardIcons3D : MonoBehaviour
     [Header("尺寸（世界单位）")]
     [Tooltip("角标图标边长（费用/类型/攻/血）")]
     public float cornerIconSize = 0.16f;
+    [Tooltip("攻/血徽章边长（含数值盘；预制体 0.205 ≈ 19 卡单位）")]
+    public float cornerBadgeSize = 0.205f;
     [Tooltip("三排单图标边长")]
     public float rowIconSize = 0.12f;
     [Tooltip("三排图标中心间距（默认值；各排可单独覆盖）")]
@@ -87,8 +89,9 @@ public class CardIcons3D : MonoBehaviour
         // ── 角标图标（费用恒显示；类型/攻/血法术隐藏）──
         SetCornerIcon(costIcon,   PickSprite(energyIconSprite, energyIconPath), true);
         SetCornerIcon(typeIcon,   GetTypeSprite(_inst.summonType), !isSpell);
-        SetCornerIcon(healthIcon, PickSprite(healthIconSprite, healthIconPath), !isSpell);
-        SetCornerIcon(attackIcon, PickSprite(attackIconSprite, attackIconPath), !isSpell);
+        // 攻/血徽章内含数值盘，比普通角标大一档（费用/类型仍用 cornerIconSize）
+        SetCornerIcon(healthIcon, PickSprite(healthIconSprite, healthIconPath), !isSpell, cornerBadgeSize);
+        SetCornerIcon(attackIcon, PickSprite(attackIconSprite, attackIconPath), !isSpell, cornerBadgeSize);
 
         // ── 三排图标（各自清除重建；预览数组优先，未拖入走动态路径加载；居中排列，间距可调）──
         // 弹跳：仅 FX 存在且非召唤期/首刷时，对新出现/变化(灰翻转)图标播放放大→缩回（纯表现）
@@ -179,14 +182,14 @@ public class CardIcons3D : MonoBehaviour
 
     // ================= 角标图标 =================
 
-    void SetCornerIcon(SpriteRenderer sr, Sprite s, bool show)
+    void SetCornerIcon(SpriteRenderer sr, Sprite s, bool show, float size = 0f)
     {
         if (sr == null) return;
         sr.gameObject.SetActive(show);
         if (!show) return;
         sr.sprite = s != null ? s : GetPlaceholder();
         ApplyIconMaterial(sr);
-        SetFixedSize(sr, cornerIconSize);
+        SetFixedSize(sr, size > 0f ? size : cornerIconSize);
     }
 
     /// <summary>图标统一使用卡面写深度材质（CardFaceSprite：ZWrite On + Cull Off）。
