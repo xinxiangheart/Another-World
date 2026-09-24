@@ -57,7 +57,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: -4995267273640441941, guid: 33c204896c0cca64e8e60641e9e7c64c, type: 2}
+  - {fileID: -3788505136060853876, guid: d233f3062e8579e43aace0d4bdcf90fb, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -101,8 +101,8 @@ MonoBehaviour:
       m_Calls: []
   m_text: "\u6548\u679C"
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: 33c204896c0cca64e8e60641e9e7c64c, type: 2}
-  m_sharedMaterial: {fileID: -4995267273640441941, guid: 33c204896c0cca64e8e60641e9e7c64c, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: d233f3062e8579e43aace0d4bdcf90fb, type: 2}
+  m_sharedMaterial: {fileID: -3788505136060853876, guid: d233f3062e8579e43aace0d4bdcf90fb, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []
@@ -228,7 +228,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: -7300241376912848282, guid: d233f3062e8579e43aace0d4bdcf90fb, type: 2}
+  - {fileID: -3788505136060853876, guid: d233f3062e8579e43aace0d4bdcf90fb, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -273,7 +273,7 @@ MonoBehaviour:
   m_text: 2
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: d233f3062e8579e43aace0d4bdcf90fb, type: 2}
-  m_sharedMaterial: {fileID: -7300241376912848282, guid: d233f3062e8579e43aace0d4bdcf90fb, type: 2}
+  m_sharedMaterial: {fileID: -3788505136060853876, guid: d233f3062e8579e43aace0d4bdcf90fb, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []
@@ -399,7 +399,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: -4995267273640441941, guid: 33c204896c0cca64e8e60641e9e7c64c, type: 2}
+  - {fileID: -3788505136060853876, guid: d233f3062e8579e43aace0d4bdcf90fb, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -443,8 +443,8 @@ MonoBehaviour:
       m_Calls: []
   m_text: "\u4E00\u8D39\u7EC8\u7ED3\u8005"
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: 33c204896c0cca64e8e60641e9e7c64c, type: 2}
-  m_sharedMaterial: {fileID: -4995267273640441941, guid: 33c204896c0cca64e8e60641e9e7c64c, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: d233f3062e8579e43aace0d4bdcf90fb, type: 2}
+  m_sharedMaterial: {fileID: -3788505136060853876, guid: d233f3062e8579e43aace0d4bdcf90fb, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []
