@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 /// <summary>
@@ -27,8 +28,17 @@ public class PickDrawUI : MonoBehaviour
     public float gapRatio = 0.26f;      // 卡与卡的间隙 = 卡宽 × 该比例
     public float appearGap = 0.06f;     // 依次展示的间隔（左→右）
     public float appearTime = 0.10f;    // 单张亮起时长
-    public float riseRatio = 0.50f;     // 亮起动效：从下方滑入的距离 = 卡高 × 该比例
-    public float popScale = 1.05f;      // 选定那一张的高亮过冲倍率
+    public float riseRatio = 0.22f;     // 亮起动效：从下方滑入的距离 = 卡高 × 该比例（起点更靠近终点）
+    public float popScale = 1.14f;      // 选定那一张的高亮过冲倍率
+    public float popLift = 64f;         // 选定那一张上抬的距离
+    public float punchTime = 0.20f;     // 选定那一张「冲一下」的时长（放大过冲 + 选定框亮起）
+    public float dimOthers = 0.30f;     // 未被选中那两张的压暗透明度
+    public float haloAlpha = 1f;        // 选定卡身后「费用色框」的透明度（素材自带配色，默认原样）
+    public float haloPad = 26f;         // 选定框比卡每边宽出的像素
+    public float hoverLift = 30f;       // 悬停抬起距离
+    public float hoverScale = 1.07f;    // 悬停放大倍率
+    public float hoverOthersDim = 0.72f;// 悬停时其余两张的压暗
+    public float hoverTime = 0.10f;     // 悬停 / 移开的推移时长
     public float resolveTime = 0.24f;   // 选定后停留（让「加入手牌 / 明弃」读得出来）
     public float flipHalf = 0.13f;      // 旁观者翻牌半程
     public float discardHold = 1.25f;   // 旁观者看清「明弃」正面后的停留
@@ -55,6 +65,7 @@ public class PickDrawUI : MonoBehaviour
     bool _resolved;
     Action<int> _onPick;
     int _seq;
+    int _hoverIndex = -1;
     float _cardW = 83.33f * 3f;   // 卡宽（像素，含运行时缩放）
     float _cardH = 146.33f * 3f;  // 卡高（像素，含运行时缩放）
 
@@ -65,6 +76,10 @@ public class PickDrawUI : MonoBehaviour
         public CanvasGroup group;
         public GameObject badge;
         public Vector2 basePos;
+        public Image halo;
+        public int cost;             // 该槽位的费用（0-5）：决定选定框颜色
+        public int glideToken;       // 同一槽位后发起的推移顶掉前一个
+        public bool revealing;       // 亮起动画进行中：不接受悬停推移
     }
 
     // ══════════════════════════════════════════════════════════════════
@@ -238,6 +253,7 @@ public class PickDrawUI : MonoBehaviour
             var td = CardDatabase.Instance?.GetTemplate(templateIDs[i]);
             var s = CreateSlot();
             s.card = BuildCard(td, back: td == null, parent: s.holder);
+            s.cost = td != null ? Mathf.Clamp(td.baseCost, 0, 5) : 0;   // 选定框颜色跟费用走
             s.group.alpha = 0f;
             s.group.blocksRaycasts = false;
         }
@@ -246,13 +262,20 @@ public class PickDrawUI : MonoBehaviour
         for (int i = 0; i < _slots.Count; i++)
         {
             var s = _slots[i];
+            s.revealing = true;
             yield return RevealSlot(s);
+            s.revealing = false;
             int idx = i;
             if (s.card != null)
             {
                 var click = s.card.GetComponent<CardClickHandler>();
                 if (click == null) click = s.card.AddComponent<CardClickHandler>();
                 click.onClick = () => OnCardPicked(idx);
+
+                var hover = s.card.GetComponent<PickHoverGlow>();
+                if (hover == null) hover = s.card.AddComponent<PickHoverGlow>();
+                hover.ui = this;
+                hover.index = idx;
             }
             s.group.blocksRaycasts = true;
             if (i < _slots.Count - 1)
@@ -275,22 +298,22 @@ public class PickDrawUI : MonoBehaviour
         _resolved = true;
         _root.interactable = false;
         _root.blocksRaycasts = false;
+        _hoverIndex = -1;
 
         for (int i = 0; i < _slots.Count; i++)
         {
             var s = _slots[i];
             if (s == null) continue;
-            if (i == index)
-            {
-                s.holder.anchoredPosition = s.basePos + new Vector2(0f, 26f);
-                s.holder.localScale = Vector3.one * (popScale + 0.05f);
-                s.group.alpha = 1f;
-            }
-            else
-            {
-                s.group.alpha = 0.42f;
-                ShowBadge(s);
-            }
+            if (i == index) continue;
+            s.group.alpha = dimOthers;      // 未选中的压得更暗
+            ShowBadge(s);                   // 「明弃」红条
+            StartCoroutine(GlideSlot(s, s.basePos, 0.94f, dimOthers, punchTime));
+        }
+
+        if (index >= 0 && index < _slots.Count && _slots[index] != null)
+        {
+            ShowHalo(_slots[index]);
+            yield return PunchSlot(_slots[index]);
         }
 
         if (resolveTime > 0f)
@@ -298,6 +321,159 @@ public class PickDrawUI : MonoBehaviour
 
         yield return FadeRootOut(0.18f);
         Hide();
+    }
+
+    /// <summary>选定那一张：抬起 + 放大过冲 + 费用色选定框亮起，再回落到高亮位。</summary>
+    IEnumerator PunchSlot(Slot s)
+    {
+        if (s == null || s.holder == null) yield break;
+        Vector2 from = s.holder.anchoredPosition;
+        float fromScale = s.holder.localScale.x;
+        Vector2 to = s.basePos + new Vector2(0f, popLift);
+        float punch = popScale + 0.20f;      // 冲过头
+        float settle = popScale + 0.06f;     // 落点
+        float half = Mathf.Max(0.02f, punchTime * 0.5f);
+
+        float t = 0f;
+        while (t < half)
+        {
+            t += Time.deltaTime;
+            float p = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / half));
+            s.holder.anchoredPosition = Vector2.Lerp(from, to, p);
+            s.holder.localScale = Vector3.one * Mathf.Lerp(fromScale, punch, p);
+            s.group.alpha = 1f;
+            yield return null;
+        }
+
+        t = 0f;
+        while (t < half)
+        {
+            t += Time.deltaTime;
+            float p = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / half));
+            s.holder.localScale = Vector3.one * Mathf.Lerp(punch, settle, p);
+            yield return null;
+        }
+
+        s.holder.anchoredPosition = to;
+        s.holder.localScale = Vector3.one * settle;
+        s.group.alpha = 1f;
+    }
+
+    /// <summary>选定卡身后的框：九宫格素材 UI/PickFrame_{费用}，颜色就是这张卡自己的费用色。</summary>
+    void ShowHalo(Slot s)
+    {
+        if (s == null || s.holder == null) return;
+        if (s.halo == null)
+        {
+            var rt = NewRect("Halo", s.holder);
+            rt.SetSiblingIndex(0);       // 压在卡下面
+            rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.sizeDelta = new Vector2(_cardW + haloPad * 2f, _cardH + haloPad * 2f);
+            rt.anchoredPosition = Vector2.zero;
+
+            var img = rt.gameObject.AddComponent<Image>();
+            img.raycastTarget = false;
+            s.halo = img;
+
+            var spr = LoadFrameSprite(s.cost);
+            if (spr != null)
+            {
+                img.sprite = spr;
+                img.type = Image.Type.Sliced;   // 角部不缩放，四边拉伸
+                img.fillCenter = false;         // 中心本就透明，别让底板把卡糊掉
+                img.color = new Color(1f, 1f, 1f, 0f);
+                StartCoroutine(FadeImage(img, 0f, haloAlpha, punchTime));
+            }
+            else
+            {
+                // 素材缺失时退回「一块比卡略大的底板」，否则空精灵会被画成一个大白块
+                Debug.LogWarning("[PickDraw] 找不到 UI/PickFrame_" + Mathf.Clamp(s.cost, 0, 5) + "，选定框退回底板");
+                img.color = new Color(1f, 0.84f, 0.46f, 0f);
+                StartCoroutine(FadeImage(img, 0f, 0.34f, punchTime));
+            }
+        }
+        else
+        {
+            s.halo.gameObject.SetActive(true);
+        }
+    }
+
+    static readonly Sprite[] _frameCache = new Sprite[6];
+
+    static Sprite LoadFrameSprite(int cost)
+    {
+        int i = Mathf.Clamp(cost, 0, 5);
+        if (_frameCache[i] == null)
+            _frameCache[i] = Resources.Load<Sprite>("UI/PickFrame_" + i);
+        return _frameCache[i];
+    }
+
+    IEnumerator FadeImage(Image img, float from, float to, float dur)
+    {
+        if (img == null) yield break;
+        Color c = img.color;
+        float t = 0f;
+        while (t < dur)
+        {
+            t += Time.deltaTime;
+            float p = Mathf.Clamp01(t / dur);
+            img.color = new Color(c.r, c.g, c.b, Mathf.Lerp(from, to, p));
+            yield return null;
+        }
+        img.color = new Color(c.r, c.g, c.b, to);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // 悬停反馈（选择者视角）
+    // ══════════════════════════════════════════════════════════════════
+
+    /// <summary>鼠标压在哪一张上：抬起放大那一张，其余压暗。纯表现，不改规则。</summary>
+    public void OnSlotHover(int index, bool on)
+    {
+        if (!_visible || !_chooser || _resolved) return;
+        if (on) _hoverIndex = index;
+        else if (_hoverIndex == index) _hoverIndex = -1;
+        RefreshHoverTargets();
+    }
+
+    void RefreshHoverTargets()
+    {
+        for (int i = 0; i < _slots.Count; i++)
+        {
+            var s = _slots[i];
+            if (s == null || s.holder == null || s.revealing) continue;
+            bool hot = (i == _hoverIndex);
+            Vector2 pos = s.basePos + new Vector2(0f, hot ? hoverLift : 0f);
+            float sc = hot ? hoverScale : 1f;
+            float a = (_hoverIndex >= 0 && !hot) ? hoverOthersDim : 1f;
+            StartCoroutine(GlideSlot(s, pos, sc, a, hoverTime));
+        }
+    }
+
+    /// <summary>把槽位平滑推到目标位（同一槽位后发起的推移顶掉前一个）。</summary>
+    IEnumerator GlideSlot(Slot s, Vector2 to, float scale, float alpha, float dur)
+    {
+        if (s == null || s.holder == null) yield break;
+        int token = ++s.glideToken;
+        Vector2 from = s.holder.anchoredPosition;
+        float fromScale = s.holder.localScale.x;
+        float fromAlpha = s.group != null ? s.group.alpha : 1f;
+        float t = 0f;
+        while (t < dur)
+        {
+            if (s.glideToken != token) yield break;
+            t += Time.deltaTime;
+            float p = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / dur));
+            s.holder.anchoredPosition = Vector2.Lerp(from, to, p);
+            s.holder.localScale = Vector3.one * Mathf.Lerp(fromScale, scale, p);
+            if (s.group != null) s.group.alpha = Mathf.Lerp(fromAlpha, alpha, p);
+            yield return null;
+        }
+        if (s.glideToken != token) yield break;
+        s.holder.anchoredPosition = to;
+        s.holder.localScale = Vector3.one * scale;
+        if (s.group != null) s.group.alpha = alpha;
     }
 
     // ══════════════════════════════════════════════════════════════════
@@ -615,5 +791,22 @@ public class PickDrawUI : MonoBehaviour
         if (font == null) font = TMP_Settings.defaultFontAsset;
         if (font != null) t.font = font;
         if (mat != null) t.fontSharedMaterial = mat;
+    }
+}
+
+/// <summary>择牌卡上的悬停探针：只把进出事件转发给 PickDrawUI，表现全在那边做。</summary>
+public class PickHoverGlow : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
+{
+    public PickDrawUI ui;
+    public int index;
+
+    public void OnPointerEnter(PointerEventData eventData)
+    {
+        if (ui != null) ui.OnSlotHover(index, true);
+    }
+
+    public void OnPointerExit(PointerEventData eventData)
+    {
+        if (ui != null) ui.OnSlotHover(index, false);
     }
 }
