@@ -45,7 +45,7 @@ public static class Card3DSpellNewPrefabBuilder
 
         // ── CardRoot ──
         GameObject cardRoot = new GameObject("CardRoot");
-        cardRoot.transform.localScale = new Vector3(1.4f, 1.4f, 1f);
+        cardRoot.transform.localScale = new Vector3(1.12f, 1.12f, 1f);   // 1.4 × HandManager.BoardLayoutScale(0.80)：随棋盘布局一起缩
         cardRoot.transform.localPosition = new Vector3(0f, -5.55f, 0f);
         cardRoot.transform.localRotation = Quaternion.identity;
 

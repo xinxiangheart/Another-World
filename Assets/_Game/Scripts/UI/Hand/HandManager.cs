@@ -813,6 +813,25 @@ public class HandManager : MonoBehaviour
         return slot.currentCard3D.GetComponent<Card3DInstance>();
     }
 
+    // ══ 棋盘布局缩放（2026-09-24）════════════════════════════════════════
+    // 目的：让棋盘上四排卡槽（含场上的 3D 卡牌）完全落进底板 L2 Board_Surface 的
+    // 「内圈跑道」金环内侧。金环内框实测（贴图 2048×1152 px：x 144–1903、y 152–999）
+    // 换算到世界单位、以棋盘中心 (0,1) 为原点 = x ±8.245 / y ±3.97。
+    // 缩放前四排外框半高 4.71（行心 ±3.6 再加半个槽高 1.11）已溢出金环，故必须收。
+    // 0.80 = 不溢出且上下各留 ~0.21 世界单位（≈17 屏幕 px）余量的最大整值档。
+    // 改这一个数要同步的地方：
+    //   · 本文件 GetSlotWorldPosition（槽位坐标绕棋盘中心收缩）
+    //   · 本文件 GetAttachWorldPos / BoardManager 的附着牌落位（X 间距 AttachXStep）
+    //   · BoardManager.CreateSlot（卡槽显示尺寸）
+    //   · Prefabs/Board/Slot_0.prefab 的 sizeDelta（仅编辑器预览，运行时以 BoardManager 为准）
+    //   · Prefabs/Cards/**/Card00_New_3D、SpellCard00_New_3D 根 localScale = 1.4 × 本值
+    public const float BoardLayoutScale = 0.80f;
+    /// <summary>棋盘布局中心（世界坐标）：所有槽位坐标绕它缩放。</summary>
+    public const float BoardLayoutCenterX = 0f;
+    public const float BoardLayoutCenterY = 1f;
+    /// <summary>附着牌 X 间距（宿主→第一张、相邻两张之间），随棋盘布局一起缩。</summary>
+    public const float AttachXStep = 0.25f * BoardLayoutScale;
+
     public Vector3 GetSlotWorldPosition(int slotID)
     {
         float x = 0f, y = 0f, z = -5.7f;
@@ -831,7 +850,11 @@ public class HandManager : MonoBehaviour
             case 10: x = 0f; y = -2.57f; break;
             case 11: x = -3f; y = -2.57f; break;
         }
-        return new Vector3(x, y, z);
+        // 布局基准坐标（上面 switch 里的字面量）→ 绕棋盘中心收缩
+        return new Vector3(
+            BoardLayoutCenterX + (x - BoardLayoutCenterX) * BoardLayoutScale,
+            BoardLayoutCenterY + (y - BoardLayoutCenterY) * BoardLayoutScale,
+            z);
     }
 
     /// <summary>附着物在指定槽位 + 附着序号下的世界坐标。</summary>
@@ -847,7 +870,7 @@ public class HandManager : MonoBehaviour
             basePos = hm.GetSlotWorldPosition(slotID);
         else
             basePos = Vector3.zero;
-        return new Vector3(basePos.x - 0.25f - attachOrder * 0.25f, basePos.y, basePos.z + 0.1f + attachOrder * 0.05f); // 附着-宿主及附着-附着 X 间隔均0.25
+        return new Vector3(basePos.x - AttachXStep - attachOrder * AttachXStep, basePos.y, basePos.z + 0.1f + attachOrder * 0.05f); // 附着-宿主及附着-附着 X 间隔均 AttachXStep（= 0.25 × BoardLayoutScale）
     }
 
     bool _handCardsHidden; // 真手牌隐藏标志：置位才隐藏/恢复抽牌与结束回合按钮（预览/射线通道不置位）

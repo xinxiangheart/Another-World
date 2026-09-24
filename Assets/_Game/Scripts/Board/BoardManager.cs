@@ -152,7 +152,8 @@ public class BoardManager : MonoBehaviour
 
         // 槽位显示尺寸（世界单位）：与未迁移前一致。
         // 未迁移前 Slot_0.prefab sizeDelta=135×240，在 Screen Space(1080px=10世界单位) 下 = 1.25×2.22 世界单位。
-        rt.sizeDelta = new Vector2(1.25f, 2.22f);
+        // 再乘棋盘布局缩放，让四排整体落进「内圈跑道」金环内侧（见 HandManager.BoardLayoutScale）
+        rt.sizeDelta = new Vector2(1.25f, 2.22f) * HandManager.BoardLayoutScale;
 
         // 世界坐标定位：与卡牌同用 GetSlotWorldPosition 的 X/Y（保证对齐），Z 贴在棋盘表面
         Vector3 worldPos = handManager != null ? handManager.GetSlotWorldPosition(slotID) : Vector3.zero;
@@ -440,7 +441,7 @@ public class BoardManager : MonoBehaviour
         for (int i = 0; i < attached.Count; i++)
         {
             if (attached[i] == null || attached[i].transform == null) continue;
-            Vector3 newPos = new Vector3(hostPos.x - 0.25f - i * 0.25f, hostPos.y, hostPos.z + 0.1f + i * 0.05f); // 附着-宿主及附着-附着 X 间隔均0.25（与 GetAttachWorldPos 一致）
+            Vector3 newPos = new Vector3(hostPos.x - HandManager.AttachXStep - i * HandManager.AttachXStep, hostPos.y, hostPos.z + 0.1f + i * 0.05f); // 附着-宿主及附着-附着 X 间隔均 HandManager.AttachXStep（与 GetAttachWorldPos 一致）
             attached[i].transform.position = newPos;
         }
     }

@@ -685,7 +685,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         // 选择指示：四角直角括号 + 呼吸式脉动，挂在槽位自身之下（随槽位移动 / 缩放）。
         // 尺寸取槽位矩形（BoardManager.CreateSlot 已设好 sizeDelta），保证括号贴着格子四角外侧。
         RectTransform slotRt = transform as RectTransform;
-        Vector2 slotSize = new Vector2(1.25f, 2.22f); // 兜底：与 BoardManager.CreateSlot 的尺寸一致
+        Vector2 slotSize = new Vector2(1.25f, 2.22f) * HandManager.BoardLayoutScale; // 兜底：与 BoardManager.CreateSlot 的尺寸一致（已乘棋盘布局缩放）
         if (slotRt != null)
         {
             Vector2 rectSize = slotRt.rect.size;
