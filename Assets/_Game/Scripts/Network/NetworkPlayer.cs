@@ -1029,6 +1029,9 @@ public partial class NetworkPlayer : NetworkBehaviour
 
         // 择牌兜底：等选择期间阶段被别处推进 → 立刻中止并把待选牌洗回牌库
         ServerTickPickDraw();
+
+        // 择牌机会提示：同步给各自的客户端，抽牌按钮据此染色
+        ServerRefreshPickDrawReady();
     }
 
     // ========== Hand Management ==========

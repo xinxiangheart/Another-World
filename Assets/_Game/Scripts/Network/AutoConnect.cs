@@ -1,5 +1,6 @@
 using UnityEngine;
 using Mirror;
+using System.Net.Sockets;
 using TMPro;
 using Steamworks;
 using UnityEngine.SceneManagement;
@@ -32,7 +33,7 @@ public class AutoConnect : MonoBehaviour
             SetupKCP();
             _startTime = Time.time;
             Debug.LogWarning($"[AutoConnect-Offline] 离线模式启动本地 Host @{Time.time:F2}s");
-            _nm.StartHost();
+            StartHostOffline();
             // 挂载离线 AI 创建器：等 Local 就绪后创建 AI 的 NetworkPlayer 并赋 Remote
             if (_nm != null && _nm.GetComponent<OfflineAIHost>() == null)
                 _nm.gameObject.AddComponent<OfflineAIHost>();
@@ -85,6 +86,50 @@ public class AutoConnect : MonoBehaviour
             RegisterCallbacks();
             InvokeRepeating(nameof(SearchLobbies), 0f, 2f);
         }
+    }
+
+    /// <summary>离线单机启动本地 Host。上一次运行残留的实例（比如还开着的构建版 exe）
+    /// 或另一个 Unity 编辑器可能还占着默认端口 7777 —— 原来直接 StartHost() 会抛
+    /// SocketException，服务器起不来，游戏就卡在准备阶段。这里绑不上就往后换端口重试，
+    /// 单机模式下服务端与本地客户端用的是同一个端口，换端口对玩法没有影响。</summary>
+    void StartHostOffline()
+    {
+        const int maxTries = 8;
+        for (int attempt = 0; attempt < maxTries; attempt++)
+        {
+            try
+            {
+                _nm.StartHost();
+                if (attempt > 0)
+                    Debug.LogWarning($"[AutoConnect-Offline] 默认端口被占用，已改用端口 {PortNow()} 启动本地 Host");
+                return;
+            }
+            catch (SocketException e)
+            {
+                Debug.LogWarning($"[AutoConnect-Offline] 端口 {PortNow()} 绑定失败（{e.SocketErrorCode}）：{e.Message}");
+                try { _nm.StopHost(); } catch { }
+                if (!NextPort())
+                {
+                    Debug.LogError("[AutoConnect-Offline] 传输不支持换端口，无法启动本地 Host；" +
+                                   "请确认没有第二个游戏实例（含构建版 exe）还在运行。");
+                    return;
+                }
+            }
+        }
+        Debug.LogError($"[AutoConnect-Offline] 连试 {maxTries} 个端口都绑不上，放弃启动本地 Host；" +
+                       "请确认没有第二个游戏实例（含构建版 exe）还在运行。");
+    }
+
+    int PortNow()
+    {
+        return Transport.active is PortTransport pt ? pt.Port : -1;
+    }
+
+    bool NextPort()
+    {
+        if (!(Transport.active is PortTransport pt)) return false;
+        pt.Port = (ushort)(pt.Port + 1);
+        return true;
     }
 
     void SetupFizzy()

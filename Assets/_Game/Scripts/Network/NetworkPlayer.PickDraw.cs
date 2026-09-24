@@ -31,6 +31,26 @@ public partial class NetworkPlayer
 
     public bool IsPickDrawPending => _pickDrawPending;
 
+    /// <summary>本端此刻还有没有择牌机会（服务端每帧算好、同步给各自客户端）。
+    /// 抽牌按钮据此把数字染成金色；机会用完 / 牌库空 / 不是自己回合 / 能量不够都会归 false。</summary>
+    [SyncVar] public bool pickDrawReady;
+
+    /// <summary>服务端每帧刷新 pickDrawReady（值不变时 Mirror 不置 dirty、不发包）。</summary>
+    void ServerRefreshPickDrawReady()
+    {
+        if (!NetworkServer.active) return;
+        TurnManager tm = TurnManager.Instance;
+        bool ready = tm != null
+            && (tm.currentPhase == TurnManager.TurnPhase.MyTurn ||
+                tm.currentPhase == TurnManager.TurnPhase.EnemyTurn)
+            && IsMyTurnOnServer(tm)
+            && !_pickDrawPending
+            && _pickDrawUsedPhase != tm.phaseCount
+            && currentEnergy >= 1
+            && CardZoneManager.Instance != null && CardZoneManager.Instance.DeckCount > 0;
+        pickDrawReady = ready;
+    }
+
     // ══════════════════════════════════════════════════════════════════
     // 服务端：发起
     // ══════════════════════════════════════════════════════════════════
