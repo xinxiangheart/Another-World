@@ -44,6 +44,8 @@ public class CardDisplay2DSpell : CardDisplay2D
     public string cardBackPath = "Cards/Back";
     public string energyIconPath = "UI/Energy";
     public string prefixArtBGPath = "Icons/Prefixes/prefixbg_{0}";
+    [Tooltip("法术通用底图（法术无前缀，7 张底图里单独一张）")]
+    public string spellPrefixBgPath = "Cards/PrefixArtBG/Spell";
 
     static Sprite _placeholder;
 
@@ -159,6 +161,9 @@ public class CardDisplay2DSpell : CardDisplay2D
     /// <summary>前缀底图：拖入数组 → 路径 → 通用底图 → 占位。</summary>
     Sprite GetPrefixArtBGSprite(CardData template)
     {
+        // 法术无前缀 → 一律走「法术通用」底图（Cards/PrefixArtBG/Spell）
+        Sprite spellBg = LoadSprite(spellPrefixBgPath);
+        if (spellBg != null) return spellBg;
         string prefix = template != null ? template.prefix : "";
         int idx = PrefixToIndex(prefix);
         Sprite direct = null;

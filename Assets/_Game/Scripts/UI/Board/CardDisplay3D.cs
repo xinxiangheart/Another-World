@@ -31,6 +31,8 @@ public class CardDisplay3D : MonoBehaviour
     public Sprite defaultPrefixArtSprite;
     [Tooltip("五前缀底图（index: 0=灵能,1=渊,2=机械,3=血歌,4=神灵画卷）")]
     public Sprite[] prefixArtSprites;
+    [Tooltip("法术通用底图（法术无前缀）")]
+    public Sprite spellPrefixBgSprite;
     [Tooltip("卡背图（拖入则覆盖网格背槽 _MainTex，MPB 不污染共享材质）")]
     public Sprite cardBackSprite;
 
@@ -113,7 +115,9 @@ public class CardDisplay3D : MonoBehaviour
         {
             Sprite prefix = previewPrefixBgSprite != null
                 ? previewPrefixBgSprite
-                : ResolvePrefixBgSprite(template.prefix);
+                : (template.cardType == CardType.Spell
+                    ? ResolveSpellPrefixBgSprite()
+                    : ResolvePrefixBgSprite(template.prefix));
             if (prefix != null) { prefixBgSR.sprite = prefix; prefixBgSR.enabled = true; }
         }
 
@@ -146,6 +150,13 @@ public class CardDisplay3D : MonoBehaviour
         if (template == null) return 0;
         if (template.templateID == "01524") return 5; // 画卷之核特判：0费 → 5费框
         return Mathf.Clamp(template.baseCost, 0, 5);
+    }
+
+    /// <summary>法术底图：法术无前缀，7 张底图里单独一张「法术通用」。对齐 2D CardDisplay2DSpell。</summary>
+    Sprite ResolveSpellPrefixBgSprite()
+    {
+        if (spellPrefixBgSprite != null) return spellPrefixBgSprite;
+        return LoadSprite("Cards/PrefixArtBG/Spell");
     }
 
     /// <summary>前缀底图：拖入 prefixArtSprites[idx]（五前缀）或 defaultPrefixArtSprite（通用）→ 路径 Cards/PrefixArtBG/{English}。对齐 2D GetPrefixArtBGSprite。</summary>
