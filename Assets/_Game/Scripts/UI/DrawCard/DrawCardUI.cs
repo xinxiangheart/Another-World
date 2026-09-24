@@ -114,7 +114,13 @@ public class DrawCardUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandl
         Debug.Log($"[DrawCardUI] Direct draw, energy={player.currentEnergy}");
         if (player.UseEnergy(1))
         {
-            player.DrawCard();
+            // 服务端权威：本回合第一次主动抽牌 → 择牌；已用过 / 牌库空 / 牌库不足则照常抽一张。
+            // 返回 false = 本次点击作废（择牌面板已开），把能量退回去。
+            if (!player.ServerHandleActiveDraw())
+            {
+                player.currentEnergy += 1;
+                return;
+            }
             remainingDraws--;
             UpdateDisplay();
         }

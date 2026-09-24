@@ -5,7 +5,7 @@ using UnityEngine;
 using Mirror;
 using TMPro;
 
-public class NetworkPlayer : NetworkBehaviour
+public partial class NetworkPlayer : NetworkBehaviour
 {
     public static NetworkPlayer Local { get; private set; }
     // Remote 需 public set：离线 AI 模式由 OfflineAIHost 手动赋 AI player（connectionToClient == null）。
@@ -440,6 +440,13 @@ public class NetworkPlayer : NetworkBehaviour
 
         // energy already pre-decremented on client; sync server-side energy
         if (currentEnergy < 0) currentEnergy = 0;
+
+        // 本回合第一次主动抽牌 → 替换为择牌（牌库顶三张三选一）。
+        // 注意只拦「点抽牌按钮」这条路径：效果抽牌走 DrawCard()/DrawCardWithoutLimit()，不受影响。
+        if (ServerTryStartPickDraw()) return;
+
+        // 择牌面板正开着时的重复点击：作废本次（客户端会退能量）
+        if (IsPickDrawPending) { TargetCancelDraw(connectionToClient); return; }
 
         CardData data = DeckManager.Instance?.DrawFromMain();
         if (data == null)
@@ -1019,6 +1026,9 @@ public class NetworkPlayer : NetworkBehaviour
         for (int i = 0; i < handCards.Count; i++)
             if (handCards[i] != null) n++;
         if (n != handCardCount) handCardCount = n;
+
+        // 择牌兜底：等选择期间阶段被别处推进 → 立刻中止并把待选牌洗回牌库
+        ServerTickPickDraw();
     }
 
     // ========== Hand Management ==========

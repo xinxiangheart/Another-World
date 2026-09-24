@@ -22,6 +22,8 @@ public class GraveEntry
     public string prefixes;
     public bool handledReturnToHand;
     public int deathPhase;
+    /// <summary>明弃：择牌未选中的那两张。留在弃牌堆里但永不再洗回牌库（见 CardZoneManager.ShuffleGraveyardIntoDeck）。</summary>
+    public bool openDiscard;
 }
 
 public class GraveyardManager : MonoBehaviour

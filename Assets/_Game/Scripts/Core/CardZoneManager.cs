@@ -162,6 +162,15 @@ public class CardZoneManager : MonoBehaviour
         return result;
     }
 
+    /// <summary>牌库顶 N 张（含 instanceID，查看，不移出）。择牌用。</summary>
+    public List<DeckCard> PeekTopCards(int n)
+    {
+        var result = new List<DeckCard>();
+        for (int i = 0; i < _deck.Count && i < n; i++)
+            result.Add(_deck[i]);
+        return result;
+    }
+
     /// <summary>从牌库中移除指定 instanceID（放逐等）。</summary>
     public bool RemoveFromDeck(string instanceID)
     {
@@ -193,11 +202,17 @@ public class CardZoneManager : MonoBehaviour
     /// <summary>将 GraveEntry 列表洗入牌库。</summary>
     public void ShuffleGraveyardIntoDeck()
     {
+        // 明弃（择牌未选中的两张）留在弃牌堆里，但绝不回到牌库。
+        var keep = _graveyard.FindAll(ge => ge.openDiscard);
         foreach (var ge in _graveyard)
+        {
+            if (ge.openDiscard) continue;
             _deck.Add(new DeckCard { templateID = ge.templateID, instanceID = ge.instanceID });
+        }
         _graveyard.Clear();
+        _graveyard.AddRange(keep);
         Shuffle(_deck);
-        Debug.Log($"[CardZoneManager] 弃牌堆洗入牌库: {_deck.Count} 张");
+        Debug.Log($"[CardZoneManager] 弃牌堆洗入牌库: {_deck.Count} 张（明弃保留 {keep.Count} 张）");
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -205,9 +220,11 @@ public class CardZoneManager : MonoBehaviour
     // ═══════════════════════════════════════════════════════════════════
 
     /// <summary>添加进弃牌堆。</summary>
-    public void AddToGraveyard(GraveEntry entry)
+    /// <param name="openDiscard">true = 明弃（择牌未选中的两张）：留在弃牌堆但永不洗回牌库。</param>
+    public void AddToGraveyard(GraveEntry entry, bool openDiscard = false)
     {
         if (entry == null) return;
+        if (openDiscard) entry.openDiscard = true;
         _graveyard.Add(entry);
         OnCardEnteredGraveyard?.Invoke(entry.instanceID);
         OnCardZoneChanged?.Invoke(entry.instanceID, CardZone.Board, CardZone.Graveyard);

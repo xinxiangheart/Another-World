@@ -67,7 +67,8 @@ public class PlayRevealManager : MonoBehaviour
         mgr.transform.SetAsLastSibling();
     }
 
-    static GameObject FindMainCanvas()
+    /// <summary>本端主 Canvas（与手牌同一块）。择牌面板等运行时 UI 共用。</summary>
+    public static GameObject FindMainCanvas()
     {
         // 优先与手牌/2D 面板同一 Canvas（Player.handArea 所在），保证展示卡与其同层
         if (Player.Instance != null && Player.Instance.handArea != null)
