@@ -596,7 +596,9 @@ function New-LayerGlow([string]$out) {
 
 # ══════════════════════════════════════════════════════════
 # L7 微尘层（透明；上下左右均无缝，可循环漂移）
-#     数量 = $Count；想要运行时可调就走 BoardMotes.cs（同图当粒子贴图）
+#     数量 = $Count（烤进贴图的颗数，运行时不再增减）；运行时闪烁走 Board_Motes.mat
+#     → 换 shader AnotherWorld/BoardMotesTwinkle：每颗按自己格子里的随机相位慢慢明灭，
+#       同一时间只有一部分亮着（_Visible 控制比例）。改这个图仍会改变颗数与位置。
 # ══════════════════════════════════════════════════════════
 function New-LayerMotes([string]$out, [int]$Count = 220, [int]$Seed = 5150243) {
   $r = New-Layer $BW $BH $false @(0,0,0); $bmp = $r[0]; $g = $r[1]
