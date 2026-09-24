@@ -14,33 +14,71 @@ public class FloaterConfig : ScriptableObject
 {
     [Header("通用")]
     [Tooltip("弹出持续时间（秒）")]
-    public float duration = 1.5f;
-    [Tooltip("每秒向上飘移的世界单位")]
-    public float floatSpeed = 1.2f;
-    [Tooltip("模型上方偏移量（世界单位）")]
-    public float worldOffsetY = 2.5f;
+    public float duration = 1.2f;
+    [Tooltip("初速（世界单位/秒，方向见下面「弹出轨迹」的偏角）")]
+    public float floatSpeed = 1.3f;
+    [Tooltip("浮字在卡牌顶边之上的余量（世界单位）。卡高约 1.78，给 0.4 左右数字就贴在卡顶")]
+    public float worldOffsetY = 0.42f;
     [Tooltip("渐隐开始比例（0=立即开始, 0.5=半程开始）")]
-    public float fadeStart = 0f;
+    public float fadeStart = 0.45f;
+
+    [Header("弹出轨迹（随机）")]
+    [Tooltip("弹出方向相对正上方的最大偏角（度）：0=纯向上，50≈左右各 50°")]
+    public float angleSpread = 50f;
+    [Tooltip("初速随机浮动（比例）：±该值")]
+    public float speedJitter = 0.22f;
+    [Tooltip("出生点随机偏移（世界单位）：横向 ±该值，纵向 ±60%")]
+    public float spawnJitter = 0.24f;
+    [Tooltip("抛线下坠（世界单位/秒²）：越大越像「扔出去」")]
+    public float gravity = 2.2f;
+    [Tooltip("横向速度收束（世界单位/秒²）：把随机横移慢慢拉回竖直")]
+    public float horizontalDrift = 1.6f;
+    [Tooltip("大小随机浮动（比例）：±该值")]
+    public float sizeJitter = 0.1f;
+    [Tooltip("随机倾斜（度）：±该值")]
+    public float spinJitter = 6f;
+    [Tooltip("弹入时长（秒）：从小冲过头再收回")]
+    public float popTime = 0.16f;
+    [Tooltip("弹入起始缩放（相对基准）")]
+    public float popFrom = 0.55f;
+
+    [Header("材质")]
+    [Tooltip("字面相对类型色提亮的比例（0=纯类型色，0.4≈近白）")]
+    public float fillBrighten = 0.22f;
+    [Tooltip("勾上：描边取「类型色压深」（有颜色）；不勾则用下面的 outlineColor")]
+    public bool useRimColor = true;
+    [Tooltip("描边 = 类型色 × 该系数")]
+    public float rimDarken = 0.3f;
+    [Tooltip("字面加粗（FaceDilate）：顶栏数值用的是 0.3")]
+    public float faceDilate = 0.28f;
+    [Tooltip("描边柔和度（0=硬边）")]
+    public float outlineSoftness = 0.06f;
+    [Tooltip("勾上：字下垫一层柔投影，压在花哨卡面上也读得清")]
+    public bool useShadow = true;
+    [Tooltip("投影颜色")]
+    public Color shadowColor = new Color(0f, 0f, 0f, 0.62f);
+    [Tooltip("投影偏移（描边宽度单位）")]
+    public float shadowOffset = 0.9f;
 
     [Header("字体")]
     [Tooltip("字体大小")]
-    public float fontSize = 36f;
+    public float fontSize = 58f;
     [Tooltip("描边宽度")]
-    public float outlineWidth = 0.25f;
-    [Tooltip("描边颜色")]
-    public Color outlineColor = new Color(0, 0, 0, 0.7f);
+    public float outlineWidth = 0.22f;
+    [Tooltip("描边颜色（仅在 useRimColor 关掉时使用）")]
+    public Color outlineColor = new Color(0.05f, 0.04f, 0.04f, 1f);
     [Tooltip("粗体")]
     public bool bold = true;
     [Tooltip("弹窗宽度")]
-    public float boxWidth = 120f;
+    public float boxWidth = 160f;
     [Tooltip("弹窗高度")]
-    public float boxHeight = 40f;
+    public float boxHeight = 60f;
 
     [Header("伤害")]
     [Tooltip("颜色")]
-    public Color damageColor = new Color(1f, 0.2f, 0.2f, 1f);
+    public Color damageColor = new Color(1f, 0.22f, 0.2f, 1f);
     [Tooltip("缩放倍数")]
-    public float damageScale = 1.1f;
+    public float damageScale = 1.05f;
 
     [Header("治疗")]
     [Tooltip("颜色")]

@@ -798,18 +798,62 @@ public static class DamagePipeline
     {
         var bm = UnityEngine.Object.FindObjectOfType<BoardManager>();
         if (bm == null) return Vector3.zero;
-        float offset = 2.5f;
+        float margin = FloaterTopMarginY();
         for (int i = 0; i < 12; i++)
         {
             var s = bm.GetSlot(i);
             var c3d = s?.currentCard3D?.GetComponent<Card3DInstance>();
             if (c3d?.cardInstance == ci && s.currentCard3D != null)
-                return s.currentCard3D.transform.position + Vector3.up * offset;
+            {
+                if (TryGetCardTop(s.currentCard3D, margin, out Vector3 top)) return top;
+                return s.currentCard3D.transform.position + Vector3.up * (CardHalfHeightFallback + margin);
+            }
         }
         // 本体已离槽（退场/回手/效果中）→ 回退 HandleDeath 记录的退场前站位，避免粒子浮到原点
         if (ci != null && ci.hasLastBoardPos)
-            return ci.lastBoardPos + Vector3.up * offset;
+            return ci.lastBoardPos + Vector3.up * (CardHalfHeightFallback + margin);
         return Vector3.zero;
+    }
+
+    // 卡牌（3D 模型）在世界里约 1.78 世界单位高（槽位 1.25×2.22 × HandManager.BoardLayoutScale 0.8），
+    // 半高 ≈ 0.89 —— 取不到包围盒时拿它兜底。
+    const float CardHalfHeightFallback = 0.89f;
+
+    /// <summary>浮字在卡牌**顶边**之上留的余量（世界单位）。可在 FloaterConfig.worldOffsetY 调。</summary>
+    static float FloaterTopMarginY()
+    {
+        var cfg = Resources.Load<FloaterConfig>("Config/FloaterConfig");
+        return cfg != null ? cfg.worldOffsetY : 0.42f;
+    }
+
+    /// <summary>卡牌模型包围盒的顶边 + 余量（世界坐标）。
+    /// 用包围盒而不是写死偏移：卡本体只有约 1.78 世界单位高，原来「中心 +2.5」等于顶边再往上 1.6，
+    /// 比一整排的间距（2.3）还大，数字会飘到后一排身上 —— 看不出是从哪张卡弹出来的。
+    /// 包围盒还能自动跟上附着牌、召唤缩放、漂浮 / 进出场动画。
+    /// Z 取模型中心的 Z：浮字是「世界点 → 屏幕 → 画布局部」，透视投影要同深度才贴得上。</summary>
+    static bool TryGetCardTop(GameObject card, float margin, out Vector3 pos)
+    {
+        pos = Vector3.zero;
+        if (card == null) return false;
+
+        var self = card.GetComponent<Card3DInstance>();
+        Renderer[] renderers = card.GetComponentsInChildren<Renderer>();
+        bool any = false;
+        Bounds b = default;
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            Renderer r = renderers[i];
+            if (r == null || !r.enabled) continue;
+            if (r is ParticleSystemRenderer) continue;
+            // 只算「这张卡自己的」图形：附着牌若挂在宿主下面，不能被算进来（否则浮字会被顶得更高）
+            if (self != null && r.GetComponentInParent<Card3DInstance>() != self) continue;
+            if (!any) { b = r.bounds; any = true; }
+            else b.Encapsulate(r.bounds);
+        }
+        if (!any) return false;
+
+        pos = new Vector3(b.center.x, b.max.y + margin, b.center.z);
+        return true;
     }
 
     /// <summary>卡牌 3D 模型中心的世界坐标（粒子终点精确落点）。本体离槽回退退场前记录坐标。</summary>
@@ -829,9 +873,4 @@ public static class DamagePipeline
         return Vector3.zero;
     }
 
-    static float GetFloaterOffsetY()
-    {
-        var cfg = Resources.Load<FloaterConfig>("FloaterConfig");
-        return cfg != null ? cfg.worldOffsetY : 2.5f;
-    }
 }

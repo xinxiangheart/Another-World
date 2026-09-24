@@ -12,18 +12,35 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a54e19e6a08492341bdfc358aae97b94, type: 3}
   m_Name: FloaterConfig
   m_EditorClassIdentifier: 
-  duration: 1.5
-  floatSpeed: 0.1
-  worldOffsetY: 2
-  fadeStart: 0.5
-  fontSize: 72
-  outlineWidth: 0.25
-  outlineColor: {r: 0, g: 0, b: 0, a: 0.7}
+  duration: 1.2
+  floatSpeed: 1.3
+  worldOffsetY: 0.42
+  fadeStart: 0.45
+  angleSpread: 50
+  speedJitter: 0.22
+  spawnJitter: 0.24
+  gravity: 2.2
+  horizontalDrift: 1.6
+  sizeJitter: 0.1
+  spinJitter: 6
+  popTime: 0.16
+  popFrom: 0.55
+  fillBrighten: 0.22
+  useRimColor: 1
+  rimDarken: 0.3
+  faceDilate: 0.28
+  outlineSoftness: 0.06
+  useShadow: 1
+  shadowColor: {r: 0, g: 0, b: 0, a: 0.62}
+  shadowOffset: 0.9
+  fontSize: 58
+  outlineWidth: 0.22
+  outlineColor: {r: 0.05, g: 0.04, b: 0.04, a: 1}
   bold: 1
-  boxWidth: 120
-  boxHeight: 40
-  damageColor: {r: 1, g: 0.2, b: 0.2, a: 1}
-  damageScale: 1.1
+  boxWidth: 160
+  boxHeight: 60
+  damageColor: {r: 1, g: 0.22, b: 0.2, a: 1}
+  damageScale: 1.05
   healColor: {r: 0.2, g: 1, b: 0.3, a: 1}
   healScale: 0.9
   blockedColor: {r: 0.3, g: 0.5, b: 1, a: 1}
