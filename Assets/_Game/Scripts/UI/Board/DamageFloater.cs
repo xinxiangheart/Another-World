@@ -96,30 +96,26 @@ public class DamageFloater : MonoBehaviour
         {
             case FloaterType.Heal:
                 text = "+" + value;
-                fill = cfg != null ? cfg.healColor : new Color(0.25f, 1f, 0.35f, 1f);
                 scale = Num(cfg != null ? cfg.healScale : (float?)null, 0.92f);
                 break;
             case FloaterType.Blocked:
                 text = cfg != null ? cfg.blockedText : "抵挡!";
-                fill = cfg != null ? cfg.blockedColor : new Color(0.35f, 0.6f, 1f, 1f);
                 scale = Num(cfg != null ? cfg.blockedScale : (float?)null, 1f);
                 break;
             case FloaterType.Buff:
                 text = "+" + value;
-                fill = cfg != null ? cfg.buffColor : new Color(1f, 0.85f, 0.12f, 1f);
                 scale = Num(cfg != null ? cfg.buffScale : (float?)null, 0.85f);
                 break;
             case FloaterType.Debuff:
                 text = "-" + value;
-                fill = cfg != null ? cfg.debuffColor : new Color(0.72f, 0.35f, 1f, 1f);
                 scale = Num(cfg != null ? cfg.debuffScale : (float?)null, 0.85f);
                 break;
             default:
                 text = "-" + value;
-                fill = cfg != null ? cfg.damageColor : new Color(1f, 0.22f, 0.2f, 1f);
                 scale = Num(cfg != null ? cfg.damageScale : (float?)null, 1.05f);
                 break;
         }
+        fill = TypeFill(type);
 
         var tmp = df._tmp;
         if (tmp != null)
@@ -309,6 +305,33 @@ public class DamageFloater : MonoBehaviour
     }
 
     static float Num(float? v, float fallback) { return v.HasValue ? v.Value : fallback; }
+
+    /// <summary>各类型的字面主色（默认值与 Show 里那份是同一套；配置存在时以配置为准）。
+    /// 单独提出来给「面板 / 血条弹字」复用，免得颜色在两处各写一份后走样。</summary>
+    public static Color TypeFill(FloaterType type)
+    {
+        var cfg = Config;
+        switch (type)
+        {
+            case FloaterType.Heal:    return cfg != null ? cfg.healColor    : new Color(0.25f, 1f, 0.35f, 1f);
+            case FloaterType.Blocked: return cfg != null ? cfg.blockedColor : new Color(0.35f, 0.6f, 1f, 1f);
+            case FloaterType.Buff:    return cfg != null ? cfg.buffColor    : new Color(1f, 0.85f, 0.12f, 1f);
+            case FloaterType.Debuff:  return cfg != null ? cfg.debuffColor  : new Color(0.72f, 0.35f, 1f, 1f);
+            default:                  return cfg != null ? cfg.damageColor  : new Color(1f, 0.22f, 0.2f, 1f);
+        }
+    }
+
+    /// <summary>把飘字那套「字体 + 字面 / 描边 / 柔投影」材质套到任意 TMP 上
+    /// （攻击回合面板的飞行数字与血条弹字复用，样式与场上飘字完全一致）。</summary>
+    public static void ApplyStyle(TMP_Text tmp, FloaterType type)
+    {
+        if (tmp == null) return;
+        tmp.color = Color.white;                 // 顶点色留白，颜色全交给材质
+        var font = Font;
+        if (font != null && tmp.font != font) tmp.font = font;   // 先换字体（会重置材质）
+        var mat = TypeMaterial(type, TypeFill(type));
+        if (mat != null) tmp.fontSharedMaterial = mat;
+    }
 
     // ═══════════════════════════════════════════════════════════════════
     // 对象池

@@ -24,6 +24,15 @@ public class BattleManager : MonoBehaviour
         // 战斗动画播放器：挂到 BattleManager 同一常驻物体上（无需手动挂场景）
         if (GetComponent<BattleAnimator>() == null)
             gameObject.AddComponent<BattleAnimator>();
+
+        // 攻击回合伤害面板（屏幕左侧两块）：等一帧让主 Canvas / Player 就位再挂
+        StartCoroutine(BootstrapAttackTurnPanel());
+    }
+
+    IEnumerator BootstrapAttackTurnPanel()
+    {
+        yield return null;
+        AttackTurnDamagePanel.Ensure();
     }
 
     public void StartBattle()
@@ -48,6 +57,9 @@ public class BattleManager : MonoBehaviour
         allSlots = FindObjectOfType<BoardManager>()?.GetAllSlots();
         if (allSlots == null) yield break;
 
+        // 攻击回合伤害面板：两块亮出来、数字归零（本轮累计从这里开始）
+        AttackTurnDamagePanel.BeginPhase();
+
         Debug.LogWarning("[Battle] PhaseStartCoroutine START");
         yield return StartCoroutine(PhaseStartCoroutine());
         Debug.LogWarning("[Battle] PhaseStartCoroutine END");
@@ -71,7 +83,7 @@ public class BattleManager : MonoBehaviour
         Debug.LogWarning("[Battle] CompareSurvivors END");
 
         Debug.LogWarning("[Battle] FinalDamage START");
-        FinalDamage();
+        yield return StartCoroutine(FinalDamageCoroutine());
         Debug.LogWarning("[Battle] FinalDamage END");
 
         // 修复：FinalDamage 会统一移除临时生命(tempHealthBoost/阴阳等)。若单位真实血已被
@@ -1129,7 +1141,11 @@ public class BattleManager : MonoBehaviour
                 // 本地演出：音效 + 伤害数字（不调 DamagePipeline.Process，扣血由服务器权威完成）
                 if (isHero)
                 {
-                    DamageFloater.Show(attacker.transform.position, damage, FloaterType.Damage);
+                    // 打英雄：数字飞进攻击回合面板并累加（客户端槽位 = 服务端槽位对半翻，
+                    // 同 TargetSpawnCard3D 的镜像口径；6-11 是「我的半场」→ 打的是对方）
+                    int localSlot = attackerSlot >= 6 ? attackerSlot - 6 : attackerSlot + 6;
+                    AttackTurnDamagePanel.ShowIncoming(attacker.transform.position, damage,
+                        localSlot >= 6 ? AttackTurnDamagePanel.SideOpponent : AttackTurnDamagePanel.SideSelf);
                     AudioManager.Instance?.Play(SoundEffectType.AttackHero, 0.5f, 1.2f);
                 }
                 else if (defender != null)
@@ -1160,6 +1176,7 @@ public class BattleManager : MonoBehaviour
             defenderHalfStart: 0, defenderHalfEnd: 5,
             events: events,
             pendingDamageToOpponent: ref pendingDamageToEnemy,
+            toOpponent: true,
             attackerOwner: NetworkPlayer.Local,
             defenderOwner: NetworkPlayer.Remote
         );
@@ -1172,6 +1189,7 @@ public class BattleManager : MonoBehaviour
             defenderHalfStart: 6, defenderHalfEnd: 11,
             events: events,
             pendingDamageToOpponent: ref pendingDamageToMe,
+            toOpponent: false,
             attackerOwner: NetworkPlayer.Remote,
             defenderOwner: NetworkPlayer.Local
         );
@@ -1201,6 +1219,7 @@ public class BattleManager : MonoBehaviour
         int defenderHalfStart, int defenderHalfEnd,
         List<AttackEvent> events,
         ref int pendingDamageToOpponent,
+        bool toOpponent,
         NetworkPlayer attackerOwner, NetworkPlayer defenderOwner)
     {
         if (attackerCard == null || attackerInst == null || attackerInst.silencedThisPhase)
@@ -1336,7 +1355,7 @@ public class BattleManager : MonoBehaviour
             {
                 int myTier = attackerInst.currentTier;
                 pendingDamageToOpponent += myTier;
-                events.Add(CreateAttackEvent(attackerCard, attackerInst, null, null, myTier, attackerSlotID, true));
+                events.Add(CreateAttackEvent(attackerCard, attackerInst, null, null, myTier, attackerSlotID, true, toOpponent: toOpponent));
                 // 01327：空位攻击也自伤宿主自己的 HP
                 attackerInst.currentHealth -= attackerInst.currentAttack;
                 if (attackerInst.currentHealth < 0) attackerInst.currentHealth = 0;
@@ -1350,7 +1369,7 @@ public class BattleManager : MonoBehaviour
             {
                 int outlawTier = attackerInst.currentTier + 2;
                 pendingDamageToOpponent += outlawTier;
-                events.Add(CreateAttackEvent(attackerCard, attackerInst, null, null, outlawTier, attackerSlotID, true));
+                events.Add(CreateAttackEvent(attackerCard, attackerInst, null, null, outlawTier, attackerSlotID, true, toOpponent: toOpponent));
             }
             else if (attackerInst.templateID == "03014")
             {
@@ -1376,7 +1395,7 @@ public class BattleManager : MonoBehaviour
             {
                 int myTier = attackerInst.currentTier;
                 pendingDamageToOpponent += myTier;
-                events.Add(CreateAttackEvent(attackerCard, attackerInst, null, null, myTier, attackerSlotID, true));
+                events.Add(CreateAttackEvent(attackerCard, attackerInst, null, null, myTier, attackerSlotID, true, toOpponent: toOpponent));
             }
         }
     }
@@ -1386,7 +1405,8 @@ public class BattleManager : MonoBehaviour
     /// skipAnimation=true（溅射/附带伤害）时不飞向动画，直接结算伤害。
     /// defenderSlotIndex：被攻击者槽位（-1=打英雄），用于 RPC 广播给 Client 本地播动画。</summary>
     AttackEvent CreateAttackEvent(GameObject attackerCard, CardInstance attackerInst,
-        GameObject defenderCard, CardInstance defenderInst, int damage, int attackerSlotID, bool isHeroAttack, bool skipAnimation = false, int defenderSlotIndex = -1)
+        GameObject defenderCard, CardInstance defenderInst, int damage, int attackerSlotID, bool isHeroAttack,
+        bool skipAnimation = false, int defenderSlotIndex = -1, bool toOpponent = true)
     {
         var evt = new AttackEvent
         {
@@ -1405,7 +1425,10 @@ public class BattleManager : MonoBehaviour
             Vector3 heroPos = attackerCard != null ? attackerCard.transform.position : Vector3.zero;
             evt.onImpact = () =>
             {
-                DamageFloater.Show(heroPos, damage, FloaterType.Damage);
+                // 数字从攻击者头顶跳出 → 最高点停一下 → 飞进对应面板并累加
+                // （面板不可用时 ShowIncoming 自己退回原来的场上飘字）
+                AttackTurnDamagePanel.ShowIncoming(heroPos, damage,
+                    toOpponent ? AttackTurnDamagePanel.SideOpponent : AttackTurnDamagePanel.SideSelf);
                 AudioManager.Instance?.Play(SoundEffectType.AttackHero, 0.5f, 1.2f);
             };
         }
@@ -1801,30 +1824,83 @@ public class BattleManager : MonoBehaviour
         else if (diff < 0)
             pendingDamageToMe += -diff;
 
+        // 存活差也是一笔伤害：同样从「赢的那半场」飞一个数字进对应面板，
+        // 面板的累计数才会和 FinalDamage 真正结算的净伤害对得上。
+        if (diff != 0)
+        {
+            bool toOpponent = diff > 0;
+            int halfStart = toOpponent ? 6 : 0;
+            Vector3 origin = Vector3.zero;
+            int cnt = 0;
+            for (int i = halfStart; i < halfStart + 6; i++)
+            {
+                GameObject go = allSlots[i]?.currentCard3D;
+                if (go == null) continue;
+                origin += go.transform.position;
+                cnt++;
+            }
+            if (cnt > 0) origin /= cnt;
+            AttackTurnDamagePanel.ShowIncoming(origin, Mathf.Abs(diff),
+                toOpponent ? AttackTurnDamagePanel.SideOpponent : AttackTurnDamagePanel.SideSelf);
+        }
+
         Debug.Log($"[战斗] 存活对比 己{my} vs 敌{enemy} 差{Mathf.Abs(diff)}");
     }
 
-    void FinalDamage()
+    IEnumerator FinalDamageCoroutine()
     {
-        // Player health damage: server-only (SyncVar auto-replicates to clients)
-        if (NetworkServer.active)
+        // 净伤害 = 两个累计相减，受击方 = 数字大的那一方。
+        // 演出顺序：两数相减（数字递减）→ 只留受击方（另一方淡出）→ 粒子从面板飞向该玩家生命值
+        // → **到达的那一刻才算扣血并弹数字**。所以 TakeDamage 挪进 onImpact，由面板回调触发；
+        // 面板不可用时下面的兜底 apply() 会补上，逻辑绝不因演出缺失而漏掉。
+        int topValue = pendingDamageToEnemy;      // 上方面板：对方受到的伤害
+        int bottomValue = pendingDamageToMe;      // 下方面板：己方受到的伤害
+        int finalDamage = 0;
+        int loser = -1;
+        if (pendingDamageToMe > pendingDamageToEnemy)
         {
-            if (pendingDamageToMe > pendingDamageToEnemy)
-            {
-                int finalDamage = pendingDamageToMe - pendingDamageToEnemy;
-                NetworkPlayer.Local?.TakeDamage(finalDamage, null, null, "战斗汇总(召唤物组/存活差)");
-                Debug.Log($"[Battle] FinalDamage: local takes {finalDamage}");
-            }
-            else if (pendingDamageToEnemy > pendingDamageToMe)
-            {
-                int finalDamage = pendingDamageToEnemy - pendingDamageToMe;
-                NetworkPlayer.Remote?.TakeDamage(finalDamage, null, null, "战斗汇总(召唤物组/存活差)");
-                Debug.Log($"[Battle] FinalDamage: remote takes {finalDamage}");
-            }
+            finalDamage = pendingDamageToMe - pendingDamageToEnemy;
+            loser = AttackTurnDamagePanel.SideSelf;
         }
+        else if (pendingDamageToEnemy > pendingDamageToMe)
+        {
+            finalDamage = pendingDamageToEnemy - pendingDamageToMe;
+            loser = AttackTurnDamagePanel.SideOpponent;
+        }
+
+        // 客户端镜像：把结算 + 结算那刻的两个累计值推过去（侧别按接收方视角翻）；
+        // 纯客户端的扣血仍由服务端的 SyncVar 同步过来，这里只补演出。
+        NetworkPlayer remote = NetworkPlayer.Remote;
+        if (NetworkServer.active && remote != null && remote.connectionToClient != null)
+            remote.TargetAttackTurnSettle(remote.connectionToClient, finalDamage,
+                loser < 0 ? -1 : 1 - loser, bottomValue, topValue);
 
         pendingDamageToMe = 0;
         pendingDamageToEnemy = 0;
+
+        bool applied = false;
+        System.Action apply = () =>
+        {
+            if (applied) return;
+            applied = true;
+            // Player health damage: server-only (SyncVar auto-replicates to clients)
+            if (!NetworkServer.active) return;
+            if (loser == AttackTurnDamagePanel.SideSelf)
+            {
+                NetworkPlayer.Local?.TakeDamage(finalDamage, null, null, "战斗汇总(召唤物组/存活差)");
+                Debug.Log($"[Battle] FinalDamage: local takes {finalDamage}");
+            }
+            else if (loser == AttackTurnDamagePanel.SideOpponent)
+            {
+                NetworkPlayer.Remote?.TakeDamage(finalDamage, null, null, "战斗汇总(召唤物组/存活差)");
+                Debug.Log($"[Battle] FinalDamage: remote takes {finalDamage}");
+            }
+        };
+
+        var panel = AttackTurnDamagePanel.Instance;
+        if (panel != null && panel.IsShowing)
+            yield return StartCoroutine(panel.Settle(finalDamage, loser, apply));
+        apply();
 
         foreach (BoardSlot slot in allSlots)
         {
