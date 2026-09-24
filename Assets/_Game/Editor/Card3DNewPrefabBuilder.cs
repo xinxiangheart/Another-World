@@ -6,11 +6,11 @@ using TMPro;
 /// 一键生成新 3D 手牌卡牌预制体（独立于旧 3D 卡 Card00_3D，不修改任何旧资产）。
 /// 模型：Assets/_Game/Art/Models/Summon/Card00_New.fbx（0.9×1.6×0.03 薄盒，卡面 +Z / 卡背+侧面 -Z）。
 /// 卡面材质：CardComposite 三层合成，由 CardDisplay3D.ApplyArtFromCard 按 Cards/ 目录路径加载：
-///   _BgTex = 费用卡框 Cards/SummonCard_{cost}；_BorderTex = 前缀底图 Cards/PrefixArtBG/{English}；
+///   卡框 = 分层卡框 5 层（费用档只换 Frame_Edge 层）；_BorderTex = 前缀底图 Cards/PrefixArtBG/{English}；
 ///   _ArtTex = cardSprite2D → Cards/{tid}_Front → 镜像 Cards/Summon 目录。
 /// 背面材质：新 card_new_back.mat（CardCutout + Cards/Back.png）。
 /// 布局：以新 2D 预制体 Card00_New_2D 为基准（0.9×1.6 卡 ×0.0108/0.01093 换算），
-///   卡面 = 网格(CostFrameBase/ArtworkArea)，文字 + 图标 + 三排图标对齐 2D：
+///   卡面 = 网格 + 分层卡框 5 个 SpriteRenderer + ArtworkArea，文字 + 图标 + 三排图标对齐 2D：
 ///   - NameText 卡名(顶部横幅) / CostIcon+CostText 左上(部分超边) / TypeIcon 顶部中央
 ///   - HealthIcon+HealthText 左下(超边) / AttackIcon+AttackText 右下(超边)
 ///   - PrefixIconsArea / TraitIconsArea / StatusIconsArea 三排
@@ -37,10 +37,10 @@ public static class Card3DNewPrefabBuilder
     const float IconZ = 0.14f;     // 图标 z
     const float RowZ  = 0.15f;     // 三排 z
 
-    // 卡面三层 SpriteRenderer z（前->后：卡图 > 前缀背景 > 卡框；均低于图标/三排）
-    const float FaceArtZ    = 0.13f;   // 卡图 z（最前）
-    const float FacePrefixZ = 0.12f;   // 前缀背景 z
-    const float FaceFrameZ  = 0.11f;   // 卡框 z（最下）
+    // 卡面 SpriteRenderer z（前->后：图标/文字 > 卡框 5 层 > 卡图 > 前缀背景）
+    const float FaceArtZ    = 0.13f;   // 卡图 z
+    const float FacePrefixZ = 0.12f;   // 前缀背景 z（最下）
+    const float FaceFrameZ  = 0.14f;   // 卡框·卡身 z（5 层以此往上叠 0.002）
     // 默认铺满尺寸（生成器按贴图 bounds 反算 localScale；生成后可手调，运行时不重算）
     static readonly Vector2 FrameSize   = new Vector2(0.9f, 1.6f);   // 卡框铺满卡面
     static readonly Vector2 ArtAreaSize = new Vector2(0.69f, 0.92f); // 前缀背景/卡图（ArtworkArea 比例）
@@ -154,8 +154,18 @@ public static class Card3DNewPrefabBuilder
 
         // ── 卡面三层 SpriteRenderer（卡框/前缀背景/卡图）。
         //    默认比例按实际贴图 bounds 反算（编辑器加载）；生成后可手调，运行时不重算/不覆盖/不缩放。──
-        SpriteRenderer frameSR  = CreateFaceSR(uiRoot, "CardFrame", FaceFrameZ,
-            FitScale(AssetDatabase.LoadAssetAtPath<Sprite>("Assets/_Game/Resources/Cards/SummonCard_0.png"), FrameSize.x, FrameSize.y));
+        // 卡框 v7 = 5 个独立层（卡身 / 名牌 / 画窗 / 数值条 / 费用边带），层序即渲染序；
+        // 画窗中间是透明洞，卡图从下层透出。费用档只换「边带」这一层（CardFrameLayers.ApplyTier）。
+        SpriteRenderer frameBodySR = CreateFaceSR(uiRoot, "Frame_Body",      FaceFrameZ,          FrameScale());
+        SpriteRenderer frameNameSR = CreateFaceSR(uiRoot, "Frame_NamePlate", FaceFrameZ + 0.002f, FrameScale());
+        SpriteRenderer frameWinSR  = CreateFaceSR(uiRoot, "Frame_ArtWindow", FaceFrameZ + 0.004f, FrameScale());
+        SpriteRenderer frameStatSR = CreateFaceSR(uiRoot, "Frame_StatPlate", FaceFrameZ + 0.006f, FrameScale());
+        SpriteRenderer frameEdgeSR = CreateFaceSR(uiRoot, "Frame_Edge",      FaceFrameZ + 0.008f, FrameScale());
+        frameBodySR.sprite = LoadEditorSprite("Cards/Frame/Frame_Body");
+        frameNameSR.sprite = LoadEditorSprite("Cards/Frame/Frame_NamePlate");
+        frameWinSR.sprite  = LoadEditorSprite("Cards/Frame/Frame_ArtWindow");
+        frameStatSR.sprite = LoadEditorSprite("Cards/Frame/Frame_StatPlate");
+        frameEdgeSR.sprite = LoadEditorSprite("Cards/Frame/Frame_Edge_1");
         SpriteRenderer prefixSR = CreateFaceSR(uiRoot, "PrefixBg", FacePrefixZ,
             FitScale(AssetDatabase.LoadAssetAtPath<Sprite>("Assets/_Game/Resources/Cards/PrefixArtBG/Abyss.png"), ArtAreaSize.x, ArtAreaSize.y));
         SpriteRenderer artSR    = CreateFaceSR(uiRoot, "CardArt", FaceArtZ,
@@ -166,7 +176,11 @@ public static class Card3DNewPrefabBuilder
         Material faceSpriteMat = AssetDatabase.LoadAssetAtPath<Material>("Assets/_Game/Art/Materials/card_new_front_sprite.mat");
         if (faceSpriteMat != null)
         {
-            frameSR.sharedMaterial = faceSpriteMat;
+            frameBodySR.sharedMaterial = faceSpriteMat;
+            frameNameSR.sharedMaterial = faceSpriteMat;
+            frameWinSR.sharedMaterial  = faceSpriteMat;
+            frameStatSR.sharedMaterial = faceSpriteMat;
+            frameEdgeSR.sharedMaterial = faceSpriteMat;
             prefixSR.sharedMaterial = faceSpriteMat;
             artSR.sharedMaterial = faceSpriteMat;
         }
@@ -227,10 +241,18 @@ public static class Card3DNewPrefabBuilder
         display.defaultPrefixArtSprite = LoadEditorSprite("Cards/PrefixArtBG/Common");
         display.cardBackSprite = LoadEditorSprite("Cards/Back");
 
-        // ── 接线卡面三层（预览字段由 CardDisplay3D.OnValidate 在预制体里直接拖入显示）──
-        display.frameSR = frameSR;
+        // ── 接线卡面（预览字段由 CardDisplay3D.OnValidate 在预制体里直接拖入显示）──
+        // frameSR 留空：v7 卡框走分层（Frame_Edge），不再用整框贴图
+        display.frameSR = null;
         display.prefixBgSR = prefixSR;
         display.cardArtSR = artSR;
+
+        var frameLayers = cardRoot.AddComponent<CardFrameLayers>();
+        frameLayers.bodySR      = frameBodySR;
+        frameLayers.namePlateSR = frameNameSR;
+        frameLayers.artWindowSR = frameWinSR;
+        frameLayers.statPlateSR = frameStatSR;
+        frameLayers.edgeSR      = frameEdgeSR;
 
         // ── 保存预制体 ──
         string dir = System.IO.Path.GetDirectoryName(PrefabPath);
@@ -250,6 +272,10 @@ public static class Card3DNewPrefabBuilder
     /// <summary>编辑器下从 Art/Sprites/ 相对路径加载 Sprite（供图标/预览字段填充）。</summary>
     static Sprite LoadEditorSprite(string relativePath)
         => AssetDatabase.LoadAssetAtPath<Sprite>("Assets/_Game/Resources/" + relativePath + ".png");
+
+    /// <summary>卡框 5 层的默认比例：按卡身贴图 bounds 反算铺满 0.9×1.6 卡面（生成后可手调，运行时不重算）。</summary>
+    static Vector3 FrameScale()
+        => FitScale(LoadEditorSprite("Cards/Frame/Frame_Body"), FrameSize.x, FrameSize.y);
 
     /// <summary>创建卡面 SpriteRenderer（identity 朝向，居中，z 定，比例用传入值——预制体里可手调，运行时不重算）。</summary>
     static SpriteRenderer CreateFaceSR(GameObject parent, string name, float z, Vector3 scale)

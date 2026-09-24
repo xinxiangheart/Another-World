@@ -7,7 +7,8 @@ using TMPro;
 /// 新 2D 手牌卡牌刷新脚本（独立于旧 CardDisplay2D，不修改旧卡）。
 /// 精灵来源两种：① 直接拖 Sprite 到下方字段（优先）；② 按 Art 分支路径加载。
 /// 路径分支（Assets/_Game/Resources/）：
-///   - 费用底图   Cards/SummonCard_{0}（0-5费）
+///   - 费用底图   v7：分层卡框，只换 Cards/Frame/Frame_Edge_{0}（0-5费，另见 CardFrameLayers）
+///                旧预制体（单个 CostFrameBase 节点）仍走 Cards/SummonCard_{0} 整框贴图
 ///   - 卡面插画   优先取模板 cardSprite2D 字段；其次按镜像 Resources/CardData 目录加载：
 ///                召唤物  Cards/Summon/{SummonType}/{cost}/SummonCard_{templateID}
 ///                        （Hero→Hero/{baseCost}，目录按费用分 1/3/5；ChosenOne→ChosenOne；Special→Special）
@@ -159,7 +160,18 @@ public class CardDisplay2DNew : MonoBehaviour
 
     CardInstance _inst;
     CardView _view; // 压暗态（非己方回合手牌）转发用，懒取
+    CardFrameLayers _frameLayers; // v7 分层卡框（没挂的旧预制体 → null，走原来的整框贴图）
     static Sprite _placeholder;
+
+    /// <summary>v7 分层卡框组件（懒取；旧预制体没有 → null）。</summary>
+    CardFrameLayers FrameLayers
+    {
+        get
+        {
+            if (_frameLayers == null) _frameLayers = GetComponent<CardFrameLayers>();
+            return _frameLayers;
+        }
+    }
 
     // 卡框缓存：卡框只由模板决定（baseCost/01524 特判），生成时按模板检测一次，
     // 之后即使 currentCost 因召唤/减费光环变化也不重新选框。换模板才重解。
@@ -260,6 +272,11 @@ public class CardDisplay2DNew : MonoBehaviour
             }
             costFrame.enabled = true;
         }
+
+        // ── v7 分层卡框：卡身 / 名牌 / 画窗 / 数值条 / 费用边带 = 5 个独立节点，
+        //    费用档只改「边带」这一层（没挂 CardFrameLayers 的旧预制体自动跳过）──
+        CardFrameLayers layers = FrameLayers;
+        if (layers != null) layers.ApplyTier(ResolveCostFrameIndex(template));
 
         // ── 前缀底图（读取模板前缀，非实例前缀；后续赋予的前缀不影响）──
         if (prefixArtBG != null)

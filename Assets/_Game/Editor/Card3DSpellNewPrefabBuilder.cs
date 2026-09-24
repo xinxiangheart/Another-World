@@ -4,7 +4,7 @@ using TMPro;
 
 /// <summary>
 /// 一键生成新 3D 法术手牌预制体 SpellCard00_New_3D（复用 3D 召唤物 Card00_New_3D 的模型/材质/层级，独立于旧资产）。
-/// 保留：能量(CostIcon+CostText)、卡框(CardFrame=SpellCard_0..5 法术框)、卡背、原画(CardArt)、效果文本(EffectText TMP3D 中央偏下)。
+/// 保留：能量(CostIcon+CostText)、卡框（v7 分层 5 层，法术版：短画窗 + 说明条）、卡背、原画(CardArt)、效果文本(EffectText TMP3D 中央偏下)。
 /// 剔除：攻击/生命/类别 UI、三排图标、CardIcons3D。
 /// 层级/朝向/Composite(_BgTex/_BorderTex/_ArtTex)/MPB 与 Card3DNewPrefabBuilder 同构：
 ///   CardRoot(脚本+BoxCollider) → ModelRoot(0 子物体, fbx 网格) + UIComponents(文字/图标/卡面三层)。
@@ -91,14 +91,33 @@ public static class Card3DSpellNewPrefabBuilder
         effectT.enableWordWrapping = true;
         SpriteRenderer costIcon = CreateIconChild(uiRoot, "CostIcon", CostPos);
 
-        // ── 卡面三层 SpriteRenderer（框=法术框；原画/底图占 ArtworkArea）──
-        SpriteRenderer frameSR = CreateFaceSR(uiRoot, "CardFrame", FaceFrameZ,
-            FitScale(LoadEditorSprite("Cards/Back And Front/Spell/SpellCard_0"), FrameSize.x, FrameSize.y));
+        // ── 卡面 SpriteRenderer（v7 分层卡框 5 层，法术版；原画/底图占 ArtworkArea）──
+        //    卡身短洞 + 短画窗 + 说明条；费用档只换「边带」这一层。
+        Vector3 frameScale = FitScale(LoadEditorSprite("Cards/Frame/Frame_Body_Spell"), FrameSize.x, FrameSize.y);
+        SpriteRenderer frameBodySR = CreateFaceSR(uiRoot, "Frame_Body",      FaceFrameZ,          frameScale);
+        SpriteRenderer frameNameSR = CreateFaceSR(uiRoot, "Frame_NamePlate", FaceFrameZ + 0.002f, frameScale);
+        SpriteRenderer frameWinSR  = CreateFaceSR(uiRoot, "Frame_ArtWindow", FaceFrameZ + 0.004f, frameScale);
+        SpriteRenderer frameStatSR = CreateFaceSR(uiRoot, "Frame_StatPlate", FaceFrameZ + 0.006f, frameScale);
+        SpriteRenderer frameEdgeSR = CreateFaceSR(uiRoot, "Frame_Edge",      FaceFrameZ + 0.008f, frameScale);
+        frameBodySR.sprite = LoadEditorSprite("Cards/Frame/Frame_Body_Spell");
+        frameNameSR.sprite = LoadEditorSprite("Cards/Frame/Frame_NamePlate");
+        frameWinSR.sprite  = LoadEditorSprite("Cards/Frame/Frame_ArtWindow_Spell");
+        frameStatSR.sprite = LoadEditorSprite("Cards/Frame/Frame_StatPlate_Spell");
+        frameEdgeSR.sprite = LoadEditorSprite("Cards/Frame/Frame_Edge_1");
         SpriteRenderer prefixSR = CreateFaceSR(uiRoot, "PrefixBg", FacePrefixZ,
             FitScale(LoadEditorSprite("Cards/PrefixArtBG/Abyss"), ArtAreaSize.x, ArtAreaSize.y));
         SpriteRenderer artSR = CreateFaceSR(uiRoot, "CardArt", FaceArtZ,
             FitScale(LoadEditorSprite("Cards/Spell/Normal/1/SpellCard_{02101}"), ArtAreaSize.x, ArtAreaSize.y));
-        if (faceSpriteMat != null) { frameSR.sharedMaterial = faceSpriteMat; prefixSR.sharedMaterial = faceSpriteMat; artSR.sharedMaterial = faceSpriteMat; }
+        if (faceSpriteMat != null)
+        {
+            frameBodySR.sharedMaterial = faceSpriteMat;
+            frameNameSR.sharedMaterial = faceSpriteMat;
+            frameWinSR.sharedMaterial  = faceSpriteMat;
+            frameStatSR.sharedMaterial = faceSpriteMat;
+            frameEdgeSR.sharedMaterial = faceSpriteMat;
+            prefixSR.sharedMaterial = faceSpriteMat;
+            artSR.sharedMaterial = faceSpriteMat;
+        }
 
         // ── 接线显示脚本 ──
         display.nameText = nameT;
@@ -109,9 +128,17 @@ public static class Card3DSpellNewPrefabBuilder
         display.healthText = null;
         display.costIcon = costIcon;
         display.energyIconSprite = LoadEditorSprite("UI/Cost");
-        display.frameSR = frameSR;
+        // frameSR 留空：v7 卡框走分层（Frame_Edge），不再用整框贴图
+        display.frameSR = null;
         display.prefixBgSR = prefixSR;
         display.cardArtSR = artSR;
+
+        var frameLayers = cardRoot.AddComponent<CardFrameLayers>();
+        frameLayers.bodySR      = frameBodySR;
+        frameLayers.namePlateSR = frameNameSR;
+        frameLayers.artWindowSR = frameWinSR;
+        frameLayers.statPlateSR = frameStatSR;
+        frameLayers.edgeSR      = frameEdgeSR;
         // 拖入 Sprite 数组：卡框=法术框 SpellCard_0..5；前缀底图 5 + 通用；卡背
         display.costFrameSprites = new Sprite[]
         {

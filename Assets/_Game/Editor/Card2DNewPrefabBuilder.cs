@@ -6,7 +6,7 @@ using TMPro;
 /// <summary>
 /// 一键生成新 2D 手牌卡牌预制体（独立于旧卡牌，不修改任何旧预制体/旧脚本）。
 /// 结构：Card00_New_2D → FrontFace(正) / BackFace(反)。
-/// 正面：CostFrameBase / ArtworkArea / 文字 / 图标 / 三排图标容器（PrefixIconsArea·TraitIconsArea·StatusIconsArea）。
+/// 正面：卡框 5 层（Frame_Body·NamePlate·ArtWindow·StatPlate·Edge）/ ArtworkArea / 文字 / 图标 / 三排图标容器。
 /// 菜单：Tools → 卡牌 → 生成新2D手牌预制体
 /// 生成后位置在 Scene 中手动摆，代码不写死坐标。
 /// </summary>
@@ -45,7 +45,13 @@ public static class Card2DNewPrefabBuilder
         back.gameObject.SetActive(false);
 
         // ── 正面元素（Image 用 null sprite，运行时由 CardDisplay2DNew 填充/占位）──
-        Image costFrame   = CreateImage(front, "CostFrameBase");
+        // 卡框 v7 = 5 个独立层（卡身 / 名牌 / 画窗 / 数值条 / 费用边带），各自整框铺满卡面，
+        // 层序即渲染序。画窗中间是透明洞，原画从下面的 ArtworkArea 透出；费用档只改「边带」这一层。
+        Image frameBody   = CreateFrameLayer(front, "Frame_Body",      "Cards/Frame/Frame_Body");
+        Image frameName   = CreateFrameLayer(front, "Frame_NamePlate", "Cards/Frame/Frame_NamePlate");
+        Image frameWin    = CreateFrameLayer(front, "Frame_ArtWindow", "Cards/Frame/Frame_ArtWindow");
+        Image frameStat   = CreateFrameLayer(front, "Frame_StatPlate", "Cards/Frame/Frame_StatPlate");
+        Image frameEdge   = CreateFrameLayer(front, "Frame_Edge",      "Cards/Frame/Frame_Edge_1");
         // ArtworkArea 为容器：下层 PrefixArtBG（前缀底图）+ 上层 CardArt（原画）
         RectTransform artwork = CreateChild(front, "ArtworkArea", null);
         Image prefixArtBG = CreateImage(artwork, "PrefixArtBG");
@@ -71,7 +77,14 @@ public static class Card2DNewPrefabBuilder
         var display = root.GetComponent<CardDisplay2DNew>();
         display.frontFace = front.gameObject;
         display.backFace = back.gameObject;
-        display.costFrame = costFrame;
+        // v7：卡框走分层，不再用整框贴图 → costFrame 留空（旧字段保留给未分层的旧预制体）
+        display.costFrame = null;
+        var frameLayers = root.AddComponent<CardFrameLayers>();
+        frameLayers.body = frameBody;
+        frameLayers.namePlate = frameName;
+        frameLayers.artWindow = frameWin;
+        frameLayers.statPlate = frameStat;
+        frameLayers.edge = frameEdge;
         display.prefixArtBG = prefixArtBG;
         display.cardArt = cardArt;
         display.cardNameText = nameText as TextMeshProUGUI;
@@ -133,6 +146,12 @@ public static class Card2DNewPrefabBuilder
             Transform t = clone.transform.Find("FrontFace/" + n);
             if (t != null) Object.DestroyImmediate(t.gameObject);
         }
+
+        // ── v7 分层卡框：克隆来的是召唤物层 → 换成法术版（短画窗 + 说明条）──
+        //    卡身 / 名牌 / 费用边带 召唤与法术通用，不动。
+        SwapFrameLayer(clone.transform, "Frame_Body",      "Cards/Frame/Frame_Body_Spell");
+        SwapFrameLayer(clone.transform, "Frame_ArtWindow", "Cards/Frame/Frame_ArtWindow_Spell");
+        SwapFrameLayer(clone.transform, "Frame_StatPlate", "Cards/Frame/Frame_StatPlate_Spell");
         // 移除召唤物显示组件，改绑法术专用显示脚本 CardDisplay2DSpell
         // （继承 CardDisplay2D → 旧 GetComponent<CardDisplay2D>().Refresh 路径直接命中，无需 Compat）
         var displayNew = clone.GetComponent<CardDisplay2DNew>();
@@ -155,7 +174,7 @@ public static class Card2DNewPrefabBuilder
             display.nameText = front.Find("NameText")?.GetComponent<TextMeshProUGUI>();
             display.costText = front.Find("CostText")?.GetComponent<TextMeshProUGUI>();
             display.costIcon = front.Find("CostIcon")?.GetComponent<Image>();
-            display.costFrame = front.Find("CostFrameBase")?.GetComponent<Image>();
+            display.costFrame = null; // v7：卡框走分层（Frame_Edge），不用整框贴图
             display.prefixArtBG = front.Find("ArtworkArea/PrefixArtBG")?.GetComponent<Image>();
             display.cardArt = front.Find("ArtworkArea/CardArt")?.GetComponent<Image>();
 
@@ -210,6 +229,26 @@ public static class Card2DNewPrefabBuilder
         var go = new GameObject(name, types.ToArray());
         go.transform.SetParent(parent, false);
         return go.GetComponent<RectTransform>();
+    }
+
+    /// <summary>创建 v7 卡框的一层：整框铺满卡面，sprite 从 Resources 拖入（生成后可单独挪位/替换/关掉）。</summary>
+    static Image CreateFrameLayer(RectTransform parent, string name, string spritePath)
+    {
+        Image img = CreateImage(parent, name);
+        StretchToCard(img.rectTransform);
+        img.sprite = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/_Game/Resources/" + spritePath + ".png");
+        return img;
+    }
+
+    /// <summary>把克隆来的卡框层换成法术版贴图（路径相对 Assets/_Game/Resources/）。</summary>
+    static void SwapFrameLayer(Transform root, string layerName, string spritePath)
+    {
+        Transform t = root.Find("FrontFace/" + layerName);
+        if (t == null) return;
+        Image img = t.GetComponent<Image>();
+        if (img == null) return;
+        Sprite s = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/_Game/Resources/" + spritePath + ".png");
+        if (s != null) img.sprite = s;
     }
 
     static Image CreateImage(RectTransform parent, string name)

@@ -51,6 +51,18 @@ public class CardDisplay2DSpell : CardDisplay2D
     string _frameTemplateID;
     int _frameIndex = -1;
 
+    CardFrameLayers _frameLayers; // v7 分层卡框（没挂的旧预制体 → null）
+
+    /// <summary>v7 分层卡框组件（懒取；旧预制体没有 → null）。</summary>
+    CardFrameLayers FrameLayers
+    {
+        get
+        {
+            if (_frameLayers == null) _frameLayers = GetComponent<CardFrameLayers>();
+            return _frameLayers;
+        }
+    }
+
     void Start()
     {
         // 兼容未走 RefreshWithInstance 的创建路径：兜底从组件取实例刷一次；
@@ -89,6 +101,10 @@ public class CardDisplay2DSpell : CardDisplay2D
             }
             costFrame.enabled = true;
         }
+
+        // ── v7 分层卡框：费用档只改「边带」这一层 ──
+        CardFrameLayers layers = FrameLayers;
+        if (layers != null) layers.ApplyTier(ResolveCostFrameIndex(template));
 
         // ── 前缀底图（读取模板前缀；法术按需）──
         if (prefixArtBG != null)

@@ -111,9 +111,55 @@
 - **图标尺寸不能变**：`CardIcons3D.SetFixedSize` 按 `sprite.bounds.size.x` 归一，新图像素尺寸与原图不一致就会变大变小。图标一律 **511×511**，`Cost.png` 是 **250×250**。
 - **画窗必须是透明洞**：卡框节点在预制体里盖在原画之上，不挖洞就把原画盖死。实测洞：召唤 y 268–1043，法术 y 268–856。
 
+## 分层卡框装进预制体（2026-09-24，第二步）
+
+`Resources/Cards/Frame/` 下新增 **14 张可当 Sprite 用的分层图**（`textureType: 8` + FullRect）：
+
+| 文件 | 用途 |
+|---|---|
+| `Frame_Body.png` / `Frame_Body_Spell.png` | 卡身（含原画透明洞） |
+| `Frame_NamePlate.png` | 名牌底板 |
+| `Frame_ArtWindow.png` / `Frame_ArtWindow_Spell.png` | 画窗金线（中间透明） |
+| `Frame_StatPlate.png` / `Frame_StatPlate_Spell.png` | 数值条 / 说明条底板 |
+| `Frame_Edge_0..5.png` | 费用边带（index = 费用） |
+| `Frame_Edge_Tint.png` | 纯白边带（乘色用） |
+
+预制体里原来那一个整框节点已拆成 **5 个独立节点**：
+
+| 预制体 | 拆掉的旧节点 | 新节点（层序 = 渲染序） |
+|---|---|---|
+| `Prefabs/Cards/Summon/Card00_New_2D.prefab` | `FrontFace/CostFrameBase` | `Frame_Body` → `Frame_NamePlate` → `Frame_ArtWindow` → `Frame_StatPlate` → `Frame_Edge` |
+| `Prefabs/Cards/Spell/SpellCard00_New_2D.prefab` | 同上 | 同上（用法术版贴图） |
+| `Prefabs/Cards/Summon/Card00_New_3D.prefab` | `UIComponents/CardFrame` | 同上 5 层 SpriteRenderer（z 0.140 / 0.142 / 0.144 / 0.146 / 0.148） |
+| `Prefabs/Cards/Spell/SpellCard00_New_3D.prefab` | 同上 | 同上（z 0.110 起） |
+
+五层都是**整框铺满卡面**（anchor 0,0–1,1 / sizeDelta 0），因此单独换一层图不会跑位。
+
+### 他们靠什么联系：`CardFrameLayers.cs`
+
+`Assets/_Game/Scripts/UI/Board/CardFrameLayers.cs`（新）挂在卡牌根节点，只干一件事：**按费用档刷新「边带」这一层**。
+
+- 默认：按 `edgePath`（`Cards/Frame/Frame_Edge_{0}`）或 `edgeSprites[]` 换贴图
+- 勾 `useTint`：用 `Frame_Edge_Tint` 乘 `edgeColors[费用]`，费用变了可实时变色
+- 没挂本组件的旧预制体不受影响：仍走原来的「整框贴图」路径
+
+接线点（都是一行）：
+
+| 脚本 | 位置 |
+|---|---|
+| `CardDisplay2DNew.Refresh()` | 费用底图块之后 |
+| `CardDisplay2DSpell.Refresh()` | 同上 |
+| `CardDisplay3D.ApplyArtFromCard()` | 卡框块之后 |
+
+生成器也同步改了（重跑不会把分层冲掉）：`Editor/Card2DNewPrefabBuilder.cs`、
+`Editor/Card3DNewPrefabBuilder.cs`、`Editor/Card3DSpellNewPrefabBuilder.cs`。
+
+### 回滚
+
+预制体原件备份：`%TEMP%\cardframe-v7-prefab-backup-20260924-v7split\`（4 个 .prefab）。
+
 ## 没动的东西
 
-- `Assets/_Game/Prefabs/Cards/**` 预制体没动 —— 仍是一张 `CostFrameBase`，组件分离没接上
-- `Card_Edge_Tint.png` 的运行时乘色没接
-- `Card000_Back.png` / `CardSpell000_Back.png`（496×880）没换，只换了 `Back.png`
+- `Card000_Back.png` / `CardSpell000_Back.png`（496×880）没换 —— 它们只被旧预制体 `Card00_3D` / `SpellCard00_3D` 和 `Art/Materials/cardback.mat` 引用，那些预制体不在任何场景里（实测：`Game.unity` / `Lobby.unity` 都没引用），改了也看不到
+- `Card000_Front.png` / `CardSpell000_Front.png` 没换 —— 代码把它们当「旧占位图」识别（`IsLegacyPlaceholder`），换了会破坏“未分配卡面”的判定
 - 卡牌立绘（`Resources/Cards/Summon|Spell/**`）不属于本批

@@ -42,6 +42,17 @@ public class CardDisplay3D : MonoBehaviour
     bool _artInitialized;
     string _lastAttackText;
     string _lastHealthText;
+    CardFrameLayers _frameLayers; // v7 分层卡框（没挂的旧预制体 → null，走原来的整框贴图）
+
+    /// <summary>v7 分层卡框组件（懒取；旧预制体没有 → null）。</summary>
+    CardFrameLayers FrameLayers
+    {
+        get
+        {
+            if (_frameLayers == null) _frameLayers = GetComponent<CardFrameLayers>();
+            return _frameLayers;
+        }
+    }
 
     void Awake()
     {
@@ -69,7 +80,7 @@ public class CardDisplay3D : MonoBehaviour
 
     /// <summary>
     /// 根据卡牌数据和实例自动选择三张贴图并应用（对齐新 2D 卡 Card00_New_2D 的图片加载）：
-    ///   _BgTex    = 费用卡框  Cards/SummonCard_{cost}（0-5费）
+    ///   卡框      = v7 分层卡框（CardFrameLayers，费用档只换 Frame_Edge 层）；旧预制体仍用 frameSR 走 Cards/SummonCard_{cost}
     ///   _BorderTex = 前缀底图 Cards/PrefixArtBG/{Abyss|Blood|Mech|Psychic|Scroll|Common}
     ///   _ArtTex   = 卡面原画  cardSprite2D → Cards/{templateID}_Front → 镜像 Cards/Summon 目录 → 白
     /// 路径加载失败回退 CardArtConfig；再失败留白（露出底层）。
@@ -91,6 +102,11 @@ public class CardDisplay3D : MonoBehaviour
                   ?? LoadSprite("Cards/SummonCard_" + cost);
             if (frame != null) { frameSR.sprite = frame; frameSR.enabled = true; }
         }
+
+        // ── v7 分层卡框：卡身 / 名牌 / 画窗 / 数值条 / 费用边带 = 5 个 SpriteRenderer，
+        //    费用档只改「边带」这一层（没挂 CardFrameLayers 的旧预制体自动跳过）──
+        CardFrameLayers layers = FrameLayers;
+        if (layers != null) layers.ApplyTier(ResolveCostFrameIndex(template));
 
         // ── 前缀背景：预览 → prefixArtSprites[前缀]/defaultPrefixArtSprite → 路径（按模板前缀，对齐 2D）──
         if (prefixBgSR != null)
