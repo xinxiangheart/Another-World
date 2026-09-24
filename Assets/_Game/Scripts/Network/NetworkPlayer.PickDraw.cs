@@ -20,6 +20,9 @@ public partial class NetworkPlayer
     /// <summary>择牌亮出的张数（牌库不足则按实际张数）。</summary>
     public const int PickDrawCount = 3;
 
+    /// <summary>AI 择牌思考时间：先让对手看清三张牌背，再自动选。</summary>
+    public float aiPickThinkTime = 1.4f;
+
     // ── 服务端状态（只有服务端读写）──
     int _pickDrawUsedPhase = -1;                                        // 本回合是否已用过择牌（= TurnManager.phaseCount）
     int _pickDrawPhase = -1;                                            // 当前这一局择牌发生在哪个 phaseCount
@@ -80,7 +83,7 @@ public partial class NetworkPlayer
         if (connectionToClient != null)
             TargetBeginPickDraw(connectionToClient, tids);
         else
-            Debug.LogWarning($"[PickDraw] netId={netId} 无客户端连接，择牌无法展示");
+            StartCoroutine(ServerAutoPickRoutine());   // 服务端 AI：没人点，按倾向自动选
 
         // 对手：同一时刻只看到同样数量的牌背
         NetworkPlayer opp = ServerPickDrawOpponent();
@@ -89,6 +92,29 @@ public partial class NetworkPlayer
 
         Debug.Log($"[PickDraw] netId={netId} 择牌开始：{string.Join(",", tids)}");
         return true;
+    }
+
+    /// <summary>服务端 AI 择牌：等「思考时间」（对手正好趁这段时间看清牌背）后自动选一张。</summary>
+    IEnumerator ServerAutoPickRoutine()
+    {
+        float wait = Mathf.Max(0f, aiPickThinkTime);
+        if (wait > 0f) yield return new WaitForSeconds(wait);
+        if (!_pickDrawPending) yield break;   // 期间已被中止 / 已结算
+        ServerApplyPickDrawChoice(ServerPickBestIndexForAI());
+    }
+
+    /// <summary>AI 择牌倾向：优先高费（模板 baseCost）；并列取更靠左的那张。</summary>
+    int ServerPickBestIndexForAI()
+    {
+        int best = 0;
+        int bestCost = int.MinValue;
+        for (int i = 0; i < _pickDrawHeld.Count; i++)
+        {
+            CardData t = CardDatabase.Instance?.GetTemplate(_pickDrawHeld[i].tid);
+            int cost = t != null ? t.baseCost : 0;
+            if (cost > bestCost) { bestCost = cost; best = i; }
+        }
+        return best;
     }
 
     /// <summary>「主动抽牌」的服务端总入口（主机 / 离线直调路径）：

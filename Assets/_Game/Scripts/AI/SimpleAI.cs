@@ -119,6 +119,15 @@ public class SimpleAI : MonoBehaviour
             int drawCount = DecideDrawCount();
             for (int i = 0; i < drawCount; i++)
             {
+                // 本回合第一次主动抽牌 → 择牌（1 能量、每回合一次，规则与玩家一致）：
+                // AI 倾向高费卡；ServerAutoPickRoutine 在思考时间后自行结算，
+                // 这里等同样的时间，让玩家把三张牌背看清楚再继续。
+                if (TryPickDraw())
+                {
+                    // 等满「思考 + 对手侧明弃展示 + 淡出」，别在面板还挂着时就开始出牌
+                    yield return new WaitForSeconds(_ai.aiPickThinkTime + 1.8f);
+                    continue;
+                }
                 if (!TryDraw()) break;
             }
 
@@ -179,6 +188,22 @@ public class SimpleAI : MonoBehaviour
         string iid = data._instanceID ?? CardZoneManager.GenerateInstanceID(data.templateID);
         _ai.AddServerSideCard(data, iid);
         return true;
+    }
+
+    /// <summary>AI 择牌：本回合第一次主动抽牌转成「亮三张、挑一张」（规则与玩家一致：1 能量、每回合一次）。
+    /// 倾向见 NetworkPlayer.ServerPickBestIndexForAI（优先高费卡）。
+    /// 返回 true = 本次抽牌已转为择牌，调用方不要再走 TryDraw；结算由 ServerAutoPickRoutine 负责。</summary>
+    bool TryPickDraw()
+    {
+        if (_ai == null) return false;
+        if (_ai.handCards.Count >= _ai.maxHandSize) return false;
+        if (!_ai.ServerCanPickDraw()) return false;
+        if (!_ai.UseEnergy(1)) return false;
+
+        if (_ai.ServerTryStartPickDraw()) return true;
+
+        _ai.AddEnergy(1);   // 转不成择牌（牌库空等）→ 退能量，交给 TryDraw 走老规矩
+        return false;
     }
 
     /// <summary>"不优先打出"：AI 可打但降优先级（非禁打）。</summary>

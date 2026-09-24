@@ -24,10 +24,11 @@ public class PickDrawUI : MonoBehaviour
     [Header("节奏（秒）")]
     public float dimAlpha = 0.68f;      // 压暗底透明度
     public float cardScale = 3f;        // 与 Player.Scale2DCard 同一倍率
-    public float gapRatio = 0.16f;      // 卡与卡的间隙 = 卡宽 × 该比例
-    public float appearGap = 0.13f;     // 依次展示的间隔
-    public float appearTime = 0.16f;    // 单张亮起时长
-    public float popScale = 1.05f;      // 亮起时的过冲倍率
+    public float gapRatio = 0.26f;      // 卡与卡的间隙 = 卡宽 × 该比例
+    public float appearGap = 0.06f;     // 依次展示的间隔（左→右）
+    public float appearTime = 0.10f;    // 单张亮起时长
+    public float riseRatio = 0.50f;     // 亮起动效：从下方滑入的距离 = 卡高 × 该比例
+    public float popScale = 1.05f;      // 选定那一张的高亮过冲倍率
     public float resolveTime = 0.24f;   // 选定后停留（让「加入手牌 / 明弃」读得出来）
     public float flipHalf = 0.13f;      // 旁观者翻牌半程
     public float discardHold = 1.25f;   // 旁观者看清「明弃」正面后的停留
@@ -63,6 +64,7 @@ public class PickDrawUI : MonoBehaviour
         public GameObject card;
         public CanvasGroup group;
         public GameObject badge;
+        public Vector2 basePos;
     }
 
     // ══════════════════════════════════════════════════════════════════
@@ -92,7 +94,8 @@ public class PickDrawUI : MonoBehaviour
         Instance.StartCoroutine(Instance.SpectatorRoutine(count));
     }
 
-    /// <summary>旁观者：把被明弃的那两张翻成正面对其展示（indices 是它们在牌堆三张里的位置）。</summary>
+    /// <summary>旁观者：把被明弃的那两张翻成正面对其展示（indices 是它们在牌堆三张里的位置）。
+    /// 对方侧不打「明弃」红条 —— 红条只给抽牌方自己看。</summary>
     public static void SpectatorReveal(int[] indices, string[] templateIDs)
     {
         if (Instance == null || !Instance._visible || Instance._chooser) return;
@@ -279,7 +282,7 @@ public class PickDrawUI : MonoBehaviour
             if (s == null) continue;
             if (i == index)
             {
-                s.holder.anchoredPosition += new Vector2(0f, 26f);
+                s.holder.anchoredPosition = s.basePos + new Vector2(0f, 26f);
                 s.holder.localScale = Vector3.one * (popScale + 0.05f);
                 s.group.alpha = 1f;
             }
@@ -351,7 +354,6 @@ public class PickDrawUI : MonoBehaviour
         if (s.card != null) Destroy(s.card);
         s.card = BuildCard(td, back: false, parent: s.holder);
         yield return ScaleX(s.holder, 0.03f, 1f, flipHalf);
-        ShowBadge(s);
     }
 
     IEnumerator ScaleX(RectTransform rt, float from, float to, float dur)
@@ -383,19 +385,24 @@ public class PickDrawUI : MonoBehaviour
     IEnumerator RevealSlot(Slot s)
     {
         if (s == null || s.holder == null) yield break;
+        Vector2 basePos = s.basePos;
+        float rise = _cardH * riseRatio;
+        s.holder.localScale = Vector3.one;
         s.group.alpha = 0f;
+        s.holder.anchoredPosition = basePos + new Vector2(0f, -rise);
         float t = 0f;
         while (t < appearTime)
         {
             t += Time.deltaTime;
             float p = Mathf.Clamp01(t / appearTime);
-            float e = 1f - Mathf.Pow(1f - p, 3f);
-            s.group.alpha = e;
-            s.holder.localScale = Vector3.one * Mathf.Lerp(0.78f, popScale, e);
+            float fade = 1f - Mathf.Pow(1f - p, 3f);   // 透明度先亮起来
+            float riseP = Mathf.SmoothStep(0f, 1f, p); // 位移匀速滑升，避免「还没看清就到位」
+            s.group.alpha = fade;
+            s.holder.anchoredPosition = basePos + new Vector2(0f, -rise * (1f - riseP));
             yield return null;
         }
         s.group.alpha = 1f;
-        s.holder.localScale = Vector3.one;
+        s.holder.anchoredPosition = basePos;
     }
 
     // ══════════════════════════════════════════════════════════════════
@@ -418,7 +425,10 @@ public class PickDrawUI : MonoBehaviour
         int n = _slots.Count;
         float spacing = _cardW * (1f + gapRatio);
         for (int i = 0; i < n; i++)
-            _slots[i].holder.anchoredPosition = new Vector2((i - (n - 1) * 0.5f) * spacing, 0f);
+        {
+            _slots[i].basePos = new Vector2((i - (n - 1) * 0.5f) * spacing, 0f);
+            _slots[i].holder.anchoredPosition = _slots[i].basePos;
+        }
 
         float top = _cardH * 0.5f;
         if (_title != null) _title.rectTransform.anchoredPosition = new Vector2(0f, top + 108f);

@@ -15,7 +15,7 @@ FONT_REG = os.path.join(ROOT, "Assets/_Game/Fonts/NotoSerifCJKsc-Regular.otf")
 
 W, H = 1920, 1080           # CanvasScaler 参考分辨率
 CARD_W, CARD_H = 250, 437   # 83.33x146.33 的预制体尺寸 x3
-GAP = 0.16                  # 与 PickDrawUI.gapRatio 一致
+GAP = 0.26                  # 与 PickDrawUI.gapRatio 一致
 DIM = (10, 10, 15, 173)     # 约等于 0.68 alpha 的压暗底
 
 
@@ -115,16 +115,44 @@ def panel(front, back, mode):
                 text(d, (cx, by0 + 33), "明弃", f_badge, (255, 245, 235, 255))
         elif mode == "spectator_idle":
             base.alpha_composite(face, (cx - CARD_W // 2, y0))
-        else:  # spectator_reveal：明弃的两张（#1 #2）翻正面
-            revealed = i != picked
+        else:  # spectator_reveal：明弃的两张（#1 #2）翻正面，对方视角不带「明弃」红条
             base.alpha_composite(face, (cx - CARD_W // 2, y0))
-            if revealed:
-                bx0 = cx - int(CARD_W * 0.92) // 2
-                by0 = y0 + int(CARD_H * 0.70)
-                d.rounded_rectangle([bx0, by0, bx0 + int(CARD_W * 0.92), by0 + 66],
-                                    radius=8, fill=(158, 41, 38, 240))
-                text(d, (cx, by0 + 33), "明弃", f_badge, (255, 245, 235, 255))
     return base
+
+
+APPEAR, T_GAP, RISE = 0.10, 0.06, 0.50   # 与 PickDrawUI 的 appearTime / appearGap / riseRatio 一致
+
+
+def rise_frame(front, back, t):
+    """按新的亮起动效出帧：三张按 T_GAP 间隔依次亮起，单张 APPEAR 秒从下方 RISE 个卡高滑入。
+    透明度 cubic-out（先亮起来）、位移 smoothstep（再滑升），与 PickDrawUI.RevealSlot 一致。"""
+    base = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(base)
+    d.rectangle([0, 0, W - 1, H - 1], fill=DIM)
+
+    spacing = CARD_W * (1 + GAP)
+    for i in range(3):
+        p = (t - i * T_GAP) / APPEAR
+        if p <= 0:
+            continue
+        p = min(1.0, p)
+        fade = 1 - (1 - p) ** 3
+        rise_p = p * p * (3 - 2 * p)      # smoothstep
+        cx = int(W // 2 + (i - 1) * spacing)
+        # Unity 的 y 向上：起点在落点下方 = 图像坐标 y 更大
+        y0 = H // 2 - CARD_H // 2 + int(RISE * CARD_H * (1 - rise_p))
+        face = draw_face(front, back, False)
+        if fade < 1:
+            face = face.copy()
+            face.putalpha(face.split()[3].point(lambda a: int(a * fade)))
+        base.alpha_composite(face, (cx - CARD_W // 2, y0))
+    return base
+
+
+def zoom_row(img):
+    """裁到卡牌行并放大，好看清「从下往上」的位移。"""
+    box = (280, 170, 1640, 930)
+    return img.crop(box).resize((W, int((box[3] - box[1]) * W / (box[2] - box[0]))), Image.LANCZOS)
 
 
 def strip(label, img, f):
@@ -144,7 +172,10 @@ def main():
     parts = [
         strip("① 选择者：三张正面依次亮出 → 点一张加入手牌，其余两张打「明弃」", panel(front, back, "chooser"), f),
         strip("② 旁观者：同一位置只有三张牌背（不吃射线，不打断对方操作）", panel(front, back, "spectator_idle"), f),
-        strip("③ 旁观者：对方选定后，被明弃的两张翻正面对其展示 → 随后弃掉（不再回牌库）", panel(front, back, "spectator_reveal"), f),
+        strip("③ 旁观者：对方选定后，被明弃的两张翻正面对其展示（不带红条）→ 随后弃掉（不再回牌库）", panel(front, back, "spectator_reveal"), f),
+        strip("④ 亮起动效·帧1（t≈0.05s）：第 1 张从下方滑入 —— 半透明、明显低于落点", zoom_row(rise_frame(front, back, 0.05)), f),
+        strip("⑤ 亮起动效·帧2（t≈0.11s）：第 1 张落位，第 2 张跟上（左 → 右依次）", zoom_row(rise_frame(front, back, 0.11)), f),
+        strip("⑥ 亮起动效·帧3（t≈0.24s）：三张全部落位（整段 0.42s，改前 0.74s）", zoom_row(rise_frame(front, back, 0.24)), f),
     ]
     total_h = sum(p.height for p in parts) + 12 * (len(parts) - 1)
     out = Image.new("RGBA", (W, total_h), (10, 12, 16, 255))
