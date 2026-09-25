@@ -10,9 +10,9 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e77c23a617e634648ac601c13fb57c7e, type: 3}
-  m_Name: 02009
+  m_Name: 02113
   m_EditorClassIdentifier: 
-  templateID: 02009
+  templateID: 02113
   cardName: "\u98D8\u8361\u5143\u7D20"
   cardType: 1
   copyCount: 5

@@ -11,7 +11,8 @@ using UnityEngine.UI;
 /// 两种存在形式：
 ///   · 指示选择（Prompt）：从中央渐入，**停留到玩家做出选择**才渐出。
 ///     文字形如「选择「毒巫」特性1目标」/「选择「疗」作用目标」，由当前正在执行的特性实时推出。
-///   · 提示（Toast）：从屏幕左边快速滑入 → 停住一段时间 → 快速滑出。用于"现在小心！"这类一次性提醒。
+///   · 提示（Toast）：从屏幕左边快速滑入 → 停住一段时间 → 从右边滑出（一条直线穿过去，不原路退回）。
+///     用于"现在小心！"这类一次性提醒。
 ///
 /// 鼠标交互：指针（或正拖着的牌）压到条上时整条淡到几乎透明；**全程不吃射线** ——
 /// ① 所有 Graphic 的 raycastTarget 一律关掉，点击直接穿透到下方格子；
@@ -207,6 +208,10 @@ public class PromptBanner : MonoBehaviour
         SelectionManager sm = SelectionManager.Instance;
         bool selecting = sm != null && sm.IsSelecting;
 
+        // 滑入式提示正在播（含它抢占指示选择的那一次）时不要抢回来：让它播完，
+        // 下一帧若选择仍未结束，会重新把指示选择渐入。
+        if (_form == Form.Toast) return;
+
         if (selecting && !AiIsChoosing)
         {
             string want = DescribeSelection();
@@ -263,7 +268,8 @@ public class PromptBanner : MonoBehaviour
 
         if (_lowHealthFired || !_lowHealthPending) return;
 
-        // 指示选择正在展示时让位：不打标记，等它退场后下一帧再补播（否则这条提示会被永久吞掉）
+        // Toast 现在会抢占指示选择，恒返回 true；这里仍按返回值收尾，留作后续再引入
+        // 「不可抢占」类提示时的兜底（那时本次不成功则保留 pending，下一帧补播）。
         if (Toast(lowHealthText, lowHealthColor))
         {
             _lowHealthFired = true;
@@ -317,13 +323,16 @@ public class PromptBanner : MonoBehaviour
         Restart(FadeOutRoutine());
     }
 
-    /// <summary>滑入式提示。指示选择正在展示时让位（那是玩家必须先处理的事），返回 false 表示本次没播。</summary>
+    /// <summary>滑入式提示。**会抢占正在展示的指示选择** —— 「现在小心！」这类警告不能被一个
+    /// 迟迟不结束的选择无限期挡住（实测：生命值掉到 2 时玩家还停在选目标里，提示一直没弹出来）。
+    /// 播完后 SyncSelectionPrompt 会把仍未结束的指示选择重新渐入。</summary>
     bool Toast(string text, Color color)
     {
-        if (_form == Form.Prompt) return false;
-        Debug.Log($"[PromptBanner] 提示：{text}");
+        Debug.Log($"[PromptBanner] 提示：{text}" + (_form == Form.Prompt ? "（抢占指示选择）" : string.Empty));
         ApplyText(text, color);
         _form = Form.Toast;
+        _root.anchoredPosition = anchoredPosition;   // 复位位置与缩放再滑入（抢占时状态可能被动过）
+        _root.localScale = Vector3.one;
         Restart(SlideRoutine());
         return true;
     }
@@ -373,7 +382,9 @@ public class PromptBanner : MonoBehaviour
     IEnumerator SlideRoutine()
     {
         float halfW = ParentHalfWidth();
-        float offX = -(halfW + plateSize.x * 0.5f + 40f);
+        float travel = halfW + plateSize.x * 0.5f + 40f;
+        float offX = -travel;      // 左：入场起点
+        float offXRight = travel;  // 右：出场终点
 
         // ① 从屏幕左边快速滑入
         float t = 0f;
@@ -391,14 +402,14 @@ public class PromptBanner : MonoBehaviour
         // ② 停住
         yield return new WaitForSeconds(slideHoldTime);
 
-        // ③ 快速滑回左侧
+        // ③ 向右滑出屏幕：一条直线穿过去，不再原路退回左侧。
+        //    这一程**不淡出** —— 淡出会半路就化没，看不到"从右边出去"。
         t = 0f;
         while (t < slideOutTime)
         {
             t += Time.deltaTime;
             float e = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / slideOutTime));
-            _root.anchoredPosition = new Vector2(Mathf.Lerp(anchoredPosition.x, offX, e), anchoredPosition.y);
-            _formAlpha = 1f - e;
+            _root.anchoredPosition = new Vector2(Mathf.Lerp(anchoredPosition.x, offXRight, e), anchoredPosition.y);
             yield return null;
         }
         _root.anchoredPosition = anchoredPosition;
