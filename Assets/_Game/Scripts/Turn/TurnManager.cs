@@ -50,6 +50,7 @@ public partial class TurnManager : MonoBehaviour
     {
         // 新对局复位影舞者(01502)全局 static（与 AutoConnect.Awake 同款双保险：主机/离线走这一条）
         CardInstance.ResetShadowGlobals();
+        BoardSlot.ResetRemoteFirstStrikeFlags();
         yield return null;
 
         // 战斗场景入场镜头没走完先不抽牌：那会儿 2D 界面还是全透明的，飞牌动画没人看得见
@@ -1176,7 +1177,11 @@ public partial class TurnManager : MonoBehaviour
                 int serverSlot = rebelSlot.slotID >= 6 ? rebelSlot.slotID - 6 : rebelSlot.slotID + 6;
                 BoardSlot._rebelConsumeDone = false;
                 NetworkPlayer.Local?.CmdRebelConsumeHand(serverSlot, selectedCard.instanceID, healAmount);
-                yield return new WaitUntil(() => BoardSlot._rebelConsumeDone);
+                // 兜底：服务端不回执（对手端异常/超时）时不能永久挂起本端阶段开始链，30s 后放行
+                float rebelDeadline = Time.time + 30f;
+                yield return new WaitUntil(() => BoardSlot._rebelConsumeDone || Time.time > rebelDeadline);
+                if (!BoardSlot._rebelConsumeDone)
+                    Debug.LogError("[01526] 忤逆者消耗手牌等待服务端超时（30s），放行本端流程");
                 // 客户端本地也刷新——SyncNow 后续会覆盖为权威值
                 NetworkPlayer.Local.RemoveCardFromHand(selectedCard.gameObject);
                 Destroy(selectedCard.gameObject);

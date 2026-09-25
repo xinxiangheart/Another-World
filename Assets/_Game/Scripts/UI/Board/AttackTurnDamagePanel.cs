@@ -658,8 +658,10 @@ public class AttackTurnDamagePanel : MonoBehaviour
         if (mine == null) mine = _myAvatarFull;
         ApplyAvatar(SideSelf, mine);
 
-        Texture2D opp = SimpleAI.IsAIMatch ? null : SteamAvatarManager.PeekAvatar(LobbyConfig.RemoteSteamID);
-        if (opp == null && !SimpleAI.IsAIMatch) opp = _oppAvatarFull;
+        // IsAIMatchForUi：纯客户端上 IsAIMatch 恒为真（connectionToClient 在客户端侧恒为 null），
+        // 会让联机对手的头像也消失
+        Texture2D opp = SimpleAI.IsAIMatchForUi ? null : SteamAvatarManager.PeekAvatar(LobbyConfig.RemoteSteamID);
+        if (opp == null && !SimpleAI.IsAIMatchForUi) opp = _oppAvatarFull;
         ApplyAvatar(SideOpponent, opp);
     }
 
@@ -672,7 +674,7 @@ public class AttackTurnDamagePanel : MonoBehaviour
         _myAvatarFull = SteamAvatarManager.GetAvatarTexture(LobbyConfig.LocalSteamID);
         if (_myAvatarFull == null && SteamDataManager.Instance != null)
             _myAvatarFull = SteamDataManager.Instance.localAvatar;
-        _oppAvatarFull = SimpleAI.IsAIMatch ? null : SteamAvatarManager.GetAvatarTexture(LobbyConfig.RemoteSteamID);
+        _oppAvatarFull = SimpleAI.IsAIMatchForUi ? null : SteamAvatarManager.GetAvatarTexture(LobbyConfig.RemoteSteamID);
     }
 
     void ApplyAvatar(int side, Texture2D tex)

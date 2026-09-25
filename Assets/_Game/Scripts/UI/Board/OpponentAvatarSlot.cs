@@ -48,8 +48,10 @@ public class OpponentAvatarSlot : MonoBehaviour
     void Refresh()
     {
         if (slot == null) return;
-        // AI 对战：AI 没有 SteamID，头像恒为空 —— 与阶段环判定一致，无需继续等
-        if (SimpleAI.IsAIMatch) { slot.SetEmpty(); _settled = true; return; }
+        // AI 对战：AI 没有 SteamID，头像恒为空 —— 与阶段环判定一致，无需继续等。
+        // 注意用 IsAIMatchForUi：纯客户端上 IsAIMatch 会因 connectionToClient 恒为 null 而误判为真，
+        // 会把联机对手的头像也一并清空。
+        if (SimpleAI.IsAIMatchForUi) { slot.SetEmpty(); _settled = true; return; }
         ulong sid = LobbyConfig.RemoteSteamID;
         // SteamID 可能晚到（网络 SyncVar / 大厅捕获），先保持空白环继续等
         if (sid == 0) { slot.SetEmpty(); return; }

@@ -26,6 +26,12 @@ public class SimpleAI : MonoBehaviour
     /// RemoteHalfPlayer 是 RunAsLocal 之前记下的固定配对，不受对调影响。</summary>
     public static bool IsAIMatch => NetworkPlayer.RemoteHalfPlayer != null && NetworkPlayer.RemoteHalfPlayer.connectionToClient == null;
 
+    /// <summary>展示专用：本机是否 AI 对局（在 IsAIMatch 之上补一层权威端判定）。
+    /// 纯客户端（NetworkServer 未激活）上 RemoteHalfPlayer.connectionToClient 恒为 null → IsAIMatch 误判为真，
+    /// 会把主机侧的真人对手当成 AI（表现：客户端上对方头像恒空白、轮盘对手回合环恒空白）。
+    /// 只读展示（头像 / 阶段轮盘）一律用这个；影响结算的分支仍用 IsAIMatch。</summary>
+    public static bool IsAIMatchForUi => Mirror.NetworkServer.active && IsAIMatch;
+
     // ── 费用优先选择钩子（AI 视角：AI方=0-5 / 玩家方=6-11）────────────────
     // 卡牌 handler 在 AI 触发选择前设置 selectCostPref（如 {5,3,1}=先挑5费；非硬门槛），
     // BoardSlot.AIResolveSelectionCoroutine 消费一次后自动清空。selectExtraFilter 可选额外过滤(如 有主动退场)。

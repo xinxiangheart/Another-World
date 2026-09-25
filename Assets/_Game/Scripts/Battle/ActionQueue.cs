@@ -304,8 +304,22 @@ public class ActionQueueManager : MonoBehaviour
         if (Instance == null) yield break;
         // 等到不再处理且队列为空。加一帧缓冲，避免恰好在入队瞬间误判空闲。
         yield return null;
+        // 超时兜底：动作 Execute 抛异常会打断 ProcessLoop、把 _processing 永久留在 true，
+        // 此时队列再也排不空 → 调用方（战斗协程里的 WaitForDrain → SafeBattle → StartNewPhase）
+        // 永久挂起，表现成「卡在攻击回合不推进、阶段轮盘不动」。
+        // 到点仍未排空就强制复位处理位并放行：宁可漏掉一个动作，也不能把阶段推进焊死。
+        float deadline = Time.time + 20f;
         while (Instance._processing || Instance._queue.Count > 0)
+        {
+            if (Time.time > deadline)
+            {
+                Debug.LogError($"[ActionQueue] WaitForDrain 超时 20s（processing={Instance._processing}, 剩余={Instance._queue.Count}），强制复位放行");
+                Instance._processing = false;
+                Instance._queue.Clear();
+                yield break;
+            }
             yield return null;
+        }
     }
 
     IEnumerator ProcessLoop()
@@ -313,38 +327,51 @@ public class ActionQueueManager : MonoBehaviour
         _processing = true;
         int safety = 0;
 
-        while (_queue.Count > 0 && safety < MAX_ITERATIONS)
+        // try/finally：动作 Execute 抛异常时也必须把 _processing 放回 false，
+        // 否则队列永久停摆（后续 AddToBottom 因 _processing 为 true 不会重启循环，WaitForDrain 也永不等不到排空）。
+        try
         {
-            safety++;
-            var action = _queue.First.Value;
-            _queue.RemoveFirst();
+            while (_queue.Count > 0 && safety < MAX_ITERATIONS)
+            {
+                safety++;
+                var action = _queue.First.Value;
+                _queue.RemoveFirst();
 
 #if UNITY_EDITOR
-            if (_enableDebugLog)
-                Debug.Log($"[ActionQueue] ▶ {action.DebugName}  (剩余:{_queue.Count})");
+                if (_enableDebugLog)
+                    Debug.Log($"[ActionQueue] ▶ {action.DebugName}  (剩余:{_queue.Count})");
 #endif
-            action.Execute();
+                // 单个动作抛异常不能连累整个队列（旧行为：异常穿出协程 → 队列永久停摆）
+                try { action.Execute(); }
+                catch (System.Exception e)
+                {
+                    Debug.LogError($"[ActionQueue] 动作 {action.DebugName} 执行异常，跳过：{e}");
+                    continue;
+                }
 
-            // 等待异步动作完成
-            float timeout = 30f; // 单个动作最长等 30 秒
-            float waited = 0f;
-            while (!action.IsDone && waited < timeout)
-            {
-                yield return null;
-                waited += Time.deltaTime;
+                // 等待异步动作完成
+                float timeout = 30f; // 单个动作最长等 30 秒
+                float waited = 0f;
+                while (!action.IsDone && waited < timeout)
+                {
+                    yield return null;
+                    waited += Time.deltaTime;
+                }
+
+                if (waited >= timeout)
+                    Debug.LogWarning($"[ActionQueue] {action.DebugName} 超时（{timeout}s），强制继续");
             }
 
-            if (waited >= timeout)
-                Debug.LogWarning($"[ActionQueue] {action.DebugName} 超时（{timeout}s），强制继续");
+            if (safety >= MAX_ITERATIONS)
+            {
+                Debug.LogError($"[ActionQueue] 单次处理循环达到 {MAX_ITERATIONS} 上限，强制停止！可能存在死循环。队列中还有 {_queue.Count} 个待执行动作。");
+                _queue.Clear(); // 仅在疑似死循环时清空，避免卡死
+            }
         }
-
-        if (safety >= MAX_ITERATIONS)
+        finally
         {
-            Debug.LogError($"[ActionQueue] 单次处理循环达到 {MAX_ITERATIONS} 上限，强制停止！可能存在死循环。队列中还有 {_queue.Count} 个待执行动作。");
-            _queue.Clear(); // 仅在疑似死循环时清空，避免卡死
+            _processing = false;
         }
-
-        _processing = false;
 
         // 处理期间可能有新动作在最后一刻入队；若队列非空则再起一轮，避免漏执行。
         if (_queue.Count > 0)

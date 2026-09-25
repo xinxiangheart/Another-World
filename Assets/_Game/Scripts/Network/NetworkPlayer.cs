@@ -3578,7 +3578,11 @@ public partial class NetworkPlayer : NetworkBehaviour
             {
                 _handReportDone = false;
                 oppNp.TargetRequestHandReport(oppNp.connectionToClient);
-                yield return new WaitWhile(() => !_handReportDone);
+                // 兜底：对手客户端不回报时不能永久挂起（本协程被退场效果监管协程等待 → 会把整个阶段推进焊死）
+                float hrDeadline1347 = Time.time + 8f;
+                yield return new WaitWhile(() => !_handReportDone && Time.time < hrDeadline1347);
+                if (!_handReportDone)
+                    Debug.LogError("[01347] 对手手牌回报超时（8s），按服务端已有数据继续");
             }
             foreach (var card in oppNp.handCards)
             {
@@ -3593,7 +3597,14 @@ public partial class NetworkPlayer : NetworkBehaviour
             Local.TargetShowHonorAttendantHand(owner.connectionToClient, handData.ToArray(), slotID);
 
         BoardSlot._honorAttendantDone = false;
-        yield return new WaitWhile(() => !BoardSlot._honorAttendantDone);
+        // 兜底：等待该客户端确认弹窗；玩家久不确认也不能永久挂起（30s 后按未确认放行）
+        float haDeadline1347 = Time.time + 30f;
+        yield return new WaitWhile(() => !BoardSlot._honorAttendantDone && Time.time < haDeadline1347);
+        if (!BoardSlot._honorAttendantDone)
+        {
+            Debug.LogError("[01347] 荣誉侍者弹窗确认超时（30s），按未确认继续");
+            BoardSlot._honorAttendantDone = true;
+        }
 
         foreach (string entry in handData)
         {
@@ -3955,7 +3966,11 @@ public partial class NetworkPlayer : NetworkBehaviour
             {
                 _handReportDone = false;
                 oppNp.TargetRequestHandReport(oppNp.connectionToClient);
-                yield return new WaitWhile(() => !_handReportDone);
+                // 兜底：同上，对手客户端不回报时不能永久挂起
+                float hrDeadline1316 = Time.time + 8f;
+                yield return new WaitWhile(() => !_handReportDone && Time.time < hrDeadline1316);
+                if (!_handReportDone)
+                    Debug.LogError("[01316] 对手手牌回报超时（8s），按服务端已有数据继续");
             }
             foreach (var card in oppNp.handCards)
             {
@@ -3972,7 +3987,14 @@ public partial class NetworkPlayer : NetworkBehaviour
 
         // 等待客户端选完回报 — _thiefDone 在服务器进程被 CmdConfirmThiefSteal 设置
         _thiefDone = false;
-        yield return new WaitWhile(() => !_thiefDone);
+        // 兜底：该客户端不回报（弹窗被顶掉 / 客户端异常）时不能永久挂起，30s 后按未选继续
+        float thiefDeadline1316 = Time.time + 30f;
+        yield return new WaitWhile(() => !_thiefDone && Time.time < thiefDeadline1316);
+        if (!_thiefDone)
+        {
+            Debug.LogError("[01316] 窃贼窃取选择超时（30s），按未选择继续");
+            _thiefDone = true;
+        }
 
         // 处理后通知客户端结束（解除客户端的 WaitWhile 阻塞）
         if (owner.connectionToClient != null)

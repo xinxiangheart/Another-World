@@ -29,6 +29,23 @@ public partial class TurnManager
     {
         Debug.Log($"[TurnManager] SetPhaseFromNetwork: phase={phase}, currentPhase={currentPhase}, isServer={NetworkServer.active}");
 
+        // 本端（纯客户端）的「可交互先手」协程还挂着，服务端却已经推进到下一阶段了
+        // → 说明服务端那次等待已放弃（FirstStrikeCoroutine 30s 超时）。就地收尾并清掉选择框，
+        // 否则客户端会永久停在一个再也点不动的交互上（表现：卡在攻击回合不推进）。
+        if (!NetworkServer.active
+            && phase != TurnPhase.BattlePhase
+            && BoardSlot._remoteFirstStrikeRunning
+            && Time.time - BoardSlot._remoteFirstStrikeStartedAt > 2f)
+        {
+            Debug.LogError($"[TurnManager] 服务端已推进到 {phase}，但本端先手交互仍挂起 {Time.time - BoardSlot._remoteFirstStrikeStartedAt:F0}s → 强制收尾");
+            BoardSlot.AbortRemoteFirstStrikes();
+            if (SelectionManager.Instance != null) SelectionManager.Instance.ForceEndAll();
+            // 01312 用的是 ConfirmPanel、01513/01516 用的是 ConfirmSelectionButton：它们被收起时不回调，
+            // 所以上面那些等待都带 _remoteFirstStrikeAbort 短路，这里只负责把框关掉。
+            if (ConfirmPanel.Instance != null && ConfirmPanel.Instance.IsShowing) ConfirmPanel.Instance.Hide();
+            if (ConfirmSelectionButton.Instance != null) ConfirmSelectionButton.Instance.Hide();
+        }
+
         if (phase == TurnPhase.MyTurn && currentPhase != TurnPhase.MyTurn)
         {
             Debug.Log("[TurnManager] SetPhaseFromNetwork: ENTER MyTurn");

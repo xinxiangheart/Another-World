@@ -173,6 +173,23 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public static bool _remoteFirstStrikeDone;
     public static void NotifyRemoteFirstStrikeDone() { _remoteFirstStrikeDone = true; }
 
+    /// <summary>远端客户端「可交互先手」协程是否在跑 + 起始时间。
+    /// 服务端 FirstStrikeCoroutine 等 _remoteFirstStrikeDone 有 30s 兜底；到点后服务端会直接推进阶段，
+    /// 而客户端若还停在这次交互里（选择框 / 确认框再也点不动）就会永久卡住 —— 见 AbortRemoteFirstStrikes()。</summary>
+    public static bool _remoteFirstStrikeRunning;
+    public static float _remoteFirstStrikeStartedAt;
+    /// <summary>置位后：遗留的远端先手协程就地收尾，跳过还没做完的交互，不再弹新选择框。</summary>
+    public static bool _remoteFirstStrikeAbort;
+    public static void AbortRemoteFirstStrikes() { _remoteFirstStrikeAbort = true; }
+    /// <summary>新对局复位（与 ResetShadowGlobals 同批调用）：场景重载不会重置静态字段，
+    /// 上一局残留的「先手交互进行中」会让下一次阶段推进误判成需要强制收尾。</summary>
+    public static void ResetRemoteFirstStrikeFlags()
+    {
+        _remoteFirstStrikeRunning = false;
+        _remoteFirstStrikeStartedAt = 0f;
+        _remoteFirstStrikeAbort = false;
+    }
+
     /// <summary>远端选择委托：等待标记 + 结果槽位。_remoteSelectionId 递增保证每次等待独立。</summary>
     public static int _remoteSelectionResultSlot = -1;
     public static int _remoteSelectionId = 0;
@@ -373,22 +390,31 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
     }
 
-    /// <summary>远端客户端执行己方的交互式先手（槽位6-11）。完成后通知服务端解除阻塞。</summary>
+    /// <summary>远端客户端执行己方的交互式先手（槽位6-11）。完成后通知服务端解除阻塞。
+    /// 服务端等不到回报时会在 30s 后放弃并推进阶段（见 BattleManager.FirstStrikeCoroutine），
+    /// 此时本协程若还停在交互里，客户端就会卡在一个点不动的选择框上 —— AbortRemoteFirstStrikes() 负责收尾：
+    /// 一旦阶段被推进（SetPhaseFromNetwork 检出），本协程必须自己走完并退出，绝不停在交互上。</summary>
     public IEnumerator RunRemoteFirstStrikes()
     {
+        _remoteFirstStrikeRunning = true;
+        _remoteFirstStrikeStartedAt = Time.time;
+        _remoteFirstStrikeAbort = false;
+
         var bm = FindObjectOfType<BoardManager>();
-        if (bm == null) { NetworkPlayer.Local?.CmdRemoteFirstStrikeDone(); yield break; }
+        if (bm == null) { NetworkPlayer.Local?.CmdRemoteFirstStrikeDone(); _remoteFirstStrikeRunning = false; yield break; }
 
         // ===== 第1轮：先手换位（阻塞阶段推进，全部交换完成再进行伤害）=====
         for (int i = 6; i <= 11; i++)
         {
+            if (_remoteFirstStrikeAbort) break; // 服务端已推进阶段 → 不再继续交互
             BoardSlot slot = bm.GetSlot(i);
             if (slot?.currentCard3D == null) continue;
             CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
             if (ci == null || !ci.HasFirstStrike) continue; // 5.x 特性组+瞬态
 
-            // 排队——等前一个交互弹窗完成
-            yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
+            // 排队——等前一个交互弹窗完成（被中止时不再等）
+            yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting && !_remoteFirstStrikeAbort);
+            if (_remoteFirstStrikeAbort) break;
             yield return null;
 
             switch (ci.templateID)
@@ -414,7 +440,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     ConfirmPanel.Instance.Show("是否与相邻格子互换位置？",
                         () => { choseYes = true; confirmed = true; },
                         () => { confirmed = true; });
-                    yield return new WaitUntil(() => confirmed);
+                    yield return new WaitUntil(() => confirmed || _remoteFirstStrikeAbort);
+                    if (_remoteFirstStrikeAbort) continue;
                     if (!choseYes) continue;
 
                     SelectionManager.ReportSelectionSource(ci, Trigger.FirstStrike);
@@ -428,7 +455,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                         if (t != null && adjacent.Contains(t.slotID))
                         { ts = t; SelectionManager.Instance.EndSelection(layerId); BoardSlot.isStrengtheningSlot = false; BoardSlot.extraTargetFilter = null; done = true; }
                     };
-                    yield return new WaitUntil(() => done);
+                    yield return new WaitUntil(() => done || _remoteFirstStrikeAbort);
+                    if (_remoteFirstStrikeAbort) continue;
                     if (ts == null) continue;
 
                     int slotA = mySlot;
@@ -458,7 +486,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                             first = null;
                         }
                     };
-                    yield return new WaitUntil(() => dd);
+                    yield return new WaitUntil(() => dd || _remoteFirstStrikeAbort);
                     sel.ForceEndAll();
                     BoardSlot.isStrengtheningSlot = false;
                     BoardSlot.extraTargetFilter = null;
@@ -485,7 +513,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                             first = null;
                         }
                     };
-                    yield return new WaitUntil(() => dd);
+                    yield return new WaitUntil(() => dd || _remoteFirstStrikeAbort);
                     sel16.ForceEndAll();
                     BoardSlot.isStrengtheningSlot = false;
                     cb16.Hide();
@@ -519,7 +547,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             CardInstance ci2 = slot2.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
             if (ci2 == null || !ci2.HasFirstStrike) continue; // 5.x 特性组+瞬态
 
-            yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
+            yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting && !_remoteFirstStrikeAbort);
+            if (_remoteFirstStrikeAbort) break;
             yield return null;
 
             switch (ci2.templateID)
@@ -559,7 +588,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                             else if (sel.Count < 3) { sel.Add(t); t.SetHighlightColor(Color.yellow); }
                             if (sel.Count == 3) { foreach (var s3 in sel) { NetworkPlayer.Local?.Cmd01519FirstStrike(s3.slotID); s3.SetHighlightColor(s3.GetNormalColor()); } sel19.EndSelection(lid2); }
                         };
-                        yield return new WaitUntil(() => !sel19.IsSelecting);
+                        yield return new WaitUntil(() => !sel19.IsSelecting || _remoteFirstStrikeAbort);
                         BoardSlot.isStrengtheningSlot = false;
                     }
                     ci2._firstStrikeConsumed = true; // 5.x 先手消耗瞬态（01519）
@@ -578,7 +607,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             CardInstance ci3 = slot3.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
             if (ci3 == null || !ci3.HasFirstStrike) continue; // 5.x 特性组+瞬态
 
-            yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
+            yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting && !_remoteFirstStrikeAbort);
+            if (_remoteFirstStrikeAbort) break;
             yield return null;
 
             switch (ci3.templateID)
@@ -593,7 +623,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                             NetworkPlayer.Local?.Cmd01318FirstStrike(t.slotID);
                         dd = true;
                     });
-                    yield return new WaitUntil(() => dd);
+                    yield return new WaitUntil(() => dd || _remoteFirstStrikeAbort);
                     ci3._firstStrikeConsumed = true; // 5.x 先手消耗瞬态（01318）
                     break;
                 }
@@ -610,7 +640,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                             NetworkPlayer.Local?.Cmd03502FirstStrike(t.slotID);
                         dd = true;
                     });
-                    while (!dd) yield return null;
+                    while (!dd && !_remoteFirstStrikeAbort) yield return null;
                     ci3._firstStrikeConsumed = true; // 5.x 先手消耗瞬态（03502）
                     break;
                 }
@@ -620,7 +650,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         // 第4轮(伤害：01310/03005/03003/03506/03513/03020+赋予先手)——
         // 由服务端 FirstStrikeCoroutine 权威处理，结果通过 MarkDirty 同步。
 
-        TurnManager.SyncMyBoardToOpponent();
+        // 被中止（服务端已推进阶段）时不再回推本端板面：这份数据已经过期，回推只会用旧状态覆盖服务端权威值。
+        if (!_remoteFirstStrikeAbort) TurnManager.SyncMyBoardToOpponent();
         // 远端先手完毕后立即清零临时攻击力字段——BattleCoroutine/FinalDamage 不会在远端执行
         // 01318 可选择任意目标(SingleAny)，需覆盖全部 12 槽（含敌方 0-5）
         var bmRefresh = FindObjectOfType<BoardManager>();
@@ -645,6 +676,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 var rcj = bmRearm.GetSlot(rj)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
                 if (rcj != null && rcj._firstStrikeConsumed) rcj._firstStrikeConsumed = false;
             }
+        _remoteFirstStrikeRunning = false;
         NetworkPlayer.Local?.CmdRemoteFirstStrikeDone();
     }
     public bool prisonBlocked;      // 囚牢封锁
@@ -4600,6 +4632,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         // 玩家侧：影子「依次进场」，每只让玩家点一个己方格 —— 空格=普通落位，有卡格=普通顶替（拖到有卡格同一条路线）。
         // 开选择前先确认半场还有可落子的格：旧写法在「己方半场已满 / 全封锁」时照样开选择，
         // 玩家无处可点，WaitUntil 无限挂起，整个 TurnManager.StartNewPhase 停在这里（表现：卡住、攻击回合阶段永远进不去）。
+        // 选择只在本阶段内有效（记下进入时的阶段）：阶段一翻走就收手，
+        // 否则选择框会一直锁着「结束回合/抽牌」，本手永远结束不了 → 主机一直等这一手 → 双方卡死。
+        TurnManager.TurnPhase guardPhase1502 = TurnManager.Instance != null
+            ? TurnManager.Instance.currentPhase : TurnManager.TurnPhase.PhaseStart;
         for (int k = 0; k < toSummon; k++)
         {
             bool anyLegal = false;
@@ -4633,7 +4669,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             });
 
             float shadowDeadline = Time.time + 30f;
-            while (chosenSlot == null && !cancelled && Time.time < shadowDeadline)
+            while (chosenSlot == null && !cancelled && Time.time < shadowDeadline
+                   && TurnManager.Instance != null
+                   && TurnManager.Instance.currentPhase == guardPhase1502)
                 yield return null;
             if (chosenSlot == null)
             {
@@ -5780,7 +5818,11 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             int serverSlot = slotID >= 6 ? slotID - 6 : slotID + 6;
             NetworkPlayer._thiefDone = false;
             NetworkPlayer.Local.CmdRequestThiefHand(serverSlot);
-            yield return new WaitWhile(() => !NetworkPlayer._thiefDone);
+            // 兜底：服务端不回来（对手端异常/超时）时不能永久挂起本端退场链，30s 后放行
+            float thiefClientDeadline = Time.time + 30f;
+            yield return new WaitWhile(() => !NetworkPlayer._thiefDone && Time.time < thiefClientDeadline);
+            if (!NetworkPlayer._thiefDone)
+                Debug.LogError("[01316] 窃贼流程等待服务端超时（30s），放行退场链");
             yield break;
         }
 
@@ -5793,7 +5835,11 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         {
             NetworkPlayer._handReportDone = false;
             oppNp.TargetRequestHandReport(oppNp.connectionToClient);
-            yield return new WaitWhile(() => !NetworkPlayer._handReportDone);
+            // 兜底：对手客户端不回报时不能永久挂起（会把整个阶段推进焊死）
+            float thiefHrDeadline = Time.time + 8f;
+            yield return new WaitWhile(() => !NetworkPlayer._handReportDone && Time.time < thiefHrDeadline);
+            if (!NetworkPlayer._handReportDone)
+                Debug.LogError("[01316] 对手手牌回报超时（8s），按服务端已有数据继续");
         }
 
         List<GameObject> handSource = (oppNp != null && oppNp != owner && oppNp.handCards.Count > 0)
@@ -5865,7 +5911,11 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             int serverSlot = slotID >= 6 ? slotID - 6 : slotID + 6;
             BoardSlot._honorAttendantDone = false;
             NetworkPlayer.Local.CmdRequestHonorAttendantActiveExit(serverSlot);
-            yield return new WaitWhile(() => !BoardSlot._honorAttendantDone);
+            // 兜底：服务端不回来时不能永久挂起本端退场链，30s 后放行
+            float haClientDeadline = Time.time + 30f;
+            yield return new WaitWhile(() => !BoardSlot._honorAttendantDone && Time.time < haClientDeadline);
+            if (!BoardSlot._honorAttendantDone)
+                Debug.LogError("[01347] 荣誉侍者流程等待服务端超时（30s），放行退场链");
             yield break;
         }
 
@@ -5881,7 +5931,11 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         {
             NetworkPlayer._handReportDone = false;
             oppNp.TargetRequestHandReport(oppNp.connectionToClient);
-            yield return new WaitWhile(() => !NetworkPlayer._handReportDone);
+            // 兜底：对手客户端不回报时不能永久挂起（会把整个阶段推进焊死）
+            float haHrDeadline = Time.time + 8f;
+            yield return new WaitWhile(() => !NetworkPlayer._handReportDone && Time.time < haHrDeadline);
+            if (!NetworkPlayer._handReportDone)
+                Debug.LogError("[01347] 对手手牌回报超时（8s），按服务端已有数据继续");
             foreach (var card in oppNp.handCards)
             {
                 if (card == null) continue;

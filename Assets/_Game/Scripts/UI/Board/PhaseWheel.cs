@@ -102,6 +102,7 @@ public class PhaseWheel : MonoBehaviour
     bool _hidden;
     Coroutine _hideAnim, _buttonAnim, _arrowAnim;
     Vector2 _contentRestPos, _buttonRestPos;
+    bool? _lastMyFirst;   // 上次绘制时用的先手（跨轮在 Battle 位翻转，需要单独跟）
 
     void LogWheel(string tag)
     {
@@ -114,7 +115,7 @@ public class PhaseWheel : MonoBehaviour
 
     string AvatarDesc(bool firstMine, Texture2D avatar)
     {
-        if (avatar == null) return SimpleAI.IsAIMatch ? "AI空白" : "空白";
+        if (avatar == null) return SimpleAI.IsAIMatchForUi ? "AI空白" : "空白";
         return firstMine ? "玩家1" : "玩家2";
     }
 
@@ -153,6 +154,7 @@ public class PhaseWheel : MonoBehaviour
         if (initial == TurnManager.TurnPhase.PhaseStart)
             initial = myFirst ? TurnManager.TurnPhase.MyTurn : TurnManager.TurnPhase.EnemyTurn;
         _lastPhase = initial;
+        _lastMyFirst = tm.isMyTurnFirst;
         // 游戏开始第一回合：L（上一阶段）= 空白（尚无上一阶段）；C=第一行动阶段；R=下一单元；隐藏位留空。
         ApplyContent(_roleSlot[1], null, false); // L = 空白
         ApplyContent(_roleSlot[2], initial, false);                       // C = Cur
@@ -169,14 +171,27 @@ public class PhaseWheel : MonoBehaviour
         var tm = TurnManager.Instance;
         if (tm == null) return;
         TurnManager.TurnPhase cur = tm.currentPhase;
-        if (_lastPhase == null) { _lastPhase = cur; return; }
-        if (_lastPhase.Value == cur) return;
+        if (_lastPhase == null) { _lastPhase = cur; _lastMyFirst = tm.isMyTurnFirst; return; }
+        if (_lastMyFirst == null) _lastMyFirst = tm.isMyTurnFirst;
+        if (_lastPhase.Value == cur)
+        {
+            // 先手跨轮翻转（只发生在 Battle 位）：Battle 的 TargetRpc 常先于镜像的 SyncVar 到达纯客户端，
+            // 于是那次滚动是用「旧先手」预载下一单元的 → 显示环内容整体错一位
+            // （表现：自己 / 对方回合都只剩空白环）。先手值一变就按最新先手把 L/C/R 重算一遍。
+            if (_lastMyFirst.Value != tm.isMyTurnFirst)
+            {
+                _lastMyFirst = tm.isMyTurnFirst;
+                ResyncVisibleContent();
+            }
+            return;
+        }
 
         // PhaseStart 与随后行动阶段（MyTurn/EnemyTurn）合二为一：PhaseStart 不触发旋转，
         // 也不推进 _lastPhase——Battle→PhaseStart 直接过渡到下一轮首行动阶段时只旋转一次
         // （该旋转在首行动阶段（PhaseStart→MyTurn/EnemyTurn）那一刻触发，_lastPhase 仍是 Battle）。
         if (cur == TurnManager.TurnPhase.PhaseStart) return;
 
+        _lastMyFirst = tm.isMyTurnFirst;
         LogWheel($"[Update] 阶段变化 {_lastPhase.Value} → {cur}，切换前五环");
         // 上一旋转单元（PhaseStart 已被跳过，故 _lastPhase 必为真实单元，可作旋转的 prev）。
         TurnManager.TurnPhase prev = _lastPhase.Value;
@@ -201,6 +216,37 @@ public class PhaseWheel : MonoBehaviour
             case TurnManager.TurnPhase.BattlePhase: return myFirst ? TurnManager.TurnPhase.MyTurn : TurnManager.TurnPhase.EnemyTurn;
         }
         return TurnManager.TurnPhase.PhaseStart;
+    }
+
+    /// <summary>NextOfPhase 的逆（上一单元）：同样考虑先手方与 Battle 处的跨轮翻转。
+    /// Battle 位的 isMyTurnFirst 已翻转到下一轮，故它的「上一阶段」= 上一轮后手方的行动阶段。</summary>
+    static TurnManager.TurnPhase PrevOfPhase(TurnManager.TurnPhase p, bool myFirst)
+    {
+        switch (p)
+        {
+            case TurnManager.TurnPhase.MyTurn:    return myFirst ? TurnManager.TurnPhase.BattlePhase : TurnManager.TurnPhase.EnemyTurn;
+            case TurnManager.TurnPhase.EnemyTurn: return myFirst ? TurnManager.TurnPhase.MyTurn : TurnManager.TurnPhase.BattlePhase;
+            case TurnManager.TurnPhase.BattlePhase: return myFirst ? TurnManager.TurnPhase.MyTurn : TurnManager.TurnPhase.EnemyTurn;
+        }
+        return TurnManager.TurnPhase.PhaseStart;
+    }
+
+    /// <summary>按权威状态（currentPhase + isMyTurnFirst）把 L / C / R 三个显示环的内容重算一遍。
+    /// 只改内容、不播放滚动（相位没变，纠正的是头像 / 图标归属）；滚动中不调用。</summary>
+    void ResyncVisibleContent()
+    {
+        if (slots == null || slots.Length != 5 || _rotating) return;
+        var tm = TurnManager.Instance;
+        if (tm == null) return;
+        TurnManager.TurnPhase cur = tm.currentPhase;
+        if (cur == TurnManager.TurnPhase.PhaseStart) return; // 准备阶段不占环（与随后行动阶段合并显示）
+        bool myFirst = tm.isMyTurnFirst;
+        ApplyContent(_roleSlot[1], PrevOfPhase(cur, myFirst), false); // L = 上一单元
+        ApplyContent(_roleSlot[2], cur, false);                       // C = 当前阶段
+        ApplyContent(_roleSlot[3], NextOfPhase(cur, myFirst), false); // R = 下一单元
+        slots[_roleSlot[0]].SetEmpty(); _slotDesc[_roleSlot[0]] = "空白";
+        slots[_roleSlot[4]].SetEmpty(); _slotDesc[_roleSlot[4]] = "空白";
+        LogWheel("[重算] 按 currentPhase/isMyTurnFirst 校准 L/C/R");
     }
 
     /// <summary>滚动一个环位：预载 NextNext → 横向左移动画 → 角色轮转 → 清空刚转出的隐藏环。
@@ -293,6 +339,12 @@ public class PhaseWheel : MonoBehaviour
             bool myFirst = tm.isMyTurnFirst;
             // prev = 本次旋转的 current（刚显示的真实单元）
             RotateToPhase(current, tm.currentPhase, NextOfPhase(tm.currentPhase, myFirst));
+        }
+        else
+        {
+            // 落定后按权威状态校准显示环内容：滚动期间的预载若撞上跨轮先手翻转（客户端 SyncVar 晚于
+            // Battle 的 TargetRpc 到达），预载的「下一单元」会用到旧先手 → 内容整体错一位。
+            ResyncVisibleContent();
         }
     }
 
@@ -409,13 +461,10 @@ public class PhaseWheel : MonoBehaviour
     void ApplyContent(int physIndex, TurnManager.TurnPhase? phase, bool isNext)
     {
         if (physIndex < 0 || physIndex >= slots.Length || slots[physIndex] == null) return;
-        // AI 对战：AI 回合（EnemyTurn）永远空白——入口统一判断，任何路径不得绕过
-        if (SimpleAI.IsAIMatch && phase == TurnManager.TurnPhase.EnemyTurn)
-        {
-            slots[physIndex].SetEmpty();
-            _slotDesc[physIndex] = "AI空白";
-            return;
-        }
+        // 对手回合的空白一律由 AvatarDesc/SetEmpty 那条路决定（OppAvatar() 在 AI 对战返回 null → 空白）。
+        // 这里**不能**再按 SimpleAI.IsAIMatch 提前判空：纯客户端上 Remote 是主机玩家对象、
+        // connectionToClient 在客户端侧恒为 null → IsAIMatch 恒为 true，会把联机对手回合的环
+        // 全部判成「AI空白」，对手头像永远不显示。
         if (phase == null)
         {
             slots[physIndex].SetEmpty();
@@ -486,7 +535,7 @@ public class PhaseWheel : MonoBehaviour
     Texture2D OppAvatar()
     {
         // AI 对战：AI(Remote, server-only) 无 SteamID，AI 头像为空白
-        if (SimpleAI.IsAIMatch) return null;
+        if (SimpleAI.IsAIMatchForUi) return null;
         // 对方头像 = RemoteSteamID（大厅捕获 + 网络 SyncVar 双路填充，统一管理器缓存）
         ulong sid = LobbyConfig.RemoteSteamID;
         Texture2D tex = SteamAvatarManager.GetAvatarTexture(sid);

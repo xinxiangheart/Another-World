@@ -20,6 +20,7 @@ public class AutoConnect : MonoBehaviour
         // 新对局开局复位影舞者(01502)的全局 static（战斗场景重载不会重置静态字段，见 ResetShadowGlobals）。
         // 放在 Awake：早于任何连接/板面同步，主机与纯客户端都会各执行一次。
         CardInstance.ResetShadowGlobals();
+        BoardSlot.ResetRemoteFirstStrikeFlags();
         // 进入战斗场景的加载界面：全黑 + 右下角白字进度（画面由 LoadingScreen 负责）
         LoadingScreen.Show();
         if (!LobbyConfig.FromLobby) { LoadingScreen.RequestFadeOut(0.35f); return; }
