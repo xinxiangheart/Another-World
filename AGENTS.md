@@ -1,5 +1,12 @@
 # Another World - 项目约定
 
+## 发版流程（Release）
+
+Windows 包发布走 GitHub Release：改 `Assets/_Game/Scenes/Welcome.unity` 的 Inspector `currentVersion`
+→ push `main` → `auto-release.yml` 自动打 tag、Unity batch 构建、上传 zip。
+一键入口 `Tools/Release.ps1 -Version X.Y.Z`；完整规格、触发链与排错见 `Docs/发版流程.md`。
+发版前先确认 self-hosted runner（`C:\actions-runner`）在跑 —— 它不在时任务会一直排队且 GitHub 不报错。
+
 ## 卡牌立绘风格基准（Card Art Style Baseline）
 
 **所有卡牌立绘必须沿用同一风格基准。基准为四张参考卡：01103「腐化之心」+ 01112「脆弱精灵」+ 01124「舞者」+ 01504「群狼之王」。**
