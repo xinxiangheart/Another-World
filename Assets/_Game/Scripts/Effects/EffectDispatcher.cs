@@ -7,6 +7,11 @@ public static class EffectDispatcher
 {
     public static TMP_Text debugText;
 
+    /// <summary>是否把「佣兵[01104]的进场」这类开发期调试文字显示到屏幕上。默认**关闭**。
+    /// 它只影响**可见文字**：特效率栈（inFlightEffects）与客户端广播照旧工作，
+    /// 槽位选择指示器的着色、提示条的特性推导都不受影响。排查时临时置 true 即可。</summary>
+    public static bool showTraitText = false;
+
     /// <summary>正在执行的特性栈（模板ID）。槽位选择指示器靠它判定「这次选择属于哪张卡」以决定颜色
     /// （Damage 红 / Heal 绿 / Debuff 紫 / Neutral 金），所以必须覆盖整个特性耗时——
     /// Dispatch 入栈，特性收尾（隐藏文字）时出栈。客户端由 TargetShowEffectText / TargetHideEffectText 同步。
@@ -70,7 +75,7 @@ public static class EffectDispatcher
     /// <summary>客户端直接设文字（不经过 Dispatch）</summary>
     public static void ShowDebugText(string cardName, string traitCN)
     {
-        if (debugText != null)
+        if (showTraitText && debugText != null)
         {
             debugText.text = $"{cardName}的{traitCN}";
             debugText.gameObject.SetActive(true);
@@ -110,7 +115,7 @@ public static class EffectDispatcher
                 Trigger.Revenge => "反击",
                 _ => trigger.ToString()
             };
-            if (debugText != null)
+            if (showTraitText && debugText != null)
             {
                 debugText.text = $"{cardName}[{id}]的{traitCN}";
                 debugText.gameObject.SetActive(true);

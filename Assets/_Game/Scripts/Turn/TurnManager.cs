@@ -32,6 +32,9 @@ public partial class TurnManager : MonoBehaviour
 
     void Start()
     {
+        // 指示选择 / 提示条（指令提示）：贴着顶栏阶段推进条下方的一条，纯运行时构建
+        PromptBanner.Ensure();
+
         // If coming from Lobby, wait for NetworkTurnSync to signal game start
         if (LobbyConfig.FromLobby)
         {
@@ -931,6 +934,7 @@ public partial class TurnManager : MonoBehaviour
             ConfirmQueueManager.Instance.EnqueueConfirm("是否与己方一召唤物互换位置？",
                 onYes: (done) =>
                 {
+                    SelectionManager.ReportSelectionSource(CardDatabase.Instance?.GetTemplate("01113"), Trigger.Enter);
                     SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (target) =>
                     {
                         if (target != null && target != teleporterSlot && target.currentCard3D != null)
@@ -1106,6 +1110,7 @@ public partial class TurnManager : MonoBehaviour
     {
         BoardSlot.isStrengtheningSlot = true;
         bool done = false;
+        SelectionManager.ReportSelectionSource(source, Trigger.FirstStrike);
         SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (target) =>
         {
             if (target != null && !target.isBlocked)
@@ -1548,6 +1553,7 @@ public partial class TurnManager : MonoBehaviour
         BoardSlot.isPlacingCard = true;
         BoardSlot.isStrengtheningSlot = true;
         bool placed = false;
+        SelectionManager.ReportSelectionSource(template, Trigger.Enter);
         SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (selectedSlot) =>
         {
             if (selectedSlot == null || selectedSlot.isBlocked || selectedSlot.slotID < 6) return;

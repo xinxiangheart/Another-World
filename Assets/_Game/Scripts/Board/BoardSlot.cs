@@ -159,10 +159,10 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
     /// <summary>退场后待处理的反击队列（同时窗口分界线）。
     /// 存储(死卡槽位ID, 反击效果文本, 伤害来源实例ID列表, 死亡者instanceID,
-    /// 反击特性在可见特性中的序号+文本)。</summary>
+    /// 反击特性在可见特性中的序号+文本, 死亡者的模板ID)。</summary>
     public static List<(int deadSlotID, string revengeEffect, List<string> sourceInstanceIDs,
-        string deadInstanceID, int revTraitIndex, string revTraitText)> pendingRevenges
-        = new List<(int, string, List<string>, string, int, string)>();
+        string deadInstanceID, int revTraitIndex, string revTraitText, string deadTemplateID)> pendingRevenges
+        = new List<(int, string, List<string>, string, int, string, string)>();
 
     /// <summary>[Legacy] 无赖(01309)退场召唤阶段阻塞标记。已由 NestingContext.IsNested + WaitForSimultaneousWindow 替代外部等待链。</summary>
     public static bool _roguePhaseBlock;
@@ -417,6 +417,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     yield return new WaitUntil(() => confirmed);
                     if (!choseYes) continue;
 
+                    SelectionManager.ReportSelectionSource(ci, Trigger.FirstStrike);
                     bool done = false;
                     string layerId = SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, null);
                     BoardSlot.extraTargetFilter = (s) => adjacent.Contains(s.slotID);
@@ -444,6 +445,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     if (sel == null || cb == null) break;
                     BoardSlot.isStrengtheningSlot = true;
                     BoardSlot.extraTargetFilter = (s2) => { var c = s2?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance; return c != null && c.prefixes.Contains("机械"); };
+                    SelectionManager.ReportSelectionSource(ci, Trigger.FirstStrike);
                     sel.BeginSelection(TargetType.SingleAlly, null);
                     BoardSlot first = null; bool dd = false;
                     cb.Show(() => dd = true);
@@ -470,6 +472,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     var cb16 = ConfirmSelectionButton.Instance;
                     if (sel16 == null || cb16 == null) break;
                     BoardSlot.isStrengtheningSlot = true;
+                    SelectionManager.ReportSelectionSource(ci, Trigger.FirstStrike);
                     sel16.BeginSelection(TargetType.SingleAlly, null);
                     BoardSlot first = null; bool dd = false;
                     cb16.Show(() => dd = true);
@@ -523,6 +526,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 case "03012": // 阴阳：友方攻血平衡 → Cmd 委托服务端处理
                 {
                     bool selDone = false;
+                    SelectionManager.ReportSelectionSource(ci2, Trigger.FirstStrike);
                     SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (t) =>
                     {
                         if (t != null && t != slot2 && t.currentCard3D != null)
@@ -544,6 +548,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     {
                         var sel = new List<BoardSlot>();
                         var sel19 = SelectionManager.Instance;
+                        SelectionManager.ReportSelectionSource(ci2, Trigger.FirstStrike);
                         string lid2 = sel19.BeginSelection(TargetType.SingleAlly, null);
                         BoardSlot.isStrengtheningSlot = true;
                         BoardSlot.onTargetSelected = (t) =>
@@ -579,6 +584,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             {
                 case "01318": // 弱化棱晶：目标攻击力→1 → Cmd 委托服务端处理
                 {
+                    SelectionManager.ReportSelectionSource(ci3, Trigger.FirstStrike);
                     bool dd = false;
                     SelectionManager.Instance.BeginSelection(TargetType.SingleAny, (t) =>
                     {
@@ -595,6 +601,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     bool hasEnemy = false;
                     for (int j = 0; j <= 5; j++) if (bm.GetSlot(j)?.currentCard3D != null) { hasEnemy = true; break; }
                     if (!hasEnemy) continue;
+                    SelectionManager.ReportSelectionSource(ci3, Trigger.FirstStrike);
                     bool dd = false;
                     SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (t) =>
                     {
@@ -1443,6 +1450,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 yield break;
             }
 
+            SelectionManager.ReportSelectionSource(inst, Trigger.Enter);
             SelectionManager.Instance.BeginSelection(redirectTargetType, (target) =>
             {
                 if (target?.currentCard3D != null)
@@ -1727,7 +1735,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                         if (rvEntries[re2].text.Contains("对击杀"))
                         { revTraitIndex = re2 + 1; revTraitText = rvEntries[re2].text; break; }
             }
-            pendingRevenges.Add((s.slotID, ci.revengeEffect, sourceIDs, ci.instanceID, revTraitIndex, revTraitText));
+            pendingRevenges.Add((s.slotID, ci.revengeEffect, sourceIDs, ci.instanceID, revTraitIndex, revTraitText, ci.templateID));
             ci.revengeSnapshotIDs = sourceIDs;
         }
 
@@ -1998,6 +2006,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                         }
                         if (hasAlly)
                         {
+                            SelectionManager.ReportSelectionSource(ci, Trigger.Exit);
                             SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (target) =>
                             {
                                 if (target?.currentCard3D != null)
@@ -4061,6 +4070,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                         }
                         if (hasAlly)
                         {
+                            SelectionManager.ReportSelectionSource(CardDatabase.Instance?.GetTemplate(data.templateID), Trigger.Exit);
                             SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (target) =>
                             {
                                 if (target?.currentCard3D != null)
@@ -4212,6 +4222,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 return c1311 != null && c1311.HasActiveExit && s != this;
             }, true);
 
+        SelectionManager.ReportSelectionSource(currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance, Trigger.ActiveExit);
         CardInstance targetCI = null;
         bool done = false;
         SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (slot) =>
@@ -5015,6 +5026,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             yield break;
         }
 
+        SelectionManager.ReportSelectionSource(fairyCI, Trigger.Exit);
         bool done = false;
         BoardSlot newHost = null;
         isStrengtheningSlot = false;
@@ -6077,6 +6089,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 {
                     BoardSlot mySlot = FindSlotOf(ci);
                     int mySlotID = mySlot?.slotID ?? -1;
+                    SelectionManager.ReportSelectionSource(ci, Trigger.Discard);
                     BoardSlot.StartDiscardSelection(TargetType.SingleEnemy, mySlotID, (target) =>
                     {
                         if (target?.currentCard3D != null)
@@ -6102,6 +6115,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 {
                     BoardSlot mySlot = FindSlotOf(ci);
                     int mySlotID = mySlot?.slotID ?? -1;
+                    SelectionManager.ReportSelectionSource(ci, Trigger.Discard);
                     BoardSlot.StartDiscardSelection(TargetType.SingleEnemy, mySlotID, (target) =>
                     {
                         if (target?.currentCard3D != null)
@@ -6127,6 +6141,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 {
                     BoardSlot mySlot = FindSlotOf(ci);
                     int mySlotID = mySlot?.slotID ?? -1;
+                    SelectionManager.ReportSelectionSource(ci, Trigger.Discard);
                     BoardSlot.StartDiscardSelection(TargetType.SingleAlly, mySlotID, (target) =>
                     {
                         if (target?.currentCard3D != null)
@@ -6151,6 +6166,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 {
                     BoardSlot mySlot = FindSlotOf(ci);
                     int mySlotID = mySlot?.slotID ?? -1;
+                    SelectionManager.ReportSelectionSource(ci, Trigger.Discard);
                     BoardSlot.StartDiscardSelection(TargetType.SingleEnemy, mySlotID, (target) =>
                     {
                         if (target?.currentCard3D != null)
@@ -6172,6 +6188,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 if (HasAllyTarget(ci))
                 {
                     HandManager hm = FindObjectOfType<HandManager>();
+                    SelectionManager.ReportSelectionSource(ci, Trigger.Discard);
                     hm.StartCoroutine(hm.SwapTwoAllies());
                 }
                 break;

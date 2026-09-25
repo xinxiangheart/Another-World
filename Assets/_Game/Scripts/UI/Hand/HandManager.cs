@@ -58,8 +58,13 @@ public class HandManager : MonoBehaviour
             RefreshLayout(true);
             MarkBoundsDirty();
         }
-        // 新入卡若正值"手牌压暗"，立即应用同态（缩小/下移/去饱和压暗）
-        if (_handDimmed && cv != null)
+        // 新入卡若正值"手牌压暗"，立即应用同态（缩小/下移/去饱和压暗）。
+        // 判据必须用**实时**状态，不能用 _handDimmed 缓存：缓存由 Update 每帧对齐，而"回合开始"类效果
+        // （01511 心灵学者退场回手等）是在主协程里紧跟 currentPhase = MyTurn 之后**同步**执行的 ——
+        // 那一帧 Update 早已跑完，缓存还是上一阶段（对方回合 / 攻击回合）的旧值 true，
+        // 刚回到手牌的牌就会被按"该压暗"处理，己方回合也灰着回来。
+        // （对方回合回来时灰是对的 —— 那时整手确实该灰，实时判定同样会给 true。）
+        if (cv != null && ShouldDimHand())
             cv.SetGroupDim(true, dimScale, dimOffsetY, dimStrength);
     }
 
@@ -371,6 +376,7 @@ public class HandManager : MonoBehaviour
             GameObject cardObj = cardObject;
             bool canBeIndependent = sourceInstance.baseHealth > 0;
 
+            SelectionManager.ReportSelectionSource(sourceInstance, Trigger.Attach);
             BoardSlot.StartAttachSelect(canBeIndependent, (selectedSlot) =>
             {
                 if (selectedSlot.hasCard)
@@ -3827,6 +3833,7 @@ public class HandManager : MonoBehaviour
         SimpleAI.IsAIEvaluating = false;
         try
         {
+            SelectionManager.ReportSelectionSource(watcher, Trigger.Enter);
             SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (target) =>
             {
                 BoardSlot.humanSelectionGuard = false; // 玩家点完 / 选择被取消 → 放行 AI 自动选择
@@ -3913,6 +3920,7 @@ public class HandManager : MonoBehaviour
         BoardSlot.isStrengtheningSlot = true;
         bool placed = false;
 
+        SelectionManager.ReportSelectionSource(CardDatabase.Instance?.GetTemplate("02010"), Trigger.Spell);
         SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (selectedSlot) =>
         {
             if (selectedSlot == null || selectedSlot.isBlocked || selectedSlot.hasCard || selectedSlot.slotID > 5) return;

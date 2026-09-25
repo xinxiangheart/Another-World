@@ -15,6 +15,132 @@ public class SelectionManager : MonoBehaviour
     /// 不在选择状态时一律为 Neutral。层栈清空时复位。</summary>
     public static SelectionKind CurrentKind { get; private set; } = SelectionKind.Neutral;
 
+    /// <summary>本次选择的来源登记（发起选择的卡名 / 特性序号 / 是否法术）。发起方在 BeginSelection
+    /// 之前用 ReportSelectionSource 登记，供提示条推出「选择「XX」特性N目标」。未登记的（战斗阶段
+    /// 直连调用等）一律为 null / 0 / false —— 提示条会退回按目标类型的中性文案。</summary>
+    public static string CurrentSourceName { get; private set; }
+    public static int CurrentSourceTraitIndex { get; private set; }
+    public static bool CurrentSourceIsSpell { get; private set; }
+
+    struct SelectionSource
+    {
+        public string Name;
+        public int TraitIndex;
+        public bool IsSpell;
+    }
+
+    readonly Stack<SelectionSource> _sourceStack = new Stack<SelectionSource>();
+    static SelectionSource _pendingSource;
+
+    /// <summary>登记本次选择的来源（在 BeginSelection / BeginOpenSelection 之前调用）。空名 = 复位。</summary>
+    public static void ReportSelectionSource(string cardName, int traitIndex = 0, bool isSpell = false)
+    {
+        _pendingSource = new SelectionSource
+        {
+            Name = string.IsNullOrEmpty(cardName) ? null : cardName,
+            TraitIndex = traitIndex,
+            IsSpell = isSpell
+        };
+    }
+
+    /// <summary>便捷登记：按「卡 + 触发特性」自动补全卡名与特性序号。
+    /// traitIndexOverride &gt; 0 时用调用方给的序号（快照/溯源路径拿到的序号比按特性名反查更准）。</summary>
+    public static void ReportSelectionSource(CardInstance ci, Trigger trig, int traitIndexOverride = 0)
+    {
+        CardData card = (ci != null && CardDatabase.Instance != null)
+            ? CardDatabase.Instance.GetTemplate(ci.templateID) : null;
+        if (card == null && ci != null) ReportSelectionSource(ci.templateID, traitIndexOverride);
+        else ReportSelectionSource(card, trig, traitIndexOverride);
+    }
+
+    /// <summary>便捷登记：直接给模板（死亡/快照等路径手上只有 CardData 或 templateID）。</summary>
+    public static void ReportSelectionSource(CardData card, Trigger trig, int traitIndexOverride = 0)
+    {
+        bool isSpell = trig == Trigger.Spell || (card != null && card.cardType == CardType.Spell);
+        int index = traitIndexOverride > 0 ? traitIndexOverride : TraitIndexOf(card, AttributeOf(trig));
+        ReportSelectionSource(card != null ? card.cardName : null, index, isSpell);
+    }
+
+    /// <summary>特性触发时机 → 卡面特性名（与 CardData 特性条目的「特性」字段同口径）。</summary>
+    public static string AttributeOf(Trigger trig)
+    {
+        switch (trig)
+        {
+            case Trigger.Enter: return "进场";
+            case Trigger.FirstStrike: return "先手";
+            case Trigger.Revenge: return "反击";
+            case Trigger.Exit: return "退场";
+            case Trigger.ActiveExit: return "主动退场";
+            case Trigger.Discard: return "抛置";
+            case Trigger.Attach: return "附着";
+            default: return null;
+        }
+    }
+
+    /// <summary>该条特性在卡面编号里的位置（1 起）。编号口径与 CardInstance.GetVisibleTraitEntries 一致：
+    /// 「赋予」型条目自身不显示、不参与编号，跳过。</summary>
+    public static int TraitIndexOf(CardData card, string attr)
+    {
+        if (card == null || string.IsNullOrEmpty(attr)) return 0;
+        List<CardData.TraitEntry> list = card.GetTraitEntryList();
+        if (list == null) return 0;
+
+        int n = 0;
+        for (int i = 0; i < list.Count; i++)
+        {
+            CardData.TraitEntry e = list[i];
+            if (e == null || e.isGrant) continue;
+            n++;
+            if (e.MatchesAttribute(attr)) return n;
+        }
+        return 0;
+    }
+
+    /// <summary>把静态来源字段对齐到当前栈顶（空栈 = 复位）。</summary>
+    void RefreshSourceStatics()
+    {
+        if (_sourceStack.Count > 0)
+        {
+            SelectionSource s = _sourceStack.Peek();
+            CurrentSourceName = s.Name;
+            CurrentSourceTraitIndex = s.TraitIndex;
+            CurrentSourceIsSpell = s.IsSpell;
+        }
+        else
+        {
+            CurrentSourceName = null;
+            CurrentSourceTraitIndex = 0;
+            CurrentSourceIsSpell = false;
+        }
+    }
+
+    /// <summary>没显式登记时，用"当前正在执行的特性"自动补全来源。
+    /// 为什么必须在**开选择时**就落定、而不是每帧去问 EffectDispatcher：同步 handler（抛置那一批最典型）
+    /// 在 0.5s 后就把特性出栈，而选择这时往往还开着 —— 那样文案会中途从「选择「难民」特性1目标」
+    /// 退化成兜底的中性文案。登记落在**选择层栈**上，寿命与选择一致，所以文案全程稳定。</summary>
+    static SelectionSource SourceFromDispatcher()
+    {
+        string id = EffectDispatcher.CurrentEffectTemplateID;
+        Trigger trig = EffectDispatcher.CurrentEffectTrigger;
+        CardData card = (CardDatabase.Instance != null && !string.IsNullOrEmpty(id))
+            ? CardDatabase.Instance.GetTemplate(id) : null;
+        string name = card != null && !string.IsNullOrEmpty(card.cardName) ? card.cardName : id;
+        bool isSpell = trig == Trigger.Spell || (card != null && card.cardType == CardType.Spell);
+        return new SelectionSource
+        {
+            Name = string.IsNullOrEmpty(name) ? null : name,
+            TraitIndex = TraitIndexOf(card, AttributeOf(trig)),
+            IsSpell = isSpell
+        };
+    }
+
+    /// <summary>开选择前把来源定下来：显式登记优先，否则用当前正在执行的特性自动补全。</summary>
+    void ResolvePendingSource()
+    {
+        if (string.IsNullOrEmpty(_pendingSource.Name) && EffectDispatcher.HasCurrentEffect)
+            _pendingSource = SourceFromDispatcher();
+    }
+
     /// <summary>待裁决选择的"取消钩子"：layerId → 把 null 结果喂给等待者（幂等，只触发一次）。
     /// 供 ForceEndAll / 清栈等强制收尾路径使用，保证不会有协程永远等一个再也不会到来的选择。</summary>
     readonly Dictionary<string, Action> _cancelHooks = new Dictionary<string, Action>();
@@ -109,6 +235,10 @@ public class SelectionManager : MonoBehaviour
         string id = "sel_" + (++idCounter);
         layerStack.Push(id);
         PushKind(kind);
+        ResolvePendingSource();
+        _sourceStack.Push(_pendingSource);
+        _pendingSource = default(SelectionSource);
+        RefreshSourceStatics();
 
         BoardSlot.currentTargetType = targetType;
         RegisterSelectionCallback(id, onSelected);
@@ -138,6 +268,10 @@ public class SelectionManager : MonoBehaviour
         string id = "open_" + (++idCounter);
         layerStack.Push(id);
         PushKind(kind);
+        ResolvePendingSource();
+        _sourceStack.Push(_pendingSource);
+        _pendingSource = default(SelectionSource);
+        RefreshSourceStatics();
 
         BoardSlot.currentTargetType = targetType;
         RegisterSelectionCallback(id, onSelected);
@@ -158,10 +292,17 @@ public class SelectionManager : MonoBehaviour
         {
             // 非栈顶收尾 = 直接清栈：栈里其它层仍在等回调的协程必须一并解除等待，否则永久挂起
             layerStack.Clear();
+            _sourceStack.Clear();
             CancelPendingSelections();
         }
-        else layerStack.Pop();
+        else
+        {
+            layerStack.Pop();
+            if (_sourceStack.Count > 0) _sourceStack.Pop();
+        }
+        _pendingSource = default(SelectionSource);
         SyncCurrentKind();
+        RefreshSourceStatics();
 
         if (layerStack.Count == 0)
         {
@@ -203,7 +344,10 @@ public class SelectionManager : MonoBehaviour
         BoardSlot.humanSelectionGuard = false; // 强制收尾：放行 AI 自动选择（见 humanSelectionGuard）
         BoardSlot.ClearAllHighlights();
         layerStack.Clear();
+        _sourceStack.Clear();
+        _pendingSource = default(SelectionSource);
         SyncCurrentKind();
+        RefreshSourceStatics();
         BoardSlot.currentTargetType = TargetType.None;
         BoardSlot.isStrengtheningSlot = false;
         BoardSlot.isPlacingCard = false;
@@ -324,6 +468,7 @@ public class SelectionManager : MonoBehaviour
                 HandManager hm = FindObjectOfType<HandManager>();
                 BoardSlot.isPlacingCard = true;
                 BoardSlot.isStrengtheningSlot = true;
+                ReportSelectionSource(selected, Trigger.Enter);
                 SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, null);
                 foreach (GameObject c in NetworkPlayer.Local.handCards) if (c != null) c.SetActive(false);
                 hm.SetHandAreaRaycast(false);

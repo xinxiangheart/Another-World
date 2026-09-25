@@ -431,6 +431,7 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
                     handManager.RefreshLayout(true);
                     return;
                 }
+                SelectionManager.ReportSelectionSource(template, Trigger.Spell);
                 SelectionManager.Instance.BeginOpenSelection((TargetType)template.targetType, (slot) =>
                 {
                     CardView cv = GetComponent<CardView>();

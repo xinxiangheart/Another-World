@@ -63,6 +63,9 @@ public static class DiscardHandlers
         if (allyCount >= 2)
         {
             Card3DHover.ignoreSlotID = discardSlotID;
+            // SwapTwoAllies 是协程，但它的第一段在 StartCoroutine 内同步跑到 BeginSelection ——
+            // 所以在启动前登记，来源就会被这一次选择层接住。
+            SelectionManager.ReportSelectionSource(ctx.source, Trigger.Discard);
             HM()?.StartCoroutine(HM().SwapTwoAllies());
             return; // HM coroutine handles cleanup
         }
@@ -82,6 +85,7 @@ public static class DiscardHandlers
             if (bm?.GetSlot(i)?.currentCard3D != null) { hasEnemy = true; break; }
         if (hasEnemy)
         {
+            SelectionManager.ReportSelectionSource(ctx.source, Trigger.Discard);
             BoardSlot.StartDiscardSelection(TargetType.SingleEnemy, discardSlotID, (target) =>
             {
                 if (target?.currentCard3D != null)
@@ -120,6 +124,7 @@ public static class DiscardHandlers
                     var c1346h = s?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
                     return c1346h != null && (c1346h.currentMaxHealth - c1346h.currentHealth) >= 3;
                 }, true); // 只是"优先"：都满血也照治一个，别把这次抛置白扔
+            SelectionManager.ReportSelectionSource(ctx.source, Trigger.Discard);
             BoardSlot.StartDiscardSelection(TargetType.SingleAlly, discardSlotID, (target) =>
             {
                 if (target?.currentCard3D != null)
@@ -151,6 +156,7 @@ public static class DiscardHandlers
             // [AI] 01343：抛置打 玩家方(6-11) 5/3/1
             if (SimpleAI.IsAIEvaluating)
                 SimpleAI.SetAIAutoChoice(new[] { 5, 3, 1 });
+            SelectionManager.ReportSelectionSource(ctx.source, Trigger.Discard);
             BoardSlot.StartDiscardSelection(TargetType.SingleEnemy, mySlot, (target) =>
             {
                 if (target?.currentCard3D != null)
@@ -185,6 +191,7 @@ public static class DiscardHandlers
             // [AI] 01344：抛置 玩家方(6-11) 5/3/1
             if (SimpleAI.IsAIEvaluating)
                 SimpleAI.SetAIAutoChoice(new[] { 5, 3, 1 });
+            SelectionManager.ReportSelectionSource(ctx.source, Trigger.Discard);
             BoardSlot.StartDiscardSelection(TargetType.SingleEnemy, discardSlotID, (target) =>
             {
                 if (target?.currentCard3D != null)

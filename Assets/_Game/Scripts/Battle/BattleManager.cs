@@ -207,7 +207,12 @@ public class BattleManager : MonoBehaviour
             {
                 int mySlotIndex = i;
                 int col = mySlotIndex % 3;
-                int targetSlotIndex = mySlotIndex < 9 ? 9 + col : 6 + col;
+                // 「与前排/后排互换」必须换**同一半场**的对位：不能硬编码 6/9——
+                // AI 半场是 0-5（前排 0-2 / 后排 3-5），旧写法对 0-5 会算出 9-11，
+                // 也就是把 AI 的舞者换到玩家场上。
+                int ownHalfStart = mySlotIndex >= 6 ? 6 : 0;
+                int row = (mySlotIndex - ownHalfStart) < 3 ? 0 : 3;
+                int targetSlotIndex = ownHalfStart + (row == 0 ? 3 : 0) + col;
 
                 BoardSlot mySlot = allSlots[mySlotIndex];
                 BoardSlot targetSlot = allSlots[targetSlotIndex];
@@ -319,6 +324,7 @@ public class BattleManager : MonoBehaviour
                 yield return new WaitUntil(() => confirmed);
                 if (!choseYes) continue;
 
+                SelectionManager.ReportSelectionSource(ci, Trigger.FirstStrike);
                 bool done = false;
                 string layerId = SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, null);
                 BoardSlot.extraTargetFilter = (slot) => adjacentSlots.Contains(slot.slotID);
@@ -357,6 +363,7 @@ public class BattleManager : MonoBehaviour
             if (ci.templateID == "01513")
             {
                 if (i < 6 && !SimpleAI.IsAIMatch) continue; // 非 AI 对局：AI 半场跳过（远程客户端处理）；AI 对局：AI 半场也执行
+                SelectionManager.ReportSelectionSource(ci, Trigger.FirstStrike);
                 yield return StartCoroutine(MechRearrangementEffect());
                 continue;
             }
@@ -387,6 +394,7 @@ public class BattleManager : MonoBehaviour
                 // [AI] 03012 阴阳：己方 5/3/1 优先
                 if (SimpleAI.IsAIMatch && i < 6)
                     SimpleAI.SetAIAutoChoice(new[] { 5, 3, 1 });
+                SelectionManager.ReportSelectionSource(ci, Trigger.FirstStrike);
                 bool yinYangDone = false;
                 SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (targetSlot) =>
                 {
@@ -429,6 +437,7 @@ public class BattleManager : MonoBehaviour
                     // [AI] 虚伪之火 01115：AI 侧(0-5) → 费用优先 5/3/1 自动给己方召唤物盾（同 01107/01110 模式）
                     if (SimpleAI.IsAISide(i))
                         SimpleAI.SetAIAutoChoice(new[] { 5, 3, 1 });
+                    SelectionManager.ReportSelectionSource(ci, Trigger.FirstStrike);
                     SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (targetSlot) =>
                     {
                         if (targetSlot != null && targetSlot.currentCard3D != null && targetSlot != slot)
@@ -545,6 +554,7 @@ public class BattleManager : MonoBehaviour
                     continue;
                 }
 
+                SelectionManager.ReportSelectionSource(ci, Trigger.FirstStrike);
                 string layerId = SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, null);
                 BoardSlot.isStrengtheningSlot = true;
 
@@ -665,6 +675,7 @@ public class BattleManager : MonoBehaviour
                     continue;
                 }
                 Debug.Log($"[03502] 弹玩家选择框: slot={i} slotIsAI={SimpleAI.SlotIsAI(i)} owner={BoardManager.GetOwnerPlayer(i)?.gameObject.name ?? "null"} isLocalHalf={BoardManager.GetOwnerPlayer(i) == NetworkPlayer.LocalHalfPlayer}");
+                SelectionManager.ReportSelectionSource(ci, Trigger.FirstStrike);
                 bool poisonDone = false;
                 SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (targetSlot) =>
                 {
@@ -730,6 +741,7 @@ public class BattleManager : MonoBehaviour
                 }
 
                 bool done = false;
+                SelectionManager.ReportSelectionSource(ci, Trigger.FirstStrike);
                 SelectionManager.Instance.BeginSelection(TargetType.SingleAny, (targetSlot) =>
                 {
                     if (targetSlot?.currentCard3D != null)
@@ -1449,6 +1461,15 @@ public class BattleManager : MonoBehaviour
         return evt;
     }
 
+    /// <summary>反击快照路径：手上只有 templateID + 特性序号，直接给提示条登记来源
+    /// （拿不到模板就传空名复位，提示条退回按目标类型的中性文案）。</summary>
+    static void ReportRevengeSource(string deadTemplateID, int revTraitIndex)
+    {
+        CardData card = (CardDatabase.Instance != null && !string.IsNullOrEmpty(deadTemplateID))
+            ? CardDatabase.Instance.GetTemplate(deadTemplateID) : null;
+        SelectionManager.ReportSelectionSource(card != null ? card.cardName : null, revTraitIndex);
+    }
+
     IEnumerator ResolveRevengeEffect(string effect, GameObject deadCard, List<GameObject> targets,
         int traitIndex = -1, string traitText = null, int fxSourceSlotID = -1)
     {
@@ -1500,6 +1521,7 @@ public class BattleManager : MonoBehaviour
                 }
                 if (hasAlly)
                 {
+                    SelectionManager.ReportSelectionSource(deadCard?.GetComponent<Card3DInstance>()?.cardInstance, Trigger.Revenge, traitIndex);
                     SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (targetSlot) =>
                     {
                         if (targetSlot?.currentCard3D == null) { onDone(); return; }
@@ -1528,6 +1550,7 @@ public class BattleManager : MonoBehaviour
         {
             yield return StartCoroutine(WaitForSelection((onDone) =>
             {
+                SelectionManager.ReportSelectionSource(deadCard?.GetComponent<Card3DInstance>()?.cardInstance, Trigger.Revenge, traitIndex);
                 SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (targetSlot) =>
                 {
                     if (targetSlot != null && !targetSlot.isBlocked)
@@ -1562,14 +1585,14 @@ public class BattleManager : MonoBehaviour
         var bm = FindObjectOfType<BoardManager>();
         var bmInstance = BattleManager.Instance;
         int safety = 0;
-        var batch = new List<(int deadSlotID, string effect, List<string> sourceIDs, string deadInstanceID, int revTraitIndex, string revTraitText)>();
+        var batch = new List<(int deadSlotID, string effect, List<string> sourceIDs, string deadInstanceID, int revTraitIndex, string revTraitText, string deadTemplateID)>();
         while (BoardSlot.pendingRevenges.Count > 0 && safety++ < 20)
         {
             batch.Clear();
             batch.AddRange(BoardSlot.pendingRevenges);
             BoardSlot.pendingRevenges.Clear();
 
-            foreach (var (deadSlotID, effect, sourceIDs, deadInstanceID, revTraitIndex, revTraitText) in batch)
+            foreach (var (deadSlotID, effect, sourceIDs, deadInstanceID, revTraitIndex, revTraitText, deadTemplateID) in batch)
             {
                 // 对方摸两张牌——始终用 deadSlotID 的对手（与 sourceIDs 是否为空无关）
                 if (effect.Contains("对方摸两张牌"))
@@ -1628,6 +1651,7 @@ public class BattleManager : MonoBehaviour
                         {
                             yield return bmInstance.StartCoroutine(bmInstance.WaitForSelection((onDone) =>
                             {
+                                ReportRevengeSource(deadTemplateID, revTraitIndex);
                                 SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (ts) =>
                                 {
                                     if (ts != null && !ts.isBlocked)
@@ -1694,6 +1718,7 @@ public class BattleManager : MonoBehaviour
                                     if (bm2?.GetSlot(j)?.currentCard3D != null) { hasAlly = true; break; }
                                 if (hasAlly)
                                 {
+                                    ReportRevengeSource(deadTemplateID, revTraitIndex);
                                     SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (targetSlot) =>
                                     {
                                         if (targetSlot?.currentCard3D != null)
@@ -2114,6 +2139,7 @@ public class BattleManager : MonoBehaviour
             yield break;
         }
 
+        SelectionManager.ReportSelectionSource(giver, Trigger.FirstStrike);
         bool done = false;
         SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (targetSlot) =>
         {
@@ -2193,6 +2219,7 @@ public class BattleManager : MonoBehaviour
         }
 
         BoardSlot.isStrengtheningSlot = true;
+        SelectionManager.ReportSelectionSource(ci, Trigger.FirstStrike);
         SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, null);
 
         BoardSlot firstSlot = null;
@@ -2341,6 +2368,7 @@ public class BattleManager : MonoBehaviour
                 yield break;
             }
 
+            SelectionManager.ReportSelectionSource(sword, Trigger.FirstStrike);
             bool done = false;
             CardInstance targetCI = null;
 
