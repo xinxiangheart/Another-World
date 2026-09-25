@@ -72,6 +72,10 @@ public partial class TurnManager
                 // 远程客户端：phaseCount 只在主机 StartNewPhase 递增，客户端需在收到 PhaseStart 时同步递增
                 //（与主机 StartNewPhase 的 phaseCount++ 一一对应，用于字幕"第X阶段"/轮盘第一回合判断）
                 phaseCount++;
+                // 影舞者(01502)：影子再进场是「每阶段开始」的结算，每个 PhaseStart 都要重新放行。
+                // 旧写法只在 MyTurn 分支把这个标志清回 false，标志一旦被上一阶段置位就不再复位，
+                // 本阶段的 PhaseStart 直接跳过再进场（影子会在错误的阶段由 MyTurn 兜底补放）。
+                _shadowsReenteredThisPhase = false;
                 // 远程客户端：处理全部阶段开始效果（影子/铁匠/执行之剑/忤逆者等）
                 if (CardInstance.shadowMasterAlive)
                 {

@@ -48,6 +48,8 @@ public partial class TurnManager : MonoBehaviour
 
     IEnumerator InitialDraw()
     {
+        // 新对局复位影舞者(01502)全局 static（与 AutoConnect.Awake 同款双保险：主机/离线走这一条）
+        CardInstance.ResetShadowGlobals();
         yield return null;
 
         // 战斗场景入场镜头没走完先不抽牌：那会儿 2D 界面还是全透明的，飞牌动画没人看得见

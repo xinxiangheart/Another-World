@@ -4501,23 +4501,61 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         if (shadowTemplate?.prefab3D == null) yield break;
 
         BoardManager bm = FindObjectOfType<BoardManager>();
-        // 取实例侧：调用方（阶段开始）用 FindObjectOfType<BoardSlot>() 拿到的是任意槽，slotID 不可靠，
-        // 故以场上 01502 所在半场为准（AI 0-5 / Host 6-11），找不到才回退调用方 slotID。
-        int sideProbe1502 = forceSideSlotID;
-        if (sideProbe1502 < 0 && bm != null)
-        {
-            for (int i = 0; i < 12; i++)
-            {
-                CardInstance probe = bm.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
-                if (probe != null && probe.templateID == "01502") { sideProbe1502 = i; break; }
-            }
-        }
-        if (sideProbe1502 < 0) sideProbe1502 = slotID;
-        // 在线对局的远端半场(0-5)：由远端客户端 SetPhaseFromNetwork 自己放影子，主机不代放
-        if (!SimpleAI.IsAIMatch && sideProbe1502 >= 0 && sideProbe1502 < 6) yield break;
+        if (bm == null) yield break;
 
-        bool aiSide1502 = SimpleAI.IsAIMatch && sideProbe1502 < 6; // 本实例=AI 侧(0-5)
-        int shStart1502 = aiSide1502 ? 0 : 6;               // Host/人类=6-11
+        // 自愈：棋盘上一个影舞者都没有，却还挂着 shadowMasterAlive（跨对局残留 / 未走退场链）→ 清标记，绝不放影子。
+        // 这是「跨对局召唤」的兜底：新对局开始由 ResetShadowGlobals 复位，这里再挡一道。
+        bool masterOnBoard = false;
+        for (int i = 0; i < 12; i++)
+        {
+            CardInstance probe = bm.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (probe != null && probe.templateID == "01502") { masterOnBoard = true; break; }
+        }
+        if (!masterOnBoard)
+        {
+            if (CardInstance.shadowMasterAlive)
+            {
+                Debug.LogWarning("[Effect] 01502: 场上无影舞者 → 清除残留 shadowMasterAlive，不放影子");
+                CardInstance.shadowMasterAlive = false;
+            }
+            yield break;
+        }
+
+        // 指定半场：只放那半场
+        if (forceSideSlotID >= 0)
+        {
+            yield return StartCoroutine(SummonShadowsOnHalf(forceSideSlotID < 6 ? 0 : 6, shadowTemplate));
+            yield break;
+        }
+
+        // 本端负责的半场：服务器 = 6-11(本机) + AI 对局时的 0-5(AI)；纯客户端只放自己的 6-11（0-5 由对手端自己放）。
+        // 旧写法用「场上第一个 01502」定半场、找不到还回退调用方 slotID，导致
+        // ① 主机侧影舞者被对手影舞者顶掉时不补放本机影子；
+        // ② 纯客户端 RemoteHalfPlayer.connectionToClient 恒为 null（IsAIMatch 误判为真），替对手把影子放到本地 0-5。
+        if (SimpleAI.IsAIMatch && NetworkServer.active)
+            yield return StartCoroutine(SummonShadowsOnHalf(0, shadowTemplate));
+        yield return StartCoroutine(SummonShadowsOnHalf(6, shadowTemplate));
+    }
+
+    /// <summary>补齐「某一半场」缺额的影子。halfStart 只能是 0 或 6。
+    /// 该半场没有活着且未被完全沉默的影舞者 → 直接返回（trait2「已退场的影子每阶段开始重新进场」由影舞者本人驱动）。</summary>
+    IEnumerator SummonShadowsOnHalf(int halfStart, CardData shadowTemplate)
+    {
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null || shadowTemplate?.prefab3D == null) yield break;
+
+        bool masterHere = false;
+        for (int i = halfStart; i < halfStart + 6; i++)
+        {
+            CardInstance probe = bm.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (probe != null && probe.templateID == "01502"
+                && (GlobalEventManager.Instance == null || !GlobalEventManager.Instance.IsFullySilenced(probe)))
+            { masterHere = true; break; }
+        }
+        if (!masterHere) yield break;
+
+        bool aiSide1502 = halfStart < 6 && SimpleAI.IsAIMatch && NetworkServer.active; // 仅权威端的 AI 半场自动落位
+        int shStart1502 = halfStart;
         int currentShadows = 0;
         for (int i = shStart1502; i <= shStart1502 + 5; i++)
         {
@@ -4530,73 +4568,121 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
 
         int toSummon = CardInstance.shadowLimit - currentShadows;
-        Debug.Log($"SummonAllShadows: limit={CardInstance.shadowLimit}, current={currentShadows}, toSummon={toSummon}");
+        if (toSummon <= 0) yield break;
+        Debug.Log($"SummonShadowsOnHalf: half={halfStart}, limit={CardInstance.shadowLimit}, current={currentShadows}, toSummon={toSummon}");
 
-        // [AI] 01502：AI 侧直接依次放影子到 AI 空槽（避免选择挂起/错放玩家半场）
+        // [AI] 01502：AI 侧依次落位。优先空槽；己方半场满了就走普通顶替（与人类拖到有卡格同一条路线）
         if (aiSide1502)
         {
             for (int k = 0; k < toSummon; k++)
             {
-                BoardSlot emp1502 = null;
-                for (int i = 0; i <= 5; i++)
+                BoardSlot emp1502 = null, occ1502 = null;
+                for (int i = shStart1502; i <= shStart1502 + 5; i++)
                 {
-                    BoardSlot s1502 = bm?.GetSlot(i);
-                    if (s1502 != null && !s1502.isBlocked && !s1502.hasCard) { emp1502 = s1502; break; }
+                    BoardSlot s1502 = bm.GetSlot(i);
+                    if (s1502 == null || s1502.isBlocked || s1502.prisonBlocked || s1502.permaBlocked) continue;
+                    if (!s1502.hasCard) { emp1502 = s1502; break; }
+                    // 顶替只针对「其它召唤物」：影舞者本人与已有影子都不做目标
+                    // （顶掉影舞者会把主人自己拆掉，顶掉影子等于白换一只）
+                    CardInstance occCI1502 = s1502.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                    if (occCI1502 == null || occCI1502.templateID == "01502" || occCI1502.isShadow) continue;
+                    if (occ1502 == null) occ1502 = s1502;
                 }
-                if (emp1502 == null) break;
-                string shid1502 = CardZoneManager.GenerateInstanceID(shadowTemplate.templateID);
-                GameObject t1502 = new GameObject("TempShadowAI");
-                CardInstance ti1502 = t1502.AddComponent<CardInstance>();
-                ti1502.InitFromTemplate(shadowTemplate, 0, shid1502);
-                ti1502.isShadow = true;
-                ti1502.currentAttack += CardInstance.shadowAtkBonus;
-                ti1502.baseAttack += CardInstance.shadowAtkBonus;
-                ti1502.currentTier += CardInstance.shadowTierBonus;
-                ti1502.baseTier += CardInstance.shadowTierBonus;
-                HandManager hm1502 = FindObjectOfType<HandManager>();
-                hm1502.PlaceCardToSlot(emp1502, t1502); // 内部已 MarkDirty，同步给玩家端
-                Destroy(t1502);
-                // AI 无客户端：不能再以 Local 身份 CmdPlayCard（会把 AI 影子记成玩家牌放到 0-5）
+                BoardSlot dst1502 = emp1502 != null ? emp1502 : occ1502;
+                if (dst1502 == null) break;
+                // 走普通落位（PlaceCardToSlot）：召唤动画 + MarkDirty 同步给玩家端都由它负责
+                PlaceShadowToken(dst1502, shadowTemplate);
                 yield return null;
             }
             yield break;
         }
 
+        // 玩家侧：影子「依次进场」，每只让玩家点一个己方格 —— 空格=普通落位，有卡格=普通顶替（拖到有卡格同一条路线）。
+        // 开选择前先确认半场还有可落子的格：旧写法在「己方半场已满 / 全封锁」时照样开选择，
+        // 玩家无处可点，WaitUntil 无限挂起，整个 TurnManager.StartNewPhase 停在这里（表现：卡住、攻击回合阶段永远进不去）。
         for (int k = 0; k < toSummon; k++)
         {
+            bool anyLegal = false;
+            for (int i = shStart1502; i <= shStart1502 + 5; i++)
+            {
+                BoardSlot s = bm.GetSlot(i);
+                if (s != null && !s.isBlocked && !s.prisonBlocked && !s.permaBlocked) { anyLegal = true; break; }
+            }
+            if (!anyLegal)
+            {
+                Debug.LogWarning($"[Effect] 01502 影子：{shStart1502}-{shStart1502 + 5} 无可落子的格，跳过剩余 {toSummon - k} 只");
+                yield break;
+            }
+
             BoardSlot.isPlacingCard = true;
             BoardSlot.isStrengtheningSlot = true;
-            SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, null);
-
-            bool placed = false;
-            BoardSlot.onTargetSelected = (selectedSlot) =>
+            BoardSlot chosenSlot = null;
+            bool cancelled = false;
+            string masterName1502 = CardDatabase.Instance?.GetTemplate("01502")?.cardName;
+            SelectionManager.ReportSelectionSource(masterName1502, 2);
+            // 用 BeginSelection 的注册回调（一次性 + 登记取消钩子）：只记录选中的格，落子放到选择收尾之后再做 ——
+            // 旧写法在 BeginSelection 之后直接覆盖静态 BoardSlot.onTargetSelected，选择被强退时没人收尾 → 永久挂起；
+            // 残留回调还会被之后任意一次点击触发，造成「时机错乱地补放影子」。
+            SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (selectedSlot) =>
             {
-                if (selectedSlot == null || selectedSlot.isBlocked || selectedSlot.slotID < 6) return;
-                string shid = CardZoneManager.GenerateInstanceID(shadowTemplate.templateID);
-                GameObject temp = new GameObject("TempShadow");
-                CardInstance ti = temp.AddComponent<CardInstance>();
-                ti.InitFromTemplate(shadowTemplate, 0, shid);
-                ti.isShadow = true;
-                ti.currentAttack += CardInstance.shadowAtkBonus;
-                ti.baseAttack += CardInstance.shadowAtkBonus;
-                ti.currentTier += CardInstance.shadowTierBonus;
-                ti.baseTier += CardInstance.shadowTierBonus;
-                HandManager hm = FindObjectOfType<HandManager>();
-                hm.PlaceCardToSlot(selectedSlot, temp);
-                Destroy(temp);
+                if (selectedSlot == null) { cancelled = true; return; }
+                if (chosenSlot != null) return;
+                if (selectedSlot.isBlocked || selectedSlot.prisonBlocked || selectedSlot.permaBlocked) return;
+                if ((selectedSlot.slotID >= 6) != (shStart1502 >= 6)) return; // 只放该半场（对齐 01503/01506 写法）
+                chosenSlot = selectedSlot;
+            });
 
-                // Sync shadow to opponent
-                if (NetworkClient.isConnected)
-                    NetworkPlayer.Local?.CmdPlayCard(shadowTemplate.templateID, selectedSlot.slotID,
-                        ti.currentAttack, ti.currentHealth, ti.currentMaxHealth, ti.currentCost, ti.instanceID);
-
-                placed = true;
+            float shadowDeadline = Time.time + 30f;
+            while (chosenSlot == null && !cancelled && Time.time < shadowDeadline)
+                yield return null;
+            if (chosenSlot == null)
+            {
+                Debug.LogWarning($"[Effect] 01502 影子放置未完成（cancelled={cancelled}）→ 跳过剩余影子");
                 SelectionManager.Instance.ForceEndAll();
                 BoardSlot.isPlacingCard = false;
                 BoardSlot.isStrengtheningSlot = false;
-            };
-            yield return new WaitUntil(() => placed);
+                yield break;
+            }
+
+            // 等一帧：EndSelection 收尾（层栈清空 / 高亮复位）后再落子 —— 被顶替卡的退场链可能再开选择，
+            // 不能压在本次选择栈上，否则依次进场会互相打断。
+            yield return null;
+            PlaceShadowToken(chosenSlot, shadowTemplate);
+            BoardSlot.isPlacingCard = false;
+            BoardSlot.isStrengtheningSlot = false;
+            yield return null; // 一只完全结算再进下一只
         }
+    }
+
+    /// <summary>把一只影子落到指定格：空格走普通落位，有卡格走普通顶替（ExecuteReplace，与拖到有卡格同一条路线）。
+    /// 两条都经由 PlaceCardToSlot —— 召唤动画、CopyFrom（含 isShadow 标记）、MarkDirty 与客户端 CmdPlayCard 同步全在里面。
+    /// 影子是「依次」进场的，每只独立结算，互不影响。</summary>
+    static void PlaceShadowToken(BoardSlot target, CardData shadowTemplate)
+    {
+        if (target == null || shadowTemplate?.prefab3D == null) return;
+
+        GameObject temp = new GameObject("TempShadow");
+        CardInstance ti = temp.AddComponent<CardInstance>();
+        ti.InitFromTemplate(shadowTemplate, 0, CardZoneManager.GenerateInstanceID(shadowTemplate.templateID));
+        ti.isShadow = true;
+        ti.currentAttack += CardInstance.shadowAtkBonus;
+        ti.baseAttack += CardInstance.shadowAtkBonus;
+        ti.currentTier += CardInstance.shadowTierBonus;
+        ti.baseTier += CardInstance.shadowTierBonus;
+
+        if (target.hasCard)
+        {
+            // 顶替：与「拖到有卡格」完全同一条路线（旧卡退场链 + 附着清理 + 入坟场 + CmdSyncGrantedTraits）
+            BoardSlot.cardToPlace = temp;
+            BoardSlot.isReplaceMode = true;
+            target.ExecuteReplace(target);
+            BoardSlot.isReplaceMode = false;
+        }
+        else
+        {
+            FindObjectOfType<HandManager>()?.PlaceCardToSlot(target, temp);
+        }
+        Destroy(temp);
     }
 
     public IEnumerator ShadowMasterEnterEffect(CardInstance giver)

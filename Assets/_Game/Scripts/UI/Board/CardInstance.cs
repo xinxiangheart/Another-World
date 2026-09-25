@@ -63,6 +63,19 @@ public class CardInstance : MonoBehaviour
     public static int shadowAtkBonus = 0; // 全局影子攻击力永久加成
     public static int shadowTierBonus = 0; // 全局影子阶位永久加成
     public static bool shadowMasterAlive = false; // 影舞者是否在场
+
+    /// <summary>新对局开始时复位影舞者(01502)的全局状态。
+    /// 这四个字段是 static：战斗场景是 LoadScene 重载的，**静态字段不会跟着场景重置**，
+    /// 上一局残留的 shadowMasterAlive/shadowLimit 会让下一局在「场上根本没有影舞者」时
+    /// 于阶段开始白放影子（跨对局召唤）。每场开局（AutoConnect.Awake / TurnManager.InitialDraw）必调。</summary>
+    public static void ResetShadowGlobals()
+    {
+        shadowLimit = 0;
+        shadowAtkBonus = 0;
+        shadowTierBonus = 0;
+        shadowMasterAlive = false;
+    }
+
     public string wolfKingInstanceID;
     public int totalDamageTaken; // 累计扣过的生命值（永久，只增不减）
     public bool isAncientFairy; // 古老精灵标记
