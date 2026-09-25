@@ -2135,7 +2135,7 @@ public partial class NetworkPlayer : NetworkBehaviour
             // 只在权威侧判定 —— OnHealthChanged 钩子两端都会跑，放那里会双端重复结算。
             if (np.currentHealth <= 0)
                 CounterManager.Instance?.CheckOnPlayerDying(np);
-            GlobalEventManager.Instance?.TriggerPlayerDamaged(amount);
+            GlobalEventManager.Instance?.TriggerPlayerDamaged(np, amount);
             np.RefreshUI();
         }
         else if (np.isLocalPlayer)

@@ -43,7 +43,7 @@ public class Player : MonoBehaviour
     {
         currentHealth -= amount;
         UpdateUI();
-        GlobalEventManager.Instance?.TriggerPlayerDamaged(amount);
+        GlobalEventManager.Instance?.TriggerPlayerDamaged(NetworkPlayer.Local, amount);
 
         if (currentHealth <= 0)
         {

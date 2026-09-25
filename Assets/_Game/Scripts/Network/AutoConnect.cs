@@ -49,6 +49,9 @@ public class AutoConnect : MonoBehaviour
         }
         if (_turnManager != null) _turnManager.enabled = false;
         _startTime = Time.time;
+        // 联机路径（含 DirectIP）统一清掉上一局 AI 对战留下的 LobbyConfig.IsAI 残留：
+        // 残留会让 LobbyConfig.RemoteSteamID 的 getter 恒返回 0 → 对方头像拿不到、直连也会退化去搜大厅。
+        LobbyConfig.EnterMultiplayer();
         Debug.LogWarning($"[AutoConnect-Timing] Start — 场景加载完成, 网络连接开始 @{Time.time:F2}s");
 
         // Direct IP path — bypass Steam entirely for local/self-test

@@ -10,6 +10,9 @@ public static class LobbyConfig
     public static bool IsDirectIP { get; set; }
     /// <summary>AI 对战模式（离线单机）。设 true 且 FromLobby=false，走离线 Host + AI 对手。</summary>
     public static bool IsAI { get; set; }
+    /// <summary>进入任意联机对局（建房 / 加入 / 匹配 / 直连）时调用：清掉上一次 AI 对战留下的 IsAI。
+    /// 残留会让 RemoteSteamID 的 getter 恒返回 0（IsAI 分支），后续联机对局既拿不到对方头像，也会断直连。</summary>
+    public static void EnterMultiplayer() { IsAI = false; }
     /// <summary>Lobby 场景已有的 Steam 大厅 ID。</summary>
     public static Steamworks.CSteamID CurrentLobbyID { get; set; }
     public static string HostSteamID { get; set; }
@@ -63,6 +66,7 @@ public class LobbyManager : MonoBehaviour
         // 防止残留的 LobbyMatchList_t 回调收到别的面板的 RequestLobbyList 结果而错误处理。
         if (quickMatchButton != null) quickMatchButton.onClick.AddListener(() =>
         {
+            LobbyConfig.EnterMultiplayer();
             CreateRoomPanel.Instance?.LeaveRoom();
             JoinRoomPanel.Instance?.Close();
             QuickMatchPanel.Instance?.Open();
@@ -82,12 +86,14 @@ public class LobbyManager : MonoBehaviour
 
     public void CreateRoom()
     {
+        LobbyConfig.EnterMultiplayer();
         QuickMatchPanel.Instance?.Close();
         CreateRoomPanel.Instance?.OpenAsHost();
     }
 
     public void JoinRoom()
     {
+        LobbyConfig.EnterMultiplayer();
         QuickMatchPanel.Instance?.Close();
         JoinRoomPanel.Instance?.Open();
     }

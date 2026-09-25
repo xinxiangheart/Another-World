@@ -239,7 +239,7 @@ public class CardInstance : MonoBehaviour
     public string buffText;
     public bool hasDebuff;
     public string debuffText;
-    public System.Action<int> _disasterWalkerHandler;
+    public System.Action<NetworkPlayer, int> _disasterWalkerHandler;
     // 受沉默控制的特性属性
     /// <summary>进场（5.x 已迁特性组）：hasOnEnter 保留数据拥有；特性组 HasActiveClass("进场") 叠加激活（未沉默/未单条禁）。
     /// 进场效果分发门在 template（放置瞬间/召唤路径用 template.hasOnEnter + StartOnEnterEffect:1106 的 IsTraitBlocked 现查），本属性只供"按实例现态判断进场能力"的侧方判断（投机者 01125、AI 评分）使用——被沉默/被禁的进场特性不计。</summary>

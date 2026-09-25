@@ -2557,13 +2557,17 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         isAttachSelectMode = true;
         attachCanBeIndependent = canBeIndependent;
     }
-    public void OnDisasterWalkerDamage(int amount)
+    /// <summary>03511 灾厄行者（在场时己方玩家每扣1HP摸1牌）：只认「自己这一半的玩家」扣血。
+    /// OnPlayerDamaged 是全局事件，联机时对方扣血同样会广播到本端，必须按受伤玩家的半场过滤，
+    /// 否则对方掉血会给灾厄行者的主人白摸牌。</summary>
+    public void OnDisasterWalkerDamage(NetworkPlayer victim, int amount)
     {
-        Debug.Log($"灾厄行者触发: 扣血{amount}, slotID={slotID}");
         NetworkPlayer owner = BoardManager.GetOwnerPlayer(slotID);
+        if (victim == null || owner == null || victim != owner) return;
+        Debug.Log($"灾厄行者触发: 扣血{amount}, slotID={slotID}");
         for (int i = 0; i < amount; i++)
         {
-            owner?.DrawCardWithoutLimit();
+            owner.DrawCardWithoutLimit();
         }
     }
     void CopyToGrave(CardInstance dest, CardInstance src)

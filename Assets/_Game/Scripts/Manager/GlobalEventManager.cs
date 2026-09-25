@@ -272,12 +272,13 @@ public class GlobalEventManager : MonoBehaviour
 
     /// <summary>能量骇客对位判定（01335 受害者状态用）。与 IsSilencedByEnergyHacker 统一语义（B2），不再各自维护。</summary>
     bool IsUnderEnergyHacker(CardInstance ci) => IsSilencedByEnergyHacker(ci);
-    /// <summary>己方玩家受到伤害时触发，参数为伤害量</summary>
-    public event Action<int> OnPlayerDamaged;
-    public void TriggerPlayerDamaged(int amount)
+    /// <summary>有玩家受到伤害时触发，参数为（受伤玩家, 伤害量）。
+    /// 订阅方必须自行按半场过滤——联机时双方扣血都会走这里，不能默认「受伤的必然是己方」。</summary>
+    public event Action<NetworkPlayer, int> OnPlayerDamaged;
+    public void TriggerPlayerDamaged(NetworkPlayer victim, int amount)
     {
-        Debug.Log($"TriggerPlayerDamaged: amount={amount}, subscribers={OnPlayerDamaged?.GetInvocationList()?.Length}");
-        OnPlayerDamaged?.Invoke(amount);
+        Debug.Log($"TriggerPlayerDamaged: victim={(victim != null ? victim.playerName : "null")}, amount={amount}, subscribers={OnPlayerDamaged?.GetInvocationList()?.Length}");
+        OnPlayerDamaged?.Invoke(victim, amount);
     }
     public List<AuraBase> GetAurasOfSource(CardInstance source)
     {
