@@ -205,6 +205,10 @@ public class BattleManager : MonoBehaviour
         // 检查对方是否有合法目标
             if (ci.templateID == "01124")
             {
+                // 刻意**不加** `if (i < 6 && !SimpleAI.IsAIMatch) continue;`（01513/01516 有那条）：
+                // 舞者是**纯自动**换位，没有弹窗要弹在拥有者屏幕上；主机全权处理两个半场，
+                // 并用下面的 TargetSwapCards(±6 映射) 把对方半场那次同步过去。
+                // 远端客户端 RunRemoteFirstStrikes 里没有 01124 分支，加了守卫 = 对方半场的舞者永远不换。
                 int mySlotIndex = i;
                 int col = mySlotIndex % 3;
                 // 「与前排/后排互换」必须换**同一半场**的对位：不能硬编码 6/9——

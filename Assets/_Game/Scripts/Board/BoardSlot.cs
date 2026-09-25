@@ -493,6 +493,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                     break;
                 }
                 // 非交换先手 → buff/debuff/伤害由第2/3轮分别处理
+                case "01124": // 舞者换位：主机全权处理两个半场并 TargetSwapCards 回同步，本端什么都不用做
                 case "03012":
                 case "01519":
                 case "01318":
