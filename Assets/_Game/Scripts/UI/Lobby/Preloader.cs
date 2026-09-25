@@ -30,6 +30,7 @@ public class Preloader : MonoBehaviour
     public float Elapsed => Time.time - _startTime;
 
     AsyncOperation _sceneLoadOp;
+    float _peakTotal;   // TotalProgress 只增不减用的历史峰值
 
     void Awake()
     {
@@ -82,7 +83,7 @@ public class Preloader : MonoBehaviour
         // ── 通用 UI Prefab ────────────────────────────────────
         Preload<GameObject>("UI/SpellCard2D");
         Preload<GameObject>("UI/Card2D");
-        // AutoConnect.CreateWaitingUI 和 DamageFloater 用的字体
+        // LoadingScreen 和 DamageFloater 用的字体
         Preload<TMP_FontAsset>("Fonts & Materials/NotoSansSC SDF");
         Preload<TMP_FontAsset>("Fonts & Materials/NotoSerifCJKsc-Bold SDF");
 
@@ -150,6 +151,8 @@ public class Preloader : MonoBehaviour
     /// <summary>异步加载Game场景——先异步加载场景（不激活），资源就绪后激活。</summary>
     public void LoadGameScene()
     {
+        _peakTotal = 0f;                  // 每次重新加载都从头计
+        LoadingScreen.BeginLoad();        // 全黑 + 右下角白字进度，一直盖到战斗开始
         StartCoroutine(LoadGameSceneRoutine());
     }
 
@@ -185,15 +188,23 @@ public class Preloader : MonoBehaviour
             _sceneLoadOp.allowSceneActivation = true;
     }
 
-    /// <summary>预加载完成 + 场景已激活的总进度（供UI显示）。</summary>
+    /// <summary>目标场景是否已经加载完（激活完成）。加载界面用它决定何时收掉进度行 / 自动隐藏。</summary>
+    public bool SceneReady => _sceneLoadOp == null || _sceneLoadOp.isDone;
+
+    /// <summary>预加载完成 + 场景已激活的总进度（供 LoadingScreen 显示）。</summary>
+    /// 场景激活后 Unity 的 progress 会停在 0.9 甚至回落，所以这里只增不减，且场景一加载完就直接报 1。
     public float TotalProgress
     {
         get
         {
             float resProg = Progress;
-            float sceProg = _sceneLoadOp != null ? Mathf.Clamp01(_sceneLoadOp.progress / 0.9f) : 0f;
+            float sceProg = _sceneLoadOp == null ? 0f
+                          : (_sceneLoadOp.isDone ? 1f : Mathf.Clamp01(_sceneLoadOp.progress / 0.9f));
             // 资源占 40%，场景占 60%
-            return resProg * 0.4f + sceProg * 0.6f;
+            float total = resProg * 0.4f + sceProg * 0.6f;
+            if (_sceneLoadOp != null && _sceneLoadOp.isDone) total = 1f;
+            if (total > _peakTotal) _peakTotal = total;
+            return _peakTotal;
         }
     }
 

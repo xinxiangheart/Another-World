@@ -1,25 +1,25 @@
 using UnityEngine;
 using Mirror;
 using System.Net.Sockets;
-using TMPro;
 using Steamworks;
 using UnityEngine.SceneManagement;
 
 public class AutoConnect : MonoBehaviour
 {
     private TurnManager _turnManager;
-    private GameObject _waitingUI;
     private NetworkManager _nm;
     private float _startTime;
     private bool _returningToLobby;
     private bool _hostReadyShown;
+    private bool _fadeRequested;
 
     void Awake()
     {
         _nm = FindObjectOfType<NetworkManager>();
         _turnManager = FindObjectOfType<TurnManager>();
-        CreateWaitingUI();
-        if (!LobbyConfig.FromLobby) { HideUI(); return; }
+        // 进入战斗场景的加载界面：全黑 + 右下角白字进度（画面由 LoadingScreen 负责）
+        LoadingScreen.Show();
+        if (!LobbyConfig.FromLobby) { LoadingScreen.RequestFadeOut(0.35f); return; }
         NetworkClient.OnConnectedEvent += OnConnected;
         NetworkClient.OnDisconnectedEvent += OnDisconnected;
         NetworkServer.OnDisconnectedEvent += OnServerDisconnected;
@@ -321,22 +321,9 @@ public class AutoConnect : MonoBehaviour
         SteamMatchmaking.RequestLobbyList();
     }
 
-    void CreateWaitingUI()
-    {
-        _waitingUI = new GameObject("NetworkWaiting"); DontDestroyOnLoad(_waitingUI);
-        var c = _waitingUI.AddComponent<Canvas>(); c.renderMode = RenderMode.ScreenSpaceOverlay; c.sortingOrder = 999;
-        _waitingUI.AddComponent<UnityEngine.UI.CanvasScaler>(); _waitingUI.AddComponent<UnityEngine.UI.GraphicRaycaster>();
-        var p = new GameObject("Panel"); p.transform.SetParent(_waitingUI.transform, false);
-        p.AddComponent<UnityEngine.UI.Image>().color = new Color(0,0,0,0.85f);
-        var pr = p.GetComponent<RectTransform>(); pr.anchorMin=Vector2.zero; pr.anchorMax=Vector2.one; pr.offsetMin=Vector2.zero; pr.offsetMax=Vector2.zero;
-        var t = new GameObject("Text"); t.transform.SetParent(_waitingUI.transform, false);
-        var tmp = t.AddComponent<TextMeshProUGUI>(); tmp.fontSize=26; tmp.color=Color.white; tmp.alignment=TextAlignmentOptions.Center;
-        var f = Resources.Load<TMP_FontAsset>("Fonts & Materials/NotoSansSC SDF"); if(f!=null) tmp.font=f;
-        var tr = t.GetComponent<RectTransform>(); tr.anchorMin=new Vector2(0.05f,0.1f); tr.anchorMax=new Vector2(0.95f,0.9f); tr.offsetMin=Vector2.zero; tr.offsetMax=Vector2.zero;
-    }
-    void SetText(string m) { var t=_waitingUI?.GetComponentInChildren<TextMeshProUGUI>(); if(t!=null) t.text=m; }
-    void HideUI() { if(_waitingUI!=null) _waitingUI.SetActive(false); }
-    void ShowUI(string msg) { if(_waitingUI!=null) { _waitingUI.SetActive(true); SetText(msg); } }
+    void SetText(string m) { LoadingScreen.SetStatus(m); }
+    void HideUI() { LoadingScreen.Hide(); }
+    void ShowUI(string msg) { LoadingScreen.Show(); LoadingScreen.SetStatus(msg); }
     void OnConnected(){
         Debug.LogWarning($"[AutoConnect-Timing] OnConnected — 连接建立 @{Time.time - _startTime:F2}s");
         SetText(NetworkServer.active?"正在建立连接 (3/3)...":"已连接, 等待对手...");
@@ -367,18 +354,19 @@ public class AutoConnect : MonoBehaviour
         yield return new WaitForSeconds(2f);
         if (NetworkServer.active) _nm.StopHost();
         else if (NetworkClient.isConnected) _nm.StopClient();
-        // Destroy DontDestroyOnLoad objects from this session
-        if (_waitingUI != null) { Destroy(_waitingUI); _waitingUI = null; }
+        LoadingScreen.Hide();
         if (_nm != null) { Destroy(_nm.gameObject); _nm = null; }
         SceneManager.LoadScene("Lobby");
     }
     void OnDestroy(){ _lcb?.Dispose(); _llcb?.Dispose(); _leb?.Dispose(); NetworkClient.OnConnectedEvent-=OnConnected; NetworkClient.OnDisconnectedEvent-=OnDisconnected; NetworkServer.OnDisconnectedEvent-=OnServerDisconnected; }
     void Update(){
-        if(_waitingUI==null||!_waitingUI.activeSelf)return;
+        if(!LoadingScreen.IsVisible)return;
         if(!_hostReadyShown) ShowHostReady();   // host 模式文本兜底（StartHost 抛异常时不会走到这里）
         if(_turnManager!=null&&_turnManager.enabled&&NetworkTurnSync.Instance!=null&&NetworkTurnSync.Instance.gameStarted){
-            Debug.LogWarning($"[AutoConnect-Timing] 黑幕隐藏 — gameStarted=true @{Time.time - _startTime:F2}s 总耗时");
-            _waitingUI.SetActive(false);
+            if (_fadeRequested) return;
+            _fadeRequested = true;
+            Debug.LogWarning($"[AutoConnect-Timing] 请求淡出加载界面 — gameStarted=true @{Time.time - _startTime:F2}s 总耗时");
+            LoadingScreen.RequestFadeOut();
         }
     }
 }

@@ -164,7 +164,7 @@ public class HoverTagSystem : MonoBehaviour
     /// <summary>
     /// 兜底画布：只认「本场景（Game）自己的」画布。
     ///
-    /// 过场层（SceneTransition）、设置面板（SettingsCanvas）、匹配等待条（NetworkWaiting）都是挂在
+    /// 过场层（SceneTransition）、设置面板（SettingsCanvas）、加载界面（LoadingScreen）都是挂在
     /// DontDestroyOnLoad 上的全屏根 Overlay 画布，进 Game 时它们还活着；一旦被挑中，标签层就挂到了
     /// 别的层级上（随后可能被过场层一起销毁）。
     /// </summary>
