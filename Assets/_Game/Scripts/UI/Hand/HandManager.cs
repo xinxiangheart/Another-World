@@ -97,7 +97,11 @@ public class HandManager : MonoBehaviour
         {
             CardData removedTD = CardDatabase.Instance?.GetTemplate(removedTemplateID);
             bool isAttachOnly = removedTD != null && removedTD.canAttach && removedTD.baseHealth == 0;
-            if (!isAttachOnly)
+            // 法术的「打出」上报统一走 CardDrag.ResolveSpellEffect → CounterManager.NotifySpellPlayed：
+            // 这里再补 CmdPlayCard(-1) 会双触发 OnCardPlayed 系反制；而且弃牌/择牌丢掉法术时
+            // 也会被当成「打出」误触发对方反制。召唤物照旧（落位由 PlaceIndependentCard 发 CmdPlayCard）。
+            bool isSpell = removedTD != null && removedTD.cardType == CardType.Spell;
+            if (!isAttachOnly && !isSpell)
             {
                 NetworkPlayer.Local?.CmdPlayCard(removedTemplateID, -1, -1, -1, -1, -1, "");
                 BoardSyncManager.MarkDirty();
@@ -382,7 +386,7 @@ public class HandManager : MonoBehaviour
                 if (selectedSlot.hasCard)
                 {
                     CardInstance cardInst = cardObj.GetComponent<CardInstance>();
-                    if (IsBoardFull() && cardInst != null && cardInst.canAttach && canBeIndependent)
+                    if (IsBoardFull(sourceInstance) && cardInst != null && cardInst.canAttach && canBeIndependent)
                     {
                         BoardSlot.isReplaceMode = true;
                         ReplaceOrAttachModal.Instance.Show(
@@ -1936,19 +1940,10 @@ public class HandManager : MonoBehaviour
         ShowAllCards();
         BoardSyncManager.MarkDirty();
     }
-    private bool IsBoardFull()
-    {
-        BoardManager bm = FindObjectOfType<BoardManager>();
-        if (bm == null) return false;
-        for (int i = 6; i <= 11; i++)
-        {
-            BoardSlot slot = bm.GetSlot(i);
-            if (slot == null) continue;
-            if (!slot.isBlocked && !slot.hasCard)
-                return false;
-        }
-        return true;
-    }
+    /// <summary>己方半场是否无处可放——统一走 BoardSlot.IsAllyBoardFull：有牌、被普通封锁、
+    /// 被囚牢、被永久封锁都算占位。这里以前只看 isBlocked/hasCard，漏掉囚牢/永封时会判成"没满"
+    /// → 不进顶替 → 场上却没有合法落点 → 卡死。</summary>
+    private bool IsBoardFull(CardInstance placing) => BoardSlot.IsAllyBoardFull(placing);
     public void UpdateXValues(CardInstance ci)
     {
         if (ci == null || !ci.isXValue) return;
@@ -3593,23 +3588,29 @@ public class HandManager : MonoBehaviour
     }
     public IEnumerator CounterKillerEffect()
     {
-        List<CounterCard> enemyCounters = CounterManager.Instance?.enemyCounters;
-        if (enemyCounters == null || enemyCounters.Count == 0)
+        // [AI] 02302：AI 施法 → 自动选「玩家最后放置」的反制，不弹玩家点选。
+        // 必须在下面 enemyCounters 判空**之前** —— AI 的牺牲品在 myCounters，用 enemyCounters 判空会误判成「没得选」。
+        if (SimpleAI.IsAIEvaluating)
         {
-                Debug.Log("对方场上没有召唤物，阴阳无法打出");
+            // 牺牲品是**玩家的**反制：服务端 myCounters（列表不随 RunAsLocal 交换视角，
+            // 旧写法读 enemyCounters = AI 自己那摞 → AI 把自家反制无效果触发掉，玩家的反制安然无恙）
+            List<CounterCard> myList2302 = CounterManager.Instance?.myCounters;
+            CounterCard aiCK2302 = (myList2302 != null && myList2302.Count > 0)
+                ? myList2302[myList2302.Count - 1] : null;
+            if (aiCK2302 != null)
+            {
+                CardData victimTpl2302 = aiCK2302.template;
+                CounterManager.Instance.TriggerCounterNoEffect(aiCK2302, true);   // 玩家反制无效果触发（扣玩家能量）
+                CounterManager.Instance.PlayCounterWithReducedCost(victimTpl2302, 1, false); // 复制品归 AI → enemyCounters
+            }
             CardDrag.CleanupSpellResources();
             yield break;
         }
 
-        // [AI] 02302：AI 施法 → 自动选"玩家最后放置"的反制（enemyCounters 末位），不弹玩家点选
-        if (SimpleAI.IsAIEvaluating)
+        List<CounterCard> enemyCounters = CounterManager.Instance?.enemyCounters;
+        if (enemyCounters == null || enemyCounters.Count == 0)
         {
-            CounterCard aiCK2302 = enemyCounters[enemyCounters.Count - 1];
-            if (aiCK2302 != null)
-            {
-                CounterManager.Instance.TriggerEnemyCounterNoEffect(aiCK2302);
-                CounterManager.Instance.PlayCounterWithReducedCost(aiCK2302.template, 1);
-            }
+            Debug.Log("[02302] 对方没有反制牌，本牌无效果可触发");
             CardDrag.CleanupSpellResources();
             yield break;
         }
@@ -3644,11 +3645,28 @@ public class HandManager : MonoBehaviour
             CounterCard cc = selectedCK;
             CardData template = cc.template;
 
+            // 纯客户端：服务端对这次 02302 一无所知（旧实现整段只发生在本机 → 对方反制照旧触发、
+            // 复制品在服务端不存在）。本地只补「己方复制品」的视觉，权威结算走 CmdCounterKiller。
+            // 被吃掉的那张反制**不在这里本地删**：服务端 ExpireWithNoEffect 会 SyncCounterRemoved 回执，
+            // 本地再删一次的话（两端同模板各删一张）会把同名的另一张也删掉 → 镜像列表比服务端少一张。
+            if (NetworkClient.isConnected && !NetworkServer.active)
+            {
+                CounterManager.Instance?.PlayCounterWithReducedCost(template, 1);   // 本机视觉副本
+                NetworkPlayer.Local?.CmdCounterKiller(template.templateID);
+                CardDrag.CleanupSpellResources();
+                yield break;
+            }
+
             // 无效果触发对方反制牌（正常扣费）
             CounterManager.Instance.TriggerEnemyCounterNoEffect(cc);
 
             // 己方打出复制品，触发时扣1能量
             CounterManager.Instance.PlayCounterWithReducedCost(template, 1);
+
+            // 复制品只在本机生成 → 对方客户端要补模型（AI 无连接跳过）
+            if (NetworkServer.active && NetworkPlayer.Remote != null
+                && NetworkPlayer.Remote.connectionToClient != null)
+                NetworkPlayer.Remote.TargetSpawnCounterCard(NetworkPlayer.Remote.connectionToClient, template.templateID);
         }
 
         CardDrag.CleanupSpellResources();

@@ -32,7 +32,7 @@ MonoBehaviour:
   canAttach: 0
   counterTiming: 4
   counterTriggerCondition: 
-  counterEffect: "\u6311\u9009\u83B7\u5F97\u5BF9\u65B91\u5F20\u724C\uFF0C+2\u80FD\u91CF"
+  counterEffect: "\u6311\u9009\u83B7\u5F97\u5BF9\u65B91\u5F20\u724C\uFF0C\u5E76\u62BD2\u5F20\u724C"
   counterDuration: 2
   isXValue: 0
   xHealthReadsHighest: 0

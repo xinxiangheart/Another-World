@@ -71,17 +71,10 @@ public class CounterManager : MonoBehaviour
     counter.template = template;
     counter.isMine = isMine;
     counter.remainingDuration = template.counterDuration;
-        if (template.templateID == "02305" || template.templateID == "02306")
-        {
-            TurnManager tm = FindObjectOfType<TurnManager>();
-            if (tm != null)
-            {
-                if (tm.isMyTurnFirst)
-                    counter.remainingDuration = 1;
-                else
-                    counter.remainingDuration = 2;
-            }
-        }
+        // 02305/02306(OnEnemyTurnEnd)：CheckOnEnemyTurnEnd 每轮被调两次（先手结束后一次、后手结束后一次），
+        // 所以「持续 2」= 维持一个完整轮次，落点在**对手回合结束**那一刻 —— 正是卡面「对方下回合结束」。
+        // 旧写法按 isMyTurnFirst 把先手方压成 1 → 在自己回合结束就归零，读的是对手上一轮的遗留能量；
+        // 客户端镜像(TargetSpawnCounterCard)从不做这个修正，两端还会对不上。统一用模板值。
         if (template.counterTiming == CounterTriggerTiming.OnCardPlayed)
         {
             counter.decreaseTiming = CounterTriggerTiming.OnPhaseEnd;
@@ -159,6 +152,7 @@ public class CounterManager : MonoBehaviour
     /// 拿不到（Host 分支/离线 AI）传 null → 回退旧 templateID=="01319" 硬编码。</summary>
     public void ServerCheckOnCardPlayed(CardData playedCard, bool hostPlayed, CardInstance playedInst = null)
     {
+        _redirectedTemplateID = null;   // 每次判定重置：只反映「刚刚这一次」打出
         // 反制免疫：打出卡不可被反制 → 该召唤物不触发任何反制牌。
         // 特性组优先（无畏者01319 固有 receiveBlocks=Countered；被禁/沉默则失效恢复可被反制）；
         // 无实例（Host 分支/AI）回退旧 templateID 硬编码。
@@ -186,6 +180,7 @@ public class CounterManager : MonoBehaviour
                     GlobalEventManager.Instance.PendingEnterRedirectTemplate = playedCard;
                     GlobalEventManager.Instance.PendingEnterRedirectToHost = false;
                     CounterOwner(false).AddEnergy(1);
+                    _redirectedTemplateID = playedCard.templateID;
                 }
 
                 TriggerCounter(counter, i, false);
@@ -206,11 +201,90 @@ public class CounterManager : MonoBehaviour
                     GlobalEventManager.Instance.PendingEnterRedirectTemplate = playedCard;
                     GlobalEventManager.Instance.PendingEnterRedirectToHost = true;
                     CounterOwner(true).AddEnergy(1);
+                    _redirectedTemplateID = playedCard.templateID;
                 }
 
                 TriggerCounter(counter, i, true);
             }
         }
+    }
+
+    /// <summary>
+    /// 法术「打出」统一上报 —— AI 施法(SimpleAI.PlaySpell) / 学徒01329 / 谜语人01321 / 辉煌法师01521
+    /// 这些**不经 ServerPlayCard** 的法术路径必须调用，否则 OnCardPlayed 系反制（02101/02102/02304）漏触发。
+    /// 人类拖放路径由 CardDrag.ResolveSpellEffect 调本函数（HandManager.RemoveCard 对法术不再上报，防双触发）。
+    /// caster：本次施法者（RunAsLocal 期间即 NetworkPlayer.Local）；null = 取 NetworkPlayer.Local。
+    /// </summary>
+    public static void NotifySpellPlayed(CardData template, NetworkPlayer caster = null)
+    {
+        if (template == null) return;
+        if ((template.spellType & SpellType.Counter) != 0) return;   // 反制牌本身不触发反制
+
+        NetworkPlayer who = caster != null ? caster : NetworkPlayer.Local;
+        if (NetworkServer.active)
+        {
+            CounterManager.Instance?.ServerCheckOnCardPlayed(template, who == NetworkPlayer.LocalHalfPlayer);
+        }
+        else if (NetworkClient.isConnected && who != null && who.isLocalPlayer)
+        {
+            // 纯客户端本地执行的法术（needsLocalUI / 代打）服务端不知道这次打出 → 补报
+            who.CmdNotifySpellPlayed(template.templateID);
+        }
+    }
+
+    /// <summary>
+    /// 02302 反制克星的服务端权威结算：把 caster 对手持有的 templateID 反制「无效果触发」
+    /// （扣对手能量 + 移除 + 同步对手），再给 caster 打出一张复制品（触发时只扣 1 能量）。
+    /// 纯客户端在本地只做视觉，权威必须走这里；Host 本地路径（CounterKillerEffect）也复用同一套。
+    /// </summary>
+    public void ServerCounterKiller(bool casterIsHost, string templateID)
+    {
+        if (!NetworkServer.active || string.IsNullOrEmpty(templateID)) return;
+
+        List<CounterCard> list = casterIsHost ? enemyCounters : myCounters;   // 「对手持有」的那一摞
+        bool victimIsMine = !casterIsHost;
+        for (int i = list.Count - 1; i >= 0; i--)
+        {
+            if (list[i]?.template == null || list[i].template.templateID != templateID) continue;
+            CardData tpl = list[i].template;
+            ExpireWithNoEffect(list[i], i, victimIsMine);          // 对方反制无效果触发（权威扣费+移除+同步）
+            PlayCounterWithReducedCost(tpl, 1, casterIsHost);      // 己方复制品
+            // 复制品只在本机生成 → 对方客户端要补模型
+            if (casterIsHost && NetworkPlayer.Remote != null && NetworkPlayer.Remote.connectionToClient != null)
+                NetworkPlayer.Remote.TargetSpawnCounterCard(NetworkPlayer.Remote.connectionToClient, tpl.templateID);
+            return;
+        }
+        Debug.LogWarning($"[02302] 服务端未找到要无效果触发的反制牌: {templateID}");
+    }
+
+    // 02304：最近一次判定里「被蛊惑之音重定向」的打出卡 templateID（一次性，供 AI 出召唤物分支消费）。
+    string _redirectedTemplateID;
+
+    /// <summary>AI 出召唤物专用：这张牌这次的进场效果是不是刚被 02304 重定向了？
+    /// AI 的落位不走 BoardSlot.OnPointerClick，拿不到 PendingEnterRedirectInstance —— 不跳过的话
+    /// 会「AI 自己跑一次进场 + 对面 TargetHandleEnterRedirect 又代跑一次」。消费后即清。</summary>
+    public bool ConsumeEnterRedirected(string templateID)
+    {
+        if (string.IsNullOrEmpty(templateID) || _redirectedTemplateID != templateID) return false;
+        _redirectedTemplateID = null;
+        return true;
+    }
+
+    /// <summary>02304 客户端方向预判：纯客户端本地拿不到服务端的重定向标记（ServerPlayCard 在其之后才跑），
+    /// 用「本地已知的对手反制」（TargetSpawnCounterCard 镜像进 enemyCounters）预判这张牌会不会被重定向。
+    /// 只作预判：服务端随后用 TargetEnterRedirectVerdict 回执修正（猜错就还原本端进场效果）。</summary>
+    public bool OpponentHasLiveRedirectCounter(CardData playedCard)
+    {
+        if (playedCard == null || enemyCounters == null) return false;
+        for (int i = 0; i < enemyCounters.Count; i++)
+        {
+            CounterCard c = enemyCounters[i];
+            if (c?.template == null) continue;
+            if (c.template.templateID != "02304") continue;
+            if (c.template.counterTiming != CounterTriggerTiming.OnCardPlayed) continue;
+            if (MatchCondition(c, playedCard)) return true;
+        }
+        return false;
     }
 
     // ========== 阶段开始检测 ==========
@@ -369,36 +443,6 @@ public class CounterManager : MonoBehaviour
         }
     }
 
-    // ========== 己方回合开始检测 ==========
-    public void CheckOnMyTurnStart()
-    {
-        if (!NetworkServer.active) return;
-
-        for (int i = myCounters.Count - 1; i >= 0; i--)
-        {
-            CounterCard counter = myCounters[i];
-            if (!ShouldDecreaseHere(counter, CounterTriggerTiming.OnEnemyTurnEnd)) continue;
-
-            counter.remainingDuration--;
-            if (counter.remainingDuration <= 0)
-            {
-                ResolveCounterExpiry(counter, i, true);
-            }
-        }
-
-        for (int i = enemyCounters.Count - 1; i >= 0; i--)
-        {
-            CounterCard counter = enemyCounters[i];
-            if (!ShouldDecreaseHere(counter, CounterTriggerTiming.OnEnemyTurnEnd)) continue;
-
-            counter.remainingDuration--;
-            if (counter.remainingDuration <= 0)
-            {
-                ResolveCounterExpiry(counter, i, false);
-            }
-        }
-    }
-
     // ========== 判断反制牌是否在此时机递减期限 ==========
     private bool ShouldDecreaseHere(CounterCard counter, CounterTriggerTiming currentTiming)
     {
@@ -487,6 +531,13 @@ public class CounterManager : MonoBehaviour
             {
                 owner.AddEnergy(3);
             }
+            // 02211 垂死挣扎：恢复3生命值，+1能量（己方 HP<=0 时的自救；GameEndPanel 留了 0.15s 复查窗口）
+            else if (effect.Contains("恢复3生命值"))
+            {
+                owner.ReceiveHeal(3, CardInstance.HealSourceType.Spell);
+                if (effect.Contains("+1能量")) owner.AddEnergy(1);
+                Debug.Log($"[02211] 垂死挣扎触发：{owner.name} 恢复3生命值(+1能量)，当前HP={owner.currentHealth}");
+            }
         }
 
         if (!counter.noCostOnTrigger)
@@ -508,7 +559,10 @@ public class CounterManager : MonoBehaviour
         if (!NetworkServer.active || player == null) return;
         CardData data = DeckManager.Instance?.DrawFromMain();
         if (data == null) return;
-        player.TargetReceiveCard(player.connectionToClient, data.templateID, "");
+        // AI(server-only) 没有连接：老写法 TargetReceiveCard(null) 每次都让 Mirror 报
+        // "can't be sent because it was given a null connection"；牌本身照旧只走服务器手牌追踪。
+        if (player.connectionToClient != null)
+            player.TargetReceiveCard(player.connectionToClient, data.templateID, "");
         player.AddServerSideCard(data);
     }
 
@@ -550,15 +604,23 @@ public class CounterManager : MonoBehaviour
             list[i].model.transform.position = GetCounterPosition(isMine, i);
         }
     }
-    public void CheckOnPlayerDying()
+    /// <summary>玩家生命值降到 &lt;=0 时触发（02211 垂死挣扎）。dying=刚被打到 &lt;=0 的玩家，null=按本机(Host)算；
+    /// 反制牌在谁手里就查谁那一摞：Host → myCounters；Remote/AI → enemyCounters（扣费与回血都归该玩家）。
+    /// 调用点：NetworkPlayer.ApplyTakeDamage（扣血之后、死亡钩子判定之前）。</summary>
+    public void CheckOnPlayerDying(NetworkPlayer dying = null)
     {
         if (!NetworkServer.active) return;
 
-        for (int i = myCounters.Count - 1; i >= 0; i--)
+        NetworkPlayer d = dying != null ? dying : NetworkPlayer.LocalHalfPlayer;
+        bool dyingIsHost = d == null || d == NetworkPlayer.LocalHalfPlayer;
+        List<CounterCard> list = dyingIsHost ? myCounters : enemyCounters;
+
+        for (int i = list.Count - 1; i >= 0; i--)
         {
-            CounterCard counter = myCounters[i];
+            CounterCard counter = list[i];
+            if (counter?.template == null) continue;
             if (counter.template.counterTiming != CounterTriggerTiming.OnPlayerDying) continue;
-            TriggerCounter(counter, i, true);
+            TriggerCounter(counter, i, dyingIsHost);
         }
     }
     /// <summary>02305/02306：受益方=反制拥有者；受害方=其对手（被挑走一张手牌）。按 isMine 定向。</summary>
@@ -681,12 +743,16 @@ public class CounterManager : MonoBehaviour
         RemoveCounter(index, isMine);
         SyncCounterRemoved(counter, isMine);
     }
-    public void TriggerEnemyCounterNoEffect(CounterCard counter)
+    /// <summary>指定一侧的反制牌「无效果触发」（正常扣费 + 移除 + 同步对手）。02302 反制克星用。</summary>
+    public void TriggerCounterNoEffect(CounterCard counter, bool isMine)
     {
-        int index = enemyCounters.IndexOf(counter);
+        int index = (isMine ? myCounters : enemyCounters).IndexOf(counter);
         if (index >= 0)
-            ExpireWithNoEffect(counter, index, false);
+            ExpireWithNoEffect(counter, index, isMine);
     }
+
+    /// <summary>旧入口：对方(enemyCounters)的反制无效果触发。</summary>
+    public void TriggerEnemyCounterNoEffect(CounterCard counter) => TriggerCounterNoEffect(counter, false);
 
     /// <summary>公开入口：供网络命令（如 CmdFearlessTriggerCounter）调用 ExpireWithNoEffect。</summary>
     public void ExpireWithNoEffectPublic(CounterCard counter, int index, bool isMine)
@@ -694,15 +760,16 @@ public class CounterManager : MonoBehaviour
         ExpireWithNoEffect(counter, index, isMine);
     }
 
-    public void PlayCounterWithReducedCost(CardData template, int cost)
+    /// <param name="isMine">true=己方(myCounters)打出；false=对方(enemyCounters)打出 —— 02302 的服务端权威结算用。</param>
+    public void PlayCounterWithReducedCost(CardData template, int cost, bool isMine = true)
     {
         GameObject temp = new GameObject("TempCounter");
         CardInstance ci = temp.AddComponent<CardInstance>();
         ci.InitFromTemplate(template, 0);
 
-        PlayCounter(temp, true);
+        PlayCounter(temp, isMine);
 
-        var counter = myCounters.LastOrDefault();
+        var counter = (isMine ? myCounters : enemyCounters).LastOrDefault();
         if (counter != null)
             counter.reducedTriggerCost = cost;
 

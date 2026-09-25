@@ -878,16 +878,24 @@ public partial class NetworkPlayer : NetworkBehaviour
 
             // 蛊惑之音(02304): if Remote's counter redirected this card's enter effect,
             // tell the owning client to select an ally and run the redirected enter effect.
-            if (GlobalEventManager.Instance != null &&
-                GlobalEventManager.Instance.PendingEnterRedirectTemplate == template)
+            bool enterRedirected = GlobalEventManager.Instance != null &&
+                GlobalEventManager.Instance.PendingEnterRedirectTemplate == template;
+            if (enterRedirected)
             {
                 GlobalEventManager.Instance.PendingEnterRedirectTemplate = null;
+                GlobalEventManager.Instance.PendingEnterRedirectInstance = null;
                 NetworkConnectionToClient redirectTarget = this == NetworkPlayer.LocalHalfPlayer
                     ? NetworkPlayer.Remote?.connectionToClient
                     : NetworkPlayer.Local?.connectionToClient;
                 if (redirectTarget != null)
                     TargetHandleEnterRedirect(redirectTarget, templateID);
             }
+
+            // 打出方是纯客户端时，它的本地进场效果跑在服务端这次判定**之前**（CmdPlayCard 晚于本地落位），
+            // 所以必须把判定结果回执给打出处：重定向 → 本端跳过进场（对面已代跑）；未重定向 → 释放本端
+            // 延迟掉的进场效果。Host/AI 侧标记当场可见，不需要这条。
+            if (template.cardType == CardType.Summon && template.hasOnEnter && connectionToClient != null)
+                TargetEnterRedirectVerdict(connectionToClient, instanceID, enterRedirected);
         }
 
         // Always sync after placement so the other side sees the new model
@@ -2123,6 +2131,10 @@ public partial class NetworkPlayer : NetworkBehaviour
         {
             np.currentHealth -= amount;
             np.RecordPlayerDamageSource(amount, sourceTemplateID, sourceInstanceID, sourceName);
+            // 02211 垂死挣扎：把玩家打到 <=0 时先让它自救（回血后 GameEndPanel 的 0.15s 复查会放行）。
+            // 只在权威侧判定 —— OnHealthChanged 钩子两端都会跑，放那里会双端重复结算。
+            if (np.currentHealth <= 0)
+                CounterManager.Instance?.CheckOnPlayerDying(np);
             GlobalEventManager.Instance?.TriggerPlayerDamaged(amount);
             np.RefreshUI();
         }
@@ -2596,6 +2608,14 @@ public partial class NetworkPlayer : NetworkBehaviour
         });
     }
 
+    /// <summary>服务端→打出方（纯客户端）：这张召唤物的进场效果是否被蛊惑之音(02304)重定向。
+    /// 客户端本地落位早于服务端判定，命中预判时它会把进场效果挂起，靠这条回执决定「跳过 / 补跑」。</summary>
+    [TargetRpc]
+    public void TargetEnterRedirectVerdict(NetworkConnectionToClient target, string instanceID, bool redirected)
+    {
+        BoardSlot.ResolveDeferredEnter(instanceID, redirected);
+    }
+
     // ========== 普通退场残影 广播（只同步视觉，不重复结算死亡） ==========
 
     /// <summary>按 instanceID 在本端棋盘找对应模型（槽位/附着），用于克隆退场残影。</summary>
@@ -2872,23 +2892,27 @@ public partial class NetworkPlayer : NetworkBehaviour
         CounterManager.Instance?.PlayCounter(temp, false);
         Destroy(temp);
 
-        // 02305/02306 的 remainingDuration 在 PlayCounter 内用 TurnManager.isMyTurnFirst
-        // 计算——但服务器端 isMyTurnFirst 是 Host 视角。Remote(第二玩家)打牌时服务端
-        // 算出 duration=1 而非2 → 过早触发。此处用连接身份修正：
-        //   发送方是 Remote → 使用 !isMyTurnFirst（Remote 视角）
-        //   发送方是 Local  → 使用 isMyTurnFirst（Host 视角）
-        if (templateID == "02305" || templateID == "02306")
-        {
-            TurnManager tm = FindObjectOfType<TurnManager>();
-            if (tm != null && !isLocalPlayer)
-            {
-                // Remote 的反制牌在服务端 enemyCounters 中
-                var last = CounterManager.Instance?.enemyCounters?.Count > 0
-                    ? CounterManager.Instance.enemyCounters[^1] : null;
-                if (last != null && last.template.templateID == templateID)
-                    last.remainingDuration = tm.isMyTurnFirst ? 2 : 1;
-            }
-        }
+        // 02305/02306 的 duration 不再按先手/后手修正：CheckOnEnemyTurnEnd 每轮递减两次，
+        // 「持续 2」本来就等于「一个完整轮次，落点在对手回合结束」（见 CounterManager.PlayCounter）。
+        // 旧的 isMyTurnFirst 修正会把先手方压成 1 → 在自己回合结束就归零，读的是对手上一轮的遗留能量。
+    }
+
+    /// <summary>纯客户端→服务器：本地执行的法术「打出」上报（AI/代打路径不经 ServerPlayCard 时用）。
+    /// 由 CounterManager.NotifySpellPlayed 触发，服务端据此结算对方的 OnCardPlayed 系反制。</summary>
+    [Command]
+    public void CmdNotifySpellPlayed(string templateID)
+    {
+        CardData template = CardDatabase.Instance?.GetTemplate(templateID);
+        if (template == null) return;
+        CounterManager.Instance?.ServerCheckOnCardPlayed(template, this == NetworkPlayer.LocalHalfPlayer);
+    }
+
+    /// <summary>客户端→服务器：02302 反制克星。服务器权威执行「对方反制无效果触发 + 己方复制一张(仅扣1能量)」；
+    /// 纯客户端本地那次只负责视觉（客户端写 Remote 的 energy 是非权威的，且服务端毫不知情）。</summary>
+    [Command]
+    public void CmdCounterKiller(string templateID)
+    {
+        CounterManager.Instance?.ServerCounterKiller(this == NetworkPlayer.LocalHalfPlayer, templateID);
     }
 
     /// <summary>

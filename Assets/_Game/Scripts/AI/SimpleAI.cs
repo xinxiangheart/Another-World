@@ -411,7 +411,19 @@ public class SimpleAI : MonoBehaviour
             bool yinYangMerged = hmMerge != null && slot != null && hmMerge.TryMergeYinYang(slot, ci);
             if (!yinYangMerged)
             {
-                if (td != null && td.hasOnEnter && boardInst != null)
+                // 蛊惑之音(02304)：玩家反制把这次进场重定向走了 → 本端跳过（对面 TargetHandleEnterRedirect 代跑），
+                // 否则 AI 自己跑一遍 + 玩家那边再跑一遍 = 双份进场效果。
+                bool enterRedirected2304 = td != null && td.hasOnEnter
+                    && CounterManager.Instance != null
+                    && CounterManager.Instance.ConsumeEnterRedirected(td.templateID);
+                if (enterRedirected2304 && boardInst != null)
+                {
+                    // 02304 附带「召唤物生命值降为1」（人类落位路径在 BoardSlot.OnPointerClick 里做同样的事）
+                    boardInst.currentHealth = 1;
+                    boardInst.currentMaxHealth = Mathf.Max(1, boardInst.currentMaxHealth);
+                    slot.currentCard3D?.GetComponent<Card3DInstance>()?.UpdateValues();
+                }
+                if (td != null && td.hasOnEnter && boardInst != null && !enterRedirected2304)
                     yield return slot.StartOnEnterEffect(td, boardInst);
 
                 // 召唤物「进场完成」通知（猩红圣徒 01533「敌进场后受血歌数伤」这类敌进场光环）：
@@ -728,6 +740,9 @@ public class SimpleAI : MonoBehaviour
         {
             // [打出展示] AI 法术：与人类 ResolveSpellEffect 同款正面展示（原先只走效果、不展示 → 法术不闪烁）
             PlayRevealManager.Show(td, false);
+            // 反制上报：AI 施法不经 ServerPlayCard → 不补这一句，玩家的 OnCardPlayed 系反制
+            // （02101 一费终结者 / 02102 三费终结者 / 02304 蛊惑之音）对 AI 法术永远不触发。
+            CounterManager.NotifySpellPlayed(td, _ai);
             var ctx = EffectContext.ForSpell(td, capturedTarget);
             ctx.spellCasterIsHost = casterHostSide;
             EffectDispatcher.Dispatch(Trigger.Spell, ctx);

@@ -484,7 +484,7 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
 
         if (cardInst != null && cardInst.canAttach)
         {
-            if (IsBoardFull())
+            if (IsBoardFull(cardInst))
             {
                 BoardSlot.isReplaceMode = true;
             }
@@ -496,7 +496,7 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
         }
         else
         {
-            if (IsBoardFull())
+            if (IsBoardFull(cardInst))
             {
                 BoardSlot.isReplaceMode = true;
             }
@@ -515,6 +515,12 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
         // 本次法术的待等协程先清空：纯客户端非 UI 法术走 CmdResolveSpell（不设值），
         // 不清会把上一张法术的协程留在槽里，被消费方误当本次法术等待
         SetSpellPending(null);
+
+        // 反制上报：所有「法术打出」的统一出口（人类拖放 / AI 施法 / 学徒01329 / 谜语人01321 /
+        // 辉煌法师01521 都汇到这里或 SimpleAI.PlaySpell）—— 命中 OnCardPlayed 系反制（02101/02102/02304）。
+        // 人类拖放旧版靠 HandManager.RemoveCard→CmdPlayCard(-1) 上报，已挪到本函数，
+        // 那边对法术**不再**上报（否则同一张牌双触发，且「弃牌丢掉法术」也会被误当成打出）。
+        CounterManager.NotifySpellPlayed(template);
 
         // [打出展示] 法术打出（本地/离线/01329等迭代召唤复用法术）→ 正面（法术无场上模型、无隐藏机制）
         if (template != null)
@@ -745,20 +751,10 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
         }
 
     }
-    private bool IsBoardFull()
-    {
-        BoardManager bm = FindObjectOfType<BoardManager>();
-        if (bm == null) return false;
-        for (int i = 6; i <= 11; i++)
-        {
-            BoardSlot slot = bm.GetSlot(i);
-            if (slot == null) continue;
-            // 只要有一个槽位没被封锁且没卡，就说明没满
-            if (!slot.isBlocked && !slot.hasCard)
-                return false;
-        }
-        return true;
-    }
+    /// <summary>己方半场是否无处可放——统一走 BoardSlot.IsAllyBoardFull：有牌、被普通封锁、
+    /// 被囚牢、被永久封锁都算占位。以前只看 isBlocked/hasCard，漏掉囚牢/永封时会判成"没满"
+    /// → 不进顶替 → 场上却没有合法落点 → 卡死。</summary>
+    private bool IsBoardFull(CardInstance placing) => BoardSlot.IsAllyBoardFull(placing);
     public static void CleanupSpellResources()
     {
         BoardSyncManager.MarkDirty();

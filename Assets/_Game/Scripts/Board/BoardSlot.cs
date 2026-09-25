@@ -1019,14 +1019,26 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 CardInstance inst = currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
                 CardData template = CardDatabase.Instance?.GetTemplate(inst?.templateID);
 
-                // 蛊惑之音重定向：生命值降为1
-                if (GlobalEventManager.Instance != null && GlobalEventManager.Instance.PendingEnterRedirectTemplate != null
-                    && template == GlobalEventManager.Instance.PendingEnterRedirectTemplate)
+                // 蛊惑之音(02304)重定向：生命值降为1
+                GlobalEventManager gem = GlobalEventManager.Instance;
+                bool redirectKnown = gem != null && gem.PendingEnterRedirectTemplate != null
+                    && template == gem.PendingEnterRedirectTemplate;
+                // 纯客户端：服务端判定（ServerPlayCard）晚于本地落位，本端拿不到上面这个标记 →
+                // 用「本地已知的对手反制」(enemyCounters) 预判。判中则把本端进场效果挂起，
+                // 等服务端 TargetEnterRedirectVerdict 回执：重定向→跳过；没重定向→还原并补跑。
+                bool redirectGuessed = !redirectKnown && !NetworkServer.active && NetworkClient.isConnected
+                    && template != null && template.hasOnEnter && inst != null
+                    && CounterManager.Instance != null
+                    && CounterManager.Instance.OpponentHasLiveRedirectCounter(template);
+                bool deferEnterForVerdict = false;
+                int healthBeforeGuess = inst != null ? inst.currentHealth : 0;
+                if (redirectKnown || redirectGuessed)
                 {
-                    GlobalEventManager.Instance.PendingEnterRedirectInstance = inst;
+                    if (redirectKnown) gem.PendingEnterRedirectInstance = inst;   // 本端走 1457 的重定向分支
                     inst.currentHealth = 1;
                     inst.currentMaxHealth = Mathf.Max(1, inst.currentMaxHealth);
                     currentCard3D.GetComponent<Card3DInstance>()?.UpdateValues();
+                    deferEnterForVerdict = redirectGuessed;
                 }
 
                 HandManager hmX = FindObjectOfType<HandManager>();
@@ -1054,7 +1066,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
                 if (template != null && template.hasOnEnter && inst != null)
                 {
-                    StartCoroutine(StartOnEnterEffect(template, inst));
+                    if (deferEnterForVerdict) DeferEnterForRedirectVerdict(this, template, inst, healthBeforeGuess);
+                    else StartCoroutine(StartOnEnterEffect(template, inst));
                 }
 
                 // 清理重定向标记
@@ -1126,6 +1139,35 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         if (cardToPlace == null) return false;
         CardInstance ci = cardToPlace.GetComponent<CardInstance>();
         return ci != null && !string.IsNullOrEmpty(ci.prefixes) && ci.prefixes.Contains("渊");
+    }
+
+    /// <summary>
+    /// 己方半场（6-11）是否已经「无处可放」——每格要么有牌，要么被封锁（普通封锁 / 囚牢 / 永久封锁）。
+    /// **不能只看 hasCard**：「5 张召唤物 + 1 个囚牢/永封格」同样是没地方放，必须走顶替选择；
+    /// 旧写法漏掉 prisonBlocked / permaBlocked，会判成"没满"→ 不进顶替 → 场上又没有合法落点 → 卡死。
+    /// 判据与 <see cref="CanBeSelected"/> 的放置分支严格同源；囚牢格只有放「渊」前缀时才算可用，
+    /// 所以要把正在打出的牌传进来（<paramref name="placing"/> 可为 null）。
+    /// </summary>
+    public static bool IsAllyBoardFull(CardInstance placing)
+    {
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return false;
+
+        bool placingYuan = placing != null && !string.IsNullOrEmpty(placing.prefixes) && placing.prefixes.Contains("渊");
+        for (int i = 6; i <= 11; i++)
+        {
+            BoardSlot slot = bm.GetSlot(i);
+            if (slot == null) continue;
+            if (slot.hasCard) continue;                       // 有牌：不算空
+            if (slot.isBlocked || slot.permaBlocked) continue; // 普通封锁 / 永久封锁（封锁者 01505）
+            if (slot.prisonBlocked)
+            {
+                if (slot.prisonAllowYuan && placingYuan) return false; // 己方囚牢格可放渊 → 还有落点
+                continue;
+            }
+            return false;                                      // 真·空格 → 没满
+        }
+        return true;
     }
 
     public bool IsValidTarget(TargetType type)
@@ -1580,6 +1622,66 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         TurnButtonGate.Refresh();
 
         BoardSyncManager.MarkDirty();
+    }
+
+    // ── 蛊惑之音(02304) 客户端方向：进场效果延迟表 ─────────────────────────────
+    // 纯客户端打出的召唤物，其进场效果跑在服务端反制判定之前。预判命中「会被 02304 重定向」时
+    // 先把进场挂起，等服务端 TargetEnterRedirectVerdict 回执再决定跳过（对面代跑）还是补跑。
+    struct DeferredEnter
+    {
+        public BoardSlot slot;
+        public CardData template;
+        public CardInstance inst;
+        public int healthBeforeGuess;
+    }
+    static readonly Dictionary<string, DeferredEnter> s_deferredEnters = new Dictionary<string, DeferredEnter>();
+
+    void DeferEnterForRedirectVerdict(BoardSlot slot, CardData template, CardInstance inst, int healthBeforeGuess)
+    {
+        if (inst == null || string.IsNullOrEmpty(inst.instanceID))
+        {
+            StartCoroutine(StartOnEnterEffect(template, inst));
+            return;
+        }
+        s_deferredEnters[inst.instanceID] = new DeferredEnter
+        {
+            slot = slot, template = template, inst = inst, healthBeforeGuess = healthBeforeGuess
+        };
+        Debug.Log($"[02304] 本端进场效果挂起，等服务端重定向回执：{inst.instanceID}");
+        StartCoroutine(DeferredEnterTimeout(inst.instanceID));
+    }
+
+    /// <summary>回执兜底：1.5s 内没等到（丢包 / 对手反制其实没触发）→ 按「未重定向」补跑，
+    /// 不能把 isPlacingCard 永久卡住。</summary>
+    IEnumerator DeferredEnterTimeout(string instanceID)
+    {
+        yield return new WaitForSeconds(1.5f);
+        if (s_deferredEnters.ContainsKey(instanceID))
+        {
+            Debug.LogWarning($"[02304] 未收到重定向回执，按未重定向补跑进场效果：{instanceID}");
+            ResolveDeferredEnter(instanceID, false);
+        }
+    }
+
+    /// <summary>服务端回执落地（NetworkPlayer.TargetEnterRedirectVerdict）：
+    /// redirected=true → 对面已代跑进场效果，本端跳过（只收尾）；false → 还原预判压到 1 的 HP 并补跑进场效果。</summary>
+    public static void ResolveDeferredEnter(string instanceID, bool redirected)
+    {
+        if (string.IsNullOrEmpty(instanceID)) return;
+        if (!s_deferredEnters.TryGetValue(instanceID, out DeferredEnter d)) return;
+        s_deferredEnters.Remove(instanceID);
+        if (d.slot == null || d.inst == null || d.template == null) return;
+
+        if (redirected)
+        {
+            Debug.Log($"[02304] 进场效果已被重定向（对面代跑），本端跳过：{instanceID}");
+            d.slot.CleanupAfterPlacement();
+            return;
+        }
+
+        d.inst.currentHealth = d.healthBeforeGuess;   // 预判落空 → 还原
+        d.slot.currentCard3D?.GetComponent<Card3DInstance>()?.UpdateValues();
+        d.slot.StartCoroutine(d.slot.StartOnEnterEffect(d.template, d.inst));
     }
 
     public void SetBlocked(bool blocked)
@@ -3167,14 +3269,20 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         Debug.Log($"[01331Trace] PrisonEnterEffect ENTER giver={giver?.instanceID}");
         BoardManager bm = FindObjectOfType<BoardManager>();
 
-        bool hasMyEmpty = false;
         BoardManager.GetSideRangeOf(giver, out int prSideStart, out int prSideEnd);
-        for (int i = prSideStart; i <= prSideEnd; i++)
+        // 敌方半场 = 己方(giver)对侧（AI 放时 giver 0-5 → 敌方 6-11；此前硬编码 0-5 会锁到自己）
+        int enemyStart331 = prSideStart == 0 ? 6 : 0;
+        int enemyEnd331 = enemyStart331 + 5;
+
+        // 开场先查双方：任意一方没有空格 → 整个进场效果取消（不再"先让玩家选一遍再取消"）
+        bool hasMyEmpty = HasPrisonFreeSlot(bm, prSideStart, prSideEnd);
+        bool hasEnemyEmpty = HasPrisonFreeSlot(bm, enemyStart331, enemyEnd331);
+        if (!hasMyEmpty || !hasEnemyEmpty)
         {
-            BoardSlot s = bm.GetSlot(i);
-            if (s != null && !s.hasCard && !s.isBlocked && !s.prisonBlocked) { hasMyEmpty = true; break; }
+            Debug.Log($"[01331Trace] PrisonEnterEffect 取消：己方有空位={hasMyEmpty}, 敌方有空位={hasEnemyEmpty}");
+            CleanupAfterPlacement();
+            yield break;
         }
-        if (!hasMyEmpty) { CleanupAfterPlacement(); yield break; }
 
         BoardSlot myPrison = null;
         bool myDone = false;
@@ -3188,19 +3296,20 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             for (int i = prSideStart; i <= prSideEnd; i++)
             {
                 BoardSlot s = bm.GetSlot(i);
-                if (s != null && !s.hasCard && !s.isBlocked && !s.prisonBlocked)
-                { myPrison = s; break; }
+                if (IsPrisonFreeSlot(s)) { myPrison = s; break; }
             }
             myDone = true;
         }
         else
         {
+            // 只能选空格：有牌的格子既不亮也点不动（isStrengtheningSlot 再排除各种封锁）
+            BoardSlot.isStrengtheningSlot = true;
+            BoardSlot.extraTargetFilter = IsPrisonFreeSlot;
             SelectionManager.Instance.BeginSelection(TargetType.SingleAlly, (s) =>
             {
-                if (s != null && !s.hasCard && !s.isBlocked && !s.prisonBlocked && s.slotID >= prSideStart && s.slotID <= prSideEnd)
+                if (IsPrisonFreeSlot(s) && s.slotID >= prSideStart && s.slotID <= prSideEnd)
                 { myPrison = s; myDone = true; }
             });
-            BoardSlot.isStrengtheningSlot = true;
             // 超时兜底：30s 后强制选第一个空槽，防止选择挂起泄漏 NestingContext
             float deadMy = Time.time;
             while (!myDone && Time.time - deadMy < 30f)
@@ -3211,25 +3320,14 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 for (int i = prSideStart; i <= prSideEnd; i++)
                 {
                     BoardSlot s = bm.GetSlot(i);
-                    if (s != null && !s.hasCard && !s.isBlocked && !s.prisonBlocked) { myPrison = s; break; }
+                    if (IsPrisonFreeSlot(s)) { myPrison = s; break; }
                 }
                 SelectionManager.Instance.ForceEndAll();
             }
+            BoardSlot.extraTargetFilter = null;
             BoardSlot.isStrengtheningSlot = false;
         }
         if (myPrison == null) { CleanupAfterPlacement(); yield break; }
-
-        // 敌方半场 = 己方(giver)对侧（AI 放时 giver 0-5 → 敌方 6-11；此前硬编码 0-5 会锁到自己）
-        int enemyStart331 = prSideStart == 0 ? 6 : 0;
-        int enemyEnd331 = enemyStart331 + 5;
-
-        bool hasEnemyEmpty = false;
-        for (int i = enemyStart331; i <= enemyEnd331; i++)
-        {
-            BoardSlot s = bm.GetSlot(i);
-            if (s != null && !s.hasCard && !s.isBlocked && !s.prisonBlocked) { hasEnemyEmpty = true; break; }
-        }
-        if (!hasEnemyEmpty) { CleanupAfterPlacement(); yield break; }
 
         BoardSlot enemyPrison = null;
         bool enemyDone = false;
@@ -3239,18 +3337,19 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             for (int i = enemyStart331; i <= enemyEnd331; i++)
             {
                 BoardSlot s = bm.GetSlot(i);
-                if (s != null && !s.hasCard && !s.isBlocked && !s.prisonBlocked) { enemyPrison = s; break; }
+                if (IsPrisonFreeSlot(s)) { enemyPrison = s; break; }
             }
             enemyDone = true;
         }
         else
         {
+            BoardSlot.isStrengtheningSlot = true;
+            BoardSlot.extraTargetFilter = IsPrisonFreeSlot;
             SelectionManager.Instance.BeginSelection(TargetType.SingleEnemy, (s) =>
             {
-                if (s != null && !s.hasCard && !s.isBlocked && !s.prisonBlocked && s.slotID <= 5)
+                if (IsPrisonFreeSlot(s) && s.slotID >= enemyStart331 && s.slotID <= enemyEnd331)
                 { enemyPrison = s; enemyDone = true; }
             });
-            BoardSlot.isStrengtheningSlot = true;
             // 超时兜底：30s 后强制选第一个空槽
             float deadEnemy = Time.time;
             while (!enemyDone && Time.time - deadEnemy < 30f)
@@ -3258,13 +3357,14 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             if (!enemyDone)
             {
                 Debug.LogWarning("[PrisonEnterEffect] 敌方囚牢选择超时，自动选第一个空槽");
-                for (int i = 0; i <= 5; i++)
+                for (int i = enemyStart331; i <= enemyEnd331; i++)
                 {
                     BoardSlot s = bm.GetSlot(i);
-                    if (s != null && !s.hasCard && !s.isBlocked && !s.prisonBlocked) { enemyPrison = s; break; }
+                    if (IsPrisonFreeSlot(s)) { enemyPrison = s; break; }
                 }
                 SelectionManager.Instance.ForceEndAll();
             }
+            BoardSlot.extraTargetFilter = null;
             BoardSlot.isStrengtheningSlot = false;
         }
         if (enemyPrison == null) { CleanupAfterPlacement(); yield break; }
@@ -3292,6 +3392,17 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         CleanupAfterPlacement();
         Debug.Log("[01331Trace] PrisonEnterEffect 正常结束");
+    }
+
+    /// <summary>囚牢可用的空格：没有牌，且没有被普通封锁 / 囚牢 / 永久封锁（01505 封锁者）。</summary>
+    static bool IsPrisonFreeSlot(BoardSlot s) =>
+        s != null && !s.hasCard && !s.isBlocked && !s.prisonBlocked && !s.permaBlocked;
+
+    static bool HasPrisonFreeSlot(BoardManager bm, int start, int end)
+    {
+        for (int i = start; i <= end; i++)
+            if (IsPrisonFreeSlot(bm?.GetSlot(i))) return true;
+        return false;
     }
 
     int GetOwnerSlot(CardInstance ci)
@@ -5463,6 +5574,13 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 var counter = CounterManager.Instance?.myCounters?.LastOrDefault();
                 if (counter != null) counter.noCostOnTrigger = true;
                 Destroy(cardObj);
+                // 反制镜像给对端（补齐；同 CardDrag / 01321 的反制打出分支）——AI 无连接跳过；
+                // 纯客户端才上报，离线 AI 局同样走 Host(isConnected 同为 true)，再报会多一张反面牌。
+                if (NetworkServer.active && NetworkPlayer.Remote != null
+                    && NetworkPlayer.Remote.connectionToClient != null)
+                    NetworkPlayer.Remote.TargetSpawnCounterCard(NetworkPlayer.Remote.connectionToClient, td.templateID);
+                else if (NetworkClient.isConnected && !NetworkServer.active)
+                    NetworkPlayer.Local?.CmdPlayCounter(td.templateID);
                 yield return new WaitWhile(() => SelectionManager.Instance.IsSelecting);
             }
             else if (td.targetType == TargetType.None)
@@ -5780,6 +5898,25 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     }
     public IEnumerator FearlessEnterEffect()
     {
+        // [AI] 无畏者 01319：直接消耗「玩家最后放置」的反制（不弹面板，覆盖 IsAIEvaluating=false 的进场窗口）。
+        // 必须在下面 enemyCounters 判空**之前**：AI 的牺牲品在 myCounters（玩家的那一摞），
+        // 用 enemyCounters 判空会误判成「没得吃」，而 enemyCounters 其实是 AI 自己打的牌。
+        if (SimpleAI.IsAIMatch && slotID < 6)
+        {
+            List<CounterCard> myList1319 = CounterManager.Instance?.myCounters;
+            CounterCard lastCc1319 = (myList1319 != null && myList1319.Count > 0)
+                ? myList1319[myList1319.Count - 1] : null;
+            if (lastCc1319 != null)
+            {
+                if (NetworkServer.active)
+                    CounterManager.Instance.TriggerCounterNoEffect(lastCc1319, true);
+                else
+                    NetworkPlayer.Local?.CmdFearlessTriggerCounter(lastCc1319.template.templateID);
+            }
+            CleanupAfterPlacement();
+            yield break;
+        }
+
         List<CounterCard> enemyCounters = CounterManager.Instance?.enemyCounters;
         if (enemyCounters == null || enemyCounters.Count == 0)
         {
@@ -5804,22 +5941,6 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         CounterCard selected = null;
         bool done = false;
-
-        // [AI] 无畏者 01319：直接消耗"最后放置"的对方反制（不弹面板，覆盖 IsAIEvaluating=false 的进场窗口）
-        if (SimpleAI.IsAIMatch && slotID < 6)
-        {
-            CounterCard lastCc1319 = enemyCounters[enemyCounters.Count - 1];
-            if (lastCc1319 != null)
-            {
-                if (NetworkServer.active)
-                    CounterManager.Instance.TriggerEnemyCounterNoEffect(lastCc1319);
-                else
-                    NetworkPlayer.Local?.CmdFearlessTriggerCounter(lastCc1319.template.templateID);
-            }
-            foreach (var go1319 in tempGOs) Destroy(go1319);
-            CleanupAfterPlacement();
-            yield break;
-        }
 
         var panel = CardDisplayPanel.Instance;
         panel.multiSelect = false;

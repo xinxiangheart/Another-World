@@ -752,6 +752,10 @@ public partial class TurnManager : MonoBehaviour
                 {
                     // Enemy went first → now it's the player's turn
                     currentPhase = TurnPhase.MyTurn;
+                    // 离线补一次「回合结束」判定点（与联机 680/697 对齐）：AI 先手这一支此前整段漏掉，
+                    // 导致 02305/02306 在 AI 先手的轮次里每轮只递减一次 → 「持续2」被拖成两个轮次。
+                    // 每个回合结束恰好递减一次，2 就恒等于「一个完整轮次，落点在对方回合结束」（回合交替）。
+                    CounterManager.Instance?.CheckOnEnemyTurnEnd();
                     SetPlayerActionsEnabled(true);
                     NetworkPlayer.Local.AddEnergy(6);
                     FindObjectOfType<DrawCardUI>()?.ResetForNewPhase();
