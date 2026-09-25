@@ -19,7 +19,7 @@ MonoBehaviour:
   addToMainDeck: 1
   summonType: 0
   baseCost: 1
-  baseTier: 0
+  baseTier: 1
   prefix: "\u65E0"
   baseHealth: 0
   baseAttack: 0
