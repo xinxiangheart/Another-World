@@ -59,6 +59,7 @@ Windows 包发布走 GitHub Release：改 `Assets/_Game/Scenes/Welcome.unity` �
 | `stat-orb-v1` | 左下生命 / 能量 |
 | `hud-btn-v1` | 抽牌 / 隐藏手牌圆盘 |
 | `icons-v1` | 特性 / 前缀 / 状态图标 |
+| `lobby-ui-v1`（生成脚本 `LobbyUIv1.ps1`，落地脚本 `Editor/LobbyUIBuilder.cs`） | 大厅：入口板（战斗 / 卡牌总览 / 房间 + 其它）、右上横栏与两个货币、左上头像衬托板、面板 / 按钮底 |
 
 各套的取舍、尺寸与出图脚本记在 `Assets/_Game/Art/Sprites/Generated/<套名>/README.md`；生成脚本统一在 `Tools/cardframe/`。
 
