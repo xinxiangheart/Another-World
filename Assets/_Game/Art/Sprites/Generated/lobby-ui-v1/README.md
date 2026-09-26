@@ -359,3 +359,102 @@ LobbyUI_v1
 
 **只在 Play 模式生效**（`EventSystem` 不进编辑模式）；场景里的 `EventSystem` 已带 `StandaloneInputModule`，不用另挂。
 `LobbyIconHover` 走 `IPointerEnter / IPointerExit / IPointerClick` 接口、**没有 `Button`** —— 图标自己的 `RawImage` 就是 raycast 目标。
+
+---
+
+## 十四次修正（2026-09-26）：右下角入口条（赛季 / 公告 / 藏品 / 战绩）
+
+> **第四块 2026-09-26 十七次修正由「战绩」改成「成就」**（键名 / 贴图 / 徽记 / 场景节点 / 板上文字全换），详见文末。本条其余口径不变。
+
+用户口径：**在右下角加入类似于这几个形状的紧挨着的平放着的、不参与视差的四块：从右到左分别是赛季、公告、藏品、战绩**，随后「**紧贴右下角**」。
+
+| 项 | 取值 |
+|---|---|
+| 块数 / 顺序 | 4 块，屏幕上从右到左 = 赛季（盾徽）· 公告（喇叭）· 藏品（展框 + 菱形）· **成就（奖章 + 绶带）** |
+| 板身 | 每块 **300x120** 屏幕 px（房间那档 324x130 的略小版）；出图 3 倍 -> 贴图 **954x414** |
+| 格距 | **0** —— 四块板身首尾相接成一条（占屏 x 720 -> 1920） |
+| 平放 | `$ENTRY_SHAPE` 里 shear / taper 全 0，场景 `Rotation Z = 0` |
+| 不参与视差 | 不挂进 `Bg_v2` 的 `LobbyBgParallax.layers`（那份只有 6 层：Far 0.10 / Ring 0.85 / Near 0.30 + 入口板三层 -0.30） |
+| 出图 | `Tools/cardframe/LobbyUIv1.ps1` 的 `New-LobbyEntryPlate` + `$ENTRY_SHAPE`（与上面四块入口板同一个函数，只去掉微透视） |
+| 接线 | `Assets/_Game/Editor/LobbyUIBuilder.cs` 的 `BuildCornerRow()` —— 只建自己这棵 `CornerRow_v1`，**不重建 `LobbyUI_v1`** |
+| 菜单 | `Tools/异界/生成大厅右下角入口条（赛季/公告/藏品/成就）` / `Tools/异界/删除大厅右下角入口条` |
+
+**场景结构**：`CornerRow_v1`（anchor / pivot 都是 (1,0)、`anchoredPosition (0,0)`、`sizeDelta 1200x120`）下四个子物体
+`Entry_{Season,Notice,Collection,Achievement}`，每个是 **RawImage**（不是 Image —— 直接读 `Image.sprite` 得到 NULL 属正常，
+不要据此判「贴图掉了」），`sizeDelta 318x138`（= 954x414 / 3，正好 1:1 贴图映射），
+`anchoredPosition x = -150 / -450 / -750 / -1050`、`y = 60`（pivot 0.5 居中 -> 板身正好落在屏幕下沿）。
+
+**注意两条**：① 重跑「生成大厅 UI v1（占位）」会把这一条一起删掉，之后点一次上面那条右下角菜单即可重建；
+② 这四张 meta 显式设了 **`npotScale = None`** —— 954x414 不能被吸成 1024x512（旧那批的教训见十六次修正的待办）。
+   2026-09-26 十七次修正起这条由 `TextureImportSettingsGuard.NeedsNoNpotScale()` **自动兜住**：`lobby-ui-v1/LobbyCornerPlate_*`
+   新导入时直接按 `None` 处理，不用再手改 meta。
+
+## 十五次修正（2026-09-26）：邮件图标 + 四个压墙图标重排
+
+- 新增 `Icon_LobbyMail.png` / `Icon_LobbyMailHover.png`（256x256），与好友 / 商城 / 活动 / 教程同族：深蓝黑平底 + 一条金细线 + 一处金饰（信封 + 折口 V + 下方菱形铆钉）。
+- 右上横栏下那排「压墙」图标重排成 **商城 · 活动 · 教程 · 邮件**：板心 `x = 100 / 190 / 280 / 370`（步进 90）、`y = -66`、`60x60` -> 屏幕 x = 1512 / 1602 / 1692 / 1782。
+- 顺带修掉 `New-ShopGlyph` 里 `AddPolygon` 的实参展开 bug（PS 把 `PointF[]` 拆成 N 个实参，`AddPolygon` 没有 4 参重载 -> 一直静默失败）：
+  商城内缩金线**从来没画出来过**，所以 `Icon_LobbyShop.png` / `Icon_LobbyShopHover.png` 在这一版变了。**这个 bug 早于十四次修正。**
+- 菜单：`Tools/异界/大厅：补邮件图标并重排四个压墙图标`（补丁式，只动这四个，不重建整棵 `LobbyUI_v1`）。
+
+## 十六次修正（2026-09-26）：右下角那条提亮一级
+
+用户口径：**这些下面的不动 ui 可以提亮一级和上面的做对比。**
+
+`$CORNER_LIFT = 8` —— `New-LobbyEntryPlate` 多一个 `[int]$lift` 形参：
+
+| 件 | 原样 | 提亮 +8 |
+|---|---|---|
+| 石面顶 | `BAR_T #1E2938`（30,41,56） | 38,49,64 |
+| 石面底 | `BAR_B #0C111A`（12,17,26） | 20,25,34 |
+| 左上亮楔 | 取 `BAR_T` | 跟着抬 |
+| 徽记不透明度 | 46 | 54 |
+| 墨边 / 金细线 / 徽记形状与位置 | — | **一律不动** |
+
+**+8 就是本套「相邻色阶差 6-8 级」的一级。** 只有右下角那条的调用传 `-lift`，上面四块入口板仍是 0。
+贴图尺寸不变（954x414）-> 场景不用重接。
+
+**实测（`GetPixel` 取板面同一点）**：角板 29,37,49 / 上面入口板 22,30,42 —— 差 7-8 级。
+对照图 `Tools/cardframe/preview/lobby-cornerlift-ab.png`（原样 / 提亮，1:1 + 放大 2x）。
+
+**待办（已问两次，用户未答复）**：`lobby-ui-v1` 里**旧**那批贴图仍是 `npotScale = ToNearest`，
+1034x445 的「房间 / 其它」被吸成 1024x512 -> 一直纵向拉伸约 15%（战斗 +4.5% / 卡牌总览 +2%）。
+要不要一并改成 `None` 属于动用户已经调好的东西，**等点头**。
+**2026-09-26 十七次修正补充**：右下角这四张已由 `TextureImportSettingsGuard` 自动守住；
+**上面那批（战斗 / 卡牌总览 / 房间 / 其它）仍等点头** —— 守卫里刻意没扩过去。
+
+---
+
+## 十七次修正（2026-09-26）：第四块 战绩 -> 成就
+
+用户口径：**将战绩改为成就，ui 也变一下，战绩会后续做到其它地方。** 随后从候选里选定**奖章**那一版，
+并补一句「**不需要重叠，就这个图案就行**」（绶带不与圆盘相交，下端停在盘顶上方留一道缝）。
+
+| 轴 | 旧（战绩） | 新（成就） |
+|---|---|---|
+| 键名 | `'record'` | `'achievement'` |
+| 贴图 | `LobbyCornerPlate_Record.png` | `LobbyCornerPlate_Achievement.png` |
+| 场景节点 | `Entry_Record` | `Entry_Achievement` |
+| 板上文字 | 战绩 | 成就 |
+| 徽记 | 三根高低柱 + 一条基线 | 奖章：两条绶带（上宽下收、**不碰圆盘**）+ 圆盘 + 中央菱形 |
+
+**几何（`New-EntryEmblem` 的 achievement 分支；`$r = $ht * 0.30 = 108` 贴图 px）**
+
+- 圆盘：半径 `0.68r`，圆心 `(cx, cy + 0.40r)`
+- 中央菱形：半径 `0.30r`，与圆盘同心
+- 绶带两条：`(cx ∓ 0.26r, cy - 1.24r)` -> `(cx ∓ 0.50r, cy - 0.36r)`（上端靠里、下端靠外）
+- 整枚纵向占 `cy - 1.24r .. cy + 1.08r`；板身内缩金线在 `y 29..331`，上下都留得下
+
+**战绩那支保留备用**：`New-EntryEmblem` 的 `'record'` 分支与 `$ENTRY_SHAPE['record']` 都还在，只是不在 `$CORNER_ORDER` 里；
+要用就把键加回去、重跑出图，再点一次场景菜单。旧的 `LobbyCornerPlate_Record.png`（+meta）已删。
+
+**查出来的一个真 bug（顺手修掉）**：新贴图 `LobbyCornerPlate_Achievement.png` 第一次导入时吃了 Unity 默认设置
+`nPOTScale = ToNearest` -> 954x414 被吸成 **1024x512**；`BuildCornerRow()` 又按 `tex.width / 3` 算外框，
+于是 `Entry_Achievement` 的 `sizeDelta` 一度变成 **341.33x170.67**。修法两条：
+
+1. 新增 `TextureImportSettingsGuard.NeedsNoNpotScale(path)` —— `lobby-ui-v1/LobbyCornerPlate_*` 在 `OnPreprocessTexture`
+   里直接 `npotScale = None`；`NeedsFix` 也加了这一项，跑「Tools/设置/贴图导入设置体检 & 修复」能查出来。
+2. 重跑 `BuildCornerRow()`，把 `sizeDelta` 退回 **318x138**。
+
+**教训**：本套「贴图尺寸 = 屏幕 px x 3、RawImage 1:1 映射」的前提是**贴图像素尺寸一个都不能被 Unity 改**。
+以后往这一族加新板，先确认 meta 是 `nPOTScale: 0`（或直接让守卫兜）。

@@ -41,6 +41,19 @@ namespace AnotherWorld.EditorTools
         /// mipmap 要保留 alpha 覆盖，否则缩小后卡牌边缘会「化开」。</summary>
         const string CardFolderToken = "/Resources/Cards/";
 
+        /// <summary>必须**原样 1:1 采样、禁止 Unity 缩放**的贴图。
+        /// 本项目的 UI 贴图是自己按「屏幕 px x 3」出图的，RawImage 的 sizeDelta = 贴图尺寸 / 3 —— 尺寸被改就全错。
+        /// 现状：右下角入口条 LobbyCornerPlate_*（954x414）在 2026-09-26 新增时被默认的 nPOTScale=ToNearest
+        /// 吸成 1024x512，连 RectTransform 一起算成了 341x171；这条就是那次补的。
+        /// **注意**：lobby-ui-v1 里**旧**那批仍是 ToNearest（1034x445 -> 1024x512，纵向拉伸约 15%），
+        /// 那是等用户点头的历史账，**不要**顺手扩到这里来。</summary>
+        public static bool NeedsNoNpotScale(string path)
+        {
+            string p = path.Replace('\\', '/');
+            if (!p.Contains("/Art/Sprites/Generated/lobby-ui-v1/")) return false;
+            return Path.GetFileName(p).StartsWith("LobbyCornerPlate_");
+        }
+
         void OnPreprocessTexture()
         {
             if (!IsCandidate(assetPath)) return;
@@ -73,6 +86,7 @@ namespace AnotherWorld.EditorTools
             if (!imp.mipmapEnabled) return true;
             if (imp.anisoLevel != AnisoLevel) return true;
             if (path.Contains(CardFolderToken) && !imp.mipMapsPreserveCoverage) return true;
+            if (NeedsNoNpotScale(path) && imp.npotScale != TextureImporterNPOTScale.None) return true;
             return false;
         }
 
@@ -93,6 +107,8 @@ namespace AnotherWorld.EditorTools
                 imp.mipMapsPreserveCoverage = true;
                 imp.alphaTestReferenceValue = 0.5f;
             }
+
+            if (NeedsNoNpotScale(path)) imp.npotScale = TextureImporterNPOTScale.None;
         }
 
         [MenuItem("Tools/设置/贴图导入设置体检 & 修复")]

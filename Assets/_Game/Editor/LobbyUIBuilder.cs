@@ -110,9 +110,13 @@ public static class LobbyUIBuilder
         NewRaw(band.rectTransform, "Icon_Ticket", UiDir + "Icon_LobbyTicket.png", AnchorTL, PivotTL, new Vector2(300f, -16f), new Vector2(48f, 48f));
         NewLabel(band.rectTransform, "Text_Ticket", "360", new Vector2(354f, -24f), new Vector2(150f, 46f), 28f);
         NewRaw(band.rectTransform, "Icon_Gear", UiDir + "Icon_LobbyGear.png", AnchorTL, PivotTL, new Vector2(446f, -2f), new Vector2(92f, 92f));
-        RawImage iconShop = NewRaw(band.rectTransform, "Icon_Shop", UiDir + "Icon_LobbyShop.png", AnchorTL, PivotTL, new Vector2(109f, -66f), new Vector2(60f, 60f));
-        RawImage iconEvent = NewRaw(band.rectTransform, "Icon_Event", UiDir + "Icon_LobbyEvent.png", AnchorTL, PivotTL, new Vector2(232f, -66f), new Vector2(60f, 60f));
-        RawImage iconTutorial = NewRaw(band.rectTransform, "Icon_Tutorial", UiDir + "Icon_LobbyTutorial.png", AnchorTL, PivotTL, new Vector2(358f, -66f), new Vector2(60f, 60f));
+        // 四个「压墙」图标（2026-09-26 十五次修正）：加了「邮件」，四个在横栏下等距重排
+        //   板心 x = 100 / 190 / 280 / 370（步进 90）· 板心 y = -66 · 60x60
+        //   左端距横栏左下角（局部 51,56）留 49px，右端距齿轮（局部 446..538）留 16px
+        RawImage iconShop = NewRaw(band.rectTransform, "Icon_Shop", UiDir + "Icon_LobbyShop.png", AnchorTL, PivotTL, new Vector2(100f, -66f), new Vector2(60f, 60f));
+        RawImage iconEvent = NewRaw(band.rectTransform, "Icon_Event", UiDir + "Icon_LobbyEvent.png", AnchorTL, PivotTL, new Vector2(190f, -66f), new Vector2(60f, 60f));
+        RawImage iconTutorial = NewRaw(band.rectTransform, "Icon_Tutorial", UiDir + "Icon_LobbyTutorial.png", AnchorTL, PivotTL, new Vector2(280f, -66f), new Vector2(60f, 60f));
+        RawImage iconMail = NewRaw(band.rectTransform, "Icon_Mail", UiDir + "Icon_LobbyMail.png", AnchorTL, PivotTL, new Vector2(370f, -66f), new Vector2(60f, 60f));
 
         // ── 右半：四块入口板（板心锚屏幕右上角；名字是子物体，跟着板一起倾斜）──
         // ── 右半：入口板（上排两块板心锚屏幕右上角；下排两块挂在那块透明大框下）──
@@ -131,12 +135,145 @@ public static class LobbyUIBuilder
         WireIconHover(iconShop, "Icon_LobbyShop.png", "Icon_LobbyShopHover.png", popup, "商城");
         WireIconHover(iconEvent, "Icon_LobbyEvent.png", "Icon_LobbyEventHover.png", popup, "活动");
         WireIconHover(iconTutorial, "Icon_LobbyTutorial.png", "Icon_LobbyTutorialHover.png", popup, "教程");
+        WireIconHover(iconMail, "Icon_LobbyMail.png", "Icon_LobbyMailHover.png", popup, "邮件");
         Selection.activeGameObject = root;
         EditorSceneManager.MarkSceneDirty(root.scene);
         Debug.Log("[LobbyUI] 已在 Canvas 下生成 " + RootName + "（占位）：位置 / 尺寸在 Scene 里拖；四张「压墙」图标已接悬停 + 点击弹占位弹窗，倾角改 Entry_* 的 Rotation Z；下排整排位置改 Entry_BottomRow（透明大框，只限位）；形体（斜切 / 远端收缩）改 LobbyUIv1.ps1 的 $ENTRY_SHAPE 后重新出图再跑本菜单；悬停 / 弹窗改本脚本的 WireIconHover / NewPlaceholderPopup。");
     }
 
+    // ── 右下角入口条（2026-09-26 十四次修正）────────────────────────────────────
+    // 用户：在右下角加入类似于这几个形状的**紧挨着的、平放着的、不参与视差的**四块，
+    //       从右到左分别是 赛季 / 公告 / 藏品 / 战绩，大小和第二张图（房间）差不多大小。
+    //       2026-09-26 十七次修正（用户：将战绩改为成就，ui 也变一下，战绩会后续做到其它地方）：
+    //       第四块 **战绩 -> 成就** —— 键名 'record' -> 'achievement'（贴图 LobbyCornerPlate_Achievement.png），
+    //       徽记由「三柱 + 基线」换成「奖章（两条绶带 + 圆盘 + 中央菱形）」；战绩那支的出图分支与 'record' 形体键**保留备用**，不在这一条里。
+    //   · 平放      这四块不写 Rotation Z（场景里就是 0°），贴图也按 $ENTRY_SHAPE = 0/0/0 出（无透视）
+    //   · 紧挨      板身宽 300，格距就是 300 —— 板身首尾相接；贴图各自带 $ENTRY_PAD 的透明边（8 屏 px），
+    //               相邻两块的外框会叠 16px，那圈是透明的，看着就是紧挨
+    //   · 不参与视差 **不挂**进 Bg_v2 的 LobbyBgParallax.layers —— 它就是静止的
+    // 与上面那一簇刻意区分：那一簇是「微透视」（每块自己的倾角 / 端头斜切 / 远端收缩），这一条是平的。
+    // 摆位（用户 2026-09-26：**紧贴右下角**）：板身右沿贴屏幕右沿 1920、下沿贴屏幕下沿 0 —— 一丝余量都不留。
+    // 只动自己这棵 CornerRow_v1，**不重建 LobbyUI_v1** —— 上面那些块的手调位置不会被冲掉。
+    const float CornerBodyW = 300f;
+    const float CornerBodyH = 120f;
+    const float CornerRight = 1920f;
+    const float CornerBottom = 0f;
+    const float CornerFontSize = 28f;
+    static readonly string[] CornerKinds = { "season", "notice", "collection", "achievement" };   // 屏幕上从右到左
+    static readonly string[] CornerLabels = { "赛季", "公告", "藏品", "成就" };
 
+    [MenuItem("Tools/异界/生成大厅右下角入口条（赛季/公告/藏品/成就）")]
+    public static void BuildCornerRow()
+    {
+        Transform parent = null;
+        GameObject ui = GameObject.Find(RootName);
+        if (ui != null) parent = ui.transform;
+        if (parent == null)
+        {
+            Canvas canvas = Object.FindObjectOfType<Canvas>();
+            if (canvas != null) parent = canvas.transform;
+        }
+        if (parent == null)
+        {
+            Debug.LogError("[LobbyUI] 场景里既没有 " + RootName + " 也没有 Canvas —— 请先打开 Assets/_Game/Scenes/Lobby.unity");
+            return;
+        }
+
+        _font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontPath);
+        if (_font == null) Debug.LogWarning($"[LobbyUI] 找不到字体 {FontPath}，中文会落到 TMP 默认字体");
+
+        GameObject previous = GameObject.Find(CornerRootName);
+        if (previous != null) Undo.DestroyObjectImmediate(previous);
+
+        // 容器只用于限位，自己什么都不画（用法同 Entry_BottomRow）
+        float rowW = CornerBodyW * CornerKinds.Length;
+        RectTransform rowRT = NewRect(parent, CornerRootName, new Vector2(1f, 0f), new Vector2(1f, 0f),
+                                      new Vector2(CornerRight - 1920f, CornerBottom),
+                                      new Vector2(rowW, CornerBodyH));
+        Undo.RegisterCreatedObjectUndo(rowRT.gameObject, "生成大厅右下角入口条");
+        rowRT.SetAsLastSibling();
+
+        for (int i = 0; i < CornerKinds.Length; i++)
+        {
+            string kind = CornerKinds[i];
+            string cap = char.ToUpper(kind[0]) + kind.Substring(1);
+            var center = new Vector2(-(CornerBodyW * 0.5f + CornerBodyW * i), CornerBodyH * 0.5f);
+            NewEntry(rowRT, "Entry_" + cap, "LobbyCornerPlate_" + cap + ".png", CornerLabels[i],
+                     new Vector2(1f, 0f), center, new Vector2(CornerBodyW, CornerBodyH), CornerFontSize, 0f);
+        }
+
+        Selection.activeGameObject = rowRT.gameObject;
+        EditorSceneManager.MarkSceneDirty(rowRT.gameObject.scene);
+        Debug.Log("[LobbyUI] 已在 " + parent.name + " 下生成 " + CornerRootName +
+                  "（赛季 / 公告 / 藏品 / 成就 · 平放 + 紧挨 + 不参与视差）。" +
+                  "整条位置改 " + CornerRootName + " 的 anchoredPosition（紧贴右下角 = 0,0）；尺寸 / 间距改本方法的 CornerBodyW / CornerBodyH；" +
+                  "要加新入口就往 CornerKinds / CornerLabels 里各加一项（贴图名 LobbyCornerPlate_<首字母大写>.png）。");
+    }
+
+    [MenuItem("Tools/异界/删除大厅右下角入口条")]
+    public static void DeleteCornerRow()
+    {
+        GameObject go = GameObject.Find(CornerRootName);
+        if (go == null) { Debug.Log("[LobbyUI] 场景里没有 " + CornerRootName); return; }
+        Undo.DestroyObjectImmediate(go);
+        EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+        Debug.Log("[LobbyUI] 已删除 " + CornerRootName);
+    }
+
+    const string CornerRootName = "CornerRow_v1";
+
+    // ── 补「邮件」并重排四个压墙图标（2026-09-26 十五次修正）────────────────────
+    // 用户：出一个邮件的小 ui 放到右上横栏下那一排，并重排这四个。
+    // 给**已经建好的** LobbyUI_v1 打补丁：只动这四个图标，别的一概不碰、**不重建**。
+    // 为什么不走「生成大厅 UI v1」：重建会把 CornerRow_v1 一起删掉，还会把 Ref_Emblem 重新打开
+    //（背景换成 Bg_v2 之后，那个旧徽记不该再出现）。四个 x 与 BuildLobbyUi 里那四行是同一组数，
+    // 所以重跑整套构建也会得到同样的结果。
+    static readonly string[] IconRowNames = { "Icon_Shop", "Icon_Event", "Icon_Tutorial", "Icon_Mail" };
+    static readonly string[] IconRowFiles = { "Icon_LobbyShop.png", "Icon_LobbyEvent.png", "Icon_LobbyTutorial.png", "Icon_LobbyMail.png" };
+    static readonly string[] IconRowHover = { "Icon_LobbyShopHover.png", "Icon_LobbyEventHover.png", "Icon_LobbyTutorialHover.png", "Icon_LobbyMailHover.png" };
+    static readonly string[] IconRowTitles = { "商城", "活动", "教程", "邮件" };
+    const float IconRowFirst = 100f;
+    const float IconRowStep = 90f;
+    const float IconRowY = -66f;
+
+    [MenuItem("Tools/异界/大厅：补邮件图标并重排四个压墙图标")]
+    public static void ApplyMailIconRow()
+    {
+        GameObject ui = GameObject.Find(RootName);
+        if (ui == null) { Debug.LogError("[LobbyUI] 场景里没有 " + RootName + " —— 先跑「生成大厅 UI v1」"); return; }
+        Transform band = ui.transform.Find("Plate_TopBand");
+        if (band == null) { Debug.LogError("[LobbyUI] 找不到 " + RootName + "/Plate_TopBand"); return; }
+
+        _font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontPath);
+        var popup = Object.FindObjectOfType<LobbyPopup>(true);
+        if (popup == null) Debug.LogWarning("[LobbyUI] 场景里找不到 LobbyPopup —— 图标先不接点击");
+
+        for (int i = 0; i < IconRowNames.Length; i++)
+        {
+            Transform t = band.Find(IconRowNames[i]);
+            RawImage img;
+            var pos = new Vector2(IconRowFirst + IconRowStep * i, IconRowY);
+            if (t == null)
+            {
+                img = NewRaw(band, IconRowNames[i], UiDir + IconRowFiles[i], AnchorTL, PivotTL, pos, new Vector2(60f, 60f));
+                Undo.RegisterCreatedObjectUndo(img.gameObject, "补 " + IconRowNames[i]);
+            }
+            else
+            {
+                var rt = t as RectTransform;
+                Undo.RecordObject(rt, "重排压墙图标");
+                rt.anchoredPosition = pos;
+                rt.sizeDelta = new Vector2(60f, 60f);
+                img = t.GetComponent<RawImage>();
+                if (img == null) img = t.gameObject.AddComponent<RawImage>();
+                var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(UiDir + IconRowFiles[i]);
+                if (tex != null) img.texture = tex;
+            }
+            if (img != null && popup != null) WireIconHover(img, IconRowFiles[i], IconRowHover[i], popup, IconRowTitles[i]);
+        }
+        EditorSceneManager.MarkSceneDirty(ui.scene);
+        Debug.Log("[LobbyUI] 压墙图标已重排为四个：商城 / 活动 / 教程 / 邮件（x = 100 / 190 / 280 / 370 · y = -66 · 60x60）。");
+    }
     // ── 临时隐藏旧 UI（2026-09-26）：只看 LobbyUI_v1 时用 ─────────────────────
     // 只动 Canvas 下**除 LobbyUI_v1 之外**的直接子物体（旧的 Background / 入口按钮 / 各种 Panel）；
     // 相机 / 灯光 / 三个 Manager / EventSystem 一律不碰 —— 那些一关，场景既看不见也点不动。
@@ -266,7 +403,8 @@ public static class LobbyUIBuilder
     /// <summary>给图标挂悬停组件：常态 / 悬停两张贴图只差色调（形体尺寸一致），切换时不会跳位。</summary>
     static void WireIconHover(RawImage icon, string normalFile, string hoverFile, LobbyPopup popup, string title)
     {
-        var hover = icon.gameObject.AddComponent<LobbyIconHover>();
+        var hover = icon.GetComponent<LobbyIconHover>();
+        if (hover == null) hover = icon.gameObject.AddComponent<LobbyIconHover>();
         hover.icon = icon;
         hover.normalTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(UiDir + normalFile);
         hover.hoverTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(UiDir + hoverFile);
