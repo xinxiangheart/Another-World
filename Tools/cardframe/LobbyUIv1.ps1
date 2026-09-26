@@ -8,13 +8,15 @@
 #
 # 产物（Assets/_Game/Art/Sprites/Generated/lobby-ui-v1/）
 #   LobbyPanelPlate.png        192x192  9-slice(border 48) 面板底（设置 / 弹窗 / 列表）
+#   LobbyPopupPlate.png         2700x1560 占位弹窗面板（屏幕 900x520，固定尺寸，不切片）
+#   LobbyPopupBtnPlate.png      600x192  占位弹窗关闭按钮底（屏幕 200x64，固定尺寸）
 #   LobbyBtnPlate.png          192x192  9-slice(border 48) 按钮底 · 常态
 #   LobbyBtnPlateHover.png     同尺寸 · 悬停
 #   LobbyBtnPlatePressed.png   同尺寸 · 按下
 #   LobbyBandRight.png         1614x285 右上横栏（屏幕 538x95，固定尺寸）—— 齐屏幕上沿+右沿，左端 45° 斜切，右端底边下沉一级
 #   LobbyProfilePlate.png      1401x288 左上头像衬托板（屏幕 467x96，固定尺寸）—— 齐屏幕上沿+左沿，圆框=头像 / 右侧=名字，底边一级台阶
 #   LobbyAvatarRing.png        264x264  头像金圆框（屏幕 88px）
-#   Icon_Lobby*.png            256x256  7 个图标（屏幕 80px）：Gear/Friend/Shop/Gift/Tutorial/Coin/Ticket
+#   Icon_Lobby*.png            256x256  7 个图标：Gear/Coin/Ticket（横栏里的实心族）+ Friend/Shop/Gift/Tutorial（压墙的金线石印族，十一次修正）
 #   LobbyEntryPlate_*.png      定尺×3   四个**入口板**（战斗 666x145 / 卡牌总览 661x149 / 房间 287x130 / 其它 295x129），贴图比板身大一圈
 #                                        —— 每块一张定尺贴图，**不能 9-slice**：端头斜切 + 远端收缩烤进贴图，倾斜由场景的 Rotation Z 承担（见「九次修正」）
 #
@@ -69,10 +71,32 @@
 #   ② 板体照旧在局部坐标里画好，再用**两片三角形仿射**映射成梯形（Get-EntryQuad / Get-EntryPlateMap / New-QuadWarpDraw），
 #      装饰（徽记 / 标题槽 / 金线）跟着形体一起走，不用逐件改坐标。
 #   ③ 修掉「$W 与 $w 是同一个变量」造成的两次乘 3 倍（贴图像素尺寸改叫 $wt/$ht），以及返回嵌套数组被拍平（改哈希表返回）。
+# 2026-09-26 十一次修正（用户：重出一组好友 / 商城 / 活动 / 教程，尤其是后三个，更适配其背景和风格）：
+#   旧版四个图标属 icons-v1 的**实心族**（实心彩色块面 + 20px 粗墨边 + 内阴影 + 高光楔）：
+#   商城是蓝提手 + 金篮 + 金轮的购物车、活动是红箱 + 金带、教程是米黄块面的书 —— 用户判「跟背景与风格不搭」。
+#   现改**金线石印**族（本套母规：整块平底 + 一条金细线 + 一处金饰）：深蓝黑石面平底 + 金细线勾形，
+#   金饰只用棋盘母题（菱形铆钉 / 环带 / 金带）；无第三色、不描内阴影、不加高光楔。
+#   齿轮 / 金币 / 点券**不动** —— 它们在右上横栏里、下面有底衬，仍走实心族。
+#   对应实现见下方 $ICON_* / Fill-GlyphBody / Stroke-GlyphGold 与四个 New-*Glyph。
+#   #
+# 2026-09-26 十二次修正（用户：再出一组鼠标悬停时的变化态）：四个「压墙」图标补悬停态，
+# 配方**照 LobbyBtnPlateHover（tone 1）**，不另起一套 —— 石面顶 Mix(BAR_T,HILITE,0.12) / 底 Mix(BAR_B,BAR_T,0.40)、
+# 主金线 GOLD → GOLD_L、金饰再亮一档、金线 α +40（上限 255）；**墨边 / 形体 / 位置 / 尺寸一律不动**。
+# 实现：$ICON_TONE_N / $ICON_TONE_H 两张色调表 + Set-IconTone；New-LobbyIcon 多一个 -hover 开关。
+# 产物 Icon_Lobby{Friend,Shop,Event,Tutorial}Hover.png（256 与常态同尺寸）。
+# 2026-09-26 十三次修正（用户：先做鼠标悬停变化，点击后的弹窗只做占位即可）：
+#   ① 四个「压墙」图标接上悬停（运行时 LobbyIconHover）：PointerEnter / PointerExit 在常态 / 悬停两张贴图之间切，
+#      贴图就是十二次修正那套（只差色调，形体尺寸一致，切换不跳位）。
+#   ② 点击弹**同一个占位弹窗**（运行时 LobbyPopup，只换标题）：遮罩 + 面板 + 标题 + 提示 + 关闭按钮；
+#      点遮罩或「关闭」都关。弹窗两个件由本脚本出图（LobbyPopupPlate / LobbyPopupBtnPlate）。
+#   接线全在 Assets/_Game/Editor/LobbyUIBuilder.cs 的 WireIconHover / NewPlaceholderPopup —— 重跑菜单不会丢。
 # 预览（Tools/cardframe/preview/）
 #   lobby-ui-v1-sheet.png      全部件 1:1 贴纸式对照 + 尺寸标注
 #   lobby-ui-v1-entryplates.png 四个入口板 ×4（屏幕 1.55 倍）+ 图层说明
 #   lobby-ui-v1-mockup.png     按草图版式（lobby-layout-v1）拼出的 1920x1080 效果
+#   lobby-ui-v1-icons.png      四个「压墙」图标 1:1 + 压真背景的真播尺寸
+#   lobby-ui-v1-iconhover.png  同上两行，常态 / 悬停逐张对照
+#   lobby-ui-v1-popup.png      占位弹窗：真实场景合成 + 面板 1:1（十三次修正）
 Add-Type -AssemblyName System.Drawing
 . "$PSScriptRoot/TopBarV2.ps1"
 
@@ -146,92 +170,135 @@ function New-PolyPlate([int]$w, [int]$h, [System.Drawing.PointF[]]$pts, [int]$to
 }
 
 # ── 图标（256x256，屏幕 80px；墨边 20 与 icons-v1 / topbar-v1 一致）────
+# ── 图标（256x256）· 2026-09-26 十一次修正：四个「贴墙」图标改**金线石印**族 ──────
+# 旧版是实心彩色贴纸（购物车蓝提手 + 金篮 + 金轮、礼盒红箱 + 金带、书米黄块面），外加 20px 粗墨边、
+# 内阴影与高光楔；用户判「跟背景与风格不搭」。齿轮 / 金币 / 点券**不动** —— 它们在右上横栏里、下面有底衬，
+# 属 icons-v1 那套「实心族」；好友 / 商城 / 活动 / 教程 是**直接压在墙上**的四个，改走本套母规：
+#   **深蓝黑平底 + 一条金细线 + 一处金饰**（菱形铆钉 / 环带 / 金带），无第三色、不描内阴影、不加高光楔。
+# 线宽按屏幕折算：这四个场景里 46~60px 显示（256 贴图 → 0.234 倍），金细线 6 贴图 px ≈ 1.4 屏幕 px。
+$ICON_INK   = 9      # 贴图 px：形状外墨边（屏幕 60px 时 ≈ 2.1）
+$ICON_GOLD  = 6      # 贴图 px：金细线（屏幕 60px 时 ≈ 1.4）
+$ICON_INSET = 16     # 贴图 px：金线相对形状边内缩（与板件「墨边 + 内缩金线」同规矩）
+# 两个色调（2026-09-26 十二次修正 · 悬停态）：常态 = 板件原色 + 金；悬停照 LobbyBtnPlateHover 的同一配方 ——
+# 石面提亮（顶 Mix(BAR_T,HILITE,0.12) / 底 Mix(BAR_B,BAR_T,0.40)）、金线 GOLD → GOLD_L 且 α +40、金饰再加亮一档。
+$ICON_TONE_N = @{ 'top' = $BAR_T; 'bot' = $BAR_B; 'gold' = $GOLD; 'bright' = $GOLD_L; 'boost' = 0 }
+$ICON_TONE_H = @{ 'top' = (Mix-Col $BAR_T $HILITE 0.12); 'bot' = (Mix-Col $BAR_B $BAR_T 0.40); 'gold' = $GOLD_L; 'bright' = (Mix-Col $GOLD_L $HILITE 0.35); 'boost' = 40 }
+$ICON_TOP   = $ICON_TONE_N['top']
+$ICON_BOT   = $ICON_TONE_N['bot']
+$ICON_GC    = $ICON_TONE_N['gold']
+$ICON_GB    = $ICON_TONE_N['bright']
+$ICON_GA    = 0
+
+function Set-IconTone([bool]$hover) {
+  $tone = $(if ($hover) { $ICON_TONE_H } else { $ICON_TONE_N })
+  $script:ICON_TOP = $tone['top']
+  $script:ICON_BOT = $tone['bot']
+  $script:ICON_GC = $tone['gold']
+  $script:ICON_GB = $tone['bright']
+  $script:ICON_GA = $tone['boost']
+}
+function New-IconGold([int]$a = 235) { return (New-Col $ICON_GC ([Math]::Min(255, $a + $ICON_GA))) }
+function New-IconGoldBright([int]$a = 245) { return (New-Col $ICON_GB ([Math]::Min(255, $a + $ICON_GA))) }
+function New-GlyphPt([single]$x, [single]$y) { return [System.Drawing.PointF]::new($x, $y) }
+function Fill-GlyphBody($g, $path, [single]$ink = 0) {
+  if ($ink -le 0) { $ink = $ICON_INK }
+  $st = $g.Save(); $g.SetClip($path)
+  $bd = $path.GetBounds()
+  Fill-VGrad $g $bd.X $bd.Y $bd.Width $bd.Height $ICON_TOP $ICON_BOT 255 255
+  $g.Restore($st)
+  $pen = New-Object System.Drawing.Pen ((New-Col $INK 205)), $ink
+  $pen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
+  $g.DrawPath($pen, $path); $pen.Dispose()
+}
+function Stroke-GlyphGold($g, $path, [int]$a = 235, [single]$w = 0) {
+  if ($w -le 0) { $w = $ICON_GOLD }
+  $pen = New-Object System.Drawing.Pen (New-IconGold $a), $w
+  $pen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
+  $g.DrawPath($pen, $path); $pen.Dispose()
+}
+
 function New-FriendGlyph($g) {
+  # 好友：人影（头 + 肩）—— 深蓝黑平底 + 金细线；胸前一档金环带（与棋盘外圈环带同源）
   $head = New-Object System.Drawing.Drawing2D.GraphicsPath
-  $head.AddEllipse(86, 46, 84, 84)
-  $body = New-Object System.Drawing.Drawing2D.GraphicsPath
-  $body.AddArc(48, 142, 160, 150, 180, 180); $body.CloseFigure()
-  foreach ($p in @($head, $body)) {
-    Add-Outline $g $p 20
-    $bs = New-Object System.Drawing.SolidBrush (New-Col $METAL 255)
-    $g.FillPath($bs, $p); $bs.Dispose()
-    Add-Shade $g $p $METAL_D 196 168
-  }
-  Add-Hilite $g $head 100 58 40 30 110
-  Add-Hilite $g $body 76 152 54 34 70
-  $head.Dispose(); $body.Dispose()
+  $head.AddEllipse(82, 40, 92, 92)
+  $shoulder = New-Object System.Drawing.Drawing2D.GraphicsPath
+  $shoulder.AddArc(54, 146, 148, 132, 180, 180); $shoulder.CloseFigure()
+  Fill-GlyphBody $g $head
+  Fill-GlyphBody $g $shoulder
+  $hi = New-Object System.Drawing.Drawing2D.GraphicsPath
+  $hi.AddEllipse(100, 58, 56, 56)
+  Stroke-GlyphGold $g $hi
+  $si = New-Object System.Drawing.Drawing2D.GraphicsPath
+  $si.AddArc(70, 162, 116, 100, 180, 180); $si.CloseFigure()
+  Stroke-GlyphGold $g $si
+  $band = New-Object System.Drawing.Drawing2D.GraphicsPath
+  $band.AddArc(90, 156, 76, 34, 0, 180)
+  Stroke-GlyphGold $g $band 190 5
+  $head.Dispose(); $shoulder.Dispose(); $hi.Dispose(); $si.Dispose(); $band.Dispose()
 }
 function New-ShopGlyph($g) {
+  # 商城：货篮（梯形）+ 左侧 L 提手 + 两只金环轮 —— 深蓝黑平底 + 金细线，无第三色
+  $handlePts = [System.Drawing.PointF[]]@(
+    (New-GlyphPt 34 32), (New-GlyphPt 34 66), (New-GlyphPt 74 100))
+  $pen = New-Object System.Drawing.Pen ((New-Col $INK 205)), 13
+  $pen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
+  $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+  $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+  $g.DrawLines($pen, $handlePts); $pen.Dispose()
+  $pen = New-Object System.Drawing.Pen (New-IconGold 230), 6
+  $pen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
+  $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+  $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+  $g.DrawLines($pen, $handlePts); $pen.Dispose()
+  $basketPts = [System.Drawing.PointF[]]@(
+    (New-GlyphPt 70 96), (New-GlyphPt 236 96), (New-GlyphPt 212 174), (New-GlyphPt 94 174))
   $basket = New-Object System.Drawing.Drawing2D.GraphicsPath
-  $basket.AddPolygon([System.Drawing.PointF[]]@(
-    (New-Object System.Drawing.PointF(74, 98)), (New-Object System.Drawing.PointF(240, 98)),
-    (New-Object System.Drawing.PointF(214, 176)), (New-Object System.Drawing.PointF(100, 176))))
-  $basket.CloseFigure()
-  Add-Outline $g $basket 20
-  $bs = New-Object System.Drawing.SolidBrush (New-Col $GOLD 255)
-  $g.FillPath($bs, $basket); $bs.Dispose()
-  Add-Shade $g $basket $GOLD_D 150 132
-  Add-Wedge $g $basket ([System.Drawing.PointF[]]@(
-    (New-Object System.Drawing.PointF(78, 102)), (New-Object System.Drawing.PointF(236, 102)),
-    (New-Object System.Drawing.PointF(230, 120)), (New-Object System.Drawing.PointF(84, 120)))) $GOLD_L 110
-  $basket.Dispose()
-  $bar = New-Object System.Drawing.Drawing2D.GraphicsPath
-  $bar.AddPolygon([System.Drawing.PointF[]]@(
-    (New-Object System.Drawing.PointF(18, 34)), (New-Object System.Drawing.PointF(70, 34)),
-    (New-Object System.Drawing.PointF(88, 104)), (New-Object System.Drawing.PointF(66, 104)),
-    (New-Object System.Drawing.PointF(52, 56)), (New-Object System.Drawing.PointF(18, 56))))
-  $bar.CloseFigure()
-  Add-Outline $g $bar 18
-  $bs = New-Object System.Drawing.SolidBrush (New-Col $METAL 255); $g.FillPath($bs, $bar); $bs.Dispose()
-  Add-Shade $g $bar $METAL_D 70 56
-  $bar.Dispose()
-  foreach ($cx in @(116, 198)) {
-    $w = New-Object System.Drawing.Drawing2D.GraphicsPath
-    $w.AddEllipse(($cx - 20), 194, 40, 40)
-    Add-Outline $g $w 18
-    $bs = New-Object System.Drawing.SolidBrush (New-Col $GOLD 255); $g.FillPath($bs, $w); $bs.Dispose()
-    $bs = New-Object System.Drawing.SolidBrush (New-Col $GOLD_D 255)
-    $g.FillEllipse($bs, ($cx - 9), 205, 18, 18); $bs.Dispose()
-    $w.Dispose()
+  $basket.AddPolygon($basketPts)
+  Fill-GlyphBody $g $basket
+  $basketIn = New-Object System.Drawing.Drawing2D.GraphicsPath
+  $basketIn.AddPolygon((Get-InsetPoly $basketPts $ICON_INSET))
+  Stroke-GlyphGold $g $basketIn
+  $basket.Dispose(); $basketIn.Dispose()
+  foreach ($cx in @(116, 194)) {
+    $wheel = New-Object System.Drawing.Drawing2D.GraphicsPath
+    $wheel.AddEllipse(($cx - 27), 168, 54, 54)
+    Fill-GlyphBody $g $wheel 7
+    $wheelIn = New-Object System.Drawing.Drawing2D.GraphicsPath
+    $wheelIn.AddEllipse(($cx - 12), 183, 24, 24)
+    Stroke-GlyphGold $g $wheelIn 220 5
+    $wheel.Dispose(); $wheelIn.Dispose()
   }
+  $pen = New-Object System.Drawing.Pen (New-IconGold 130), 5
+  foreach ($x in @(128, 178)) { $g.DrawLine($pen, $x, 122, $x, 152) }
+  $pen.Dispose()
 }
 function New-GiftGlyph($g) {
-  # 盒身
-  $body = New-Object System.Drawing.Drawing2D.GraphicsPath
-  $body.AddPolygon([System.Drawing.PointF[]]@(
-    (New-Object System.Drawing.PointF(58, 118)), (New-Object System.Drawing.PointF(198, 118)),
-    (New-Object System.Drawing.PointF(190, 224)), (New-Object System.Drawing.PointF(66, 224))))
-  $body.CloseFigure()
-  Add-Outline $g $body 20
-  $bs = New-Object System.Drawing.SolidBrush (New-Col $CRIM 255); $g.FillPath($bs, $body); $bs.Dispose()
-  Add-Shade $g $body $CRIM_D 168 200
-  $body.Dispose()
-  # 盒盖
-  $lid = New-RoundPath 38 74 180 46 8
-  Add-Outline $g $lid 20
-  $bs = New-Object System.Drawing.SolidBrush (New-Col (Mix-Col $CRIM $HILITE 0.22) 255)
-  $g.FillPath($bs, $lid); $bs.Dispose()
-  Add-Shade $g $lid (Mix-Col $CRIM_D $CRIM 0.25) 100 88
-  $lid.Dispose()
-  # 缎带（竖）
-  $rib = New-Object System.Drawing.Drawing2D.GraphicsPath
-  $rib.AddRectangle((New-Object System.Drawing.RectangleF(114, 74, 28, 150)))
-  Add-Outline $g $rib 12
-  $bs = New-Object System.Drawing.SolidBrush (New-Col $GOLD_L 255); $g.FillPath($bs, $rib); $bs.Dispose()
-  $rib.Dispose()
-  # 蝴蝶结
-  foreach ($cx in @(94, 162)) {
-    $lp = New-Object System.Drawing.Drawing2D.GraphicsPath
-    $lp.AddEllipse(($cx - 26), 30, 52, 44)
-    Add-Outline $g $lp 12
-    $bs = New-Object System.Drawing.SolidBrush (New-Col $GOLD_L 255); $g.FillPath($bs, $lp); $bs.Dispose()
-    $lp.Dispose()
+  # 活动：礼盒 —— 深蓝黑平底 + 金细线；箱体 / 箱盖 / 竖向金带 / 两只结环 + 菱形结扣（母题）
+  $body = New-RoundPath 62 118 132 98 12
+  $lid = New-RoundPath 46 84 164 40 8
+  Fill-GlyphBody $g $body
+  Fill-GlyphBody $g $lid
+  Stroke-GlyphGold $g (New-RoundPath 78 134 100 66 6)
+  Stroke-GlyphGold $g (New-RoundPath 56 94 144 20 4)
+  $bs = New-Object System.Drawing.SolidBrush (New-IconGold 205)
+  $g.FillRectangle($bs, 116, 84, 24, 132); $bs.Dispose()
+  $pen = New-Object System.Drawing.Pen ((New-Col $INK 190)), 6
+  $g.DrawRectangle($pen, 116, 84, 24, 132); $pen.Dispose()
+  foreach ($cx in @(98, 158)) {
+    $loop = New-Object System.Drawing.Drawing2D.GraphicsPath
+    $loop.AddEllipse(($cx - 26), 46, 52, 40)
+    Fill-GlyphBody $g $loop 7
+    $loopIn = New-Object System.Drawing.Drawing2D.GraphicsPath
+    $loopIn.AddEllipse(($cx - 16), 56, 32, 20)
+    Stroke-GlyphGold $g $loopIn 220 5
+    $loop.Dispose(); $loopIn.Dispose()
   }
-  $pen = New-Object System.Drawing.Pen ((New-Col $INK 230)), 12
-  $bs = New-Object System.Drawing.SolidBrush (New-Col (Mix-Col $GOLD_L $GOLD 0.4) 255)
-  $g.FillEllipse($bs, 114, 42, 28, 28)
-  $g.DrawEllipse($pen, 114, 42, 28, 28)
-  $bs.Dispose(); $pen.Dispose()
+  $knot = New-Diamond 128 78 18
+  $bs = New-Object System.Drawing.SolidBrush (New-IconGoldBright 245); $g.FillPath($bs, $knot); $bs.Dispose()
+  $pen = New-Object System.Drawing.Pen ((New-Col $INK 200)), 6
+  $pen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
+  $g.DrawPath($pen, $knot); $pen.Dispose()
+  $knot.Dispose(); $body.Dispose(); $lid.Dispose()
 }
 function New-TicketGlyph($g) {
   # 点券：菱形券（与金币区分色相：金 vs 蓝）
@@ -256,20 +323,21 @@ function New-TicketGlyph($g) {
   $g.DrawPath($pen, $inner); $pen.Dispose(); $inner.Dispose(); $p.Dispose()
 }
 function New-BookGlyph($g) {
-  # 合起的书：竖长方形 + 靠近右沿的一道书脊线（照草图那个形状）
-  $body = New-RoundPath 60 32 136 192 16
-  Add-Outline $g $body 20
-  $bs = New-Object System.Drawing.SolidBrush (New-Col $SAND 255); $g.FillPath($bs, $body); $bs.Dispose()
-  Add-Shade $g $body (Mix-Col $SAND_D $SAND 0.35) 90 108
-  $body.Dispose()
-  $pen = New-Object System.Drawing.Pen ((New-Col $SAND_D 235)), 14
-  $g.DrawLine($pen, 166, 46, 166, 210); $pen.Dispose()
-  $pen = New-Object System.Drawing.Pen ((New-Col $SAND_D 120)), 8
-  foreach ($k in 0..2) {
-    $y = 84 + $k * 40
-    $g.DrawLine($pen, 86, $y, 140, $y)
-  }
+  # 教程：合起的书（竖长方形 + 靠右一道书脊）—— 深蓝黑平底 + 金细线；封面三档金线 + 一枚菱形铆钉
+  $cover = New-RoundPath 60 30 136 196 14
+  Fill-GlyphBody $g $cover
+  Stroke-GlyphGold $g (New-RoundPath 76 46 104 164 8)
+  $pen = New-Object System.Drawing.Pen (New-IconGold 235), $ICON_GOLD
+  $g.DrawLine($pen, 162, 50, 162, 206); $pen.Dispose()
+  $dd = New-Diamond 118 86 17
+  $bs = New-Object System.Drawing.SolidBrush (New-IconGoldBright 240); $g.FillPath($bs, $dd); $bs.Dispose()
+  $pen = New-Object System.Drawing.Pen ((New-Col $INK 200)), 5
+  $pen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
+  $g.DrawPath($pen, $dd); $pen.Dispose(); $dd.Dispose()
+  $pen = New-Object System.Drawing.Pen (New-IconGold 165), 5
+  foreach ($y in @(134, 160, 186)) { $g.DrawLine($pen, 94, $y, 144, $y) }
   $pen.Dispose()
+  $cover.Dispose()
 }
 function New-CoinGlyph($g) {
   Add-Outline $g (New-RoundPath 32 32 192 192 96) 20
@@ -290,8 +358,9 @@ function New-CoinGlyph($g) {
   $bs = New-Object System.Drawing.SolidBrush (New-Col $GOLD_L 255); $g.FillPath($bs, $dd); $bs.Dispose()
   $dd.Dispose()
 }
-function New-LobbyIcon([string]$kind, [string]$out) {
+function New-LobbyIcon([string]$kind, [string]$out, [switch]$hover) {
   $res = New-Bmp 256 256; $b = $res[0]; $g = $res[1]
+  Set-IconTone($hover.IsPresent)
   switch ($kind) {
     'friend'   { New-FriendGlyph $g }
     'shop'     { New-ShopGlyph $g }
@@ -558,7 +627,7 @@ function New-LobbyEntryPlate([string]$out, [int]$w, [int]$h, [string]$kind, [sin
   $tx = 108.0
   $pen = New-Object System.Drawing.Pen ((New-Col $GOLD 110)), $LW_GOLD
   $g.DrawLine($pen, $tx, 62, $tx, ($ht - 62)); $pen.Dispose()
-  $dp = New-Object System.Drawing.SolidBrush (New-Col $GOLD 205)
+  $dp = New-Object System.Drawing.SolidBrush (New-IconGold 205)
   foreach ($dyy in @(62, ($ht - 62))) {
     $dm = New-Diamond $tx $dyy 11.0
     $g.FillPath($dp, $dm); $dm.Dispose()
@@ -646,6 +715,66 @@ function Put-TextRot($g, [string]$s, [single]$cx, [single]$cy, [single]$dx, [sin
   $g.DrawString($s, $f, $br, $dx, $dy)
   $g.Restore($st); $br.Dispose(); $f.Dispose()
 }
+# 占位弹窗预览（十三次修正）：左 = 真实场景合成（LobbyBack + 徽记 + Dim + 面板），右 = 面板 1:1
+function New-LobbyPopupReview([string]$dir, [string]$out, [string]$bgPath, [string]$emblemPath) {
+  $CW = 2130; $CH = 770
+  $b = New-Object System.Drawing.Bitmap $CW, $CH
+  $g = [System.Drawing.Graphics]::FromImage($b)
+  $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+  $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+  $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAliasGridFit
+  $bs = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 10, 13, 19))
+  $g.FillRectangle($bs, 0, 0, $CW, $CH); $bs.Dispose()
+
+  Put-Text $g '占位弹窗（十三次修正）：四个「压墙」图标共用一个占位弹窗，点开只换标题' 24 16 30
+  Put-Text $g '左：真实场景合成（LobbyBack + 中央徽记 + Dim #06090E α200 + 面板；1920×1080 → 1152×648）' 24 56 19 170
+  Put-Text $g '右：面板 · 屏幕 1:1（标题 / 提示 / 关闭按钮都在位）' 1200 56 19 170
+
+  # 左：1920x1080 场景渲染
+  $screen = New-Object System.Drawing.Bitmap 1920, 1080
+  $sg = [System.Drawing.Graphics]::FromImage($screen)
+  $sg.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+  $bg = [System.Drawing.Image]::FromFile($bgPath)
+  $sg.DrawImage($bg, 0, 0, 1920, 1080); $bg.Dispose()
+  $em = [System.Drawing.Image]::FromFile($emblemPath)
+  $ia = New-Object System.Drawing.Imaging.ImageAttributes
+  $cm = New-Object System.Drawing.Imaging.ColorMatrix; $cm.Matrix33 = 0.60; $ia.SetColorMatrix($cm)
+  $sg.DrawImage($em, (New-Object System.Drawing.Rectangle 450, 30, 1020, 1020), 0, 0, $em.Width, $em.Height, [System.Drawing.GraphicsUnit]::Pixel, $ia)
+  $em.Dispose(); $ia.Dispose()
+  $dim = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(200, 6, 9, 14))
+  $sg.FillRectangle($dim, 0, 0, 1920, 1080); $dim.Dispose()
+  $pnlScene = [System.Drawing.Image]::FromFile((Join-Path $dir 'LobbyPopupPlate.png'))
+  $sg.DrawImage($pnlScene, 510, 280, 900, 520)
+  $sfS = New-Object System.Drawing.StringFormat
+  $sfS.Alignment = [System.Drawing.StringAlignment]::Center
+  $sfS.LineAlignment = [System.Drawing.StringAlignment]::Center
+  $fS = Get-F 26
+  $brS = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(236, 240, 232, 210))
+  $sg.DrawString('关闭', $fS, $brS, (New-Object System.Drawing.RectangleF 1174, 700, 200, 64), $sfS)
+  $brS.Dispose(); $fS.Dispose(); $sfS.Dispose(); $pnlScene.Dispose()
+  $sg.Dispose()
+  $g.DrawImage($screen, (New-Object System.Drawing.Rectangle 24, 88, 1152, 648), (New-Object System.Drawing.Rectangle 0, 0, 1920, 1080), [System.Drawing.GraphicsUnit]::Pixel)
+  $screen.Dispose()
+
+  # 右：面板 1:1
+  $pnl = [System.Drawing.Image]::FromFile((Join-Path $dir 'LobbyPopupPlate.png'))
+  $g.DrawImage($pnl, 1200, 88, 900, 520); $pnl.Dispose()
+  Put-Text $g '教程' 1248 108 42
+  Put-Text $g '占位 · 待接真实面板' 1248 196 24 158
+  $btn = [System.Drawing.Image]::FromFile((Join-Path $dir 'LobbyPopupBtnPlate.png'))
+  $g.DrawImage($btn, 1864, 508, 200, 64); $btn.Dispose()
+  $sf = New-Object System.Drawing.StringFormat
+  $sf.Alignment = [System.Drawing.StringAlignment]::Center
+  $sf.LineAlignment = [System.Drawing.StringAlignment]::Center
+  $f = Get-F 26
+  $br = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(236, 240, 232, 210))
+  $g.DrawString('关闭', $f, $br, (New-Object System.Drawing.RectangleF 1864, 508, 200, 64), $sf)
+  $br.Dispose(); $f.Dispose(); $sf.Dispose()
+  Put-Text $g '面板 900×520（屏幕）· 标题 42 · 提示 24 α0.62 · 关闭 200×64（面板右下内缩 36）' 1200 630 19 170
+  Put-Text $g '标题随点开的图标换：好友 / 商城 / 活动 / 教程；Dim 与「关闭」都指向 LobbyPopup.Hide' 1200 664 19 170
+
+  $g.Dispose(); $b.Save($out, [System.Drawing.Imaging.ImageFormat]::Png); $b.Dispose()
+}
 function New-LobbyUiSheet([string]$dir, [string]$out) {
   $res = New-Bmp 1720 1200; $b = $res[0]; $g = $res[1]
   $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
@@ -667,7 +796,7 @@ function New-LobbyUiSheet([string]$dir, [string]$out) {
 
   $brd = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 20, 27, 38))
   $g.FillRectangle($brd, 24, 344, 1672, 224); $brd.Dispose()
-  Put-Text $g '图标 256x256（屏幕 80px）· 墨边 20 / 与 icons-v1 同规' 44 360 24
+  Put-Text $g '图标 256x256 · 好友/商城/活动/教程 = 金线石印（十一次修正 · 屏幕 46~60px）· 齿轮/金币/点券 = icons-v1 实心族' 44 360 24
   $x = 44
   foreach ($n in @(@('Icon_LobbyGear.png', '设置 · 齿轮'), @('Icon_LobbyFriend.png', '好友 · 人影'), @('Icon_LobbyShop.png', '商城 · 购物车'), @('Icon_LobbyEvent.png', '活动 · 礼盒'), @('Icon_LobbyTutorial.png', '教程 · 书'), @('Icon_LobbyCoin.png', '金币 · 币'), @('Icon_LobbyTicket.png', '点券 · 菱形券'))) {
     $im = [System.Drawing.Image]::FromFile((Join-Path $dir $n[0]))
@@ -818,7 +947,94 @@ function New-EntryShapeSheet([string]$genDir, [string]$out) {
   $g.Dispose(); $b.Save($out, [System.Drawing.Imaging.ImageFormat]::Png); $b.Dispose()
   return $out
 
-}# ── 主流程 ─────────────────────────────────────────────────
+}# ── 预览：四个「贴墙」图标（1:1 + 压真背景的真播尺寸）────────────
+function Draw-At($g, [string]$file, [single]$x, [single]$y, [single]$w, [single]$h) {
+  $im = [System.Drawing.Image]::FromFile($file)
+  $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+  $g.DrawImage($im, $x, $y, $w, $h); $im.Dispose()
+}
+function New-LobbyIconReview([string]$dir, [string]$out, [string]$bgPath) {
+  $rows = @(@('Icon_LobbyFriend.png', '好友 · 屏幕 46px'), @('Icon_LobbyShop.png', '商城 · 屏幕 60px'), @('Icon_LobbyEvent.png', '活动 · 屏幕 60px'), @('Icon_LobbyTutorial.png', '教程 · 屏幕 60px'))
+  $res = New-Bmp 1300 800; $b = $res[0]; $g = $res[1]
+  $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+  $bs = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 10, 13, 19))
+  $g.FillRectangle($bs, 0, 0, 1300, 800); $bs.Dispose()
+  Put-Text $g '好友 / 商城 / 活动 / 教程 · 金线石印（256 贴图）：深蓝黑平底 + 一条金细线 + 一处金饰' 40 22 26 236
+  $x = 40
+  foreach ($n in $rows) {
+    Draw-At $g (Join-Path $dir $n[0]) $x 62 256 256
+    Put-Text $g $n[1] $x 328 22 210
+    $x += 310
+  }
+  Put-Text $g '同一套件压在**真背景**上（1920x1080 屏幕口径 · 图标按真播尺寸 · 右上横栏 / 左上头像板都在位）' 40 384 24 236
+  $screen = New-Object System.Drawing.Bitmap 1920, 1080
+  $sg = [System.Drawing.Graphics]::FromImage($screen)
+  $sg.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+  $bg = [System.Drawing.Image]::FromFile($bgPath)
+  $sg.DrawImage($bg, 0, 0, 1920, 1080); $bg.Dispose()
+  Draw-At $sg (Join-Path $dir 'LobbyProfilePlate.png') 0 0 467 96
+  Draw-At $sg (Join-Path $dir 'LobbyBandRight.png') 1382 0 538 95
+  Draw-Sprite $sg (Join-Path $dir 'Icon_LobbyFriend.png') 183 80 46 46 0
+  Draw-Sprite $sg (Join-Path $dir 'Icon_LobbyShop.png') 1521 96 60 60 0
+  Draw-Sprite $sg (Join-Path $dir 'Icon_LobbyEvent.png') 1644 96 60 60 0
+  Draw-Sprite $sg (Join-Path $dir 'Icon_LobbyTutorial.png') 1770 96 60 60 0
+  $sg.Dispose()
+  $g.DrawImage($screen, (New-Object System.Drawing.Rectangle 40, 424, 500, 140), (New-Object System.Drawing.Rectangle 0, 0, 500, 140), [System.Drawing.GraphicsUnit]::Pixel)
+  $g.DrawImage($screen, (New-Object System.Drawing.Rectangle 560, 424, 520, 230), (New-Object System.Drawing.Rectangle 1400, 0, 520, 230), [System.Drawing.GraphicsUnit]::Pixel)
+  $screen.Dispose()
+  Put-Text $g '左上头像板：好友挂名字下方' 40 574 22 210
+  Put-Text $g '右上横栏下：商城 / 活动 / 教程（无底板，直接压在墙上）' 560 664 22 210
+  $g.Dispose(); $b.Save($out, [System.Drawing.Imaging.ImageFormat]::Png); $b.Dispose()
+  return $out
+}
+
+# ── 预览：四个「压墙」图标的悬停态（常态 / 悬停 逐张对照）──────────
+function New-LobbyIconHoverReview([string]$dir, [string]$out, [string]$bgPath) {
+  $rows = @(
+    @('Icon_LobbyFriend.png', 'Icon_LobbyFriendHover.png', '好友 · 46px'),
+    @('Icon_LobbyShop.png', 'Icon_LobbyShopHover.png', '商城 · 60px'),
+    @('Icon_LobbyEvent.png', 'Icon_LobbyEventHover.png', '活动 · 60px'),
+    @('Icon_LobbyTutorial.png', 'Icon_LobbyTutorialHover.png', '教程 · 60px'))
+  $res = New-Bmp 1300 1070; $b = $res[0]; $g = $res[1]
+  $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+  $bs = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 10, 13, 19))
+  $g.FillRectangle($bs, 0, 0, 1300, 1070); $bs.Dispose()
+  Put-Text $g '四个「压墙」图标的悬停态：石面提亮 + 金线 GOLD→GOLD_L（与 LobbyBtnPlateHover 同一配方）' 40 22 25 236
+  Put-Text $g '常态' 40 62 24 210
+  Put-Text $g '悬停' 40 396 24 236
+  $x = 40
+  foreach ($n in $rows) {
+    Draw-At $g (Join-Path $dir $n[0]) $x 88 256 256
+    Draw-At $g (Join-Path $dir $n[1]) $x 422 256 256
+    Put-Text $g $n[2] $x 354 22 200
+    Put-Text $g $n[2] $x 688 22 200
+    $x += 310
+  }
+  Put-Text $g '压在真背景上（右上横栏下的三个 · 左常态 / 右悬停）' 40 726 24 236
+  $crop = New-Object System.Drawing.Rectangle 1400, 0, 520, 230
+  foreach ($i in 0..1) {
+    $screen = New-Object System.Drawing.Bitmap 1920, 1080
+    $sg = [System.Drawing.Graphics]::FromImage($screen)
+    $sg.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+    $bg = [System.Drawing.Image]::FromFile($bgPath)
+    $sg.DrawImage($bg, 0, 0, 1920, 1080); $bg.Dispose()
+    Draw-At $sg (Join-Path $dir 'LobbyBandRight.png') 1382 0 538 95
+    $suffix = $(if ($i -eq 1) { 'Hover' } else { '' })
+    Draw-Sprite $sg (Join-Path $dir ('Icon_LobbyShop' + $suffix + '.png')) 1521 96 60 60 0
+    Draw-Sprite $sg (Join-Path $dir ('Icon_LobbyEvent' + $suffix + '.png')) 1644 96 60 60 0
+    Draw-Sprite $sg (Join-Path $dir ('Icon_LobbyTutorial' + $suffix + '.png')) 1770 96 60 60 0
+    $sg.Dispose()
+    $dx = 40 + $i * 560
+    $g.DrawImage($screen, (New-Object System.Drawing.Rectangle $dx, 762, 520, 230), $crop, [System.Drawing.GraphicsUnit]::Pixel)
+    $screen.Dispose()
+    Put-Text $g $(if ($i -eq 1) { '悬停' } else { '常态' }) $dx 1000 22 210
+  }
+  Put-Text $g '悬停只动两处：石面（同 LobbyBtnPlateHover）+ 金线色；形体、位置、尺寸一律不动' 40 1034 22 150
+  $g.Dispose(); $b.Save($out, [System.Drawing.Imaging.ImageFormat]::Png); $b.Dispose()
+  return $out
+}
+
+# ── 主流程 ─────────────────────────────────────────────────
 $made = @()
 foreach ($t in @(@('LobbyPanelPlate.png', 0), @('LobbyBtnPlate.png', 0), @('LobbyBtnPlateHover.png', 1), @('LobbyBtnPlatePressed.png', 2))) {
   $r = New-PlateBmp 192 192 $PLATE_R $t[1]
@@ -834,6 +1050,15 @@ foreach ($k in @('gear', 'friend', 'shop', 'event', 'tutorial', 'coin', 'ticket'
   $nm = 'Icon_Lobby' + $k.Substring(0,1).ToUpper() + $k.Substring(1) + '.png'
   $made += (New-LobbyIcon $k (Join-Path $GEN $nm))
 }
+foreach ($k in @('friend', 'shop', 'event', 'tutorial')) {
+  $nm = 'Icon_Lobby' + $k.Substring(0,1).ToUpper() + $k.Substring(1) + 'Hover.png'
+  $made += (New-LobbyIcon $k (Join-Path $GEN $nm) -hover)
+}
+# 占位弹窗（十三次修正）：面板 + 关闭按钮底 —— 同 New-PlateBmp 配方（平底渐变 + 外墨边 + 等比内缩金线）
+foreach ($pp in @(@('LobbyPopupPlate.png', 2700, 1560, 60), @('LobbyPopupBtnPlate.png', 600, 192, 36))) {
+  $r = New-PlateBmp $pp[1] $pp[2] $pp[3] 0
+  $made += (Save-Bmp $r[0] $r[1] (Join-Path $GEN $pp[0]))
+}
 $sheet = Join-Path $PREV 'lobby-ui-v1-sheet.png'
 $mock  = Join-Path $PREV 'lobby-ui-v1-mockup.png'
 $ent   = Join-Path $PREV 'lobby-ui-v1-entryplates.png'
@@ -842,9 +1067,14 @@ New-LobbyUiSheet $GEN $sheet
 New-LobbyEntrySheet $GEN $ent
 New-LobbyUiMockup $GEN $mock
 New-LobbyUiMockup $GEN $grid $null -guide
+New-LobbyIconReview $GEN (Join-Path $PREV 'lobby-ui-v1-icons.png') $BG
+New-LobbyIconHoverReview $GEN (Join-Path $PREV 'lobby-ui-v1-iconhover.png') $BG
+$popup = Join-Path $PREV 'lobby-ui-v1-popup.png'
+New-LobbyPopupReview $GEN $popup $BG (Join-Path $ROOT 'Assets/_Game/Art/Sprites/Generated/lobby-v1/LobbyBackEmblem.png')
 New-EntryShapeSheet $GEN (Join-Path $PREV 'lobby-ui-v1-shape.png') | Out-Null
 $made | ForEach-Object { "sprite : $_" }
 "sheet  : $sheet"
 "entry  : $ent"
 "mockup : $mock"
 "grid   : $grid"
+"popup  : $popup"

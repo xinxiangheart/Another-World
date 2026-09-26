@@ -2,7 +2,7 @@
 
 **用途**：`Assets/_Game/Scenes/Lobby.unity` 的界面件。用户 2026-09-26：「好友货币商城什么的**先做占位 ui 即可**」——这一套是**占位**，不是终稿美术。系统本身（货币 / 商城 / 活动）库里都还没有。
 
-生成脚本 `Tools/cardframe/LobbyUIv1.ps1`（可重跑）。预览：`Tools/cardframe/preview/lobby-ui-v1-sheet.png`（贴纸式对照）、`lobby-ui-v1-mockup.png`（按草图版式拼的 1920×1080 效果）。
+生成脚本 `Tools/cardframe/LobbyUIv1.ps1`（可重跑）。预览：`Tools/cardframe/preview/lobby-ui-v1-sheet.png`（贴纸式对照）、`lobby-ui-v1-mockup.png`（按草图版式拼的 1920×1080 效果）、`lobby-ui-v1-icons.png`（四个「压墙」图标 1:1 + 压真背景的真播尺寸）、`lobby-ui-v1-iconhover.png`（同上的常态 / 悬停对照）。
 
 ## 右上角怎么摆（用户 2026-09-26 看图后定的）
 
@@ -47,20 +47,26 @@
 | `LobbyBtnPlate.png` | 192×192 | — | 按钮底 · 常态，9-slice border 48 |
 | `LobbyBtnPlateHover.png` | 192×192 | — | 悬停（底板提亮 + 金线 α236） |
 | `LobbyBtnPlatePressed.png` | 192×192 | — | 按下（底板压暗 44% + 金线 α120） |
+| `LobbyPopupPlate.png` | 2700×1560 | 900×520 | **占位弹窗**面板底（十三次修正；定尺，不切） |
+| `LobbyPopupBtnPlate.png` | 600×192 | 200×64 | **占位弹窗**关闭按钮底（十三次修正；定尺） |
 | `LobbyBandRight.png` | 1614×285 | 538×95 | 右上横栏（固定尺寸，不切片）—— 形状见下面「两块异形板」 |
 | `LobbyProfilePlate.png` | 1401×288 | 467×96 | 左上头像衬托底板（固定尺寸）—— 形状见下面「两块异形板」 |
 | `LobbyAvatarRing.png` | 264×264 | 88×88 | 头像金圆框 |
-| `Icon_LobbyGear.png` | 256×256 | 80×80 | 设置 · 齿轮（与 `icons-v1` 的 `Icon_Settings` 同配方）· 压在横栏右端 |
-| `Icon_LobbyFriend.png` | 256×256 | 80×80 | 好友 · 人影 · **无底板** |
-| `Icon_LobbyShop.png` | 256×256 | 80×80 | 商城 · 购物车 · **无底板** |
-| `Icon_LobbyEvent.png` | 256×256 | 80×80 | 活动 · 礼盒 · **无底板** |
-| `Icon_LobbyTutorial.png` | 256×256 | 80×80 | 教程 · **合起的书**（竖长方形 + 靠右一道书脊线，照草图）· **无底板** |
+| `Icon_LobbyGear.png` | 256×256 | 92×92 | 设置 · 齿轮（与 `icons-v1` 的 `Icon_Settings` 同配方）· 压在横栏右端 |
+| `Icon_LobbyFriend.png` | 256×256 | 46×46 | 好友 · 人影（**金线石印族**，十一次修正）· 无底板 |
+| `Icon_LobbyShop.png` | 256×256 | 60×60 | 商城 · 货篮 + 两段金线提手 + 两只金环轮（**金线石印族**）· 无底板 |
+| `Icon_LobbyEvent.png` | 256×256 | 60×60 | 活动 · 礼盒 + 竖向金带 + 菱形结扣（**金线石印族**）· 无底板 |
+| `Icon_LobbyTutorial.png` | 256×256 | 60×60 | 教程 · **合起的书**（封面内缩金线 + 靠右一道书脊 + 三档金线 + 菱形铆钉，**金线石印族**）· 无底板 |
 | `LobbyEntryPlate_Battle.png` | 1998×435 | **666×145** | 入口板 · 战斗（**定尺，不能切**） |
 | `LobbyEntryPlate_Cards.png` | 1983×447 | **661×149** | 入口板 · 卡牌总览（**定尺**） |
 | `LobbyEntryPlate_Room.png` | 1034×445 | **324×130** | 入口板 · 房间（**定尺**） |
 | `LobbyEntryPlate_More.png` | 1034×445 | **324×130** | 入口板 · 其它（**定尺**） |
-| `Icon_LobbyCoin.png` | 256×256 | 80×80 | **金币**（横栏内第一个货币） |
-| `Icon_LobbyTicket.png` | 256×256 | 80×80 | **点券** · 菱形券（横栏内第二个货币；蓝色与金币区分） |
+| `Icon_LobbyCoin.png` | 256×256 | 48×48 | **金币**（横栏内第一个货币） |
+| `Icon_LobbyTicket.png` | 256×256 | 48×48 | **点券** · 菱形券（横栏内第二个货币；蓝色与金币区分） |
+| `Icon_LobbyFriendHover.png` | 256×256 | 46×46 | 好友 · **悬停态**（石面提亮 + 金线 GOLD→GOLD_L） |
+| `Icon_LobbyShopHover.png` | 256×256 | 60×60 | 商城 · **悬停态** |
+| `Icon_LobbyEventHover.png` | 256×256 | 60×60 | 活动 · **悬停态** |
+| `Icon_LobbyTutorialHover.png` | 256×256 | 60×60 | 教程 · **悬停态** |
 
 > `LobbyFriendPlate.png`（好友按钮底）已于 2026-09-26 **删除** —— 好友不带底板。
 
@@ -273,3 +279,83 @@ LobbyUI_v1
 5. 两个货币仍是占位数字 `1,280` / `360`；**库里没有任何货币 / 钱包代码**。
 6. `LobbyBackEmblem` 只压到 α0.6；`Ref_Backdrop` 是全屏拉伸 —— 非 16:9 屏幕会被非等比拉伸（徽记是圆的，会变椭圆），
    要治就给它加 `AspectRatioFitter`。
+
+## 十一次修正（2026-09-26）：好友 / 商城 / 活动 / 教程 重出为「金线石印」族
+
+**来由**：用户判这四个「跟背景与风格不搭，很不满意」，要求重出、尤其后三个（商城 / 活动 / 教程）。
+
+**旧版错在哪**：它们照搬 `icons-v1` 的**实心族**（实心彩色块面 + 20px 粗墨边 + 内阴影 + 高光楔）——
+商城是蓝提手 + 金篮 + 金轮的购物车、活动是**红箱** + 金带、教程是**米黄块面**的书。三个毛病：
+
+1. **第三色**：蓝 / 红 / 米黄都不在本套配色里（本套只有深蓝黑 + 金；红是生命色，只给生命条）。
+2. **20px 粗墨边**（屏幕 60px 时 ≈ 4.7px）—— 比板件的 3px 墨边粗一半，是 App 图标的重量。
+3. **内阴影 + 高光楔** —— 正是本套母规明令禁的两样（`cardframe-v7`：不做出「凸起」的错觉）。
+
+**新版口径**（母规：整块平底 + 一条金细线 + 一处金饰）
+
+| 项 | 取值 |
+|---|---|
+| 石面 | 直接用板件那对色：`BAR_T #1E2938 → BAR_B #0C111A`，**逐形状各自渐变**（走 `$path.GetBounds()`），不是整张画布渐变 |
+| 金细线 | `$ICON_GOLD = 6` 贴图 px（屏幕 60px 时 ≈ 1.4px）· 相对形状边等比内缩 `$ICON_INSET = 16` |
+| 墨边 | `$ICON_INK = 9`（屏幕 60px 时 ≈ 2.1px）· 细件（提手 / 轮 / 结环）另给 6~13 |
+| 金饰 | 只用棋盘母题：**菱形铆钉**（礼盒结扣 / 封面徽记）、**环带**（人影胸前一道弧）、**金带**（礼盒竖带） |
+| 禁 | 第三色、内阴影、外发光、高光楔、倒角 |
+
+**四个形状**
+
+- **好友**：人影（头 + 肩）—— 头 / 肩各一条内缩金线，胸前一档金环带。
+- **商城**：货篮（梯形 + 内缩金线 + 两道金肋）+ **两段金线提手**（墨 13 打底、金 6 压上，圆头）+ 两只金环轮。
+- **活动**：礼盒 —— 箱体 / 箱盖各一条内缩金线 + 竖向金带（金底 + 墨边）+ 两只结环 + **菱形结扣**。
+- **教程**：合起的书 —— 封面内缩金线 + 靠右一道书脊金线 + 三档金线 + **菱形铆钉**。
+
+**齿轮 / 金币 / 点券不动** —— 它们在右上横栏里、下面有底衬，仍走 `icons-v1` 实心族。
+
+**场景不用重铺**：四个贴图**同名同尺寸**（256×256）覆盖，`.meta` 的 guid 没变，场景里 `Icon_Lobby*` 的引用自动指到新图。
+预览 `Tools/cardframe/preview/lobby-ui-v1-icons.png` 就是「1:1 + 压在真背景上的真播尺寸」两张对照。
+
+## 十二次修正（2026-09-26）：四个「压墙」图标补悬停态
+
+用户要求出「一组鼠标悬停时的变化态」。**配方直接照 `LobbyBtnPlateHover`（tone 1）**，不另起一套：
+
+| 项 | 常态 | 悬停 |
+|---|---|---|
+| 石面顶 | `BAR_T #1E2938` | `Mix(BAR_T, HILITE, 0.12)` |
+| 石面底 | `BAR_B #0C111A` | `Mix(BAR_B, BAR_T, 0.40)` |
+| 主金线 | `GOLD #C8A44A` | `GOLD_L #E8D18A` |
+| 金饰（菱形铆钉 / 结扣 / 金带） | `GOLD_L` | `Mix(GOLD_L, HILITE, 0.35)` |
+| 金线 α | 各件原值 | **+40**（上限 255） |
+| 墨边 / 形体 / 位置 / 尺寸 | — | **一律不动** |
+
+产物 `Icon_Lobby{Friend,Shop,Event,Tutorial}Hover.png`：与常态**同尺寸 256×256**，只差色调。
+实现是 `$ICON_TONE_N` / `$ICON_TONE_H` 两张色调表 + `Set-IconTone`，`New-LobbyIcon` 多一个 `-hover` 开关。
+预览 `Tools/cardframe/preview/lobby-ui-v1-iconhover.png`（常态 / 悬停上下两行 1:1 + 压真背景的 60px 对照）。
+
+**接线见「十三次修正」**（本节只留贴图配方）。想顺便「悬停时微微放大」，就在 `LobbyIconHover.OnPointerEnter` 里改
+`localScale`（贴图不用再出）。
+
+## 十三次修正（2026-09-26）：悬停 / 点击接线 + 占位弹窗
+
+用户口径：**先做鼠标悬停变化，点击后的弹窗只做占位即可。** 把十二次修正出的四张悬停贴图接进场景。
+
+**接线（全在 `Assets/_Game/Editor/LobbyUIBuilder.cs`，重跑菜单不会丢）**
+
+- `WireIconHover(icon, 常态贴图, 悬停贴图, popup, 标题)` —— 给四个「压墙」图标（好友 / 商城 / 活动 / 教程）挂
+  `Assets/_Game/Scripts/UI/Lobby/LobbyIconHover.cs`，填好 `icon / normalTexture / hoverTexture / popup / title`。
+- `NewPlaceholderPopup(root, 900×520)` —— `Popup_Placeholder`，**存成 inactive**（场景里看不见）。
+
+**占位弹窗结构**（点四个图标开的是**同一个**，只换标题）
+
+| 节点 | 是什么 |
+|---|---|
+| `Popup_Placeholder` | 全屏容器，`LobbyPopup` 挂这里，场景里 `activeSelf=False` |
+| `Dim` | 全屏遮罩 `Image #06090E α200` + `Button`（transition None）—— 点遮罩也关 |
+| `Panel` | `LobbyPopupPlate.png` 900×520 |
+| `Text_Title` | 标题（点哪个图标写哪个），字号 42 |
+| `Text_Hint` | 「占位 · 待接真实面板」，字号 24 α0.62 |
+| `Btn_Close` | `LobbyPopupBtnPlate.png` 200×64，锚面板右下 `(−36,36)`，字 26「关闭」 |
+
+**关窗两条路**：`Dim` 与 `Btn_Close` 的 `onClick` 都是编辑器里加的持久监听，都指向 `LobbyPopup.Hide`
+（`Assets/_Game/Scripts/UI/Lobby/LobbyPopup.cs`）。`Show()` 里 `SetAsLastSibling()` —— 弹窗永远压在最上层。
+
+**只在 Play 模式生效**（`EventSystem` 不进编辑模式）；场景里的 `EventSystem` 已带 `StandaloneInputModule`，不用另挂。
+`LobbyIconHover` 走 `IPointerEnter / IPointerExit / IPointerClick` 接口、**没有 `Button`** —— 图标自己的 `RawImage` 就是 raycast 目标。

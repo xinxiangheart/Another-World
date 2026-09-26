@@ -3,6 +3,8 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityEditor;
 using UnityEditor.SceneManagement;
+using UnityEditor.Events;
+using UnityEngine.Events;
 using TMPro;
 
 /// <summary>
@@ -21,7 +23,9 @@ using TMPro;
  ///         └─ Entry_BottomRow                            ← **透明大框**：与上面两块同尺寸（666x145）的空 RectTransform，不画任何东西、只用于限位
  ///              ├─ Entry_Room                            ← 大框左格（格内左上 0,0，板身 324x130）
  ///              └─ Entry_More                            ← 大框右格（格内左上 342,0，板身 324x130；与左格同形体、同倾角，两条上沿平行）
-/// 只摆位与贴图：不接任何逻辑，也不动场景里已有的入口按钮；重复执行会先删掉 LobbyUI_v1 再重建。
+///         └─ Popup_Placeholder                        ← 占位弹窗（**存成 inactive**）：Dim 遮罩（点一下关）/ Panel / Text_Title / Text_Hint / Btn_Close
+/// 摆位与贴图为主；**唯一的逻辑**是那四张「压墙」图标：悬停换贴图（LobbyIconHover）、点击弹占位弹窗（LobbyPopup）。
+/// 场景里已有的入口按钮一律不动；重复执行会先删掉 LobbyUI_v1 再重建（接线在脚本里，重跑不会丢）。
 /// 生成后位置 / 尺寸 / 倾角直接在 Scene 或 Inspector 里拖。
 /// </summary>
 public static class LobbyUIBuilder
@@ -97,7 +101,7 @@ public static class LobbyUIBuilder
         RawImage profile = NewRaw(rootRT, "Plate_Profile", UiDir + "LobbyProfilePlate.png", AnchorTL, PivotTL, Vector2.zero, new Vector2(467f, 96f));
         NewRaw(profile.rectTransform, "Avatar_Ring", UiDir + "LobbyAvatarRing.png", AnchorTL, PivotTL, new Vector2(36f, -2f), new Vector2(88f, 88f));
         NewLabel(profile.rectTransform, "Text_PlayerName", "名字", new Vector2(184f, -12f), new Vector2(240f, 44f), 26f);
-        NewRaw(profile.rectTransform, "Icon_Friend", UiDir + "Icon_LobbyFriend.png", AnchorTL, PivotTL, new Vector2(160f, -57f), new Vector2(46f, 46f));
+        RawImage iconFriend = NewRaw(profile.rectTransform, "Icon_Friend", UiDir + "Icon_LobbyFriend.png", AnchorTL, PivotTL, new Vector2(160f, -57f), new Vector2(46f, 46f));
 
         // ── 右上：横栏 + 两个货币 + 齿轮；栏下商城 / 活动 / 教程（无底板），整簇锚屏幕右上角 ──
         RawImage band = NewRaw(rootRT, "Plate_TopBand", UiDir + "LobbyBandRight.png", AnchorTR, PivotTL, new Vector2(-538f, 0f), new Vector2(538f, 95f));
@@ -106,9 +110,9 @@ public static class LobbyUIBuilder
         NewRaw(band.rectTransform, "Icon_Ticket", UiDir + "Icon_LobbyTicket.png", AnchorTL, PivotTL, new Vector2(300f, -16f), new Vector2(48f, 48f));
         NewLabel(band.rectTransform, "Text_Ticket", "360", new Vector2(354f, -24f), new Vector2(150f, 46f), 28f);
         NewRaw(band.rectTransform, "Icon_Gear", UiDir + "Icon_LobbyGear.png", AnchorTL, PivotTL, new Vector2(446f, -2f), new Vector2(92f, 92f));
-        NewRaw(band.rectTransform, "Icon_Shop", UiDir + "Icon_LobbyShop.png", AnchorTL, PivotTL, new Vector2(109f, -66f), new Vector2(60f, 60f));
-        NewRaw(band.rectTransform, "Icon_Event", UiDir + "Icon_LobbyEvent.png", AnchorTL, PivotTL, new Vector2(232f, -66f), new Vector2(60f, 60f));
-        NewRaw(band.rectTransform, "Icon_Tutorial", UiDir + "Icon_LobbyTutorial.png", AnchorTL, PivotTL, new Vector2(358f, -66f), new Vector2(60f, 60f));
+        RawImage iconShop = NewRaw(band.rectTransform, "Icon_Shop", UiDir + "Icon_LobbyShop.png", AnchorTL, PivotTL, new Vector2(109f, -66f), new Vector2(60f, 60f));
+        RawImage iconEvent = NewRaw(band.rectTransform, "Icon_Event", UiDir + "Icon_LobbyEvent.png", AnchorTL, PivotTL, new Vector2(232f, -66f), new Vector2(60f, 60f));
+        RawImage iconTutorial = NewRaw(band.rectTransform, "Icon_Tutorial", UiDir + "Icon_LobbyTutorial.png", AnchorTL, PivotTL, new Vector2(358f, -66f), new Vector2(60f, 60f));
 
         // ── 右半：四块入口板（板心锚屏幕右上角；名字是子物体，跟着板一起倾斜）──
         // ── 右半：入口板（上排两块板心锚屏幕右上角；下排两块挂在那块透明大框下）──
@@ -121,9 +125,15 @@ public static class LobbyUIBuilder
         NewEntry(bottomRow, "Entry_Room", "LobbyEntryPlate_Room.png", "房间", AnchorTL, CellCenter(CellRoom, new Vector2(324f, 130f)), new Vector2(324f, 130f), 30f, -1.5f);
         NewEntry(bottomRow, "Entry_More", "LobbyEntryPlate_More.png", "其它", AnchorTL, CellCenter(CellMore, new Vector2(324f, 130f)), new Vector2(324f, 130f), 30f, -1.5f);
 
+        // ── 悬停 / 点击（2026-09-26）：四个「压墙」图标挂悬停组件，点开同一个占位弹窗 ──
+        LobbyPopup popup = NewPlaceholderPopup(rootRT, new Vector2(900f, 520f));
+        WireIconHover(iconFriend, "Icon_LobbyFriend.png", "Icon_LobbyFriendHover.png", popup, "好友");
+        WireIconHover(iconShop, "Icon_LobbyShop.png", "Icon_LobbyShopHover.png", popup, "商城");
+        WireIconHover(iconEvent, "Icon_LobbyEvent.png", "Icon_LobbyEventHover.png", popup, "活动");
+        WireIconHover(iconTutorial, "Icon_LobbyTutorial.png", "Icon_LobbyTutorialHover.png", popup, "教程");
         Selection.activeGameObject = root;
         EditorSceneManager.MarkSceneDirty(root.scene);
-        Debug.Log("[LobbyUI] 已在 Canvas 下生成 " + RootName + "（占位、未接逻辑）：位置 / 尺寸在 Scene 里拖，倾角改 Entry_* 的 Rotation Z；下排整排位置改 Entry_BottomRow（透明大框，只限位）；形体（斜切 / 远端收缩）改 LobbyUIv1.ps1 的 $ENTRY_SHAPE 后重新出图再跑本菜单。");
+        Debug.Log("[LobbyUI] 已在 Canvas 下生成 " + RootName + "（占位）：位置 / 尺寸在 Scene 里拖；四张「压墙」图标已接悬停 + 点击弹占位弹窗，倾角改 Entry_* 的 Rotation Z；下排整排位置改 Entry_BottomRow（透明大框，只限位）；形体（斜切 / 远端收缩）改 LobbyUIv1.ps1 的 $ENTRY_SHAPE 后重新出图再跑本菜单；悬停 / 弹窗改本脚本的 WireIconHover / NewPlaceholderPopup。");
     }
 
 
@@ -251,4 +261,75 @@ public static class LobbyUIBuilder
         text.overflowMode = TextOverflowModes.Overflow;
         return text;
     }
+
+    // ── 悬停 / 点击（2026-09-26）：四个「压墙」图标 + 占位弹窗 ─────────────────
+    /// <summary>给图标挂悬停组件：常态 / 悬停两张贴图只差色调（形体尺寸一致），切换时不会跳位。</summary>
+    static void WireIconHover(RawImage icon, string normalFile, string hoverFile, LobbyPopup popup, string title)
+    {
+        var hover = icon.gameObject.AddComponent<LobbyIconHover>();
+        hover.icon = icon;
+        hover.normalTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(UiDir + normalFile);
+        hover.hoverTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(UiDir + hoverFile);
+        hover.popup = popup;
+        hover.title = title;
+        if (hover.hoverTexture == null) Debug.LogWarning($"[LobbyUI] 找不到悬停贴图：{UiDir + hoverFile}");
+    }
+
+    /// <summary>占位弹窗：Dim 遮罩（点一下也关）+ 面板 + 标题 + 提示 + 关闭按钮。内容等真实面板接进来；
+    /// 根节点存成 inactive —— 场景里看不见，运行时点图标才 Show。</summary>
+    static LobbyPopup NewPlaceholderPopup(Transform parent, Vector2 panelSize)
+    {
+        RectTransform root = NewRect(parent, "Popup_Placeholder", AnchorC, PivotC, Vector2.zero, Vector2.zero);
+        root.anchorMin = Vector2.zero;
+        root.anchorMax = Vector2.one;
+        root.offsetMin = Vector2.zero;
+        root.offsetMax = Vector2.zero;
+        var popup = root.gameObject.AddComponent<LobbyPopup>();
+
+        var dim = NewRect(root, "Dim", AnchorC, PivotC, Vector2.zero, Vector2.zero).gameObject.AddComponent<Image>();
+        var dimRT = (RectTransform)dim.transform;
+        dimRT.anchorMin = Vector2.zero;
+        dimRT.anchorMax = Vector2.one;
+        dimRT.offsetMin = Vector2.zero;
+        dimRT.offsetMax = Vector2.zero;
+        dim.color = new Color32(6, 9, 14, 200);
+        var dimButton = dim.gameObject.AddComponent<Button>();
+        dimButton.targetGraphic = dim;
+        dimButton.transition = Selectable.Transition.None;
+
+        RawImage panel = NewRaw(root, "Panel", UiDir + "LobbyPopupPlate.png", AnchorC, PivotC, Vector2.zero, panelSize);
+        popup.titleText = NewLabel(panel.rectTransform, "Text_Title", "占位", new Vector2(48f, -34f), new Vector2(panelSize.x - 96f, 64f), 42f);
+        TextMeshProUGUI hint = NewLabel(panel.rectTransform, "Text_Hint", "占位 · 待接真实面板", new Vector2(48f, -112f), new Vector2(panelSize.x - 96f, 40f), 24f);
+        hint.color = new Color(240f / 255f, 232f / 255f, 210f / 255f, 0.62f);
+
+        RawImage close = NewRaw(panel.rectTransform, "Btn_Close", UiDir + "LobbyPopupBtnPlate.png", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-36f, 36f), new Vector2(200f, 64f));
+        var closeButton = close.gameObject.AddComponent<Button>();
+        closeButton.targetGraphic = close;
+        ColorBlock colors = closeButton.colors;
+        colors.normalColor = new Color(0.86f, 0.86f, 0.86f, 1f);
+        colors.highlightedColor = Color.white;
+        colors.pressedColor = new Color(0.7f, 0.7f, 0.7f, 1f);
+        closeButton.colors = colors;
+        NewCenterLabel(close.rectTransform, "Text", "关闭", 26f);
+
+        UnityEventTools.AddPersistentListener(dimButton.onClick, new UnityAction(popup.Hide));
+        UnityEventTools.AddPersistentListener(closeButton.onClick, new UnityAction(popup.Hide));
+
+        popup.gameObject.SetActive(false);
+        return popup;
+    }
+
+    /// <summary>居中的小字（关闭按钮里那个）。</summary>
+    static TextMeshProUGUI NewCenterLabel(Transform parent, string name, string content, float fontSize)
+    {
+        TextMeshProUGUI text = NewLabel(parent, name, content, Vector2.zero, new Vector2(200f, fontSize * 1.6f), fontSize);
+        RectTransform rt = text.rectTransform;
+        rt.anchorMin = AnchorC;
+        rt.anchorMax = AnchorC;
+        rt.pivot = PivotC;
+        rt.anchoredPosition = Vector2.zero;
+        text.alignment = TextAlignmentOptions.Center;
+        return text;
+    }
+
 }
