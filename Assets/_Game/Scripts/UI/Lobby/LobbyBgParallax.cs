@@ -2,34 +2,45 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// LobbyBgParallax —— 大厅背景（Bg_v2）的鼠标视差，2026-09-26。
+/// LobbyBgParallax —— 大厅的鼠标视差，2026-09-26。
 ///
 /// 口径照 Assets/_Game/Scripts/UI/MainMenu/MenuLightCurtain.cs：
 ///   鼠标相对屏幕中心的偏移（-1..1）× parallaxMax（画布尺寸的比例，默认 0.030 ≈ 1920 下的 58px）
-///   → 再乘每层自己的 depth（0 = 钉死，1 = 最近、位移最大）→ 指数平滑跟随（6 / 秒，帧率无关）。
+///   → 再乘每层自己的 depth → 指数平滑跟随（6 / 秒，帧率无关）。只改 anchoredPosition，不动尺寸。
 ///
-/// 只改 anchoredPosition，不动尺寸。所以**每层贴图必须自带溢出**：
-/// Bg_Far / Bg_Near 是按屏的 1.08 倍出的图（2074×1166），四边各留 4% ≈ 77px，
-/// 而 depth 1.0 的层最多走 57.6px —— 够，不会露出画布边缘。
+/// **depth 的正负就是方向**：
+///   · **正** = 跟着鼠标**同向**（背景 / 星环）；
+///   · **负** = **反向**（鼠标往右，这一层往左）—— 四块入口板走的就是这条，做出「反向陀螺仪」。
 ///
-/// 只在 Play 模式动；场景里静止的摆位就是设计稿的位置（设计师照 LobbyBgV2.ps1 的屏坐标摆即可）。
-/// 挂载：LobbyUI_v1/Bg_v2（由 Assets/_Game/Editor/LobbyBgV2Builder.cs 生成）。
-/// 层与 depth（2026-09-26 七次定：用户「整体背景幅度较小、圆环较大，做一个区分」）：
-///   Far 0.10（背景底，几乎不跟手）/ Near 0.30（背景浮尘，轻微）/ Ring 0.85（星环，最明显）。
-///   按 parallaxMax = 0.030 折算到 1920×1080：Far ≈ 5.8px、Near ≈ 17.3px、Ring ≈ 49.0px（横），
-///   环与背景底的位移比 8.4 : 1 —— 环右边缘 956 + 49 = 1005 仍在 UI 热点最左 1099 之外。
+/// 层与 depth（2026-09-26 九次定）：
+///   Far 0.10（背景底，几乎不跟手）/ Ring 0.85（星环）/ Near 0.30（背景浮尘）；
+///   Entry_Battle / Entry_Cards / Entry_BottomRow **-0.30** —— 反向，幅度与 Near 背景一层相当。
+///   **2026-09-26 十次定**：parallaxMax 0.030 → **0.012**（「只能看到动一点点即可」），折算到 1920×1080 变成
+///   Far ≈ 2.3px / Near ≈ 6.9px / Ring ≈ 19.6px / 入口板 ≈ 6.9px（反向）—— 比例关系没动，只是整体收细。
+///
+/// 挂载：LobbyUI_v1/Bg_v2（由 Assets/_Game/Editor/LobbyBgV2Builder.cs 生成 + 接入口板）。
+/// 入口板那三层存的是 **resolveName**（名字）而不是硬引用 —— 重新跑「生成大厅 UI v1」把节点重建之后，
+/// OnEnable 会按名字找回来，不会变成一串空引用。
+///
+/// 只在 Play 模式动；场景里静止的摆位就是设计稿的位置。
 /// </summary>
 public class LobbyBgParallax : MonoBehaviour
 {
     [System.Serializable]
     public class Layer
     {
+        [Tooltip("要驱动的 RectTransform")]
         public RectTransform rect;
-        [Range(0f, 2f)] public float depth = 0.25f;      // 相对最近层的位移倍率
+
+        [Tooltip("rect 掉了（比如重新跑了「生成大厅 UI v1」）就按这个名字在场景里找回来")]
+        public string resolveName;
+
+        [Tooltip("位移倍率：正 = 跟鼠标同向，负 = 反向（陀螺仪）")]
+        [Range(-2f, 2f)] public float depth = 0.25f;
     }
 
-    [Tooltip("depth = 1 的层最大位移（画布尺寸的比例）。照 MenuLightCurtain 的 0.030")]
-    public float parallaxMax = 0.030f;
+    [Tooltip("depth = 1 的层最大位移（画布尺寸的比例）。开始界面那套光幕是 0.030，大厅 2026-09-26 十次定收到 0.012 —— 用户「幅度更低，只能看到动一点点即可」")]
+    public float parallaxMax = 0.012f;
 
     [Tooltip("跟随速度：越大越跟手（指数平滑，帧率无关）")]
     public float smooth = 6f;
@@ -42,6 +53,7 @@ public class LobbyBgParallax : MonoBehaviour
 
     void OnEnable()
     {
+        ResolveLayers();
         _base = new Vector2[layers.Count];
         for (int i = 0; i < layers.Count; i++)
             if (layers[i] != null && layers[i].rect != null)
@@ -56,6 +68,19 @@ public class LobbyBgParallax : MonoBehaviour
             if (layers[i] != null && layers[i].rect != null)
                 layers[i].rect.anchoredPosition = _base[i];
         _look = Vector2.zero;
+    }
+
+    /// <summary>rect 为空的层，按 resolveName 在场景里找回自己（UI 节点被重建之后用）。</summary>
+    void ResolveLayers()
+    {
+        if (layers == null) return;
+        for (int i = 0; i < layers.Count; i++)
+        {
+            Layer L = layers[i];
+            if (L == null || L.rect != null || string.IsNullOrEmpty(L.resolveName)) continue;
+            GameObject go = GameObject.Find(L.resolveName);
+            if (go != null) L.rect = go.transform as RectTransform;
+        }
     }
 
     void Update()

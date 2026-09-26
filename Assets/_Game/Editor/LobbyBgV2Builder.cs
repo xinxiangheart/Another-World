@@ -11,7 +11,9 @@ using UnityEditor.SceneManagement;
 /// Assets/_Game/Art/Sprites/Generated/lobby-bg-v2/README.md 的「摆位 / 溢出」两节。
 ///
 /// 节点树（挂在已有的 LobbyUI_v1 下，sibling index 1 —— 压在 Ref_Backdrop（安全网）之上、其它一切之下）：
-///   Bg_v2                        (LobbyBgParallax：三层视差；全屏空容器，不画东西)
+///   Bg_v2                        (LobbyBgParallax：三层背景视差 + 四块入口板的反向陀螺仪；全屏空容器，不画东西)
+///        ↑ 同时驱动：Far 0.10 / Ring 0.85 / Near 0.30（正 = 跟鼠标同向）与
+///          Entry_Battle / Entry_Cards / Entry_BottomRow -0.30（**负 = 反向**，幅度与 Near 背景相当）
 ///     ├─ Far                     (RawImage Bg_Far)  全拉伸 + localScale 1.08   depth 0.10
 ///     │    └─ Motes              (LobbyBgMotes Twinkle 100) —— 后景光点：原地缓慢明暗
 ///     ├─ Ring                    (LobbyRingNodes)   中心锚，792x792，中心 = 屏 (560,540)   depth 0.85
@@ -54,6 +56,11 @@ public static class LobbyBgV2Builder
     const int   NodeCount = 12;
     const float NodeA0 = -80f;          // 第一颗的屏角（正上方偏右 10 度）
     const float NodeStep = 30f;         // 每颗 30 度，顺时针
+
+    // 反向陀螺仪（2026-09-26 九次定）：四块入口板逆着鼠标走。**负 depth = 反向**；
+    // 幅度取 -0.30 = 与 Near 背景层（0.30）相当 —— 所以是「背景跟着走、板子逆着走」。
+    const float CounterDepth = -0.30f;
+    static readonly string[] CounterNames = { "Entry_Battle", "Entry_Cards", "Entry_BottomRow" };
     // 默认不常亮 —— 12 颗全部参与「自身缓慢闪烁」；要「常亮若干颗」就调 Ring 的 LobbyRingNodes.litCount
 
     static readonly Vector2 AnchorC = new Vector2(0.5f, 0.5f);
@@ -135,21 +142,37 @@ public static class LobbyBgV2Builder
         NewMotes(near.rectTransform, "Motes", LobbyBgMotes.Mode.Rise, 80, 20260927);
 
         // ── 4 视差（只有挂上 Bg_v2 的这一层才动）──────────────────────────────
-        // 2026-09-26 七次定：把「背景」和「星环」的档位拉开 —— 背景几乎不跟手、环最明显。
-        // 折算到 1920×1080（parallaxMax 0.030）：Far ≈ 5.8px、Near ≈ 17.3px、Ring ≈ 49.0px。
+        // 2026-09-26 七次定（九次定加了入口板）：背景几乎不跟手、环最明显、入口板反向。
+        // 折算到 1920×1080（parallaxMax 0.012）：Far ≈ 2.3px、Near ≈ 6.9px、Ring ≈ 19.6px、入口板 ≈ 6.9px（反向）。
         var parallax = root.AddComponent<LobbyBgParallax>();
+        parallax.parallaxMax = 0.012f;   // 2026-09-26 十次定：0.030 → 0.012，「只能看到动一点点即可」
         parallax.layers = new List<LobbyBgParallax.Layer>();
         parallax.layers.Add(new LobbyBgParallax.Layer { rect = far.rectTransform, depth = 0.10f });   // 背景底
         parallax.layers.Add(new LobbyBgParallax.Layer { rect = ringRT, depth = 0.85f });              // 星环（最大）
         parallax.layers.Add(new LobbyBgParallax.Layer { rect = near.rectTransform, depth = 0.30f });  // 背景浮尘
 
-        // ── 5 旧徽记：中央棋盘徽记与星野同框是「两套圆环叠一起」，默认关掉 ──────
+        // ── 5 反向陀螺仪：四块入口板（战斗 / 卡牌总览 / 房间 + 其它）逆着鼠标走 ────────
+        // 负 depth = 反向；Entry_BottomRow 是那对下排小板的透明大框，带上它整块板群同进同退。
+        // 存的是**名字**而不是硬引用 —— 重新跑「生成大厅 UI v1」把节点重建之后，OnEnable 会按名字找回来。
+        foreach (string entryName in CounterNames)
+        {
+            Transform t = parent.Find(entryName);
+            parallax.layers.Add(new LobbyBgParallax.Layer
+            {
+                rect = t as RectTransform,
+                resolveName = entryName,
+                depth = CounterDepth
+            });
+            if (t == null) Debug.LogWarning("[LobbyBg] 没找到 " + entryName + " —— 先跑一次「生成大厅 UI v1（占位）」；漏掉的这层运行时会自己按名字找");
+        }
+
+        // ── 6 旧徽记：中央棋盘徽记与星野同框是「两套圆环叠一起」，默认关掉 ──────
         HideEmblemIfActive(parent);
 
         Selection.activeGameObject = root;
         EditorSceneManager.MarkSceneDirty(root.scene);
         Debug.Log("[LobbyBg] 已在 " + ParentName + " 下生成 " + RootName + "：Far / Ring(12 点 + 12 辉光) / Near。" +
-                  "三层视差挂 Bg_v2（depth 0.25 / 0.55 / 1.00），环的闪烁改 Ring 的 LobbyRingNodes（twinklePeriod / twinklePhaseStep / twinkleMin，场景里直接看得到）；" +
+                  "视差挂 Bg_v2（Far 0.10 / Ring 0.85 / Near 0.30，入口板 -0.30 反向），环的闪烁改 Ring 的 LobbyRingNodes（twinklePeriod / twinklePhaseStep / twinkleMin，场景里直接看得到）；" +
                   "环心 / 大小改 ringRT 的 anchoredPosition / sizeDelta 与 NodeRadius（口径在 Tools/cardframe/LobbyBgV2.ps1 的 $RING_*）。");
     }
 
