@@ -108,12 +108,21 @@ pwsh -NoProfile -File "Tools/cardframe/LobbyBgV2.ps1"
 |---|---|---|---|
 | `Bg_v2` | `LobbyBgParallax` | 全屏空容器（不画东西） | — |
 | `Bg_v2/Far` | RawImage `Bg_Far` | 全拉伸 + `localScale 1.08` | **0.10** |
+| `Bg_v2/Far/Motes` | `LobbyBgMotes`（**Twinkle** ×100） | 全拉伸空容器（点运行时生成） | —（跟 Far 走 0.10） |
 | `Bg_v2/Ring` | `LobbyRingNodes` | 中心锚 `792×792`，中心 = 屏 **(560, 540)** | **0.85** |
 | `Bg_v2/Ring/Base` | RawImage `Ring_Base` | `792×792` | — |
 | `Bg_v2/Ring/Glow_00..Glow_11` | RawImage `Ring_NodeGlow` | `112×112`，半径 350，屏角 `-80 + 30i` | — |
 | `Bg_v2/Ring/Node_00..Node_11` | RawImage `Ring_Node` | `52×52`，同上 | — |
 | `Bg_v2/Near` | RawImage `Bg_Near` | 全拉伸 + `localScale 1.08` | **0.30** |
+| `Bg_v2/Near/Motes` | `LobbyBgMotes`（**Rise** ×80） | 全拉伸空容器（点运行时生成） | —（跟 Near 走 0.30） |
 
+- **背景光点分两拨（2026-09-26 八次定）**：组件 `Assets/_Game/Scripts/UI/Lobby/LobbyBgMotes.cs`，挂在 Far / Near 下**自动继承那一层的视差**，不用额外接线。
+  - **后景** `Bg_v2/Far/Motes`（`Twinkle` ×100）：**钉在原地缓慢明暗** —— 每颗自己的周期（3.5–8 秒）与相位都随机，走正弦，所以不会整片一起眨眼、也没有停顿段。
+  - **前景** `Bg_v2/Near/Motes`（`Rise` ×80）：**缓慢上浮**（0.010–0.028 画布高/秒 ≈ 54–150 秒穿一屏，带轻微横向摆动）。
+    出上沿后在**可视区之外**重生（`wrapY 1.04` / `spawnY -0.05`），所以看不到「冒出来」。
+  - 两拨点都是**运行时生成**：`OnEnable` 建、`OnDisable` 全销毁 —— **一个点都不存进场景**（Hierarchy 永远干净），贴图也是代码里的柔边圆，不依赖任何资源引用。
+  - 贴图里原来的**近景静态光尘会和上浮的点打架**，所以出图脚本的 `$NEAR_DUST` 已改成 **0**；远景星点保留当静态底，闪烁点叠在它上面（大约 1/3 的星在闪）。
+  - 想换一批点改 `seed`；调数量 / 大小 / 明暗 / 快慢改 `count` / `sizeRange` / `alphaRange` / `periodRange` / `speedRange`。
 - 12 张辉光**整批建在 12 颗点之前**，所以辉光永远渲染在点之下。
 - 环上 12 颗点有两种态：
   - **常亮** `litCount`：前 N 颗钉死在满亮，默认 **0**（要「独立亮起部分点」就调它）；
@@ -121,7 +130,8 @@ pwsh -NoProfile -File "Tools/cardframe/LobbyBgV2.ps1"
     `twinklePeriod` 一颗自己亮一次几秒（默认 **6**，越大越慢）、`twinklePhaseStep` 相邻两颗错开多少周期（默认 **1/12** = 一圈正好一个周期）、
     `twinkleMin` → `twinkleMax` 亮暗两档（默认 **0.06 → 1.00**：最暗接近熄灭、最亮满亮）。
     亮度走**正弦**，所以是连续变化，**不会亮一下停一会儿**；`twinkleOn = false` 就完全静止。
-- 闪动要**进 Play** 才看得到；不想进 Play 就勾上 `previewInEditMode`（编辑态也会一直闪，代价是场景一直被标成「已修改」）。编辑态静止时相位停在 0 —— 环上是一条亮度渐变的带。
+- **环**勾了 `previewInEditMode`（场景里默认就是开的）→ **不进 Play 也能在 Scene 视图看到它在呼吸**，代价是场景一直被标成「已修改」（看不惯就去掉勾）。
+- **光点与视差只在 Play 生效**（光点是运行时生成的，编辑态一定看不到）。
 - 远景 / 近景用「全拉伸 + `localScale 1.08`」而不是固定 2074×1166 —— 16:9 下正好 1 贴图像素 = 1 屏像素，换比例也自动铺满。
 - **视差档位（2026-09-26 七次定）**：背景几乎不跟手、星环最明显 —— `Far 0.10` / `Ring 0.85` / `Near 0.30`。
   按 `parallaxMax = 0.030` 折算到 1920×1080：Far ≈ **5.8px** / Near ≈ **17.3px** / Ring ≈ **49.0px**（横向），

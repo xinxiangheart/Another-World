@@ -12,12 +12,14 @@ using UnityEditor.SceneManagement;
 ///
 /// 节点树（挂在已有的 LobbyUI_v1 下，sibling index 1 —— 压在 Ref_Backdrop（安全网）之上、其它一切之下）：
 ///   Bg_v2                        (LobbyBgParallax：三层视差；全屏空容器，不画东西)
-///     ├─ Far                     (RawImage Bg_Far)  全拉伸 + localScale 1.08   depth 0.25
-///     ├─ Ring                    (LobbyRingNodes)   中心锚，792x792，中心 = 屏 (560,540)   depth 0.55
+///     ├─ Far                     (RawImage Bg_Far)  全拉伸 + localScale 1.08   depth 0.10
+///     │    └─ Motes              (LobbyBgMotes Twinkle 100) —— 后景光点：原地缓慢明暗
+///     ├─ Ring                    (LobbyRingNodes)   中心锚，792x792，中心 = 屏 (560,540)   depth 0.85
 ///     │    ├─ Base               (RawImage Ring_Base) 792x792
 ///     │    ├─ Glow_00..Glow_11   (RawImage Ring_NodeGlow) 112x112 —— 全部先于 Node 建，渲染在点之下
 ///     │    └─ Node_00..Node_11   (RawImage Ring_Node)     52x52，半径 350，屏角 -80 + 30i
-///     └─ Near                    (RawImage Bg_Near)  全拉伸 + localScale 1.08   depth 1.00
+///     └─ Near                    (RawImage Bg_Near)  全拉伸 + localScale 1.08   depth 0.30
+///          └─ Motes              (LobbyBgMotes Rise 80)    —— 前景光点：缓慢上浮
 ///
 /// 坐标换算：脚本 / README 的屏口径是「左上原点、y 向下」，Unity 的 anchoredPosition 是「中心原点、y 向上」，
 /// 所以 x 取 (屏x - 960)、y 取 -(屏y - 540)；角度同理取负（屏 -80 度 -> Unity +80 度，即正上方偏右）。
@@ -85,6 +87,8 @@ public static class LobbyBgV2Builder
 
         // ── 1 远景 ───────────────────────────────────────────────────────────
         RawImage far = NewLayer(rootRT, "Far", BgDir + "Bg_Far.png");
+        // 后景光点（Twinkle：原地缓慢明暗）—— 挂在 Far 下，自动跟着远景那层视差走（depth 0.10）
+        NewMotes(far.rectTransform, "Motes", LobbyBgMotes.Mode.Twinkle, 100, 20260926);
 
         // ── 2 星环（容器 + 骨架 + 12 点 + 12 辉光）─────────────────────────────
         var ringGo = new GameObject("Ring", typeof(RectTransform));
@@ -122,11 +126,13 @@ public static class LobbyBgV2Builder
         ring.twinklePhaseStep = 1f / 12f;   // 相邻错开 1/12 周期 -> 整道波 6 秒绕环一圈
         ring.twinkleMin = 0.06f;            // 最暗快熄灭 -> 最亮满亮
         ring.twinkleMax = 1f;
-        ring.previewInEditMode = false;     // 要在 Scene 视图里直接看闪动就勾上（不进 Play）
+        ring.previewInEditMode = true;      // 不进 Play 也能在 Scene 视图看到环在呼吸（代价：场景一直「已修改」）
         ring.Apply();       // 静态场景里是「相位 0」的一条亮度渐变带，不用进 Play
 
         // ── 3 近景 ───────────────────────────────────────────────────────────
         RawImage near = NewLayer(rootRT, "Near", BgDir + "Bg_Near.png");
+        // 前景光点（Rise：缓慢上浮）—— 挂在 Near 下，自动跟着近景那层视差走（depth 0.30）
+        NewMotes(near.rectTransform, "Motes", LobbyBgMotes.Mode.Rise, 80, 20260927);
 
         // ── 4 视差（只有挂上 Bg_v2 的这一层才动）──────────────────────────────
         // 2026-09-26 七次定：把「背景」和「星环」的档位拉开 —— 背景几乎不跟手、环最明显。
@@ -190,6 +196,26 @@ public static class LobbyBgV2Builder
     {
         float a = (NodeA0 + NodeStep * i) * Mathf.Deg2Rad;
         return new Vector2(NodeRadius * Mathf.Cos(a), -NodeRadius * Mathf.Sin(a));
+    }
+
+    /// <summary>光点容器：全拉伸的空 RectTransform + LobbyBgMotes。挂在 Far / Near 下就自动继承那一层的视差与缩放；
+    /// 点本身是运行时生成的，不进场景（见 LobbyBgMotes 的注释）。</summary>
+    static LobbyBgMotes NewMotes(RectTransform parent, string name, LobbyBgMotes.Mode mode, int count, int seed)
+    {
+        var go = new GameObject(name, typeof(RectTransform));
+        var rt = (RectTransform)go.transform;
+        rt.SetParent(parent, false);
+        rt.anchorMin = Vector2.zero;
+        rt.anchorMax = Vector2.one;
+        rt.offsetMin = Vector2.zero;
+        rt.offsetMax = Vector2.zero;
+        rt.pivot = PivotC;
+        rt.anchoredPosition = Vector2.zero;
+        var motes = go.AddComponent<LobbyBgMotes>();
+        motes.mode = mode;
+        motes.count = count;
+        motes.seed = seed;
+        return motes;
     }
 
     /// <summary>全屏层：全拉伸 + localScale = 出图倍率。Raycast 一律不吃（背景不参与点击）。</summary>
