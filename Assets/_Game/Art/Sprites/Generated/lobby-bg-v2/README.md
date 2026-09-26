@@ -107,12 +107,12 @@ pwsh -NoProfile -File "Tools/cardframe/LobbyBgV2.ps1"
 | 节点 | 组件 | 摆位 | 视差 depth |
 |---|---|---|---|
 | `Bg_v2` | `LobbyBgParallax` | 全屏空容器（不画东西） | — |
-| `Bg_v2/Far` | RawImage `Bg_Far` | 全拉伸 + `localScale 1.08` | 0.25 |
-| `Bg_v2/Ring` | `LobbyRingNodes` | 中心锚 `792×792`，中心 = 屏 **(560, 540)** | 0.55 |
+| `Bg_v2/Far` | RawImage `Bg_Far` | 全拉伸 + `localScale 1.08` | **0.10** |
+| `Bg_v2/Ring` | `LobbyRingNodes` | 中心锚 `792×792`，中心 = 屏 **(560, 540)** | **0.85** |
 | `Bg_v2/Ring/Base` | RawImage `Ring_Base` | `792×792` | — |
 | `Bg_v2/Ring/Glow_00..Glow_11` | RawImage `Ring_NodeGlow` | `112×112`，半径 350，屏角 `-80 + 30i` | — |
 | `Bg_v2/Ring/Node_00..Node_11` | RawImage `Ring_Node` | `52×52`，同上 | — |
-| `Bg_v2/Near` | RawImage `Bg_Near` | 全拉伸 + `localScale 1.08` | 1.00 |
+| `Bg_v2/Near` | RawImage `Bg_Near` | 全拉伸 + `localScale 1.08` | **0.30** |
 
 - 12 张辉光**整批建在 12 颗点之前**，所以辉光永远渲染在点之下。
 - 环上 12 颗点有两种态：
@@ -123,6 +123,9 @@ pwsh -NoProfile -File "Tools/cardframe/LobbyBgV2.ps1"
     亮度走**正弦**，所以是连续变化，**不会亮一下停一会儿**；`twinkleOn = false` 就完全静止。
 - 闪动要**进 Play** 才看得到；不想进 Play 就勾上 `previewInEditMode`（编辑态也会一直闪，代价是场景一直被标成「已修改」）。编辑态静止时相位停在 0 —— 环上是一条亮度渐变的带。
 - 远景 / 近景用「全拉伸 + `localScale 1.08`」而不是固定 2074×1166 —— 16:9 下正好 1 贴图像素 = 1 屏像素，换比例也自动铺满。
+- **视差档位（2026-09-26 七次定）**：背景几乎不跟手、星环最明显 —— `Far 0.10` / `Ring 0.85` / `Near 0.30`。
+  按 `parallaxMax = 0.030` 折算到 1920×1080：Far ≈ **5.8px** / Near ≈ **17.3px** / Ring ≈ **49.0px**（横向），
+  环与背景底的位移比 **8.4 : 1**；环右边缘 `956 + 49 = 1005` 仍在 UI 热点最左 1099 之外。
 - 视差**只在 Play 生效**；场景里静止的摆位就是设计稿位置（`Tools/cardframe/LobbyBgV2.ps1` 的屏坐标）。
 - 坐标换算：脚本 / 本文件的屏口径是「左上原点、y 向下」，`anchoredPosition` 是「中心原点、y 向上」—— x 取 `(屏x - 960)`、y 取 `-(屏y - 540)`；角度同理取负。
 - `Ref_Emblem`（中央棋盘徽记）被生成器**关掉**（`SetActive(false)`，没删）：它是「中央大圆环 + 六芒星」那套母题，与左侧新星环同框就是两套圆环叠加。菜单 `Tools → 异界 → 大厅：切换旧徽记 Ref_Emblem` 一键切回。

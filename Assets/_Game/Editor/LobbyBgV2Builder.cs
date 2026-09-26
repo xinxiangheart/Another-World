@@ -129,11 +129,13 @@ public static class LobbyBgV2Builder
         RawImage near = NewLayer(rootRT, "Near", BgDir + "Bg_Near.png");
 
         // ── 4 视差（只有挂上 Bg_v2 的这一层才动）──────────────────────────────
+        // 2026-09-26 七次定：把「背景」和「星环」的档位拉开 —— 背景几乎不跟手、环最明显。
+        // 折算到 1920×1080（parallaxMax 0.030）：Far ≈ 5.8px、Near ≈ 17.3px、Ring ≈ 49.0px。
         var parallax = root.AddComponent<LobbyBgParallax>();
         parallax.layers = new List<LobbyBgParallax.Layer>();
-        parallax.layers.Add(new LobbyBgParallax.Layer { rect = far.rectTransform, depth = 0.25f });
-        parallax.layers.Add(new LobbyBgParallax.Layer { rect = ringRT, depth = 0.55f });
-        parallax.layers.Add(new LobbyBgParallax.Layer { rect = near.rectTransform, depth = 1.00f });
+        parallax.layers.Add(new LobbyBgParallax.Layer { rect = far.rectTransform, depth = 0.10f });   // 背景底
+        parallax.layers.Add(new LobbyBgParallax.Layer { rect = ringRT, depth = 0.85f });              // 星环（最大）
+        parallax.layers.Add(new LobbyBgParallax.Layer { rect = near.rectTransform, depth = 0.30f });  // 背景浮尘
 
         // ── 5 旧徽记：中央棋盘徽记与星野同框是「两套圆环叠一起」，默认关掉 ──────
         HideEmblemIfActive(parent);

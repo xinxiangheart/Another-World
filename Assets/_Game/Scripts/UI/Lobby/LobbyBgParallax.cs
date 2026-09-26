@@ -14,7 +14,10 @@ using UnityEngine;
 ///
 /// 只在 Play 模式动；场景里静止的摆位就是设计稿的位置（设计师照 LobbyBgV2.ps1 的屏坐标摆即可）。
 /// 挂载：LobbyUI_v1/Bg_v2（由 Assets/_Game/Editor/LobbyBgV2Builder.cs 生成）。
-/// 层与 depth：Far 0.25 / Ring 0.55 / Near 1.00。
+/// 层与 depth（2026-09-26 七次定：用户「整体背景幅度较小、圆环较大，做一个区分」）：
+///   Far 0.10（背景底，几乎不跟手）/ Near 0.30（背景浮尘，轻微）/ Ring 0.85（星环，最明显）。
+///   按 parallaxMax = 0.030 折算到 1920×1080：Far ≈ 5.8px、Near ≈ 17.3px、Ring ≈ 49.0px（横），
+///   环与背景底的位移比 8.4 : 1 —— 环右边缘 956 + 49 = 1005 仍在 UI 热点最左 1099 之外。
 /// </summary>
 public class LobbyBgParallax : MonoBehaviour
 {

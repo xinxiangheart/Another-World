@@ -66,9 +66,21 @@ $MOCK_H        = 1080
 $ROT_RING      = 12                 # 预览里环带转过的角度
 $FRAME_INSET   = [int](46 * $OV)
 $FRAME_ALPHA   = 46
-$STAR_COUNT    = 82                 # 暗档星点
-$STAR_A        = @(12, 46)
-$STAR2_COUNT   = 14                 # 亮档星点（带极弱晕）
+$STAR_COUNT    = 210                # 暗档星点（2026-09-26 六次定：82 → 210，且改成铺满整屏）
+$STAR_A        = @(9, 36)
+$STAR2_COUNT   = 30                 # 亮档星点（带极弱晕）
+$STAR3_COUNT   = 10                 # 最亮档（晕更大、芯近白）
+
+# 银河带（2026-09-26 六次定，治「太空」）：一条斜穿画面的极淡冷色带，两端跑到画外靠四角压深自然淡出
+$MW_ON         = $true
+$MW_X0         = -240.0             # 带中心线（贴图 px）：左下角外 -> 右上角外
+$MW_Y0         = 1330.0
+$MW_X1         = 2320.0
+$MW_Y1         = -180.0
+$MW_HALF       = 300.0              # 带半宽（贴图 px）
+$MW_A          = 20                 # 带心峰值 alpha
+$MW_C          = @(150, 178, 216)   # 带色（冷蓝白）
+$MW_STAR_SHARE = 0.42               # 星点里落在带内的比例（带内更密）
 $POOL_A        = 118                # 中央冷光池（战场 150）
 $VIGNETTE_A    = 104                # 四角压深
 $HEX_ALPHA     = 38                 # 六芒星（战场 L4 同值）
@@ -160,6 +172,43 @@ function Fill-BgGlow($g, [single]$cx, [single]$cy, [single]$rx, [single]$ry, [in
     $br.Dispose()
   }
 }
+# 沿一条直线的「带」状柔光：横截面走 LinearGradientBrush 透明→峰值→透明。
+# 不能像星点那样叠几十个 Fill-BgGlow —— 叠加会把带心烧成一块实色（alpha 会复利）。
+function Fill-BandGlow($g, [single]$x0, [single]$y0, [single]$x1, [single]$y1, [single]$halfW, [int[]]$col, [int]$aMax) {
+  $dx = $x1 - $x0; $dy = $y1 - $y0
+  $len = [Math]::Sqrt($dx * $dx + $dy * $dy)
+  if ($len -lt 1.0) { return }
+  $nx = -$dy / $len; $ny = $dx / $len
+  $pA = New-Object System.Drawing.PointF(($x0 - $nx * $halfW), ($y0 - $ny * $halfW))
+  $pB = New-Object System.Drawing.PointF(($x0 + $nx * $halfW), ($y0 + $ny * $halfW))
+  $br = New-Object System.Drawing.Drawing2D.LinearGradientBrush($pA, $pB, (New-Col $col 0), (New-Col $col $aMax))
+  $blend = New-Object System.Drawing.Drawing2D.ColorBlend 3
+  $blend.Colors = @((New-Col $col 0), (New-Col $col $aMax), (New-Col $col 0))
+  $blend.Positions = @(0.0, 0.5, 1.0)
+  $br.InterpolationColors = $blend
+  $pts = [System.Drawing.PointF[]]@(
+    (New-Object System.Drawing.PointF(($x0 - $nx * $halfW), ($y0 - $ny * $halfW))),
+    (New-Object System.Drawing.PointF(($x1 - $nx * $halfW), ($y1 - $ny * $halfW))),
+    (New-Object System.Drawing.PointF(($x1 + $nx * $halfW), ($y1 + $ny * $halfW))),
+    (New-Object System.Drawing.PointF(($x0 + $nx * $halfW), ($y0 + $ny * $halfW))))
+  $g.FillPolygon($br, $pts)
+  $br.Dispose()
+}
+
+# 星点落点：$MW_STAR_SHARE 的比例落在银河带内（三个均匀量相加 = 越靠带心越密的钟形分布），其余全屏均匀。
+# 注意 y 是**全高** —— 旧版按 0.72/0.62 只撒画面上半部分，下半屏一颗星都没有，这就是「太空」的主因。
+function New-StarPoint($rng) {
+  if ($MW_ON -and $rng.NextDouble() -lt $MW_STAR_SHARE) {
+    $dx = $MW_X1 - $MW_X0; $dy = $MW_Y1 - $MW_Y0
+    $len = [Math]::Sqrt($dx * $dx + $dy * $dy)
+    $t = $rng.NextDouble() * 1.16 - 0.08
+    $px = $MW_X0 + $dx * $t; $py = $MW_Y0 + $dy * $t
+    $o = (($rng.NextDouble() + $rng.NextDouble() + $rng.NextDouble()) - 1.5) / 1.5 * $MW_HALF * 1.35
+    return @(($px - $dy / $len * $o), ($py + $dx / $len * $o))
+  }
+  return @($rng.Next(0, $FAR_W), $rng.Next(0, $FAR_H))
+}
+
 # ── 远景：夜空底 + 冷光池 + 两档星点 + 四角压深 + 内缩金细框（无铺石缝 / 无暗斑）──
 function New-BgFar([string]$out) {
   $r = New-Layer $FAR_W $FAR_H $true $SKY_T; $bmp = $r[0]; $g = $r[1]
@@ -168,20 +217,33 @@ function New-BgFar([string]$out) {
   Fill-VGrad $g 0 0 $FAR_W $FAR_H $SKY_T $SKY_B
   Fill-BgGlow $g $cx ($cy + (40 * $OV)) (1560 * $OV) (860 * $OV) $GLOW_C $POOL_A 1.5 64
 
+  # 银河带：一条宽的淡雾 + 一条偏上、更窄更亮的核心带（错开一点，免得像一条直尺）
+  if ($MW_ON) {
+    Fill-BandGlow $g $MW_X0 $MW_Y0 $MW_X1 $MW_Y1 $MW_HALF $MW_C $MW_A
+    Fill-BandGlow $g ($MW_X0 + 170) ($MW_Y0 - 300) ($MW_X1 + 170) ($MW_Y1 - 300) ($MW_HALF * 0.42) $MW_C ([int][Math]::Round($MW_A * 0.75))
+  }
+
   $rng = New-Object System.Random 20260927
   for ($i = 0; $i -lt $STAR_COUNT; $i++) {
-    $x = $rng.Next(0, $FAR_W); $y = $rng.Next(0, [int]($FAR_H * 0.72))
+    $p = New-StarPoint $rng
     $rr = 1 + $rng.NextDouble() * 1.8
     $a = $STAR_A[0] + $rng.Next(0, ($STAR_A[1] - $STAR_A[0]))
     $br = New-Object System.Drawing.SolidBrush (New-Col @(210, 224, 244) $a)
-    $g.FillEllipse($br, [single]($x - $rr), [single]($y - $rr), [single]($rr * 2), [single]($rr * 2)); $br.Dispose()
+    $g.FillEllipse($br, [single]($p[0] - $rr), [single]($p[1] - $rr), [single]($rr * 2), [single]($rr * 2)); $br.Dispose()
   }
   for ($i = 0; $i -lt $STAR2_COUNT; $i++) {
-    $x = $rng.Next(0, $FAR_W); $y = $rng.Next(0, [int]($FAR_H * 0.62))
+    $p = New-StarPoint $rng
     $rr = 1.8 + $rng.NextDouble() * 1.6
-    Fill-BgGlow $g $x $y ($rr * 7) ($rr * 7) @(208, 224, 248) 22 2.0 20
+    Fill-BgGlow $g $p[0] $p[1] ($rr * 7) ($rr * 7) @(208, 224, 248) 22 2.0 20
     $br = New-Object System.Drawing.SolidBrush (New-Col @(232, 240, 255) 92)
-    $g.FillEllipse($br, [single]($x - $rr), [single]($y - $rr), [single]($rr * 2), [single]($rr * 2)); $br.Dispose()
+    $g.FillEllipse($br, [single]($p[0] - $rr), [single]($p[1] - $rr), [single]($rr * 2), [single]($rr * 2)); $br.Dispose()
+  }
+  for ($i = 0; $i -lt $STAR3_COUNT; $i++) {
+    $p = New-StarPoint $rng
+    $rr = 2.6 + $rng.NextDouble() * 1.4
+    Fill-BgGlow $g $p[0] $p[1] ($rr * 12) ($rr * 12) @(206, 222, 250) 30 1.9 24
+    $br = New-Object System.Drawing.SolidBrush (New-Col @(246, 250, 255) 128)
+    $g.FillEllipse($br, [single]($p[0] - $rr), [single]($p[1] - $rr), [single]($rr * 2), [single]($rr * 2)); $br.Dispose()
   }
 
   foreach ($c in @(@(0, 0), @($FAR_W, 0), @(0, $FAR_H), @($FAR_W, $FAR_H))) {
@@ -212,7 +274,8 @@ function New-BgFar([string]$out) {
 function New-BgNear([string]$out) {
   $r = New-Layer $FAR_W $FAR_H $false @(0, 0, 0); $bmp = $r[0]; $g = $r[1]
 
-  Fill-BgGlow $g ($FAR_W / 2.0) ($FAR_H + 40) 900 430 $GLOW_C 26 1.4 48
+  # 底部冷光晕：让下沿「有底」，不是一片纯黑（2026-09-26 六次定 900x430/a26 -> 1240x580/a48）
+  Fill-BgGlow $g ($FAR_W / 2.0) ($FAR_H + 30) 1240 580 $GLOW_C 48 1.4 48
 
   $arcs = @(
     @(30, 980, 900, 1150, -34, 38, 'gold'),
