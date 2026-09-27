@@ -17,6 +17,12 @@ public class QuickMatchPanel : MonoBehaviour
     public TMP_Text opponentNameText, opponentStatsText;
     [Header("按钮")] public Button acceptButton, declineButton, cancelButton;
 
+    [Header("紧凑等待窗（2026-09-27）：填了就用它，本面板自带的测试 UI 不再显示")]
+    [Tooltip("屏幕顶中那块「匹配中：x：xx + 取消」的小窗（MatchWaitPanel）。填上之后 Open() 只开它，不再显示 panelRoot。")]
+    public MatchWaitPanel compactWait;
+    [Tooltip("找到对手后「已找到对手！」停留多久再进 JoinGamePanel（留一个节拍，否则同帧就被盖住）。")]
+    public float foundHoldSeconds = 1.2f;
+
     enum State { Idle, Searching, Found, WaitingOpponent }
     State _state;
     float _countdown;
@@ -25,6 +31,7 @@ public class QuickMatchPanel : MonoBehaviour
     CSteamID _lobbyID;
     Coroutine _searchCoroutine, _bgSearchCoroutine;
     float _retryTimer, _bgSearchTimer;
+    float _foundHold;      // 「已找到对手！」的停留节拍（秒）
     Callback<LobbyMatchList_t> _listCB, _bgListCB;
     Callback<LobbyCreated_t> _createdCB;
     Callback<LobbyEnter_t> _enterCB;
@@ -40,16 +47,54 @@ public class QuickMatchPanel : MonoBehaviour
         if (cancelButton) cancelButton.onClick.AddListener(OnCancel);
     }
 
-    public void Open() { if (panelRoot) panelRoot.SetActive(true); ResetState(); StartSearch(); }
+    /// <summary>开匹配。装了紧凑等待窗（compactWait）就走它，面板自带的测试 UI（panelRoot）不再显示 ——
+    /// 用户 2026-09-27「之前那个测试匹配界面不再使用」。匹配逻辑完全不变。</summary>
+    public void Open()
+    {
+        // 保险（2026-09-27 用户「在匹配或者排位中再次点击匹配或者排位是不会再次进入匹配或者排位进程」）：
+        // 已经在跑就不要重入 —— 否则会重复 RequestLobbyList / 重复注册回调，甚至开出第二个房间。
+        // 只把已经在跑的小窗抬到眼前，计时不重置。
+        if (IsMatching) { SurfaceWait(); Debug.Log("[QuickMatch] 已在匹配中，忽略重复进入"); return; }
+
+        if (compactWait != null) { if (panelRoot) panelRoot.SetActive(false); compactWait.Show(); }
+        else if (panelRoot) panelRoot.SetActive(true);
+        ResetState();
+        StartSearch();
+    }
+
+    /// <summary>正在匹配中（搜索 / 已找到 / 等待对方确认）—— 重复点「匹配」靠它挡重入。</summary>
+    public bool IsMatching
+    {
+        get
+        {
+            if (_joining) return true;
+            if (_lobbyID.m_SteamID != 0) return true;
+            return _state == State.Searching || _state == State.Found || _state == State.WaitingOpponent;
+        }
+    }
+
+    /// <summary>把等待小窗抬到眼前（不重启流程、不重置计时）。重复点击「匹配」时用。</summary>
+    public void SurfaceWait()
+    {
+        if (compactWait != null) { if (!compactWait.IsOpen) compactWait.Show(); }
+        else if (panelRoot != null) panelRoot.SetActive(true);
+    }
+
     public void Close()
     {
         if (_searchCoroutine != null) { StopCoroutine(_searchCoroutine); _searchCoroutine = null; }
-        LeaveLobby(); if (panelRoot) panelRoot.SetActive(false); _state = State.Idle;
+        LeaveLobby(); if (panelRoot) panelRoot.SetActive(false);
+        if (compactWait != null) compactWait.Hide();
+        _state = State.Idle;
     }
+
+    /// <summary>取消匹配（紧凑等待窗的取消键走这里）—— 与旧的 OnCancel 同一套收尾。</summary>
+    public void CancelMatch() { SetReject(); LeaveLobby(); Close(); }
 
     void ResetState()
     {
         _state = State.Idle; _countdown = 15f; _iAccepted = false; _iAmHost = false; _joining = false; _oppName = "";
+        _foundHold = 0f;
         if (opponentInfoGroup) opponentInfoGroup.SetActive(false);
         if (acceptButton) { acceptButton.gameObject.SetActive(false); acceptButton.interactable = true; }
         if (declineButton) { declineButton.gameObject.SetActive(false); declineButton.interactable = true; }
@@ -266,6 +311,14 @@ public class QuickMatchPanel : MonoBehaviour
         if (declineButton) declineButton.gameObject.SetActive(true);
         SetStatus($"等待确认（{_countdown:F0}s）");
         if (opp.steamID != 0 && opponentAvatar) LoadAvatar(opponentAvatar, opp.steamID);
+
+        if (compactWait != null)
+        {
+            // 紧凑窗没有「接受 / 拒绝」两个键 —— 找到即自动接受，握手照旧走 host_ok / guest_ok。
+            compactWait.SetFound();
+            _foundHold = Mathf.Max(0f, foundHoldSeconds);   // 留一个节拍，让「已找到对手！」看得见
+            OnAccept();
+        }
     }
 
     /// <summary>捕获对手 SteamID 到 LobbyConfig.RemoteSteamID（进游戏前最终兜底）。
@@ -425,6 +478,7 @@ public class QuickMatchPanel : MonoBehaviour
 
         if ((_state == State.WaitingOpponent || (_iAccepted && _state == State.Found)) && hostOk == "1" && guestOk == "1")
         {
+            if (_foundHold > 0f) { _foundHold -= Time.deltaTime; return; }   // 「已找到对手！」先露个面
             SetStatus("双方已接受！");
             LobbyConfig.FromLobby = true; LobbyConfig.IsHost = _iAmHost; LobbyConfig.IsDirectIP = false; LobbyConfig.ServerIP = "";
             LobbyConfig.CurrentLobbyID = _lobbyID;
@@ -435,6 +489,7 @@ public class QuickMatchPanel : MonoBehaviour
                 LobbyConfig.HostSteamID = SteamUser.GetSteamID().m_SteamID.ToString();
             _lobbyID = default; _state = State.Idle;
             if (panelRoot) panelRoot.SetActive(false);
+            if (compactWait != null) compactWait.Hide();
             JoinGamePanel.Instance?.Open();
         }
     }
@@ -477,7 +532,12 @@ public class QuickMatchPanel : MonoBehaviour
 
     void LeaveLobby() { _joining = false; if (_lobbyID.m_SteamID != 0) { SteamMatchmaking.LeaveLobby(_lobbyID); _lobbyID = default; } DisposeCallbacks(); }
 
-    void SetStatus(string msg) { Debug.Log("[QuickMatch] " + msg.Replace("\n", " ")); if (statusText) statusText.text = msg; }
+    void SetStatus(string msg)
+    {
+        Debug.Log("[QuickMatch] " + msg.Replace("\n", " "));
+        if (statusText) statusText.text = msg;
+        if (compactWait != null) compactWait.SetNotice(msg);
+    }
     void OnDestroy() { DisposeCallbacks(); }
 
     static void LoadAvatar(RawImage target, ulong steamID)

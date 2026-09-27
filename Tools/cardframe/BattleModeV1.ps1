@@ -9,9 +9,12 @@
 # 色值一律取自共享调色板（TopBarV2 -> CardFrameV6）：$INK / $BAR_T / $BAR_B / $GOLD / $HILITE。
 #
 # 产物（Assets/_Game/Art/Sprites/Generated/battle-mode-v1/）
-#   BattleModeCard_Match.png    900x1260 贴图 = 屏幕 300x420（$S=3）
-#   BattleModeCard_Ranked.png   同上
+#   BattleModeCard_Match.png        900x1260 贴图 = 屏幕 300x420（$S=3）
+#   BattleModeCard_Ranked.png       同上
+#   BattleModeCard_MatchHover.png   悬停态；同上尺寸
+#   BattleModeCard_RankedHover.png  悬停态；同上尺寸
 #   ---- 两张只差徽记：文字在场景里是 TMP（不进贴图），贴图只出「标题槽 + 分隔线 + 徽记」----
+#   ---- 悬停态只差色调（2026-09-27）：石面提亮 + 金 GOLD->GOLD_L + 金饰 α 上调；形体不动 -> 切换不跳位 ----
 #
 # 卡面版式（贴图 px，画布 900x1260）：
 #   外墨边 9（屏幕 3）-> 平底竖渐变 BAR_T->BAR_B -> 三角亮楔（左上，α64）
@@ -26,7 +29,7 @@
 #   （刻意避开库里已有的：战斗=双三角 / 成就=奖章 / 赛季=盾徽 / 战绩=三根分离柱+基线）
 #
 # 预览（Tools/cardframe/preview/）：
-#   battle-mode-v1-cards.png   两张卡 1:1（含 TMP 文字的真实版式）+ 徽记放大 + 尺寸标注
+#   battle-mode-v1-cards.png   四张卡 1:1（上排常态 / 下排悬停，含 TMP 文字的真实版式）+ 徽记放大 + 尺寸标注
 Add-Type -AssemblyName System.Drawing
 . "$PSScriptRoot/TopBarV2.ps1"          # $ROOT / $INK / $BAR_T / $BAR_B / $HILITE / $GOLD 与 New-Col / Mix-Col / New-Bmp / Save-Bmp / New-RoundPath / New-Diamond / Fill-VGrad / Add-Wedge
 
@@ -60,9 +63,10 @@ function Put-Text($g, [string]$s, [single]$x, [single]$y, [single]$px, [int]$a =
   $br = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb($a, 240, 232, 210))
   $g.DrawString($s, $f, $br, $x, $y); $br.Dispose(); $f.Dispose()
 }
-function Put-TextC($g, [string]$s, [single]$cx, [single]$cy, [single]$px, [int]$a = 236) {
+function Put-TextC($g, [string]$s, [single]$cx, [single]$cy, [single]$px, [int]$a = 236, [int[]]$rgb = $null) {
   $f = Get-BMFont $px
-  $br = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb($a, 240, 232, 210))
+  if ($rgb -eq $null) { $rgb = @(240, 232, 210) }
+  $br = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb($a, $rgb[0], $rgb[1], $rgb[2]))
   $sf = New-Object System.Drawing.StringFormat
   $sf.Alignment = [System.Drawing.StringAlignment]::Center
   $sf.LineAlignment = [System.Drawing.StringAlignment]::Center
@@ -112,19 +116,28 @@ function New-ModeEmblem($g, [string]$kind, [single]$cx, [single]$cy, [single]$r,
   $pen.Dispose()
 }
 
-function New-BattleModeCard([string]$out, [string]$kind) {
+function New-BattleModeCard([string]$out, [string]$kind, [switch]$hover) {
   $w = $CARD_W * $S; $h = $CARD_H * $S
   $res = New-Bmp $w $h; $b = $res[0]; $g = $res[1]
+  # 悬停态（2026-09-27）：照 LobbyBtnPlateHover / 图标悬停的同一配方 —— 石面提亮 + 金线 GOLD->GOLD_L、
+  # 各档金饰 α 上调。**形体 / 尺寸 / 版式一律不动**，所以切换贴图不会跳位。
+  $cTop = $BAR_T; $cBot = $BAR_B; $cGold = $GOLD; $cWedge = $BAR_T
+  $aWedge = 64; $aLn = $GOLD_A; $aDiv = 110; $aRiv = 205; $aEmb = 225; $aTail = 96
+  if ($hover) {
+    $cTop = (Mix-Col $BAR_T $HILITE 0.12); $cBot = (Mix-Col $BAR_B $BAR_T 0.40)
+    $cGold = $GOLD_L; $cWedge = (Mix-Col $BAR_T $HILITE 0.18)
+    $aWedge = 96; $aLn = 236; $aDiv = 190; $aRiv = 245; $aEmb = 250; $aTail = 170
+  }
   $oi = $LW_INK / 2.0
   $outer = New-RoundPath $oi $oi ($w - $LW_INK) ($h - $LW_INK) $RADIUS
   $st = $g.Save(); $g.SetClip($outer)
-  Fill-VGrad $g 0 0 $w $h $BAR_T $BAR_B 255 255
+  Fill-VGrad $g 0 0 $w $h $cTop $cBot 255 255
   $g.Restore($st)
   # 左上亮楔（同入口板，但卡是竖的，楔更短）
   Add-Wedge $g $outer ([System.Drawing.PointF[]]@(
     (New-Object System.Drawing.PointF(0, 0)),
     (New-Object System.Drawing.PointF(($w * 0.62), 0)),
-    (New-Object System.Drawing.PointF(0, ($h * 0.40))))) $BAR_T 64
+    (New-Object System.Drawing.PointF(0, ($h * 0.40))))) $cWedge $aWedge
   # 外墨边
   $pen = New-Object System.Drawing.Pen ((New-Col $INK 240)), $LW_INK
   $pen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
@@ -132,24 +145,24 @@ function New-BattleModeCard([string]$out, [string]$kind) {
   # 内缩金细线
   $ix = $oi + $INS; $iy = $oi + $INS
   $inner = New-RoundPath $ix $iy ($w - 2 * $ix) ($h - 2 * $iy) ($RADIUS - $INS)
-  $pen = New-Object System.Drawing.Pen ((New-Col $GOLD $GOLD_A)), $LW_GOLD
+  $pen = New-Object System.Drawing.Pen ((New-Col $cGold $aLn)), $LW_GOLD
   $pen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
   $g.DrawPath($pen, $inner); $pen.Dispose(); $inner.Dispose()
   # 标题槽 / 徽记区 的分界线 + 两端菱形铆钉
   $dy = [single]($h * $SPLIT_Y)
   $dx0 = [single]($ix + 42); $dx1 = [single]($w - $ix - 42)
-  $pen = New-Object System.Drawing.Pen ((New-Col $GOLD 110)), $LW_GOLD
+  $pen = New-Object System.Drawing.Pen ((New-Col $cGold $aDiv)), $LW_GOLD
   $g.DrawLine($pen, $dx0, $dy, $dx1, $dy); $pen.Dispose()
-  $dp = New-Object System.Drawing.SolidBrush (New-Col $GOLD 205)
+  $dp = New-Object System.Drawing.SolidBrush (New-Col $cGold $aRiv)
   foreach ($dx in @($dx0, $dx1)) {
     $dm = New-Diamond $dx $dy 11.0
     $g.FillPath($dp, $dm); $dm.Dispose()
   }
   $dp.Dispose()
   # 徽记
-  New-ModeEmblem $g $kind ($w / 2.0) ($h * $EMB_CY) ($w * $EMB_R)
+  New-ModeEmblem $g $kind ($w / 2.0) ($h * $EMB_CY) ($w * $EMB_R) $aEmb
   # 收尾细线
-  $pen = New-Object System.Drawing.Pen ((New-Col $GOLD 96)), $LW_GOLD
+  $pen = New-Object System.Drawing.Pen ((New-Col $cGold $aTail)), $LW_GOLD
   $g.DrawLine($pen, ($w / 2.0 - $w * 0.14), ($h * $TAIL_Y), ($w / 2.0 + $w * 0.14), ($h * $TAIL_Y))
   $pen.Dispose()
   $outer.Dispose()
@@ -158,11 +171,11 @@ function New-BattleModeCard([string]$out, [string]$kind) {
 
 # ── 预览：两张卡 1:1（含 TMP 文字的真实版式）+ 徽记放大 + 尺寸标注 ────────────
 $MODE_META = @(
-  @{ kind = 'match';  file = 'BattleModeCard_Match.png';  label = '匹配'; tip = '两个相对的箭头 + 中央菱形铆钉 —— 撮合 / 相遇' },
-  @{ kind = 'ranked'; file = 'BattleModeCard_Ranked.png'; label = '排位'; tip = '三级上升台阶 + 顶端菱形 —— 段位晋升' }
+  @{ kind = 'match';  file = 'BattleModeCard_Match.png';  hover = 'BattleModeCard_MatchHover.png';  label = '匹配'; tip = '两个相对的箭头 + 中央菱形铆钉 —— 撮合 / 相遇' },
+  @{ kind = 'ranked'; file = 'BattleModeCard_Ranked.png'; hover = 'BattleModeCard_RankedHover.png'; label = '排位'; tip = '三级上升台阶 + 顶端菱形 —— 段位晋升' }
 )
 function New-BattleModeSheet([string]$dir, [string]$out) {
-  $CW = 1560; $CH = 1030
+  $CW = 1560; $CH = 1340
   $b = New-Object System.Drawing.Bitmap($CW, $CH, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
   $g = [System.Drawing.Graphics]::FromImage($b)
   $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
@@ -171,28 +184,32 @@ function New-BattleModeSheet([string]$dir, [string]$out) {
   $bs = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 9, 12, 18))
   $g.FillRectangle($bs, 0, 0, $CW, $CH); $bs.Dispose()
 
-  Put-Text $g '战斗模式卡 v1 —— 「匹配」「排位」' 40 26 32
+  Put-Text $g '战斗模式卡 v1 —— 「匹配」「排位」（上排常态 / 下排悬停态）' 40 26 32
   Put-Text $g '卡 300x420 屏幕 px（贴图 3x = 900x1260）· 深蓝黑石面 + 一条金细线 · 母题：菱形铆钉 / 平板' 40 70 20 176
   Put-Text $g '文字是场景里的 TMP，不进贴图 —— 这里按最终版式画上去，给你看落点与字号；两张只差徽记' 40 100 20 176
+  Put-Text $g '悬停态 = 石面提亮 + 金线 GOLD->GOLD_L（同一配方）；形体不动 -> 不跳位。标题变金由场景里的 TMP 负责。' 40 130 19 196
 
-  # 两张卡 1:1（间距 60 = 场景里两卡之间的净距，见 BattleModeCards.gap）
-  $cy = 190.0
+  # 上排 = 常态，下排 = 悬停态；卡间距 60 = 场景里两卡之间的净距（见 BattleModeCards.gap）
+  $cyA = 190.0
+  $cyB = 190.0 + $CARD_H + 96
   $x = 150.0
   foreach ($m in $MODE_META) {
-    $im = [System.Drawing.Image]::FromFile((Join-Path $dir $m.file))
-    $g.DrawImage($im, $x, $cy, $CARD_W, $CARD_H); $im.Dispose()
-    # 场景里那行 TMP 的落点：标题槽正中
-    Put-TextC $g $m.label ($x + $CARD_W / 2.0) ($cy + $CARD_H * $SPLIT_Y / 2.0) 40
-    Put-Text $g ('贴图 ' + $m.file) $x ($cy + $CARD_H + 12) 18 170
+    foreach ($pair in @(@($m.file, $cyA, 236, $null, '常态'), @($m.hover, $cyB, 255, @(232, 209, 138), '悬停'))) {
+      $im = [System.Drawing.Image]::FromFile((Join-Path $dir $pair[0]))
+      $g.DrawImage($im, $x, $pair[1], $CARD_W, $CARD_H); $im.Dispose()
+      # 场景里那行 TMP 的落点：标题槽正中（悬停行按悬停色画金）
+      Put-TextC $g $m.label ($x + $CARD_W / 2.0) ($pair[1] + $CARD_H * $SPLIT_Y / 2.0) 40 $pair[2] $pair[3]
+      Put-Text $g ($m.label + ' · ' + $pair[4]) $x ($pair[1] + $CARD_H + 12) 18 170
+    }
     $x += $CARD_W + 60
   }
   # 间距标注
   $pen = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(150, 200, 164, 74)), 1
-  $g.DrawLine($pen, 150, ($cy - 22), 810, ($cy - 22))
-  $g.DrawLine($pen, 450, ($cy - 28), 450, ($cy - 16))
-  $g.DrawLine($pen, 510, ($cy - 28), 510, ($cy - 16))
+  $g.DrawLine($pen, 150, ($cyA - 22), 810, ($cyA - 22))
+  $g.DrawLine($pen, 450, ($cyA - 28), 450, ($cyA - 16))
+  $g.DrawLine($pen, 510, ($cyA - 28), 510, ($cyA - 16))
   $pen.Dispose()
-  Put-TextC $g '净距 60' 480 ($cy - 40) 18 200
+  Put-TextC $g '净距 60' 480 ($cyA - 40) 18 200
 
   # 右栏：两个徽记放大 1.2x（单独看图案）
   $ex = 1210.0
@@ -213,6 +230,7 @@ function New-BattleModeSheet([string]$dir, [string]$out) {
 $made = @()
 foreach ($m in $MODE_META) {
   $made += (New-BattleModeCard (Join-Path $GEN $m.file) $m.kind)
+  $made += (New-BattleModeCard (Join-Path $GEN $m.hover) $m.kind -hover)
 }
 $sheet = New-BattleModeSheet $GEN (Join-Path $PREV 'battle-mode-v1-cards.png')
 $made | ForEach-Object { "sprite : $_" }
