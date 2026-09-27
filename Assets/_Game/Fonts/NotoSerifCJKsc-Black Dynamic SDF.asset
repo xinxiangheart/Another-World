@@ -60,9 +60,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 71c1514a6bd24e1e882cebbe1904ce04, type: 3}
   m_Name: NotoSerifCJKsc-Black Dynamic SDF
   m_EditorClassIdentifier: 
-  hashCode: 0
+  hashCode: -172962131
   material: {fileID: 403637526786976693}
-  materialHashCode: -2006316128
+  materialHashCode: 637482349
   m_Version: 1.1.0
   m_SourceFontFileGUID: d871a426502ba2a48add939968c989d1
   m_SourceFontFile_EditorRef: {fileID: 12800000, guid: d871a426502ba2a48add939968c989d1, type: 3}

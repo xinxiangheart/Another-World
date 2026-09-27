@@ -92,9 +92,24 @@ public static class BattleModeCardsBuilder
         });
     }
 
+    /// <summary>「房间」子弹窗里那一张「创建房间」卡（LobbyUIBuilder 建面板时调）。
+    /// 用户 2026-09-27：「加入房间和创建房间现在直接合并了，默认点击房间就是创建房间」——
+    /// 所以只有这一张，徽记 = 拱门 + 加号（与入口板「房间」的拱门同源）。
+    /// 整组**居中**（不像战斗那样贴左）。</summary>
+    public static GameObject BuildRoomCard(GameObject panel)
+    {
+        var popup = Object.FindObjectOfType<LobbyPopup>(true);
+        return BuildCardsRoot(panel, RootName, new[]
+        {
+            new CardDef { file = "BattleModeCard_Create.png", hoverFile = "BattleModeCard_CreateHover.png",
+                          label = "创建房间", kind = BattleModeCardButton.Kind.Room,
+                          popup = popup, popupTitle = "创建房间开发中" },
+        }, 0.5f);
+    }
+
     /// <summary>在任意子弹窗下建一棵叫 rootName 的模式卡组（含 BattleModeCardButton 的悬停 / 点击接线）。
     /// 战斗面板（匹配 / 排位）与「其它」面板（离线模式）共用这一支 —— 卡形 / 停位 / 动效只有一处。</summary>
-    public static GameObject BuildCardsRoot(GameObject panel, string rootName, CardDef[] defs)
+    public static GameObject BuildCardsRoot(GameObject panel, string rootName, CardDef[] defs, float anchorX = 0f)
     {
         if (panel == null || defs == null || defs.Length == 0)
         {
@@ -123,8 +138,8 @@ public static class BattleModeCardsBuilder
 
         var comp = root.AddComponent<BattleModeCards>();
         comp.gap = Gap;
-        comp.anchorX = 0f;        // 最终位置贴左边框（用户 2026-09-27）
-        comp.edgeMargin = 120f;   // 与左边框留出的那一段间隔
+        comp.anchorX = anchorX;   // 0 = 整组贴左（战斗 / 其它）；0.5 = 整组居中（房间）
+        comp.edgeMargin = Mathf.Approximately(anchorX, 0f) ? 120f : 0f;   // 只有贴边时才留这段间隔
         comp.delay = 0.06f;       // 迅速滑入（用户 2026-09-27：更快 + 更有「动态」感）
         comp.duration = 0.42f;
         comp.stagger = 0.07f;

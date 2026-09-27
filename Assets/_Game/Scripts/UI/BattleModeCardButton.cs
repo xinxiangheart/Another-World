@@ -18,7 +18,8 @@ using TMPro;
 /// 点「离线模式」（挂在「其它」子弹窗里）= 关掉子弹窗 + LobbyManager.EnterOfflineBattle()，直接进 Game 场景。</remarks>
 public class BattleModeCardButton : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler, IPointerClickHandler
 {
-    public enum Kind { QuickMatch, Ranked, Offline }
+    /// 房间：加入房间已并入创建房间（2026-09-27 用户），所以只有这一档
+    public enum Kind { QuickMatch, Ranked, Offline, Room }
 
     [Header("这张卡是谁")]
     public Kind kind = Kind.QuickMatch;
@@ -49,7 +50,7 @@ public class BattleModeCardButton : MonoBehaviour, IPointerEnterHandler, IPointe
 
     bool _disabled;
 
-    /// <summary>这张卡要不要 Steam 连接（匹配 / 排位要；离线模式不要 —— 它本来就是给没连 Steam 的人用的）。</summary>
+    /// <summary>这张卡要不要 Steam 连接（匹配 / 排位 / 房间要；离线模式不要 —— 它本来就是给没连 Steam 的人用的）。</summary>
     public bool RequiresSteam { get { return kind != Kind.Offline; } }
 
     static bool SteamReady()
@@ -125,6 +126,8 @@ public class BattleModeCardButton : MonoBehaviour, IPointerEnterHandler, IPointe
         }
         else
         {
+            // 房间（Kind.Room）：先走占位 —— 真实建房是 CreateRoomPanel.OpenAsHost()（Steam 大厅），
+            // 等新壳里的建房界面定了再把它接进来（用户 2026-09-27：默认点房间 = 创建房间）。
             if (popup != null) popup.Show(popupTitle);
         }
     }

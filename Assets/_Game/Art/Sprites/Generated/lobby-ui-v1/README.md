@@ -501,3 +501,76 @@ LobbyUI_v1
 - **滚动的名单**（2026-09-27 用户：「加滚动」）：`Body/List` 是 `ScrollRect`（只竖滚、`Clamped` 不回弹、`scrollSensitivity 40`），**它自己没有贴图**；子 `Viewport` 挂 `RectMask2D` + 一张 α=0 的 `Image`（吃得到拖拽 —— Unity 不看 α），行都挂在 `Viewport/Content` 下，行模板 `RowTemplate` 也在 `Content` 里存成 inactive。
   `Content` 的高度 = 行数 × 84（`RowH`），由 `LobbyFriendListUI.Rebuild()` 改 —— **那就是可滚范围**；所以**没有**做滚动条，超出部分靠 `RectMask2D` 硬裁。
   ⚠ 回顶不能只写 `ScrollRect.verticalNormalizedPosition = 1`：它拿**上一帧缓存**的 content 边界换算，刚改完高度时会停在半个位置（实测 14 行停在 0.37）—— `LobbyFriendListUI.ScrollToTop()` 里是「先设归一化位置，再把 content 的 `anchoredPosition.y` 直接写 0」。
+
+---
+
+## 十九次修正（2026-09-27）：「房间」子全屏弹窗 —— 唯一差别是**好友图标不藏**
+
+**用户原话**：「现在做房间，也是类似的全屏，不过左上角的好友不再隐藏，并且能在这个界面打开好友侧边栏」；
+随后追加「加入房间和创建房间现在直接合并了，默认点击房间就是创建房间」。
+
+**场景侧**（`Assets/_Game/Editor/LobbyUIBuilder.cs`）
+
+- 新菜单 **`Tools/异界/大厅：生成「房间」子全屏弹窗（创建房间）`** → `Canvas/Layer_Sub_v1/Panel_Room`，
+  壳与 `Panel_Battle` / `Panel_Other` **同一个工厂**（`BuildSubPanel`：`common-bg-v1` 通用背景 + 右上通用关闭叉 +
+  `Body_Content` 限位框），`withHeader:false` 一样不出标题。
+- **与战斗 / 其它唯一的差别**：`hideOnOpen` 只藏 `Icon_Shop / Icon_Event / Icon_Tutorial / Icon_Mail`，
+  **点名排除 `Icon_Friend`** —— `FindNoBackdropHudIcons(hudLayer, "Icon_Friend")`（该 helper 这次加了 `params string[] except`）。
+  所以房间面板开着时，好友图标照旧在左上角，点它开 / 关左侧好友侧边栏。
+- 内容 = 一张**居中**的「创建房间」模式卡（`BattleModeCardsBuilder.BuildRoomCard`，`anchorX = 0.5`；
+  战斗 / 其它那两处仍是贴左 `anchorX = 0`）。卡面贴图 `Generated/battle-mode-v1/BattleModeCard_Create{,Hover}.png`，
+  徽记 = **拱门 + 加号**（拱门形制取自入口板「房间」的 `New-EntryEmblem 'room'`，同源）——
+  加入房间已并入创建，所以不另出一张卡。
+
+**为此动的两处运行时逻辑**（都不改贴图）
+
+1. `LobbySubPanel.Open()` 里 `SetActive(true)` **之后**补了 `transform.SetAsLastSibling()`：
+   全屏子弹窗打开时会把自己顶到 `Layer_Sub_v1` 最高，侧边栏若不跟着抬就会被盖住。
+   ⚠ 抬层只在**本层**里做，压不到 `Layer_Hud_v1` ⇒ 头像板 / 好友图标 / 左下 ID 行照旧在最上面。
+2. `LobbySubPanel.Open()` 里 `SetActive(true)` **之前**补了 `LobbyFriendPanel.Instance.Close()`：
+   开新弹窗先把侧边栏收回去 —— 否则它被压在下面、状态却还停在「开着」，再点好友图标只会把它关掉、看着像没反应。
+
+**自证**（`Assets/_Game/Editor/` 里的一次性执行器，跑完已删；报告与图在 `%USERPROFILE%\.codex\visualizations\2026\09\26\01a0dccd-*`）
+
+- `stage26_room.txt` + `stage26_shots/30_room.png`（房间面板单独开着：好友图标可见）、
+  `31_room_friends.png`（房间 + 侧边栏同开：侧边栏在房间之上，头像板与左下 ID 行仍压在最上面）。
+- 实测对照：`Panel_Room` 开着时 `Icon_Friend activeInHierarchy = True`；`Panel_Battle` 开着时 = `False`。
+- 层级实测：`Layer_Sub_v1` 里 `Panel_Room` 同级序 3 < `Panel_Friends` 4 ⇒ 侧边栏画在上面。
+
+---
+
+## 十九次修正 · 二改（2026-09-27）：「房间」内容换成建房界面本身 —— 模式卡撤掉、点房间即建房
+
+**用户原话**：「我的意思是点击房间就直接进入了创建房间的功能，不需要再次点击，加入房间的功能内嵌在这个总房间功能里，
+在现在这个创建房间和好友侧边栏中间靠上边区域是显示房主头像和名称，下面那个是显示加入玩家头像和名称，
+把现在这个创建房间的卡牌隐藏掉，另外右上角的叉左边显示：房间号：xxxxxx，悬停变色点击会在下面浮现：已复制到剪切板」
+
+**场景侧**（`Assets/_Game/Editor/LobbyUIBuilder.cs`）
+
+- **撤掉那张模式卡**：`BuildRoomSubPanelMenu` 不再调 `BattleModeCardsBuilder.BuildRoomCard(panel)`。
+  `Panel_Room` 的子物体顺序实测 = `Bg, RoomPlayers, Body_Content, Text_RoomCode, Btn_Close`（叉子由 `SetAsLastSibling()` 顶在最上）。
+  贴图 `BattleModeCard_Create{,Hover}.png` 与 `BuildRoomCard` 都还在，只是**不再被挂**。
+- **`RoomPlayers`**（新，`BuildRoomPlayers` / `BuildRoomSlot`）：两个玩家槽，放在**建房卡原位与好友侧边栏之间靠上**——
+  `RoomSlotX = 640`（好友侧边栏右沿 465 与屏幕中心 960 之间）、`RoomHostTop = -220` / `RoomGuestTop = -420`（自面板左上角量）。
+  槽 = 头像环（`LobbyAvatarRing.png` 放大到 `RoomRingSize 160`，**与左上角那块同源**，环 88 : 井 68 的比例不变）
+  + 井 `RoomWellSize 124`（内缩 18）+ 右侧名字（`RoomNameFont 40`，左对齐、与头像中线齐）+ 身份小字（`RoomRoleFont 26`，奶油 55%）。
+  - **房主槽**挂 `PlayerProfilePanel`（`circularCrop = true`）⇒ 运行时取**本机** Steam 头像与名字（建房的人就是房主），实测出「心响」+ 真头像。
+  - **加入玩家槽**是空态：`等待加入…` / `加入玩家`。⚠ 它的井必须把 alpha 压 0 —— **空 `RawImage`（texture = null）默认画一块纯白方块**
+    （2026-09-27 实测踩到，Stage27 的 `40_room_build.png` 里那口井是白的）；`BuildRoomSlot` 里那句 `if (!isSelf) avatar.color = new Color(1f,1f,1f,0f)` 就是补这个。
+- **`Text_RoomCode`**（新，`BuildRoomCode`）：关闭叉**左边**那行房间号。锚右上、轴 `(1,1)`，`RoomCodeX = -252`（叉左沿在 -228，再让 24）、
+  `RoomCodeY = -66`（框高 60 ⇒ 中线 -96 正好落在叉的中线上）、`RoomCodeW 420`、右对齐、`RoomCodeFont 30`、奶油色。
+  复制提示是它的子物体 `Text_CopyToast`（`RoomCodeToastY = -60`，字号 24，`raycastTarget = false`）——「下面浮现」因此是跟着这行走的。
+
+**运行时逻辑**（`Assets/_Game/Scripts/UI/Lobby/LobbyRoomCodeTag.cs`，新）
+
+- 右上那行挂 `LobbyRoomCodeTag`：`IPointerEnter/Exit/Down` 三件套，**不挂 `Button`**（不要点击音效与位移）；悬停字色 `#D6C298 → #E4CB84`
+  （`normalColor` / `hoverColor`）；点击 `GUIUtility.systemCopyBuffer = code`，提示语从上方滑入（`toastSlide 12`）→ 保持 1s → 淡出 0.8s。
+- **号是 `OnEnable` 现生成的**（面板由 `SetActive` 开关 ⇒ 每次打开都是一串新号）：6 位，字母表
+  `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`（剔掉容易看错的 `0 O 1 I`）。已留 `SetCode()` 给未来真房间号。
+
+**自证**（`Assets/_Game/Editor/` 里的一次性执行器，跑完已删；报告与图在 `%USERPROFILE%\.codex\visualizations\2026\09\26\01a0dccd-*`）
+
+- `stage27_room_ui.txt` + `stage27_shots/40_room_build.png`（建房界面）、`41_room_copied.png`（复制提示浮在号下面）、`42_room_code_hover.png`（悬停变金）。
+- `stage28_room_ui.txt` + `stage28_shots/43_room_fixed.png`（复验空槽白方块：`texture=<null> color=RGBA(1.000,1.000,1.000,0.000)`，井是空的深色环）。
+- 实测断言：`Panel_Room` 里 `ModeCards = False`（对照 `Panel_Battle` = `True`）；房主行 = 「心响」；点号后剪贴板 = `BELWJ8`／另一轮 `RUZGEL`；
+  悬停字色 `RGBA(0.894, 0.796, 0.518, 1)` = `#E4CB84`；房间面板开着时 `Icon_Friend activeInHierarchy = True`。

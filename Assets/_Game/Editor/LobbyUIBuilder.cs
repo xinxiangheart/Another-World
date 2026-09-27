@@ -804,6 +804,33 @@ public static class LobbyUIBuilder
 
     const string OtherPanelName = "Panel_Other";
 
+    const string RoomPanelName = "Panel_Room";
+
+    // ── 「房间」面板的内容（2026-09-27 二改：点房间直接就是建房界面，那张模式卡撤掉）──────
+    // 用户原话：「点击房间就直接进入了创建房间的功能，不需要再次点击，加入房间的功能内嵌在这个总房间功能里，
+    //   在现在这个创建房间和好友侧边栏中间靠上边区域是显示房主头像和名称，下面那个是显示加入玩家头像和名称，
+    //   把现在这个创建房间的卡牌隐藏掉，另外右上角的叉左边显示：房间号：xxxxxx，悬停变色点击会在下面浮现：已复制到剪切板」
+    const string RoomPlayersName = "RoomPlayers";
+    const float  RoomSlotX     = 640f;    // 槽列左沿 —— 好友侧边栏右沿 465 与屏幕中心 960 之间
+    const float  RoomHostTop   = -220f;   // 房主槽上沿（距面板上沿）
+    const float  RoomGuestTop  = -420f;   // 加入玩家槽上沿
+    const float  RoomRingSize  = 160f;    // 头像环贴图尺寸（LobbyAvatarRing.png 的比例：环 88 : 井 68）
+    const float  RoomWellSize  = 124f;    // 环里那口头像井的直径
+    const float  RoomNameX     = 180f;    // 名字 / 身份距槽左沿
+    const float  RoomNameFont  = 40f;
+    const float  RoomRoleFont  = 26f;
+    const string RoomCodeName      = "Text_RoomCode";
+    const string RoomCodeToastName = "Text_CopyToast";
+    const float  RoomCodeFont      = 30f;
+    const float  RoomCodeX     = -252f;   // 距右沿：通用关闭叉左沿在 -228，再让 24
+    const float  RoomCodeY     = -66f;    // 与关闭叉同一条水平线（框高 60 ⇒ 中线 -96 = 叉的中线）
+    const float  RoomCodeW     = 420f;
+    const float  RoomCodeH     = 60f;
+    const float  RoomCodeToastFont = 24f;
+    const float  RoomCodeToastY    = -60f;   // 提示语：紧贴在号那行下面
+    static readonly Color RoomRoleColor    = new Color32(240, 232, 210, 140);   // 身份小字：奶油 55%
+    static readonly Color RoomPendingColor = new Color32(142, 162, 180, 205);   // 「等待加入…」：本套钢色
+
     /// <summary>「其它」子全屏弹窗：与 Panel_Battle 同一个壳（通用背景 + 通用关闭叉），
     /// 内容只有一张模式卡「离线模式」—— 点它直接进 Game 场景（离线 Host + AI 对手）。
     /// 用户 2026-09-27：「现在做其它，和战斗点开几乎一模一样，只是目前只有一个『离线模式』点击后直接跳转到 Game 场景」。</summary>
@@ -823,6 +850,145 @@ public static class LobbyUIBuilder
         EditorSceneManager.MarkSceneDirty(canvas.gameObject.scene);
         Debug.Log("[LobbyUI] 已生成 Panel_Other（全屏子弹窗）：壳与 Panel_Battle 一致（CommonBack_A_clean + 通用关闭叉），" +
                   "内容 = 一张「离线模式」模式卡（BattleModeCardsBuilder.BuildOfflineCard）；Entry_More（其它）已接到它。");
+    }
+
+    /// <summary>「房间」子全屏弹窗：壳与 Panel_Battle / Panel_Other 完全一致，**唯一差别 = 左上角那个
+    /// 「好友」图标不再临时藏掉** —— 用户 2026-09-27：「现在做房间，也是类似的全屏，不过左上角的
+    /// 好友不再隐藏，并且能在这个界面打开好友侧边栏」。所以 hideOnOpen 走排除版：只藏 商城 / 活动 /
+    /// 教程 / 邮件，好友留在屏幕上，点它照旧开左侧好友侧边栏（LobbyFriendPanel）。
+    /// 面板内容**直接就是建房界面**（点房间不再需要二次点击）—— 两个玩家槽 + 右上角那行可复制的房间号。
+    [MenuItem("Tools/异界/大厅：生成「房间」子全屏弹窗（创建房间）")]
+    public static void BuildRoomSubPanelMenu()
+    {
+        Canvas canvas = Object.FindObjectOfType<Canvas>();
+        if (canvas == null) { Debug.LogError("[LobbyUI] 当前场景没有 Canvas —— 请先打开 Assets/_Game/Scenes/Lobby.unity"); return; }
+
+        Transform sub, hud;
+        EnsureUiLayers(canvas, out sub, out hud);
+        GameObject panel = BuildSubPanel(sub, hud.gameObject, RoomPanelName, "房间", true, false);
+        // ★ 与战斗 / 其它唯一的差别就在这一行：好友（Icon_Friend）点名排除，其余无底衬 HUD 件照旧临时藏。
+        //   侧边栏本身挂 Layer_Sub_v1 且 Open 时 SetAsLastSibling ⇒ 画在本面板之上；
+        //   而 HUD 层（头像板 / 横栏 / 好友图标 / 左下 ID 行）永远在本层之上，所以图标点得到。
+        panel.GetComponent<LobbySubPanel>().hideOnOpen = FindNoBackdropHudIcons(hud.gameObject, "Icon_Friend");
+        _font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontPath);
+        if (_font == null) Debug.LogWarning($"[LobbyUI] 找不到字体 {FontPath}，中文会落到 TMP 默认字体");
+
+        // 面板内容就是建房界面本身：两个玩家槽（房主 / 加入玩家）+ 右上角那行房间号（可复制）。
+        // 那张「创建房间」模式卡已撤（用户 2026-09-27：「把现在这个创建房间的卡牌隐藏掉」）——
+        // 贴图与 BattleModeCardsBuilder.BuildRoomCard 都留着备用，只是这里不再挂。
+        BuildRoomPlayers(panel);
+        BuildRoomCode(panel);
+        Transform closeBtn = panel.transform.Find("Btn_Close");
+        if (closeBtn != null) closeBtn.SetAsLastSibling();   // 叉子始终压在内容之上
+        WireEntryToPanel(canvas, "Entry_Room", panel, "房间");
+        Selection.activeGameObject = panel;
+        EditorSceneManager.MarkSceneDirty(canvas.gameObject.scene);
+        Debug.Log("[LobbyUI] 已生成 Panel_Room（全屏子弹窗）：壳同 Panel_Battle（CommonBack_A_clean + 通用关闭叉），" +
+                  "内容 = 建房界面本身（房主 / 加入玩家两个槽 + 右上角可复制的房间号），不再挂模式卡；Entry_Room（房间）已接到它；" +
+                  "hideOnOpen 排除了 Icon_Friend —— 好友图标在本面板开着时**常驻**，点它开 / 关左侧好友侧边栏。");
+    }
+
+    /// <summary>「房间」面板里的两个玩家槽：房主（上）/ 加入玩家（下）。</summary>
+    /// <remarks>头像环与左上角那块**同源**（同一张 LobbyAvatarRing.png，只是放大到 160；环 88 : 井 68 的比例不变）。
+    /// 房主槽挂 <see cref="PlayerProfilePanel"/> —— 它运行时从 SteamDataManager 取**本机**头像与名字（建房的人就是房主），
+    /// 所以场景里那两行只是占位字。
+    /// 加入玩家槽现在只有空态（环 + 「等待加入…」）—— 等联机（Steam 大厅）接进来再填头像 / 名字。</remarks>
+    static GameObject BuildRoomPlayers(GameObject panel)
+    {
+        Transform old = panel.transform.Find(RoomPlayersName);
+        if (old != null) Undo.DestroyObjectImmediate(old.gameObject);
+
+        RectTransform root = NewRect(panel.transform, RoomPlayersName, AnchorTL, PivotTL, Vector2.zero, Vector2.zero);
+        root.anchorMin = Vector2.zero;
+        root.anchorMax = Vector2.one;
+        root.offsetMin = Vector2.zero;
+        root.offsetMax = Vector2.zero;
+        // 排在 Bg 之后：背景之上、关闭叉之下（叉子由调用方 SetAsLastSibling 顶着）
+        Transform bg = panel.transform.Find("Bg");
+        if (bg != null) root.SetSiblingIndex(bg.GetSiblingIndex() + 1);
+
+        BuildRoomSlot(root, "Slot_Host",  "房主",     "你自己",     RoomHostTop,  true);
+        BuildRoomSlot(root, "Slot_Guest", "加入玩家", "等待加入…", RoomGuestTop, false);
+        return root.gameObject;
+    }
+
+    static void BuildRoomSlot(Transform parent, string name, string role, string nameText, float top, bool isSelf)
+    {
+        RectTransform slot = NewRect(parent, name, AnchorTL, PivotTL, new Vector2(RoomSlotX, top),
+                                     new Vector2(RoomRingSize, RoomRingSize));
+
+        RawImage ring = NewRaw(slot, "Avatar_Ring", UiDir + "LobbyAvatarRing.png",
+                               AnchorTL, PivotTL, Vector2.zero, new Vector2(RoomRingSize, RoomRingSize));
+        ring.raycastTarget = false;
+
+        float inset = (RoomRingSize - RoomWellSize) * 0.5f;
+        RectTransform well = NewRect(slot, "Avatar_Image", AnchorTL, PivotTL,
+                                     new Vector2(inset, -inset), new Vector2(RoomWellSize, RoomWellSize));
+        var avatar = well.gameObject.AddComponent<RawImage>();
+        avatar.raycastTarget = false;   // 头像不吃点击
+        // ⚠ 空 RawImage 默认画**纯白**一块（texture = null 时就是这么显示的）—— 空槽必须把 alpha 压到 0，
+        //   否则「加入玩家」那口井是块白方块（2026-09-27 实测踩到）。以后有人加入时由联机侧给 texture 再调回不透明。
+        if (!isSelf) avatar.color = new Color(1f, 1f, 1f, 0f);
+
+        float midY = -RoomRingSize * 0.5f;                       // 环的中线
+        TextMeshProUGUI label = NewLabel(slot, "Text_Name", nameText,
+                                        new Vector2(RoomNameX, midY + 26f), new Vector2(360f, 52f), RoomNameFont);
+        label.alignment = TextAlignmentOptions.Left;             // 中线左对齐 = 与头像竖向对齐
+        label.color = isSelf ? Cream : RoomPendingColor;
+
+        TextMeshProUGUI roleT = NewLabel(slot, "Text_Role", role,
+                                        new Vector2(RoomNameX, midY - 34f), new Vector2(360f, 34f), RoomRoleFont);
+        roleT.alignment = TextAlignmentOptions.Left;
+        roleT.color = RoomRoleColor;
+
+        if (isSelf)
+        {
+            var view = slot.gameObject.AddComponent<PlayerProfilePanel>();
+            view.avatarImage = avatar;
+            view.nameText = label;
+            view.circularCrop = true;        // Steam 头像是方的 —— 不裁圆会把金环吃掉
+        }
+    }
+
+    /// <summary>右上角关闭叉**左边**那行房间号 + 它的复制提示（<see cref="LobbyRoomCodeTag"/>）。</summary>
+    /// <remarks>位置按关闭叉算：叉 = 锚右上 / 轴左上 / (-168,-66) / 60×60 ⇒ 左沿在距右沿 228 处；
+    /// 号那行右沿取 -252（再让 24），框高 60、中线正好落在叉的中线 -96 上。
+    /// 提示语是它的子物体（锚右上、y = RoomCodeToastY），所以「下面浮现」是跟着这行走的。</remarks>
+    static GameObject BuildRoomCode(GameObject panel)
+    {
+        Transform old = panel.transform.Find(RoomCodeName);
+        if (old != null) Undo.DestroyObjectImmediate(old.gameObject);
+
+        RectTransform rt = NewRect(panel.transform, RoomCodeName, AnchorTR, new Vector2(1f, 1f),
+                                   new Vector2(RoomCodeX, RoomCodeY), new Vector2(RoomCodeW, RoomCodeH));
+        var text = rt.gameObject.AddComponent<TextMeshProUGUI>();
+        text.font = _font;
+        text.text = "房间号：------";
+        text.fontSize = RoomCodeFont;
+        text.color = Cream;
+        text.alignment = TextAlignmentOptions.Right;    // 右对齐 ⇒ 紧挨关闭叉左边
+        text.enableWordWrapping = false;
+        text.overflowMode = TextOverflowModes.Overflow;
+        text.raycastTarget = true;                      // 它自己就是复制的点击目标
+
+        RectTransform toast = NewRect(rt, RoomCodeToastName, AnchorTR, new Vector2(1f, 1f),
+                                      new Vector2(0f, RoomCodeToastY), new Vector2(RoomCodeW, 40f));
+        var toastText = toast.gameObject.AddComponent<TextMeshProUGUI>();
+        toastText.font = _font;
+        toastText.text = "";
+        toastText.fontSize = RoomCodeToastFont;
+        toastText.color = GoldBright;
+        toastText.alignment = TextAlignmentOptions.Right;
+        toastText.enableWordWrapping = false;
+        toastText.overflowMode = TextOverflowModes.Overflow;
+        toastText.raycastTarget = false;                // 别抢父物体那行的悬停 / 点击
+
+        var tag = rt.gameObject.AddComponent<LobbyRoomCodeTag>();
+        tag.label = text;
+        tag.toastText = toastText;
+        tag.toastOffsetY = RoomCodeToastY;
+        tag.toastSlide = 12f;
+        return rt.gameObject;
     }
 
 
@@ -862,12 +1028,15 @@ public static class LobbyUIBuilder
         return null;
     }
 
-    static GameObject[] FindNoBackdropHudIcons(GameObject hudLayer)
+    /// <param name="except">要**排除**的名字 —— 房间面板传 "Icon_Friend"：好友图标在弹窗开着时照旧留在屏幕上
+    /// （用户 2026-09-27：「现在做房间……不过左上角的好友不再隐藏」）。</param>
+    static GameObject[] FindNoBackdropHudIcons(GameObject hudLayer, params string[] except)
     {
         var list = new List<GameObject>();
         if (hudLayer == null) return list.ToArray();
         foreach (string n in NoBackdropHudIcons)
         {
+            if (except != null && System.Array.IndexOf(except, n) >= 0) continue;   // 点名留着的（房间面板留好友）
             Transform t = FindDeep(hudLayer.transform, n);
             if (t != null) list.Add(t.gameObject);
             else Debug.LogWarning("[LobbyUI] HUD 层里找不到 " + n + " —— hideOnOpen 会少一个");

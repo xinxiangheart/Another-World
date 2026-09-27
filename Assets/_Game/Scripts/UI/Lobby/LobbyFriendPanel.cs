@@ -71,6 +71,10 @@ public class LobbyFriendPanel : MonoBehaviour
     {
         HidePlaceholderPopups();          // 别的图标开的占位弹窗先收掉，免得两块糊在一起
         gameObject.SetActive(true);
+        // ⚠ 必须抬到子弹窗层最上面：全屏子弹窗（战斗 / 房间 / 其它）Open 时会 SetAsLastSibling 把自己顶到本层最高，
+        // 本面板要是还停原位就会被它们盖住 —— 2026-09-27 用户「能在这个界面打开好友侧边栏」（房间面板）。
+        // SetAsLastSibling 只在本层里抬，压不到 Layer_Hud_v1 ⇒ 左上头像板 / 左下 ID 行照旧在最上面。
+        transform.SetAsLastSibling();
         if (_progress <= 0f) Apply();     // 从屏幕外起步
         _target = 1f;
     }

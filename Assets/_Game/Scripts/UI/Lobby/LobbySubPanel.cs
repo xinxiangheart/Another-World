@@ -75,6 +75,10 @@ public class LobbySubPanel : MonoBehaviour
         if (hideHudOnOpen && hudLayer != null) hudLayer.SetActive(false);
         ApplyHide(true);
 
+        // 开新弹窗时把好友侧边栏收回去：它俩抢同一块屏幕，而且侧边栏一旦被压在下面、状态却还停在「开着」，
+        // 再点好友图标只会把它「关掉」、看着像没反应（2026-09-27 加房间面板时定的）。
+        if (LobbyFriendPanel.Instance != null) LobbyFriendPanel.Instance.Close();
+
         gameObject.SetActive(true);
         // 同一层里后开的压在上面 —— HUD 层是 Canvas 的最后一个子物体，这里抬不出这一层，动不到 HUD
         transform.SetAsLastSibling();

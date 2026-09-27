@@ -1,4 +1,4 @@
-# 战斗模式卡 v1 —— 「匹配」「排位」两张卡（2026-09-27）
+  Put-Text $g '模式卡 v1 —— 「匹配」「排位」「离线模式」「创建房间」（上排常态 / 下排悬停态）' 40 26 32
 #
 # 用户 2026-09-27：出一张类似于卡片的匹配图和排位图，上面是文字下面是对应的适配图案；
 #   进入战斗场景时会从最右边滑入到最左边，匹配在最左边，排位在其次，二者之间以及和边框之间
@@ -15,7 +15,7 @@
 #   BattleModeCard_MatchHover.png   悬停态；同上尺寸
 #   BattleModeCard_RankedHover.png  悬停态；同上尺寸
 #   BattleModeCard_OfflineHover.png 悬停态；同上尺寸
-#   ---- 三张只差徽记：文字在场景里是 TMP（不进贴图），贴图只出「标题槽 + 分隔线 + 徽记」----
+  Put-Text $g '文字是场景里的 TMP，不进贴图 —— 这里按最终版式画上去，给你看落点与字号；四张只差徽记' 40 100 20 176
 #   ---- 悬停态只差色调（2026-09-27）：石面提亮 + 金 GOLD->GOLD_L + 金饰 α 上调；形体不动 -> 切换不跳位 ----
 #
 # 卡面版式（贴图 px，画布 900x1260）：
@@ -120,6 +120,28 @@ function New-ModeEmblem($g, [string]$kind, [single]$cx, [single]$cy, [single]$r,
     foreach ($a0 in @(38, 218)) { $g.DrawArc($pen, $rect, $a0, 124) }
     $dm = New-Diamond $cx $cy ($r * 0.26)
     $g.DrawPath($pen, $dm); $dm.Dispose()
+  } elseif ($kind -eq 'create' -or $kind -eq 'join') {
+    # 房间 = 拱门（与入口板「房间」同源，形制取自 LobbyUIv1.ps1 的 New-EntryEmblem 'room' 分支）
+    #        + 门内一枚记号：加号 = 创建 / 右向箭头 = 加入。
+    # 刻意不画门把手 / 不做透视 —— 本套一律线稿 + 单色平涂（AGENTS.md「界面 / 场景美术方向」）。
+    $dw = $r * 1.06; $dh = $r * 1.62
+    $p = New-Object System.Drawing.Drawing2D.GraphicsPath
+    $p.AddArc(($cx - $dw / 2), ($cy - $dh / 2), $dw, $dw, 180, 180)
+    $p.AddLine(($cx + $dw / 2), ($cy - $dh / 2 + $dw / 2), ($cx + $dw / 2), ($cy + $dh / 2))
+    $p.AddLine(($cx + $dw / 2), ($cy + $dh / 2), ($cx - $dw / 2), ($cy + $dh / 2))
+    $p.CloseFigure()
+    $g.DrawPath($pen, $p); $p.Dispose()
+    $my = $cy + $r * 0.27                 # 记号落点：门洞（拱弧之下）的中线
+    if ($kind -eq 'create') {
+      $arm = $r * 0.24
+      $g.DrawLine($pen, ($cx - $arm), $my, ($cx + $arm), $my)
+      $g.DrawLine($pen, $cx, ($my - $arm), $cx, ($my + $arm))
+    } else {
+      $x0 = $cx - $r * 0.30; $x1 = $cx + $r * 0.30
+      $g.DrawLine($pen, $x0, $my, $x1, $my)
+      $g.DrawLine($pen, ($x1 - $r * 0.17), ($my - $r * 0.17), $x1, $my)
+      $g.DrawLine($pen, ($x1 - $r * 0.17), ($my + $r * 0.17), $x1, $my)
+    }
   } else {
     throw "New-ModeEmblem: 没有 '$kind' 这个徽记"
   }
@@ -179,14 +201,15 @@ function New-BattleModeCard([string]$out, [string]$kind, [switch]$hover) {
   return (Save-Bmp $b $g $out)
 }
 
-# ── 预览：两张卡 1:1（含 TMP 文字的真实版式）+ 徽记放大 + 尺寸标注 ────────────
+# ── 预览：四张卡 1:1（含 TMP 文字的真实版式）+ 徽记放大 + 尺寸标注 ────────────
 $MODE_META = @(
   @{ kind = 'match';   file = 'BattleModeCard_Match.png';   hover = 'BattleModeCard_MatchHover.png';   label = '匹配';     tip = '两个相对的箭头 + 中央菱形铆钉 —— 撮合 / 相遇' },
   @{ kind = 'ranked';  file = 'BattleModeCard_Ranked.png';  hover = 'BattleModeCard_RankedHover.png';  label = '排位';     tip = '三级上升台阶 + 顶端菱形 —— 段位晋升' },
-  @{ kind = 'offline'; file = 'BattleModeCard_Offline.png'; hover = 'BattleModeCard_OfflineHover.png'; label = '离线模式'; tip = '缺口圆环 + 中央菱形 —— 没连线 / 不在网里' }
+  @{ kind = 'offline'; file = 'BattleModeCard_Offline.png'; hover = 'BattleModeCard_OfflineHover.png'; label = '离线模式'; tip = '缺口圆环 + 中央菱形 —— 没连线 / 不在网里' },
+  @{ kind = 'create';  file = 'BattleModeCard_Create.png';  hover = 'BattleModeCard_CreateHover.png';  label = '创建房间'; tip = '拱门 + 加号 —— 开一间新房（与入口板「房间」同源）' }
 )
 function New-BattleModeSheet([string]$dir, [string]$out) {
-  $CW = 1900; $CH = 1340
+  $CW = 1900; $CH = 1520
   $b = New-Object System.Drawing.Bitmap($CW, $CH, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
   $g = [System.Drawing.Graphics]::FromImage($b)
   $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
@@ -195,9 +218,9 @@ function New-BattleModeSheet([string]$dir, [string]$out) {
   $bs = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 9, 12, 18))
   $g.FillRectangle($bs, 0, 0, $CW, $CH); $bs.Dispose()
 
-  Put-Text $g '战斗模式卡 v1 —— 「匹配」「排位」「离线模式」（上排常态 / 下排悬停态）' 40 26 32
+  Put-Text $g '模式卡 v1 —— 「匹配」「排位」「离线模式」「创建房间」（上排常态 / 下排悬停态）' 40 26 32
   Put-Text $g '卡 300x420 屏幕 px（贴图 3x = 900x1260）· 深蓝黑石面 + 一条金细线 · 母题：菱形铆钉 / 平板' 40 70 20 176
-  Put-Text $g '文字是场景里的 TMP，不进贴图 —— 这里按最终版式画上去，给你看落点与字号；三张只差徽记' 40 100 20 176
+  Put-Text $g '文字是场景里的 TMP，不进贴图 —— 这里按最终版式画上去，给你看落点与字号；四张只差徽记' 40 100 20 176
   Put-Text $g '悬停态 = 石面提亮 + 金线 GOLD->GOLD_L（同一配方）；形体不动 -> 不跳位。标题变金由场景里的 TMP 负责。' 40 130 19 196
 
   # 上排 = 常态，下排 = 悬停态；卡间距 60 = 场景里两卡之间的净距（见 BattleModeCards.gap）
@@ -221,16 +244,15 @@ function New-BattleModeSheet([string]$dir, [string]$out) {
   $g.DrawLine($pen, 470, ($cyA - 28), 470, ($cyA - 16))
   $pen.Dispose()
   Put-TextC $g '净距 60' 440 ($cyA - 40) 18 200
-  # 右栏：三个徽记放大（单独看图案）
-  $ex = 1500.0
-  $er = 120.0
-  Put-TextC $g '徽记 · 放大看图案' $ex 150 22 210
-  $ey = 280.0
-  foreach ($m in $MODE_META) {
-    New-ModeEmblem $g $m.kind $ex $ey $er
-    Put-TextC $g $m.label $ex ($ey + 160) 30
-    Put-TextC $g $m.tip $ex ($ey + 192) 17 170
-    $ey += 330
+  # 底部一行：徽记放大（单独看图案）—— 卡多了，右栏摆不下，改成一行居中
+  $er = 110.0
+  Put-TextC $g '徽记 · 放大看图案' 950 1160 22 210
+  for ($k = 0; $k -lt $MODE_META.Count; $k++) {
+    $m = $MODE_META[$k]
+    $ex = 950.0 + ($k - ($MODE_META.Count - 1) / 2.0) * 340.0
+    New-ModeEmblem $g $m.kind $ex 1290 $er
+    Put-TextC $g $m.label $ex 1420 28
+    Put-TextC $g (($m.tip -split '——')[0].Trim()) $ex 1452 17 170
   }
   $g.Dispose()
   $b.Save($out, [System.Drawing.Imaging.ImageFormat]::Png); $b.Dispose()
