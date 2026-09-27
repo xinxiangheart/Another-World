@@ -1790,6 +1790,74 @@ public static class LobbyUIBuilder
     const float  FdCountFS       = 22f;
     static readonly Color FdSteel = new Color32(142, 162, 180, 190);   // 钢 #8EA2B4 · 75%
 
+    // ── 好友详情 · 「添加好友」那一格（2026-09-27）────────────────────────────────
+    // 用户：「添加好友，首先是一个长的输入框（框的最右边有个类似于放大镜的ui），输入框可以之间输入 id 或者昵称
+    //       （加入右键粘贴id功能），然后会在下方列出所有相关玩家（一般是输入昵称时可以有多个玩家）（也是能滑动的）」。
+    //
+    // 版式（自上而下）：44px 标题（与另三格共用那一行）→ 输入框那口井 1360x76（右端留 16 放一枚 44 的放大镜）
+    //   → 一条金细线 → 结果列表（ScrollRect；行底板复用 LobbyFriendRow.png，1360x96 / 行距 12）
+    //   → 右下角「n 位相关玩家」+ 列表正中那句空态。
+    // 井与结果行**同宽同列**（都在 x32 .. x1392）：上下看过去是一条竖列，比「输入框比行窄一圈」稳。
+    // 贴图由 Tools/cardframe/FriendAddV1.ps1 出（井底板 1364x92 存 1:1 / 放大镜徽章 256 按全族 x3）。
+    // 搜索规则与「加好友」全在 Scripts/UI/Lobby/FriendAddSearch.cs，本类只管版式与接线。
+    const string FaInputName  = "Input_Query";
+    const string FaLineName   = "Line_Divider";
+    const string FaListName   = "Result_List";
+    const string FaCountName  = "Text_Count";
+    const string FaEmptyName  = "Text_Empty";
+    const string FaRowName    = "RowTemplate";
+    const string FaSearchName = "Btn_Search";
+    const string FaAddName    = "Act_Add";
+    const string FaInputTex   = UiDir + "LobbyFriendAddInput.png";
+    const string FaMagTex     = UiDir + "Icon_FriendSearch.png";
+    const string FaMagHovTex  = UiDir + "Icon_FriendSearchHover.png";
+    const string FaAddTex     = UiDir + "Icon_FriendPlus.png";        // 「添加」复用好友行那颗「+」
+    const string FaAddHovTex  = UiDir + "Icon_FriendPlusHover.png";
+    const float  FaColX       = 32f;      // 井与结果行共用的左沿（与好友列表那 32 让边同一档）
+    const float  FaColW       = FdRowW;   // 井与结果行共用的宽度（一列到底）
+    const float  FaInputTop   = 124f;     // 井的上沿（让开 44px 标题，与好友列表列表上沿同一档）
+    const float  FaInputH     = 76f;
+    const float  FaPlatePad   = 8f;       // 井底板贴图外框比井身每边多 8（贴图 24 / 3）
+    const float  FaPadL       = 24f;      // 井内文字左让
+    const float  FaPadV       = 14f;      // 井内文字上下让
+    const float  FaMagSize    = 44f;      // 放大镜徽章（与三格动作 / 好友表头「+」同尺寸）
+    const float  FaMagRight   = 16f;      // 徽章距井右沿
+    const float  FaMagGap     = 16f;      // 徽章左边让给文字的距离
+    const float  FaInputTextFS = 30f;
+    const float  FaInputHintFS = 28f;
+    const float  FaLineY      = 224f;     // 金细线：井下面 24
+    const float  FaListTop    = 248f;     // 列表上沿（金细线再下 24）
+    const float  FaListBottom = 60f;      // 列表下沿（给右下角那句计数留位）
+    const float  FaRowH       = 96f;
+    const float  FaRowGap     = 12f;
+    const float  FaRowPlatePad = 8f;
+    const float  FaRowRingX   = 14f;
+    const float  FaRowRingSize = 64f;
+    const float  FaRowAvatarInset = 7f;
+    const float  FaRowAvatarSize = 50f;
+    const float  FaRowNameX   = 96f;
+    const float  FaRowNameW   = 340f;
+    const float  FaRowNameH   = 40f;      // ★ 必须容得下整行：26 号实测 preferredHeight 37.4
+    const float  FaRowNameFS  = 26f;
+    const float  FaRowIdX     = 456f;
+    const float  FaRowIdW     = 480f;
+    const float  FaRowIdH     = 40f;
+    const float  FaRowIdFS    = 20f;
+    const float  FaRowStatusR = 1272f;    // 状态字右沿（再往右就是那颗「+」）
+    const float  FaRowStatusW = 240f;
+    const float  FaRowStatusH = 40f;
+    const float  FaRowStatusFS = 22f;
+    const float  FaAddSize    = 44f;
+    const float  FaAddY       = -26f;
+    const float  FaAddX       = FaColW - 20f - FaAddSize;   // 1296（与好友行那颗「+」同位）
+    const float  FaCountW     = 300f;
+    const float  FaCountH     = 30f;
+    const float  FaCountBottom = 18f;
+    const float  FaCountFS    = 22f;
+    static readonly Color FaSteel = new Color32(142, 162, 180, 190);   // 钢 #8EA2B4 · 75%
+    static readonly Color FaHint  = new Color32(142, 162, 180, 205);   // 钢 #8EA2B4 · 80%
+
+
     /// <summary>把 Selectable 的键盘 / 手柄导航关掉（这几个 Button 只是「吃掉点击」用的，不该参与 Tab 导航）。</summary>
     static Navigation NoNav(Navigation nav)
     {
@@ -2193,10 +2261,14 @@ public static class LobbyUIBuilder
                                             new Vector2(40f, -40f), new Vector2(900f, 64f), 44f);
             head.color = GoldBright;
             head.raycastTarget = false;
-            // 第 1 格「好友列表」= 真名单（滚动 + 行 + 右下角 n/50）；其余三格还是占位
+            // 第 1 格「好友列表」= 真名单（滚动 + 行 + 右下角 n/50）；第 2 格「添加好友」= 搜索框 + 可滚结果
             if (i == 0)
             {
                 BuildFriendListInto(c);
+            }
+            else if (i == 1)
+            {
+                BuildFriendAddInto(c);
             }
             else
             {
@@ -2401,6 +2473,258 @@ public static class LobbyUIBuilder
         act.hoverTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(hoverTex);
         act.row = row;
         return act;
+    }
+
+
+    /// <summary>「添加好友」那一格的内容：长输入框（右端放大镜）+ 金细线 + 可滚的结果名单 + 右下角计数。</summary>
+    /// <remarks>2026-09-27 用户：「添加好友，首先是一个长的输入框（框的最右边有个类似于放大镜的ui），输入框可以之间
+    /// 输入 id 或者昵称（加入右键粘贴id功能），然后会在下方列出所有相关玩家（一般是输入昵称时可以有多个玩家）
+    /// （也是能滑动的）」。
+    ///
+    /// 几处与好友列表那份刻意的差别：
+    ///   ① 输入框的 **ContentType = Standard**（不是 Alphanumeric）—— 昵称里有中文，Alphanumeric 会直接吃掉；
+    ///   ② 井里那口 Text Area 的右沿**让开放大镜那一格**（FaMagRight + FaMagSize + FaMagGap），文字不会压到徽章上；
+    ///   ③ 上 / 下两道金线只做**一道**（井与结果之间）—— 上面那道横金线是这一格的公共骨架（BuildFriendDetailContent 画的）；
+    ///   ④ 结果列表与好友列表用**同一套** ScrollRect 配方（只竖滚 + Clamped + RectMask2D 硬裁 + α=0 的 Viewport 吃拖拽）；
+    ///   ⑤ 空态那句挂在 **list** 下而不是 Content 下 —— 它是「列表正中」的一句话，不该跟着滚走。
+    /// 幂等：先把旧的井 / 金线 / 列表 / 计数收掉再建（重跑本菜单不叠）。</remarks>
+    static void BuildFriendAddInto(RectTransform content)
+    {
+        string[] olds = { FaInputName, FaLineName, FaListName, FaCountName };
+        for (int i = 0; i < olds.Length; i++)
+        {
+            Transform o = content.Find(olds[i]);
+            if (o != null) Undo.DestroyObjectImmediate(o.gameObject);
+        }
+
+        // ① 输入框那口井（长条；右端让出一枚放大镜徽章）
+        RectTransform well = NewRect(content, FaInputName, AnchorTL, PivotTL,
+                                     new Vector2(FaColX, -FaInputTop), new Vector2(FaColW, FaInputH));
+        var wellHit = well.gameObject.AddComponent<Image>();   // 当 targetGraphic + 点击面（自己全透明，视觉全在 Plate 上）
+        wellHit.color = new Color(0f, 0f, 0f, 0f);
+        wellHit.raycastTarget = true;
+
+        RawImage wellPlate = NewRaw(well, "Plate", FaInputTex, AnchorC, PivotC, Vector2.zero,
+                                    new Vector2(FaColW + FaPlatePad * 2f, FaInputH + FaPlatePad * 2f));
+        wellPlate.raycastTarget = false;   // 聚焦 / 定位光标都归井自己
+
+        RectTransform area = NewRect(well, "Text Area", AnchorTL, PivotTL,
+                                     new Vector2(FaPadL, -FaPadV),
+                                     new Vector2(FaColW - FaPadL - (FaMagRight + FaMagSize + FaMagGap), FaInputH - FaPadV * 2f));
+        area.gameObject.AddComponent<RectMask2D>();
+
+        RectTransform textRT = StretchRect(area, "Text", Vector2.zero, Vector2.zero);
+        var text = textRT.gameObject.AddComponent<TextMeshProUGUI>();
+        text.font = _font; text.text = ""; text.fontSize = FaInputTextFS; text.color = Cream;
+        text.alignment = TextAlignmentOptions.MidlineLeft; text.raycastTarget = false;
+        text.enableWordWrapping = false; text.overflowMode = TextOverflowModes.Overflow;
+
+        RectTransform phRT = StretchRect(area, "Placeholder", Vector2.zero, Vector2.zero);
+        var ph = phRT.gameObject.AddComponent<TextMeshProUGUI>();
+        ph.font = _font; ph.text = "输入异界号或昵称"; ph.fontSize = FaInputHintFS;
+        ph.alignment = TextAlignmentOptions.MidlineLeft; ph.raycastTarget = false;
+        ph.enableWordWrapping = false; ph.overflowMode = TextOverflowModes.Overflow;
+        ph.color = FaHint;
+
+        RectTransform magRT = NewRect(well, FaSearchName, AnchorTL, PivotTL,
+                                      new Vector2(FaColW - FaMagRight - FaMagSize, -(FaInputH - FaMagSize) * 0.5f),
+                                      new Vector2(FaMagSize, FaMagSize));
+        var mag = magRT.gameObject.AddComponent<RawImage>();
+        mag.texture = AssetDatabase.LoadAssetAtPath<Texture2D>(FaMagTex);
+        if (mag.texture == null) Debug.LogWarning("[LobbyUI] 找不到贴图：" + FaMagTex);
+        mag.raycastTarget = true;
+
+        var input = well.gameObject.AddComponent<TMP_InputField>();
+        input.targetGraphic = wellHit;
+        input.textViewport = area;
+        input.textComponent = text;
+        input.placeholder = ph;
+        input.characterLimit = 32;                                   // 异界号 24 个字符 + 余量
+        input.contentType = TMP_InputField.ContentType.Standard;     // ★ 昵称里有中文：不能是 Alphanumeric
+        input.lineType = TMP_InputField.LineType.SingleLine;
+        input.richText = false;
+        input.restoreOriginalTextOnEscape = true;
+        input.caretWidth = 2;
+        input.customCaretColor = true;
+        input.caretColor = Cream;
+        input.selectionColor = new Color32(200, 164, 74, 90);
+
+        // ② 金细线（井与结果列表之间的那道分割）
+        var line = NewRect(content, FaLineName, AnchorTL, PivotTL,
+                           new Vector2(FaColX, -FaLineY), new Vector2(FaColW, 2f)).gameObject.AddComponent<Image>();
+        line.color = FdLineColor;
+        line.raycastTarget = false;
+
+        // ③ 结果列表 = ScrollRect（只竖滚 + Clamped 不回弹），配方与好友列表那份逐条一致
+        RectTransform list = StretchRect(content, FaListName,
+                                         new Vector2(FaColX, FaListBottom),
+                                         new Vector2(-FaColX, -FaListTop));
+        var scroll = list.gameObject.AddComponent<ScrollRect>();
+        scroll.horizontal = false;
+        scroll.vertical = true;
+        scroll.movementType = ScrollRect.MovementType.Clamped;
+        scroll.inertia = true;
+        scroll.decelerationRate = 0.12f;
+        scroll.scrollSensitivity = 40f;
+
+        RectTransform viewport = StretchRect(list, "Viewport", Vector2.zero, Vector2.zero);
+        viewport.gameObject.AddComponent<RectMask2D>();
+        var viewportImage = viewport.gameObject.AddComponent<Image>();
+        viewportImage.color = new Color(0f, 0f, 0f, 0f);
+        viewportImage.raycastTarget = true;    // 吃得到拖拽（Unity 不看 α）
+        scroll.viewport = viewport;
+
+        RectTransform listContent = NewRect(viewport, "Content", AnchorTL, PivotTL, Vector2.zero, Vector2.zero);
+        listContent.anchorMin = new Vector2(0f, 1f);
+        listContent.anchorMax = new Vector2(1f, 1f);
+        listContent.pivot = new Vector2(0.5f, 1f);
+        listContent.sizeDelta = new Vector2(0f, 0f);           // 高度运行时按行数改
+        scroll.content = listContent;
+
+        // ④ 行模板（挂在 Content 下、存成 inactive，运行时克隆）
+        FriendAddRowUI row = BuildFriendAddRow(listContent);
+
+        // ⑤ 右下角「n 位相关玩家」
+        TextMeshProUGUI count = NewLabel(content, FaCountName, "", new Vector2(40f, -40f),
+                                         new Vector2(FaCountW, FaCountH), FaCountFS);
+        RectTransform countRT = count.rectTransform;
+        countRT.anchorMin = new Vector2(1f, 0f);
+        countRT.anchorMax = new Vector2(1f, 0f);
+        countRT.pivot = new Vector2(1f, 0f);
+        countRT.anchoredPosition = new Vector2(-FaColX, FaCountBottom);
+        count.alignment = TextAlignmentOptions.Right;
+        count.color = FaSteel;
+        count.raycastTarget = false;
+
+        // ⑥ 列表正中那句（待输入 / 没找到）—— 挂在 list 下（不是 Content 下）：不跟着滚动走
+        TextMeshProUGUI empty = NewLabel(list, FaEmptyName, "", Vector2.zero, new Vector2(FaColW, 40f), 26f);
+        RectTransform emptyRT = empty.rectTransform;
+        emptyRT.anchorMin = new Vector2(0.5f, 0.5f);
+        emptyRT.anchorMax = new Vector2(0.5f, 0.5f);
+        emptyRT.pivot = new Vector2(0.5f, 0.5f);
+        emptyRT.anchoredPosition = Vector2.zero;
+        empty.alignment = TextAlignmentOptions.Center;
+        empty.color = new Color32(142, 162, 180, 170);
+        empty.raycastTarget = false;
+
+        // ⑦ 控制器写在**大格子自己身上**（行是它的孙子辈，GetComponentInParent 找得到）
+        var ui = content.gameObject.AddComponent<FriendAddSearchUI>();
+        ui.input = input;
+        ui.scrollRect = scroll;
+        ui.resultContent = listContent;
+        ui.rowTemplate = row;
+        ui.countText = count;
+        ui.emptyText = empty;
+        ui.rowGap = FaRowGap;
+        ui.maxResults = FdMaxFriends;
+
+        WireInputChanged(input, ui.OnQueryChanged);
+
+        // ⑧ 右键 = 粘贴（与房间号那口井同一套，见 FriendAddInputPaste）
+        var paste = well.gameObject.AddComponent<FriendAddInputPaste>();
+        paste.owner = ui;
+
+        // ⑨ 放大镜：点一下立刻搜（不等防抖）
+        var magAct = magRT.gameObject.AddComponent<FriendAddAction>();
+        magAct.kind = FriendAddActionKind.Search;
+        magAct.icon = mag;
+        magAct.normalTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(FaMagTex);
+        magAct.hoverTexture  = AssetDatabase.LoadAssetAtPath<Texture2D>(FaMagHovTex);
+        magAct.search = ui;
+
+        // ⑩ 搜索要读好友表 —— 服务挂在大厅 Canvas 上（本菜单会反复重建面板，服务别跟着一起没）
+        Canvas canvas = content.GetComponentInParent<Canvas>();
+        if (canvas != null && canvas.gameObject.GetComponent<FriendListService>() == null)
+            canvas.gameObject.AddComponent<FriendListService>();
+
+        row.gameObject.SetActive(false);       // 模板自己藏着，只给克隆用
+
+        Debug.Log("[LobbyUI] 「添加好友」已就位：井 " + FaColW + "x" + FaInputH + " @x" + FaColX + "（右端放大镜 " + FaMagSize +
+                  "，右让 " + FaMagRight + "）；金细线 y " + FaLineY + "；结果列表 y " + FaListTop + " .. 下沿让 " + FaListBottom +
+                  "（行 " + FaColW + "x" + FaRowH + " / 行距 " + FaRowGap + "，底板复用 LobbyFriendRow）；右下角「n 位相关玩家」。" +
+                  "搜索规则见 Scripts/UI/Lobby/FriendAddSearch.cs。");
+    }
+
+    /// <summary>「添加好友」结果列表的一行（模板）：底板 + 头像 + 名称 / 异界号 / 状态 + 右端那颗「+」。</summary>
+    static FriendAddRowUI BuildFriendAddRow(RectTransform listContent)
+    {
+        RectTransform rowRT = NewRect(listContent, FaRowName, AnchorTL, PivotTL, Vector2.zero, new Vector2(FaColW, FaRowH));
+        var row = rowRT.gameObject.AddComponent<FriendAddRowUI>();
+
+        // 三行文字各自在自己盒里竖直居中（盒心都落在行中线 y = -FaRowH/2 上）
+        float nameY   = -(FaRowH * 0.5f - FaRowNameH * 0.5f);
+        float idY     = -(FaRowH * 0.5f - FaRowIdH * 0.5f);
+        float statusY = -(FaRowH * 0.5f - FaRowStatusH * 0.5f);
+
+        // 贴图外框比板身每边多 8（PAD 24 / 3）—— 板身正好 1360x96 盖住整行
+        RawImage plate = NewRaw(rowRT, "Plate", FdRowTex, AnchorTL, PivotTL,
+                                new Vector2(-FaRowPlatePad, FaRowPlatePad),
+                                new Vector2(FaColW + FaRowPlatePad * 2f, FaRowH + FaRowPlatePad * 2f));
+        plate.raycastTarget = false;           // 拖拽交给 Viewport 那张 α=0 的图
+
+        RawImage ring = NewRaw(rowRT, "Avatar_Ring", UiDir + "LobbyAvatarRing.png", AnchorTL, PivotTL,
+                               new Vector2(FaRowRingX, -(FaRowH * 0.5f - FaRowRingSize * 0.5f)),
+                               new Vector2(FaRowRingSize, FaRowRingSize));
+        ring.raycastTarget = false;
+
+        RectTransform avatarRT = NewRect(rowRT, "Avatar_Image", AnchorTL, PivotTL,
+                                         new Vector2(FaRowRingX + FaRowAvatarInset, -(FaRowH * 0.5f - FaRowAvatarSize * 0.5f)),
+                                         new Vector2(FaRowAvatarSize, FaRowAvatarSize));
+        var avatar = avatarRT.gameObject.AddComponent<RawImage>();
+        avatar.texture = null;                 // 运行时填：先灰盘，Steam 头像到货自己换
+        avatar.raycastTarget = false;
+        avatarRT.SetSiblingIndex(ring.transform.GetSiblingIndex() + 1);
+
+        TextMeshProUGUI name = NewLabel(rowRT, "Text_Name", "名字",
+                                        new Vector2(FaRowNameX, nameY), new Vector2(FaRowNameW, FaRowNameH), FaRowNameFS);
+        name.alignment = TextAlignmentOptions.Left;
+        name.overflowMode = TextOverflowModes.Ellipsis;   // 名字长了截断，别糊到异界号上
+        name.color = Cream;
+        name.raycastTarget = false;
+
+        TextMeshProUGUI id = NewLabel(rowRT, "Text_Id", "",
+                                      new Vector2(FaRowIdX, idY), new Vector2(FaRowIdW, FaRowIdH), FaRowIdFS);
+        id.alignment = TextAlignmentOptions.Left;
+        id.overflowMode = TextOverflowModes.Ellipsis;     // 异界号 24 个字符，盒子给的是 480（够，留着兜底）
+        id.color = FdSteel;
+        id.raycastTarget = false;
+
+        TextMeshProUGUI status = NewLabel(rowRT, "Text_Status", "可添加",
+                                          new Vector2(FaRowStatusR - FaRowStatusW, statusY),
+                                          new Vector2(FaRowStatusW, FaRowStatusH), FaRowStatusFS);
+        status.alignment = TextAlignmentOptions.Right;
+        status.color = FaSteel;
+        status.raycastTarget = false;
+
+        // 右端那颗「+」：与好友行那颗「邀请 +」同尺寸同位（1296 / y-26）
+        RectTransform addRT = NewRect(rowRT, FaAddName, AnchorTL, PivotTL,
+                                      new Vector2(FaAddX, FaAddY), new Vector2(FaAddSize, FaAddSize));
+        var addIcon = addRT.gameObject.AddComponent<RawImage>();
+        addIcon.texture = AssetDatabase.LoadAssetAtPath<Texture2D>(FaAddTex);
+        if (addIcon.texture == null) Debug.LogWarning("[LobbyUI] 找不到贴图：" + FaAddTex);
+        addIcon.raycastTarget = true;
+
+        var addAct = addRT.gameObject.AddComponent<FriendAddAction>();
+        addAct.kind = FriendAddActionKind.Add;
+        addAct.icon = addIcon;
+        addAct.normalTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(FaAddTex);
+        addAct.hoverTexture  = AssetDatabase.LoadAssetAtPath<Texture2D>(FaAddHovTex);
+        addAct.row = row;
+
+        row.avatarImage = avatar;
+        row.nameText = name;
+        row.idText = id;
+        row.statusText = status;
+        row.addGroup = addRT.gameObject;       // 只有「可添加」那一档才 SetActive(true)
+        return row;
+    }
+
+    /// <summary>给 TMP_InputField.onValueChanged 接一条**持久**监听（与 WireClick 同一套口径：先清再挂）。</summary>
+    static void WireInputChanged(TMP_InputField field, UnityAction<string> action)
+    {
+        if (field == null) return;
+        while (field.onValueChanged.GetPersistentEventCount() > 0) UnityEventTools.RemovePersistentListener(field.onValueChanged, 0);
+        UnityEventTools.AddPersistentListener(field.onValueChanged, action);
     }
 
 

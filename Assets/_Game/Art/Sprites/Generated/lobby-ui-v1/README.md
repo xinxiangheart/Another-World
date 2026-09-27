@@ -1026,7 +1026,7 @@ stage47 唯一一条失败就是它：`npotScale=ToNearest` / `alphaIsTransparen
   **三列文字 `characterCount ≥ 期望` 且盒子容得下一行**（即 ④ (a) 的回归门）。
 - 三支执行器跑完**都已自删**（`Stage55FriendRowList.cs` / `Stage57NameProbe.cs` / `Stage58FriendRowList.cs` 均已不在仓库）。
 
-**下一步（等用户）**：另外三格（添加好友 / 申请列表 / 黑名单）的内容，以及「拉黑」的口径。
+
 
 ## 二十九次修正（2026-09-27）：确认删除 / 拉黑 —— 长条弹窗
 
@@ -1107,3 +1107,90 @@ stage47 唯一一条失败就是它：`npotScale=ToNearest` / `alphaIsTransparen
 - 两支执行器跑完**都已自删**（`Stage60ConfirmDialog.cs` / `Stage61ConfirmShots.cs` 均已不在仓库）。
 
 **下一步（等用户）**：另外三格（添加好友 / 申请列表 / 黑名单）的内容，以及「拉黑」的口径。
+
+## 三十次修正（2026-09-27）：好友详情 → 添加好友（长输入框 + 放大镜 + 右键粘贴 + 可滚结果）
+
+**用户原话**：「添加好友，首先是一个长的输入框（框的最右边有个类似于放大镜的ui），输入框可以之间输入id或者昵称（加入右键粘贴id功能），然后会在下方列出所有相关玩家（一般是输入昵称时可以有多个玩家）（也是能滑动的）」。
+**追加一条**：「无论是搜索id还是名称都是类似与这个展示，要展示全（头像，名称和id）」。
+
+### ① 出图（`Tools/cardframe/FriendAddV1.ps1`）
+
+| 件 | 尺寸 | 说明 |
+|---|---|---|
+| `LobbyFriendAddInput.png` | **1376×92** | 输入框那口井的底板（可见井身 **1360×76** + 每边 8 透明边），存 1:1 |
+| `Icon_FriendSearch.png` / `…Hover` | 256×256 | 井右端那枚放大镜徽章（圆角方印 + 内缩金细线 + 圆头金笔画） |
+| （「添加」那颗**不另出图**） | — | 复用 `Icon_FriendPlus*.png` —— 这套里「+」就是加好友 |
+
+- 井与结果行**同宽同列**（x32..x1392 = 1360 宽）；底色比 `BAR_T/BAR_B` 更暗（`WELL_T #0E131D → WELL_B #080C13`）+ **没有左上亮楔**，
+  其余（外墨边 8 / 等比内缩金线 3 / 圆角 30，x3 尺度）与行底板同一支笔 ⇒「输入框」与「结果行」是一个族里的两档，既不撞脸也不出戏。
+- **存 1:1**（不是全族那个 ×3）：1360×3 = 4080 超过导入器默认 `maxTextureSize 2048` 会被**静默**缩掉。
+  做法同 `LobbyFriendRow` / `LobbyConfirmPlate`：脚本按 ×3 画、再高质量降采样到屏幕尺寸。**场景那边直接按屏幕 px 摆。**
+- 预览：`preview/lobby-friend-add.png`（井 + 徽章）/ `preview/lobby-friend-add-mock.png`（1920×1080 真坐标）。
+
+### ② 版式（`LobbyUIBuilder` 的 `Fa*` 常量段 · 屏幕 px）
+
+| 件 | 位置 / 尺寸 |
+|---|---|
+| `Text_Head` | 左上 40 / 高 44 |
+| `Input_Query` | **1360×76** @ y **124**（Plate 1376×92；`Text Area` 挂 RectMask2D） |
+| `Btn_Search`（放大镜） | **44×44**，井右端内缩 **16** |
+| `Line_Divider` | 1360×2 @ y **224** |
+| `Result_List` | y **248** → 距底 **60**；只竖滚 Clamped + RectMask2D（α=0 的 Image 吃拖拽） |
+| 一行 | **1360×96**，行距 **12**（12 + 96 = 108） |
+| 行内 | 金环 64 @14 / 井 50 / 名称 **340×40 @96** 字 **26** / 异界号 **480×40 @456** 字 **20** / 状态 **240×40 @1032** 字 **22** / 动作 **44×44 @1296**（y −26） |
+| `Text_Count` | 右下角，距右 **32** / 距底 **18**（「n 位相关玩家」） |
+| `Text_Empty` | 挂 `Result_List` 下（**不跟滚**），写「输入异界号或昵称」 |
+
+### ③ 运行时与层级
+
+- **`FriendAddSearch.Run(query, out message)`** —— 结果从哪来（两条路，都不需要后端）：
+  ① **异界号**：`PlayerId.TryParse` 本地解出 SteamID64（A 方案：Steam 账号 7 个 Base32 符号直接编在 ID 里）⇒ **精确命中一个人、必可加**；
+  ② **昵称 / 号片段**：在「好友表 ∪ Steam 好友」里模糊匹配 ⇒ **天然只能搜到已知玩家** ——
+  按昵称全服搜要一份玩家目录（Steam Web API / 自建后端），**改造位就在这一层**。
+  上限 `MaxResults = 50`；搜到自己的号会被挡掉（`message = 这是你自己的异界号`）。
+- **三档状态**：`可添加`（解出异界号且还不是好友 ⇒ 出「+」）/ `已是好友` / `Steam 好友`（只是 Steam 好友、没异界号 ⇒ **不给「+」**，
+  与好友行那颗邀请「+」同一口径：点不动的动作就别画出来）。
+- **`FriendAddSearchUI`**：防抖 **0.25s**、`Submit()` / `Clear()` / `RunSearch()` / `PasteFromClipboard()` /
+  `static ExtractPlayerId(raw)` —— 先在整串上试 `IsWellFormed`，再**滑动窗**从「我的异界号：P00-…」这种句子里把号抠出来（抠不出就当昵称原样贴）。
+- **`FriendAddInputPaste`**：井上右键（**eventData == null 也照贴**）→ `PasteFromClipboard()`。
+- **`FriendAddAction`**：`Search` / `Add` 两种；**不挂 Button**，自己实现 `IPointerEnter/Exit/Click`。
+- **三格永远画满**（用户追加那条的落点）：`FriendAddRowUI.Bind` 里**缺的那格用占位词，不留空** ——
+  名称问不到 ⇒ `未知玩家`；没异界号（只是 Steam 好友）⇒ `未绑定异界号`。
+- 滚动**两个坑一起**：只写 `verticalNormalizedPosition = 1` 会停中间（ScrollRect 拿上一帧缓存的 content 边界换算），
+  要再把 `content.anchoredPosition` 直接写 0。
+
+### ④ ★ 排错记录（三条）
+
+**（a）`TMP_InputField.placeholder` 是 `Graphic`，不是 `TMP_Text`。** 断言里直接取 `.text` 报 CS1061，
+要写 `((TMP_Text)input.placeholder).text`。
+
+**（b）贴图尺寸别按嘴算 —— 这套自己的注释先写错了。** 出图脚本头注释先写成「1364×92（可见井身 1348）」，
+而生成器里 `$IN_W = 1360` ⇒ 实际 **1376×92**；`Stage62` 的断言照着错数写，跑出一条**假 FAIL**。
+**断言要拿生成器的常量（`$IN_W / $IN_H`）算，或先量一遍 PNG 再写死。**
+
+**（c）截图相位又踩了一次。** `ScreenCapture` 是**帧末**落盘 —— `Stage63` 第一版在 `TakeShot` 之后立刻
+`ui.RunSearch()` 还原列表，结果**拍到的是还原后的样子**（要拍的那两行占位词一个都没进图）。
+规矩：**要拍的那一帧里不许再改状态**（与「二十九次修正」④(b) 同一个坑）。
+
+### ⑤ 导入守卫
+
+`TextureImportSettingsGuard`：`LobbyFriendAddInput` 进 `NoNpotScaleFolders`（1376×92 不是 2 的幂、高又小于 128，
+两道门都得进）+ `NeedsAlphaIsTransparency`；`Icon_FriendSearch` / `…Hover` 进 alpha 那条。
+
+### ⑥ 自证
+
+- **`stage62_add_friend.txt`**（OK 212 / 失败 1 —— 唯一那条就是 ④(b) 那个写错的期望值）：导入设置 `1376x92 / npot=None / alpha=True`；
+  结构（井 / 放大镜 / 金线 / 列表 / 计数 / 空态 / 行内部）；三列文字**真的画出来**；运行态：防抖生效 → 搜昵称多行 →
+  搜异界号精确一行「可添加」→ 右键粘贴（从「房间号：P00-…」里抠）→ 点「+」写进 `friends.json` 且该行立刻变「已是好友」、那颗「+」收掉 →
+  14 行可滚 + 回顶部。
+- **`stage63_add_friend_labels.txt`**（**OK 31 / 失败 0**）：搜**陌生异界号** ⇒ 名称那格非空且**不是那串号**、异界号那格完整 24 字符、出「+」；
+  搜昵称 2 行 ⇒ **逐行**查「头像 + 名称 + 异界号」三格齐 + 第 1 行两格真画出字；两行占位词（`未知玩家` / `未绑定异界号`，后者不出「+」）。
+  ⚠ 顺带实测：**Steam 连得上时，搜陌生异界号那一行的名称就是他的 Steam 昵称**（这轮出到 `G`），问不到才落 `未知玩家`。
+- 截图（`stage48_shots/`）：`f15_add_friend_name.png`（搜昵称，修正前）/ `f16_add_friend_id.png`（搜异界号，**修正前**：名称那格写的还是号）/
+  `f17_add_friend_scroll.png`（14 行可滚）；修正后：`f18_add_friend_unknown_id.png`（搜陌生异界号，名称`G` + 完整号）/
+  `f19_add_friend_name_rows.png`（搜昵称两行，三格都满）/ `f20_add_friend_placeholders.png`（`未知玩家` + `未绑定异界号` 同框）。
+- 两支执行器跑完**都已自删**（`Stage62AddFriend.cs` / `Stage63AddFriendLabels.cs` 均已不在仓库）；
+  两轮都**备份 / 还原 `friends.json`**（测试不污染真名单）。
+- 复跑命令：看图 `pwsh -File Tools/cardframe/FriendAddV1.ps1`；重建面板 `LobbyUIBuilder.BuildFriendDetailSubPanelMenu()`。
+
+**下一步（等用户）**：申请列表 / 黑名单两格的内容，以及「拉黑」的口径。
