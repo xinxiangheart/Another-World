@@ -126,6 +126,17 @@ public class FriendPanelRowUI : MonoBehaviour
     {
         if (mode != FriendPanelMode.Request) return;
 
+        // 任一方拉黑 ⇒ 加不了（与 FriendAddSearch 那三处同一口径）。留这一手是防**时序**：
+        // 「他先发了申请 → 我之后拉黑他」，或者「我看到申请之后他拉黑了我」—— 那种情况下
+        // 申请列表里可能还留着这一行（例：包在路上、或拉黑是在别的设备上做的），点勾不该能加成。
+        if (FriendBlock.IsHidden(FriendStore.Load(), _entry.playerId, _steamId))
+        {
+            FriendRequestStore.RemoveEntry(_entry);     // 这一行永远不会被接受，留着是死的
+            LobbyToast.Show("加不了这个人");
+            Rebuild();
+            return;
+        }
+
         if (string.IsNullOrEmpty(_entry.playerId))
         {
             LobbyToast.Show("「" + _entry.DisplayName + "」还没有异界号，加不了");

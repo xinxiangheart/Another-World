@@ -2555,7 +2555,7 @@ public static class LobbyUIBuilder
 
         RectTransform phRT = StretchRect(area, "Placeholder", Vector2.zero, Vector2.zero);
         var ph = phRT.gameObject.AddComponent<TextMeshProUGUI>();
-        ph.font = _font; ph.text = "输入异界号或昵称"; ph.fontSize = FaInputHintFS;
+        ph.font = _font; ph.text = "输入异界号"; ph.fontSize = FaInputHintFS;
         ph.alignment = TextAlignmentOptions.MidlineLeft; ph.raycastTarget = false;
         ph.enableWordWrapping = false; ph.overflowMode = TextOverflowModes.Overflow;
         ph.color = FaHint;

@@ -82,6 +82,8 @@ public static class FriendBlock
     /// <summary>
     /// 拉黑 / 取消拉黑（写盘）。人不在表里就**建一条**（拉黑一个陌生人不该顺手把他加成好友）。
     /// 「拉黑」**不删好友**：取消拉黑只是把旗子放下来，所以不能靠删好友来表达拉黑 —— 见 ⑤ 排错记录。
+    /// 反过来，取消拉黑时**只删「为拉黑而建」的那条**（既非手动好友、也非 Steam 好友、又没玩过本游戏）——
+    /// 那种记录旗子一落就没有存在理由，留着会挡住以后正常加好友。
     /// </summary>
     public static bool SetBlocked(string playerId, ulong steamId, string name, bool on)
     {
@@ -102,7 +104,21 @@ public static class FriendBlock
 
         rec.blocked = on;
         if (!string.IsNullOrEmpty(name) && string.IsNullOrEmpty(rec.name)) rec.name = name;
+
+        // 取消拉黑时：如果这条记录**只是为了记住「我拉黑过他」才建的** —— 他既不是手动好友、
+        // 也没有「玩过本游戏」的证据、更不是 Steam 好友 —— 那旗子一放下来它就什么也不是了。
+        // 留着会变成一条**幽灵记录**：好友表和黑名单两边都不显示它，可加好友时会被当成
+        // 「已经在表里」，于是点勾报一句莫名其妙的「已经是好友了」（见 Stage70b ③ 反例）。
+        // 真好友不删 —— 取消拉黑就是当场回到好友表（FriendListService ④：旗子留在表里）。
+        if (!on && !rec.manual && !rec.playedOurGame && !rec.steamFriend)
+            store.Remove(rec);
+
         FriendStore.Save(store);
+
+        // 拉黑顺手把他的申请一起清掉。不清会出事：他现在**不在好友表里**，可申请列表里还躺着一条，
+        // 一点勾就会走到 FriendStore.AddManual —— 而它按异界号找得到的正是这条 blocked 记录，
+        // 于是返回 false，界面还会报一句莫名其妙的「已经是好友了」（他明明不在好友列表里）。
+        if (on) FriendRequestStore.RemoveByPlayer(rec.playerId, steamId);
         return true;
     }
 

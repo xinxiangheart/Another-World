@@ -172,6 +172,14 @@ public static class FriendAddSearch
 
         FriendStore.Save(store);
         if (FriendListService.Instance != null) FriendListService.Instance.Refresh();
+
+        // 顺手**点对点通知对方一声** —— 他那边会多出一条「申请」（这就是申请列表的真来源，
+        // 见 FriendRequestChannel：按 ID 发不用服务器）。发不出去**不影响**本地已经加上的结果，
+        // 所以这里只记日志、不改返回值。
+        string why;
+        if (!FriendRequestChannel.Send(hit.playerId, FriendRequestChannel.MyName(), out why))
+            Debug.Log("[FriendAdd] 没通知到对方（" + why + "），本地好友照样加上了。");
+
         message = "已添加「" + hit.displayName + "」";
         return true;
     }

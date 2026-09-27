@@ -15,9 +15,9 @@ using UnityEngine.UI;
 /// 滚动那几个坑照抄（**改完 content 高度不能只写 verticalNormalizedPosition = 1**，要再把 content 的
 /// anchoredPosition 直接写 0 —— ScrollRect 拿上一帧缓存的 content 边界换算，会停在中间）。
 ///
-/// 黑名单那份**订阅** <see cref="FriendListService.Refreshed"/>：拉黑 / 取消拉黑都会落进好友表那个文件，
-/// 刷新一次两处一起更新。申请那份不订阅 —— 没人会替我们改申请文件（除了这个界面自己），
-/// 每次切进来 OnEnable 重读一遍就够；以后后端开始推申请时，在这里补一条订阅即可。
+/// 两份都**订阅**各自的数据源：黑名单跟 <see cref="FriendListService.Refreshed"/>（拉黑 / 取消拉黑都写好友表那个文件），
+/// 申请跟 <see cref="FriendRequestStore.Changed"/>。申请那份以前是不订阅的（当时没有任何外部来源，切进来重读一遍就够），
+/// 从「拉黑顺手清申请」这一版起必须订阅 —— 否则玩家正看着申请列表时进来的新申请（以后是后端收包）不会显示。
 /// </remarks>
 public class FriendPanelListUI : MonoBehaviour
 {
@@ -34,7 +34,8 @@ public class FriendPanelListUI : MonoBehaviour
     readonly List<FriendPanelRowUI> _rows = new List<FriendPanelRowUI>();
     float _rowHeight = 96f;
     int _shownCount = -1;
-    bool _subscribed;
+    bool _subscribed;        // 黑名单那份：跟 FriendListService.Refreshed
+    bool _reqSubscribed;     // 申请那份：跟 FriendRequestStore.Changed
 
     void OnEnable()
     {
@@ -55,20 +56,21 @@ public class FriendPanelListUI : MonoBehaviour
 
     void Subscribe(bool on)
     {
-        bool wanted = on && mode == FriendPanelMode.Block;   // 只有黑名单跟着好友表刷新
         FriendListService svc = FriendListService.Instance;
-        if (wanted)
-        {
-            if (_subscribed || svc == null) return;
-            svc.Refreshed += Rebuild;
-            _subscribed = true;
-        }
-        else
-        {
-            if (!_subscribed) return;
-            if (svc != null) svc.Refreshed -= Rebuild;
-            _subscribed = false;
-        }
+
+        // 黑名单那份：跟着好友表刷新（拉黑 / 取消拉黑都写好友表那个文件）
+        if (on && !_subscribed && mode == FriendPanelMode.Block && svc != null)
+        { svc.Refreshed += Rebuild; _subscribed = true; }
+        if (!on && _subscribed)
+        { if (svc != null) svc.Refreshed -= Rebuild; _subscribed = false; }
+
+        // 申请那份：跟着**申请文件**刷新。以前它只在切进这一格时重建一次（当时没有任何外部来源），
+        // 现在外面有两处会改它 —— 拉黑顺手清申请、以及以后**后端收包**。
+        // 不订阅的话，「玩家正看着申请列表，这时进来一条新申请」是**不会显示**的。
+        if (on && !_reqSubscribed && mode == FriendPanelMode.Request)
+        { FriendRequestStore.Changed += Rebuild; _reqSubscribed = true; }
+        if (!on && _reqSubscribed)
+        { FriendRequestStore.Changed -= Rebuild; _reqSubscribed = false; }
     }
 
     /// <summary>按最新名单重排：不够就克隆、多了就藏、内容高度跟着行数走（ScrollRect 靠它算可滚范围）。</summary>

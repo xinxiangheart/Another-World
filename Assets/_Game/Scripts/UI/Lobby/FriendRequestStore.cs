@@ -32,6 +32,18 @@ public static class FriendRequestStore
         public List<FriendEntry> requests = new List<FriendEntry>();
     }
 
+    /// <summary>申请那份名单**变了**（加了一条 / 删了一条）。UI 订阅它重排。</summary>
+    /// <remarks>为什么申请这份也要事件（以前只靠切进那一格时重建）：现在有两处会**从外面**改它 ——
+    /// 拉黑顺手清申请（<see cref="FriendBlock.SetBlocked"/>），以及以后**后端收包**那一步。
+    /// 没有事件的话，玩家正看着申请列表时进来一条新申请是**不会显示的**。</remarks>
+    public static event Action Changed;
+
+    /// <summary>域重载关掉时静态事件会跨 play 会话残留，这里按 Unity 惯例清一遍。</summary>
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    static void ResetStatics() { Changed = null; }
+
+    static void NotifyChanged() { if (Changed != null) Changed(); }
+
     static string FilePath { get { return Path.Combine(Application.persistentDataPath, "friend_requests.json"); } }
 
     public static List<FriendEntry> Load()
@@ -68,7 +80,7 @@ public static class FriendRequestStore
     {
         List<FriendEntry> list = Load();
         bool changed = Add(list, playerId, name, steamId);
-        if (changed) Save(list);
+        if (changed) { Save(list); NotifyChanged(); }
         return changed;
     }
 
@@ -121,7 +133,22 @@ public static class FriendRequestStore
         List<FriendEntry> list = Load();
         string key = !string.IsNullOrEmpty(e.playerId) ? e.playerId : e.steamIdText;
         bool ok = Remove(list, key);
-        if (ok) Save(list);
+        if (ok) { Save(list); NotifyChanged(); }
+        return ok;
+    }
+
+    /// <summary>
+    /// 按下手的那个人清掉他的申请 —— 拉黑时调（<see cref="FriendBlock.SetBlocked"/>）。
+    /// 异界号优先、再退到 SteamID 文本：申请那条记录可能只带了其中一样。
+    /// 拉黑之后这条申请**没有意义**，而且留着会出事 —— 见 FriendBlock 里那段注释。
+    /// </summary>
+    public static bool RemoveByPlayer(string playerId, ulong steamId)
+    {
+        List<FriendEntry> list = Load();
+        bool ok = false;
+        if (!string.IsNullOrEmpty(playerId)) ok |= Remove(list, playerId);
+        if (steamId != 0UL) ok |= Remove(list, steamId.ToString());
+        if (ok) { Save(list); NotifyChanged(); }
         return ok;
     }
 
