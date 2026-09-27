@@ -73,6 +73,8 @@ public class LobbyRoomPanel : MonoBehaviour, ILobbySubPanelOpen
 
     bool _established;      // 房间已经开着了（关面板不清状态 —— 用户：「只是关闭信息都在」）
     bool _steamReady = true;   // Steam 未登录 / 建不了房 → false：房间号进灰态 + 开始游戏点不动
+    Color _hostNameColor = new Color32(240, 232, 210, 236);   // 房主名字的常态色（Awake 记下场景里那个值 —— 客人视角借走后再还回来）
+    string _hostName0 = "你自己";                               // 房主名字的原文案（本机名还没就绪时用它，别留着对方的名字）
 
     /// <summary>Steam 接入件（场景里挂在同一个物体上；没连就自己找一次）。</summary>
     public LobbyRoomSession Session
@@ -123,6 +125,11 @@ public class LobbyRoomPanel : MonoBehaviour, ILobbySubPanelOpen
     {
         Instance = this;
         if (shell == null) shell = GetComponent<LobbySubPanel>();
+        if (hostNameText != null)
+        {
+            _hostNameColor = hostNameText.color;                          // 还房主槽时用的常态色（客人视角会把它改成奶油）
+            if (!string.IsNullOrEmpty(hostNameText.text)) _hostName0 = hostNameText.text;
+        }
     }
 
     /// <summary>面板每次打开：第一次开 = 建房（自己就是房主），之后开 = 沿用房间状态。</summary>
@@ -267,14 +274,35 @@ public class LobbyRoomPanel : MonoBehaviour, ILobbySubPanelOpen
         if (Session != null) Session.RestartHosting();
     }
 
-    /// <summary>客人视角：读到房主的 start=1 → 关房间面板、进确认弹窗（对手 = 房主）。</summary>
-    public void OnRemoteStart()
+    /// <summary>客人视角：读到房主的 <c>confirm=1</c> → 关房间面板、进确认弹窗（对手 = 房主）。</summary>
+    /// <remarks>2026-09-27：房主点「开始游戏」这一步的通知（原来一条都没有 —— 客人就卡在房间界面）。</remarks>
+    public void OnRemoteConfirm()
     {
         if (!_guestMode) return;
-        Debug.Log("[LobbyRoom] 房主开了 → 客人侧进确认弹窗（对手 = " + _hostName + "）");
+        Debug.Log("[LobbyRoom] 房主点了「开始游戏」→ 客人侧进确认弹窗（对手 = " + _hostName + "）");
         if (shell != null) shell.Close();
         if (confirmPanel != null) confirmPanel.OpenFromRoom(this);
     }
+
+    /// <summary>客人视角：读到房主的 <c>start=1</c>（双方已确认）→ 收掉确认弹窗、进战斗加载界面。</summary>
+    /// <remarks>2026-09-27 二次修：这条原来做的是「进确认弹窗」（和 <c>confirm</c> 那条重复）——
+    /// <c>start</c> 是「双方已确认」的语义，客人这时候人已经在确认弹窗里了，该做的是进加载界面。
+    /// 兜底用：客人自己那 3 秒也会开加载界面（幂等，<c>OpenInternal</c> 第一行就是 <c>if (IsOpen) return;</c>）。</remarks>
+    public void OnRemoteStart()
+    {
+        if (!_guestMode) return;
+        Debug.Log("[LobbyRoom] 房主已确认开打 → 客人侧进战斗加载界面");
+        if (confirmPanel != null && confirmPanel.IsOpen) confirmPanel.Hide();
+        if (battleLoading != null) battleLoading.Open();
+    }
+
+    /// <summary>确认弹窗里自己点了「确认」（房间那条路）→ 把自己那格写给对面（房主写大厅数据 / 客人写成员数据）。</summary>
+    /// <remarks>2026-09-27：房间这条路不经过 QuickMatchPanel（它那套 <c>host_ok</c> / <c>guest_ok</c> 的轮询只在匹配里跑），
+    /// 所以「自己确认了」得从这里写到大厅里，否则对面永远不知道、两边各自 15 秒超时回房间。</remarks>
+    public void NotifyLocalConfirmed() { if (Session != null) Session.PublishConfirmAccept(true); }
+
+    /// <summary>确认弹窗里自己点了「拒绝」/ 15 秒超时（房间那条路）→ 把自己那格写「拒绝」，对面读到就一起回房间。</summary>
+    public void NotifyLocalDeclined() { if (Session != null) Session.PublishConfirmAccept(false); }
 
     // ===================== 三个按钮 =====================
 
@@ -291,10 +319,17 @@ public class LobbyRoomPanel : MonoBehaviour, ILobbySubPanelOpen
     }
 
     /// <summary>开始游戏（只有房主点得动）：关掉房间面板（信息都留着）→ 直接进确认弹窗，**不经过匹配池子**。</summary>
+    /// <remarks>2026-09-27 二次修（用户报「房主点击开始后客人不会进入确认界面而是仍卡在房间界面」）：
+    /// 原来这里只关自己的面板、开自己的弹窗，**一个字都没发给客人** —— 客人侧永远读不到东西，就卡在房间界面。
+    /// 现在先 <see cref="LobbyRoomSession.PublishConfirm"/> 打一个 <c>confirm=1</c>，客人侧读到就走
+    /// <see cref="OnRemoteConfirm"/>（同一步：关房间面板 + 开确认弹窗）。
+    /// ⚠ 不能拿 <c>start</c> 代发 —— 那是「双方已确认、真要开打」的语义（由 <see cref="OnBothConfirmed"/> 发），
+    /// 提前发会让客人跳过确认直接进加载。</remarks>
     public void OnStartGameClicked()
     {
         if (!_established || !_isHost || !_hasGuest) return;
-        Debug.Log("[LobbyRoom] 房主点「开始游戏」→ 关房间面板（状态保留）→ 进确认弹窗");
+        Debug.Log("[LobbyRoom] 房主点「开始游戏」→ 关房间面板（状态保留）→ 进确认弹窗，并通知客人");
+        if (Session != null) Session.PublishConfirm();          // 通知客人：也进确认弹窗（别卡在房间界面）
         if (shell != null) shell.Close();
         if (confirmPanel != null) confirmPanel.OpenFromRoom(this);
     }
@@ -327,15 +362,19 @@ public class LobbyRoomPanel : MonoBehaviour, ILobbySubPanelOpen
     public void ReturnToRoomAfterDecline()
     {
         Debug.Log("[LobbyRoom] 有人拒绝 / 超时 → 回房间");
+        if (Session != null) Session.ResetConfirmWatch();   // 下一轮「开始游戏」还要能读到 confirm / 对面那格
         if (shell != null) shell.Open(null);
         Refresh();
     }
 
     /// <summary>双方都确认、金色 3 秒走完 → 进真正的战斗加载界面（与匹配那条路同一个界面）。</summary>
+    /// <remarks>2026-09-27 二次修：配置那一步两侧都要填（房主 <c>PublishStart</c> / 客人 <c>FillGuestConfig</c>），
+    /// 走 <see cref="LobbyRoomSession.ConfirmBattleEntry"/> 一把收 —— 否则客人那半区会读到上一局的对手。</remarks>
     public void OnBothConfirmed()
     {
         Debug.Log("[LobbyRoom] 双方已确认 → 进战斗加载界面");
-        if (Session != null) Session.PublishStart();     // 发 start=1 + host_sid（客人侧按旧壳那条进 Game）
+        if (Session != null) Session.ConfirmBattleEntry();     // 房主：发 start=1 + 填 LobbyConfig；客人：填 LobbyConfig
+        if (confirmPanel != null && confirmPanel.IsOpen) confirmPanel.Hide();
         if (battleLoading != null) battleLoading.Open();
     }
 
@@ -394,6 +433,11 @@ public class LobbyRoomPanel : MonoBehaviour, ILobbySubPanelOpen
         Refresh();
     }
 
+    /// <summary>房间状态整体回零（客人离开 / 房主解散 / 被踢）：字段清空 + **房主槽还给自己** + 房间号回到占位号。</summary>
+    /// <remarks>2026-09-27 二次修（用户报「客人离开后点击房间可能直接显示之前房主的幻影房间（即使房主此时甚至是离线），
+    /// 并且只显示房主头像不显示自己」）：原来这里只清字段 —— 客人视角借走的房主槽（<see cref="PlayerProfilePanel"/>
+    /// 被 disabled、井里铺着对方的图 / 名字）没人还，面板再打开时房主槽还是上一位房主的残影，自己的头像反而看不见。
+    /// 房间号那行同理：客人视角写的是**对方的号**，不清就跟着面板一起「复活」。</remarks>
     void ResetRoom()
     {
         _established = false;
@@ -406,7 +450,36 @@ public class LobbyRoomPanel : MonoBehaviour, ILobbySubPanelOpen
         _guestName = null;
         _guestAvatar = null;
         _guestSteamID = 0;
+        RestoreHostSlot();
+        if (CodeTag != null) CodeTag.ResetPlaceholder();
         Refresh();
+    }
+
+    /// <summary>房主槽回到「我自己」的样子 —— 客人视角把它借给了对方，离开别人的房时必须还回来。</summary>
+    /// <remarks>⚠ 不能只把 <c>PlayerProfilePanel.enabled</c> 拨回 true —— 它内部有「这张图已经铺过了」的短路缓存
+    /// （<c>_applied == src &amp;&amp; texture != null</c>），头像井里现在是对方的图、texture 非空，短路会让残影留下来；
+    /// 所以走 <see cref="PlayerProfilePanel.Reapply"/> 强制重铺一次。</remarks>
+    void RestoreHostSlot()
+    {
+        if (hostWell != null)
+        {
+            var view = hostWell.GetComponentInParent<PlayerProfilePanel>();
+            if (view != null) { view.enabled = true; view.Reapply(); }
+            else
+            {
+                var sd = SteamDataManager.Instance;     // 组件不在（理论上不会）也要把井自己刷回来
+                hostWell.texture = sd != null && sd.localAvatar != null
+                    ? PlayerProfilePanel.CircleCrop(sd.localAvatar) : PlayerProfilePanel.Placeholder();
+                hostWell.color = Color.white;
+            }
+        }
+        if (hostNameText != null)
+        {
+            hostNameText.color = _hostNameColor;
+            var sd = SteamDataManager.Instance;
+            // 本机名还没就绪（Steam 未登录 / 名还没取到）时退回原文案 —— 总之不能留着上一位房主的名字
+            hostNameText.text = sd != null && !string.IsNullOrEmpty(sd.localPlayerName) ? sd.localPlayerName : _hostName0;
+        }
     }
 
     /// <summary>屏幕中央上方那行一次性提示。</summary>

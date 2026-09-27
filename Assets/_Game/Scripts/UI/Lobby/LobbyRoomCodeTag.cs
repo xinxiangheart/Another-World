@@ -76,6 +76,18 @@ public class LobbyRoomCodeTag : MonoBehaviour, IPointerEnterHandler, IPointerExi
         RefreshToast();
     }
 
+    /// <summary>回到「面板自己生成的占位号」—— 客人离开别人的房时用（不然那行还挂着**上一位房主的号**，
+    /// 看着就像那间「幻影房间」还在；2026-09-27）。下一次打开面板 <see cref="OnEnable"/> 还会再生成一个。</summary>
+    public void ResetPlaceholder()
+    {
+        _explicit = false;
+        _locked = false;
+        _lockedText = null;
+        _hovering = false;
+        code = NewCode();
+        Apply();
+    }
+
     /// <summary>换号 —— <see cref="LobbyRoomSession"/> 建房成功后拿 Steam 大厅里的真号调它。</summary>
     public void SetCode(string newCode)
     {

@@ -1474,3 +1474,132 @@ stage47 唯一一条失败就是它：`npotScale=ToNearest` / `alphaIsTransparen
 
 「拉黑『他拉黑了我』那半边」与「按昵称全服搜玩家」这两件（都要一份共享存储）从本轮起记在
 **`Docs/后续计划.md`** —— 连同「拿到 Web API key 就能做的」与「没验过的」一起。本文不再重复记。
+
+---
+
+## 三十六次修正（2026-09-27）：好友四态的判据反了 —— 把「在线 / 对局中」对调回来
+
+**来由**：用户报「好友玩家只要 steam 在线（不运行该游戏）就会显示在线，而实际运行该游戏但没有进行对局反而会显示对局中」。
+
+### ① 病灶（一处：判据的**根**选错了）
+
+`SteamFriendSource.Collect()` 原来这么判：
+
+    personaState == Offline       -> 离线
+    else if (playingOurGame)     -> rich == "matching" ? 匹配中 : 对局中     ← ✗
+    else                         -> 在线                                    ← ✗
+
+两条都反了：
+
+- 「Steam 在线、但**没在跑本游戏**」被判成**在线**。可这四种状态说的都是「他**在本游戏里**的位置」——
+  人根本不在本游戏里，对我们就是**离线**。
+- 「在跑本游戏、但**没进对局**」（rich presence 是空串 = 在大厅）被判成**对局中**。
+
+根因：`else` 那一支把「rich presence 空串」当成了「对局中」—— 而空串恰恰是 `SteamPresence.Idle()`
+在大厅时写下去的值（`SteamPresence` 的三个值本来就是 `""` / `matching` / `ingame`，一一对应四态里的三个）。
+
+### ② 改在哪
+
+只改 `Assets/_Game/Scripts/UI/Lobby/SteamFriendSource.cs`：判据抽成一个**纯函数**
+`PresenceFor(playingOurGame, richStatus)`（抽纯函数是为了能直接喂参数自证，不必凑真 Steam 好友），`Collect()` 只调它。
+
+新判据（**根 = `playingOurGame`**，即 `GetFriendGamePlayed` 打的正是本机 appid）：
+
+| 他在做什么 | rich presence | 状态 |
+|---|---|---|
+| **没跑本游戏**（只是 Steam 在线 / 在玩别的 / 离线） | 不看 | **离线**（灰） |
+| 跑本游戏 · 在大厅 | `""` | **在线**（绿） |
+| 跑本游戏 · 搜索 / 等对方确认 | `matching` | **匹配中**（金） |
+| 跑本游戏 · 已进对局 | `ingame` | **对局中**（金，更亮一档） |
+
+拿不到 rich presence（还没同步过来 / 老客户端没写过）时按**在线**兜底 —— 总比误报「对局中」好。
+
+### ③ ★ 顺带修好的：邀请那枚「+」
+
+`FriendRowUI` / `FriendDetailRowUI` 的邀请开关是 `Presence == Online`。
+旧口径下「在线」= **只是 Steam 在线** —— 那正是**根本邀请不到**的人；新口径下「在线」= **在本游戏大厅里** ——
+正好就是能邀请的状态。**这两处一个字没改，它们自己就对了。**
+
+### ④ 自证
+
+- **`stage74_presence.txt`（OK 22 / 失败 0）**：
+  ① 八条映射逐条喂参数（含**陈旧的 `ingame` 串**、乱值、`null`）；
+  ② 用户报的那两条**必须反过来**（「只是 Steam 在线」→ 离线、「在跑但没进对局」→ 在线）；
+  ③ 四态的标签 / 颜色那一档没动；④ 邀请开关（只有「在大厅」给「+」）；
+  ⑤ **真数据冒烟**：`Collect()` 真跑一遍 Steam 调用 —— 互为 Steam 好友 10 人、不抛异常、每行都落在四态里。
+- 执行器跑完自删。
+
+---
+
+## 三十七次修正（2026-09-27）：房间那两条 —— 房主点开始客人没进确认界面 / 客人离开后的「幻影房间」
+
+**来由**：用户「另外一个 bug，房主点击开始后客人不会进入确认界面而是仍卡在房间界面，同时客人离开后点击房间可能直接显示之前房主的幻影房间（即时房主此时甚至是离线），并且只显示房主头像不显示自己」。
+
+### ① 病灶（两条，都在「房间」这条路上）
+
+**bug 1 —— 房主点「开始游戏」这一步，一个字都没发给客人。**
+`LobbyRoomPanel.OnStartGameClicked()` 只做两件事：关自己的面板 + 开自己的确认弹窗。客人侧靠
+`LobbyRoomSession.PollGuestSide()` 每 0.5 秒读大厅数据，而那条路当时只有 `start` 可读 —— `start` 由
+`OnBothConfirmed()`（**双方都确认之后**）才发。于是客人永远读不到东西，就一直卡在房间界面。
+
+顺带查出**同一个洞的另一半**：房间这条从来不走 `QuickMatchPanel`，而那套 `host_ok` / `guest_ok` 的
+确认轮询（`QuickMatchPanel.Update`）只在匹配里跑（它第一行 `if (_state == State.Idle || _lobbyID.m_SteamID == 0) return;`）。
+所以就算客人被通知进了弹窗，**房主点了「确认」也从来没写给对面** ⇒ 两边各自 15 秒超时回房间。
+
+**bug 2 —— 客人视角借走的房主槽，没人还。**
+`ApplyGuestLobby()` 把房主槽让给对方：关掉 `PlayerProfilePanel`（那个组件每帧拿 `SteamDataManager` 刷本机头像 / 名字）+
+把对方的头像 / 名字铺进那两个件。而 `ResetRoom()` 只清字段，**没把这几样还回来** ⇒ 下次打开面板
+（`OnEnable` 只重置 `_isHost` 那些标志）房主槽还是**上一位房主的头像 + 名字**，自己的反而看不见 ——
+就是那条「幻影房间」。房间号同理：那行还挂着**对方的号**（`LobbyRoomCodeTag._explicit` 一旦被 `SetCode` 立起来，
+`OnEnable` 就不再重新生成占位号）。
+
+### ② 改在哪（5 个文件）
+
+| # | 文件 | 改了什么 |
+|---|---|---|
+| 1 | `LobbyRoomSession.cs` | 新增**一个通知 + 一张三值的确认表**（见下），两侧都读 / 都写 |
+| 2 | `LobbyRoomPanel.cs` | 点开始 → `PublishConfirm()`；新增 `OnRemoteConfirm()` / `NotifyLocalConfirmed` / `NotifyLocalDeclined`；`OnRemoteStart()` 改成「进加载界面」；`ResetRoom()` 加 `RestoreHostSlot()` |
+| 3 | `MatchConfirmPanel.cs` | 房间那条的「确认 / 拒绝 / 超时」三条都写给对面 |
+| 4 | `PlayerProfilePanel.cs` | 新增 `Reapply()`（清短路缓存 + 重铺） |
+| 5 | `LobbyRoomCodeTag.cs` | 新增 `ResetPlaceholder()` |
+
+**信号（跑在大厅数据上，与旧壳那套 key 不重叠）**
+
+| key | 谁写 | 谁读 | 值 |
+|---|---|---|---|
+| `confirm` | 房主（点开始） | 客人 | `1` = 进确认弹窗 |
+| `confirm_host_ok` | 房主（**大厅数据**） | 客人 | `0` 未表态 / `1` 确认 / `2` 拒绝 |
+| `confirm_guest_ok` | 客人（**成员数据**） | 房主 | 同上 |
+| `start` / `host_sid` | 房主（双方确认后） | 客人 | 与旧壳同义：进战斗加载界面 |
+
+⚠ **不能拿 `start` 代发「进确认弹窗」** —— 那是「双方已确认、真要开打」的语义，提前发客人会跳过确认直接进加载。
+
+为什么不复用匹配那对 `host_ok` / `guest_ok`：那对只有 0 / 1 两个值，「没写过」和「写 0」分不开 ——
+而房间这条**一开始双方都是「没写过」**，要是把空串当成拒绝，房主刚点「开始游戏」就把两个人踢回房间。
+所以另起一对三值的，并把判读抽成纯函数 `LobbyRoomSession.ConfirmDecision()`（`1` 解压黑 / `2` 一起回房间 / 其余什么都不做）。
+
+### ③ 自证
+
+`stage75_room_fix.txt` —— **OK 47 / 失败 0**（执行器跑完自删；Steam 在线，本机名 `心响`）：
+
+- **① 三值口径 11 条**：`ConfirmValue(true/false)` = 1 / 2；`ConfirmDecision` 对 `1` / `2` / `0` / `""` / `null` / 乱值 逐条；
+  写入再读回一致；**反例单列**（空 = 未表态，不能当成拒绝）。
+- **② bug 2 走的就是用户那条复现路径**：`ApplyGuestLobby(幻影房主, PHANTO)` ⇒ 房主槽名字 / 头像 / 房间号全变成对方的、
+  `PlayerProfilePanel` 被关掉 ⇒ `LeaveGuestRoom()`（点右上角那个叉）⇒ **名字回本机、头像不是对方那张、颜色回常态、号不再是 PHANTO**
+  ⇒ 关面板再点「房间」⇒ 回到房主视角、槽里是**自己**（不是幻影）。
+- **③ bug 1 客人侧那一步真跑**：`OnRemoteConfirm()` ⇒ 房间面板关、确认弹窗开、`roomSource` = 房间、对手半区 = 房主、
+  己方 = 自己、双方压黑 ⇒ 点确认 ⇒ 两键整组收掉 + 自己解压黑 + 对面仍压黑 ⇒ 对面那格读到 1 ⇒
+  中央倒计时转金 `#C8A44A` ⇒ `OnBothConfirmed()` ⇒ 弹窗收掉 + 接上战斗加载界面。
+- **④ 拒绝那条**：再开弹窗 → 点拒绝 ⇒ 弹窗收掉 + **回房间面板**（不进匹配池）。
+
+### ④ 排错记录 / 没验到的
+
+- **`PlayerProfilePanel` 有个「已铺过这张图就短路」的缓存**（`_applied == src && texture != null`）。
+  只把 `enabled` 拨回 true 是**不够**的：井里现在是对方的图、`texture` 非空，短路会让残影留下来 ——
+  所以必须走 `Reapply()` 先把井清空再重铺。**这一条是把 bug 2 修对 / 修错的分水岭。**
+- **客人侧 `LobbyConfig` 的填法**：原来只有读 `start` 时才填（`FillGuestConfig`），而客人自己的确认弹窗金色 3 秒
+  走完会**先**开加载界面（`BattleLoadingScreen.FillContent()` 读的就是这份配置）⇒ 客人那半区可能读到上一局的对手。
+  现在 `OnBothConfirmed()` 统一走 `ConfirmBattleEntry()`（房主 `PublishStart` / 客人 `FillGuestConfig`）。
+- **没验到的一条（要两台机子）**：`confirm_host_ok` / `confirm_guest_ok` 真的在两个 Steam 客户端之间来回 ——
+  本轮把「写哪一格 / 读哪一格」两侧对齐（房主写大厅数据、客人写成员数据，读法一一对应）并用纯函数盖住了判读，
+  但跨机那一跳仍需真人双开验一次。

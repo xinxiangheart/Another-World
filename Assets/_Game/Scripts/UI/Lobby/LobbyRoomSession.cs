@@ -40,12 +40,14 @@ public class LobbyRoomSession : MonoBehaviour
     float    _listT0;
     float    _poll;
     bool     _kickedPublished;
+    bool     _oppDeclineSeen;               // 房间确认弹窗：对面那格的「拒绝」只处理一次
 
     // ── 客人侧（「加入房间」侧边栏，2026-09-27）──────────────────────────────
     bool     _suspended;                    // 搜号期间把自己的大厅让出去了（号还留着）
     CSteamID _guestLobby = CSteamID.Nil;    // 已经进了别人的房 = 客人
     float    _guestT;                       // 客人侧轮询计时
     bool     _startSeen;                    // 读到 start=1 只放行一次
+    bool     _confirmSeen;                  // 读到 confirm=1（房主点「开始游戏」）只放行一次
     System.Action<LobbySearchResult> _findDone;
     Callback<LobbyMatchList_t> _find;
     Callback<LobbyEnter_t>     _enter;
@@ -183,10 +185,11 @@ public class LobbyRoomSession : MonoBehaviour
                 _poll = 0f;
                 SteamMatchmaking.RequestLobbyData(_lobby);      // 不刷新缓存会一直读到空数据（旧壳同款）
                 PollGuest();
+                PollRoomConfirm();                              // 确认弹窗开着时读客人那格（confirm_guest_ok）
             }
         }
 
-        PollGuestSide();        // 客人侧：读房主那两条信号（kicked / start）
+        PollGuestSide();        // 客人侧：读房主那几条信号（kicked / confirm / start）
     }
 
     /// <summary>房主侧：大厅里除了自己还有谁 → 填 / 清客人槽。</summary>
@@ -233,6 +236,40 @@ public class LobbyRoomSession : MonoBehaviour
         }
     }
 
+    /// <summary>房间确认弹窗：把对面那格读回弹窗 —— 对面确认就解压黑，对面拒绝就一起回房间。</summary>
+    /// <remarks>2026-09-27 二次修：匹配那条路这套是 <see cref="QuickMatchPanel"/> 在轮询（它只在 <c>State.Found</c>
+    /// 里跑，房间那条不经过它）—— 房间这条得自己读。不读的后果就是「房主点了确认，客人那边一直压着黑」，
+    /// 两边各自 15 秒超时回房间。
+    /// 三值口径见 <see cref="ConfirmValue"/>：<c>0</c> 未表态 / <c>1</c> 确认 / <c>2</c> 拒绝。</remarks>
+    void PollRoomConfirm()
+    {
+        var cp = MatchConfirmPanel.Instance;
+        if (cp == null || !cp.IsOpen || _room == null || cp.roomSource != _room) return;
+
+        string opp;
+        if (_hosting && _lobby.m_SteamID != 0)          // 房主：客人那格在**成员数据**里
+        {
+            opp = "";
+            int count = SteamMatchmaking.GetNumLobbyMembers(_lobby);
+            for (int i = 0; i < count; i++)
+            {
+                CSteamID m = SteamMatchmaking.GetLobbyMemberByIndex(_lobby, i);
+                if (m == SteamUser.GetSteamID()) continue;
+                opp = SteamMatchmaking.GetLobbyMemberData(_lobby, m, "confirm_guest_ok");
+                break;
+            }
+        }
+        else if (IsGuest)                               // 客人：房主那格在**大厅数据**里
+        {
+            opp = SteamMatchmaking.GetLobbyData(_guestLobby, "confirm_host_ok");
+        }
+        else return;
+
+        int d = ConfirmDecision(opp);
+        if (d == 1) cp.NotifyOpponentAccepted();
+        else if (d == 2 && !_oppDeclineSeen) { _oppDeclineSeen = true; cp.OpponentDeclined(); }
+    }
+
     // ===================== 三个信号 =====================
 
     /// <summary>踢出：给大厅打标记（客人端读到 <c>kicked=1</c> 自己走 —— 旧壳同款 key），客人槽由面板清。</summary>
@@ -242,6 +279,65 @@ public class LobbyRoomSession : MonoBehaviour
         SteamMatchmaking.SetLobbyData(_lobby, "kicked", "1");
         _kickedPublished = true;
         Debug.Log("[RoomSession] 已发布 kicked=1");
+    }
+
+    // ── 房间「开始游戏」那条：一个通知 + 一张三值的确认表 ────────────────────────────
+    //    2026-09-27 二次修（用户报「房主点击开始后客人不会进入确认界面而是仍卡在房间界面」）：
+    //    这套原来一个都没有 —— 房主点了开始，客人侧读不到任何东西，就永远卡在房间界面；
+    //    而房主自己那一下「确认」也没写给对面（房间这条路不经过 QuickMatchPanel）⇒ 两边各自 15 秒超时回房间。
+
+    /// <summary>房主点了「开始游戏」→ 通知客人也进确认弹窗（大厅数据 <c>confirm=1</c>）。</summary>
+    /// <remarks>⚠ 不是 <c>start</c> —— 那个是「双方已确认、真要开打」（<see cref="PublishStart"/>），
+    /// 提前发客人会跳过确认直接进加载。</remarks>
+    public void PublishConfirm()
+    {
+        if (!_hosting) return;
+        SteamMatchmaking.SetLobbyData(_lobby, "confirm", "1");
+        SteamMatchmaking.SetLobbyData(_lobby, "confirm_host_ok", "0");   // 本轮从「未表态」开始（上一轮的 1 / 2 不能留着）
+        _oppDeclineSeen = false;
+        Debug.Log("[RoomSession] 已发布 confirm=1（客人侧读到就进确认弹窗）");
+    }
+
+    /// <summary>房间确认格的三值：<c>0</c> 未表态 / <c>1</c> 确认 / <c>2</c> 拒绝。</summary>
+    /// <remarks>为什么不用 <c>host_ok</c> / <c>guest_ok</c> 那对：那对是**匹配**大厅的口径，只有 0 / 1 两值，
+    /// 「没写过」和「写 0」分不开（见 <see cref="ConfirmDecision"/> 的注释）。抽成纯函数是为了能直接喂参数自证。</remarks>
+    public static string ConfirmValue(bool ok) { return ok ? "1" : "2"; }
+
+    /// <summary>对面那格读到什么 → 确认弹窗该怎么动：<c>0</c> 什么都不做 / <c>1</c> 解压黑 / <c>2</c> 一起回房间。</summary>
+    /// <remarks>空的（键还没写过）= 什么都不做 —— 这是「未表态」和「拒绝」必须分开的原因：
+    /// 一开始双方都是「没写过」，要是把空当成拒绝，房主刚点开始就把两个人踢回房间。</remarks>
+    public static int ConfirmDecision(string opp)
+    {
+        if (opp == "1") return 1;
+        if (opp == "2") return 2;
+        return 0;
+    }
+
+    /// <summary>确认弹窗里自己那一下（确认 / 拒绝）→ 写给对面看的那一格。</summary>
+    /// <remarks>房主写大厅数据、客人写成员数据（跟 <see cref="PollRoomConfirm"/> 的读法一一对应）。</remarks>
+    public void PublishConfirmAccept(bool ok)
+    {
+        string v = ConfirmValue(ok);
+        if (_hosting) SteamMatchmaking.SetLobbyData(_lobby, "confirm_host_ok", v);
+        else if (IsGuest) SteamMatchmaking.SetLobbyMemberData(_guestLobby, "confirm_guest_ok", v);
+        Debug.Log("[RoomSession] 确认弹窗：自己那格写成 " + v);
+    }
+
+    /// <summary>回到房间等下一轮（拒绝 / 超时）→ 把「读到过什么」清掉，否则下一轮同样的信号会被当成旧的忽略掉。</summary>
+    public void ResetConfirmWatch()
+    {
+        _confirmSeen = false;
+        _oppDeclineSeen = false;
+    }
+
+    /// <summary>双方确认后进战斗加载界面那一步 —— 把 <c>LobbyConfig</c> 按自己这一侧填好，房主额外发布 <c>start=1</c>。</summary>
+    /// <remarks>2026-09-27 二次修：原来只有房主在 <see cref="PublishStart"/> 里填配置，客人侧是读到 <c>start</c> 才填 ——
+    /// 而客人的确认弹窗金色 3 秒走完会**先**开加载界面（<c>BattleLoadingScreen.FillContent()</c> 读的就是这份配置），
+    /// 客人那半区可能读到上一局的对手。现在两侧都在这里填。</remarks>
+    public void ConfirmBattleEntry()
+    {
+        if (_hosting) { PublishStart(); return; }
+        if (IsGuest) FillGuestConfig();
     }
 
     /// <summary>双方确认、真要开打：发布 <c>start</c> + <c>host_sid</c>，并把 LobbyConfig 填成旧壳进 Game 那套。</summary>
@@ -292,6 +388,8 @@ public class LobbyRoomSession : MonoBehaviour
         _kickedPublished = false;
         _code = null;          // 房间解散 → 号作废，下次开面板重新查重
         _suspended = false;
+        _confirmSeen = false;
+        _oppDeclineSeen = false;
         DisposeCallbacks();
     }
 
@@ -376,6 +474,8 @@ public class LobbyRoomSession : MonoBehaviour
             _guestLobby = new CSteamID(cb.m_ulSteamIDLobby);
             _suspended = false;
             _startSeen = false;
+            _confirmSeen = false;
+            _oppDeclineSeen = false;
             _guestT = 0f;
             SteamMatchmaking.SetLobbyMemberData(_guestLobby, "player_data", MyJson());
             SteamMatchmaking.RequestLobbyData(_guestLobby);
@@ -469,11 +569,15 @@ public class LobbyRoomSession : MonoBehaviour
         }
         _guestLobby = CSteamID.Nil;
         _startSeen = false;
+        _confirmSeen = false;
+        _oppDeclineSeen = false;
+        _code = null;          // 刚才是别人的房：自己那个旧号（搜号前 SuspendHosting 留下的）也一并作废
+        _suspended = false;
         _enter?.Dispose();
         _enter = null;
     }
 
-    /// <summary>客人侧每帧：读房主那两条信号（kicked / start）。</summary>
+    /// <summary>客人侧每帧：读房主那三条信号（kicked / confirm / start）。</summary>
     void PollGuestSide()
     {
         if (_hosting) return;
@@ -489,12 +593,21 @@ public class LobbyRoomSession : MonoBehaviour
             if (_room != null) _room.OnKickedByHost();
             return;
         }
+        if (!_confirmSeen && SteamMatchmaking.GetLobbyData(_guestLobby, "confirm") == "1")
+        {
+            _confirmSeen = true;
+            _oppDeclineSeen = false;
+            SteamMatchmaking.SetLobbyMemberData(_guestLobby, "confirm_guest_ok", "0");   // 本轮从「未表态」开始
+            if (_room != null) _room.OnRemoteConfirm();
+        }
         if (!_startSeen && SteamMatchmaking.GetLobbyData(_guestLobby, "start") == "1")
         {
             _startSeen = true;
             FillGuestConfig();
             if (_room != null) _room.OnRemoteStart();
         }
+
+        PollRoomConfirm();          // 确认弹窗开着时读房主那格（confirm_host_ok）
     }
 
     /// <summary>客人进 Game 那套配置（旧壳 CreateRoomPanel 的客人分支同款：IsHost=false、对手 = 房主）。</summary>

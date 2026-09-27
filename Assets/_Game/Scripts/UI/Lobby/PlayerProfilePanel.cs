@@ -43,6 +43,17 @@ public class PlayerProfilePanel : MonoBehaviour
         ApplyAvatar(sd.localAvatar);
     }
 
+    /// <summary>外部把头像井借走过（房间面板的客人视角会关掉本组件、往井里铺对方的图）—— 还回来时调它：
+    /// 清掉「这张图已经铺过了」的短路缓存并重铺一次。
+    /// 不这么做的话 <see cref="Update"/> 里 <c>_applied == src &amp;&amp; avatarImage.texture != null</c> 会直接 return，
+    /// 井里那张对方的头像就一直是残影（2026-09-27 房间「幻影房间」那条 bug 的一半）。</summary>
+    public void Reapply()
+    {
+        _applied = null;
+        if (avatarImage != null) avatarImage.texture = null;
+        Refresh();
+    }
+
     public void Refresh()
     {
         var sd = SteamDataManager.Instance;

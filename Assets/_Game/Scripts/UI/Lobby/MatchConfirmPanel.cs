@@ -166,7 +166,11 @@ public class MatchConfirmPanel : MonoBehaviour
         // 用户 2026-09-27：「自己确认也会隐藏确认和拒绝 button」→ 两个键整组收掉；
         // 同日二次修：「等待对方确认也不显示字」→ 不留任何字，只留中央那行 15 秒倒计时继续走（它决定超时取消）。
         if (confirmGroup != null) confirmGroup.SetActive(false);
-        if (owner != null) owner.OnAccept();                              // 写 host_ok / guest_ok，转 WaitingOpponent
+        // 自己那格写给对面：匹配那条路走 QuickMatchPanel（写 host_ok / guest_ok），房间那条路走房间
+        // （2026-09-27 修：房间这条路原来只调 owner.OnAccept()，而那个只看 State.Found ⇒ 什么都没写出去，
+        //  对面永远不知道我确认了，两边各自 15 秒超时）。
+        if (roomSource != null) roomSource.NotifyLocalConfirmed();
+        else if (owner != null) owner.OnAccept();
         TryGo();
     }
 
@@ -179,6 +183,7 @@ public class MatchConfirmPanel : MonoBehaviour
         if (roomSource != null)
         {
             var room = roomSource;
+            room.NotifyLocalDeclined();      // 写给对面（对面读到「拒绝」就一起回房间，不用干等自己那 15 秒）
             Hide();
             if (room != null) room.ReturnToRoomAfterDecline();
             return;
@@ -226,7 +231,14 @@ public class MatchConfirmPanel : MonoBehaviour
     {
         if (!IsOpen) return;
         // 房间里 15 秒没双确认：房间还在，回房间继续等（不是把整局取消掉）。
-        if (roomSource != null) { var room = roomSource; Hide(); if (room != null) room.ReturnToRoomAfterDecline(); return; }
+        if (roomSource != null)
+        {
+            var room = roomSource;
+            room.NotifyLocalDeclined();      // 也写给对面，省得他干等自己那 15 秒
+            Hide();
+            if (room != null) room.ReturnToRoomAfterDecline();
+            return;
+        }
         Hide();
         if (owner != null) owner.OnConfirmTimeout();
     }

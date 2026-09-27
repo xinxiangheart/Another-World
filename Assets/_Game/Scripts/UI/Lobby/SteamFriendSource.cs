@@ -7,8 +7,9 @@ using UnityEngine;
 ///
 /// ⚠️ 客户端 SDK **没有**「好友是否拥有本游戏」的接口（好友的库 / 成就一律读不到），
 /// 所以「拥有」这条路只能靠 Web API —— 改造位见 <see cref="FriendEvidence.OwnedLookup"/>。
-/// 本类只答四个问题：他此刻在玩什么（GetFriendGamePlayed）、我俩一起玩过什么（GetFriendCoplayGame）、
-/// 他在不在线（GetFriendPersonaState）、他自己写的是什么状态（GetFriendRichPresence → 见 <see cref="SteamPresence"/>）。
+/// 本类只答三个问题：他此刻在玩什么（GetFriendGamePlayed）、我俩一起玩过什么（GetFriendCoplayGame）、
+/// 他自己写的是什么状态（GetFriendRichPresence → 见 <see cref="SteamPresence"/>）。
+/// 四态由这两个拼出来 —— 判据见 <see cref="PresenceFor"/>。
 ///
 /// Steam 没初始化（非 Steam 启动 / Direct IP / 回调分发器没起来）时返回空表，不抛异常。
 /// </summary>
@@ -23,6 +24,31 @@ public static class SteamFriendSource
             try { return SteamUtils.GetAppID().m_AppId; }
             catch { return 0u; }
         }
+    }
+
+    /// <summary>
+    /// 四态映射（**纯函数** —— 自证直接喂参数，不用真 Steam 好友）。
+    /// </summary>
+    /// <remarks>
+    /// **2026-09-27 修（用户报的 bug）**：原来判据反了 ——
+    ///   · 「Steam 在线、但**没在跑本游戏**」被算成**在线**（应该**离线**：这四种状态说的都是「他**在本游戏里**的位置」，
+    ///     人根本不在本游戏里，对我们就是离线）；
+    ///   · 「在跑本游戏、但**没进对局**」（rich presence 是空串 = 在大厅）被算成**对局中**（应该**在线**）。
+    /// 现在判据的根换成 **传进来的 `playingOurGame`**（= GetFriendGamePlayed 打的正是本机 appid），
+    /// 再看他自己写的那条 rich presence（<see cref="SteamPresence"/> 的三个值）。
+    ///
+    /// **顺带修好的**：邀请那枚「+」的开关是 `Presence == Online`
+    /// （<see cref="FriendRowUI"/> / <see cref="FriendDetailRowUI"/>）——
+    /// 以前「在线」= 只是 Steam 在线（**根本没法邀请**），现在「在线」= **在本游戏大厅里**（正好就是能邀请的状态）。
+    ///
+    /// 拿不到 rich presence（还没同步过来 / 老客户端没写过）时按**在线**兜底 —— 总比误报「对局中」好。
+    /// </remarks>
+    public static FriendPresence PresenceFor(bool playingOurGame, string richStatus)
+    {
+        if (!playingOurGame) return FriendPresence.Offline;          // 不在本游戏里 = 离线（灰）
+        if (richStatus == SteamPresence.StatusMatching) return FriendPresence.Matching;   // 搜索 / 等确认（金）
+        if (richStatus == SteamPresence.StatusInGame)   return FriendPresence.InGame;     // 已经进对局（金，更亮）
+        return FriendPresence.Online;                                // "" = 在大厅（绿），拿不到也按这个兜底
     }
 
     /// <summary>互为 Steam 好友的人（含证据与在线状态）。没 Steam 时是空表。</summary>
@@ -70,17 +96,8 @@ public static class SteamFriendSource
                 }
             }
 
-            // ③ 状态（用户 2026-09-27 定：只有 在线 / 匹配中 / 对局中 / 离线 这四种）
-            //    离线 → 灰；正在玩本游戏 → 问他自己写的那条 rich presence（matching = 匹配中，
-            //    其余包括没写 = 对局中）；剩下的（在线但没在玩本游戏）→ 在线（绿）。
-            if (SteamFriends.GetFriendPersonaState(id) == EPersonaState.k_EPersonaStateOffline)
-                e.Presence = FriendPresence.Offline;
-            else if (playingOurGame)
-                e.Presence = SteamPresence.ReadFriend(id) == SteamPresence.StatusMatching
-                    ? FriendPresence.Matching
-                    : FriendPresence.InGame;
-            else
-                e.Presence = FriendPresence.Online;
+            // ③ 状态（用户 2026-09-27 定：只有 在线 / 匹配中 / 对局中 / 离线 这四种）—— 判据见 PresenceFor
+            e.Presence = PresenceFor(playingOurGame, playingOurGame ? SteamPresence.ReadFriend(id) : "");
 
             list.Add(e);
         }
