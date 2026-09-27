@@ -50,8 +50,8 @@ namespace AnotherWorld.EditorTools
         /// <summary>整套 UI 件：出图脚本按「屏幕 px x 3」出、场景按「贴图 / 3」摆 —— 必须原样 1:1，禁止 Unity 缩放。
         /// 2026-09-27 加 battle-mode-v1：卡 900x1260 是 RawImage 的贴图，被默认的 ToNearest 吸成 512x1024，
         /// 3:4.2 的画面被压成 1:2 再拉回 300x420 的卡框 —— 卡面会横向拉宽。</summary>
-        /// <summary>2026-09-27 又加 invite-v1：「收到邀请」小窗底板 Invite_Plate.png 是 1080x720（屏幕 360x240，
-        /// RawImage 整块拉伸铺满）—— 被吸成 1024x1024 就不是 3:2 了，圆角与金线会跟着变形。</summary>
+        /// <summary>2026-09-27 又加 Icon_InvitePlus（好友行那一格，78x48 -> 234x144 不是 2 的幂）与 invite-v1：「收到邀请」小窗底板 Invite_Plate.png 是 1260x432（屏幕 420x144，
+        /// RawImage 整块拉伸铺满）—— 被吸成 1024x512（或 1024x256）就不是那条扁比例了，圆角与金线会跟着变形。</summary>
         static readonly string[] NoNpotScaleFolders = { "/Art/Sprites/Generated/battle-mode-v1/", "/Art/Sprites/Generated/match-wait-v1/", "/Art/Sprites/Generated/match-confirm-v1/", "/Art/Sprites/Generated/battle-loading-v1/", "/Art/Sprites/Generated/invite-v1/" };
 
         public static bool NeedsNoNpotScale(string path)
@@ -59,7 +59,7 @@ namespace AnotherWorld.EditorTools
             string p = path.Replace('\\', '/');
             foreach (string f in NoNpotScaleFolders) if (p.Contains(f)) return true;
             if (!p.Contains("/Art/Sprites/Generated/lobby-ui-v1/")) return false;
-            return Path.GetFileName(p).StartsWith("LobbyCornerPlate_") || Path.GetFileName(p).StartsWith("LobbyChip_") || Path.GetFileName(p).StartsWith("LobbyJoin");
+            return Path.GetFileName(p).StartsWith("LobbyCornerPlate_") || Path.GetFileName(p).StartsWith("LobbyChip_") || Path.GetFileName(p).StartsWith("LobbyJoin") || Path.GetFileName(p).StartsWith("Icon_InvitePlus");
         }
 
         /// <summary>带硬 alpha 边（圆角 / 挖空）的 UI 件：导入要做 alpha 扩散，否则缩小后边缘发黑。</summary>
@@ -67,7 +67,7 @@ namespace AnotherWorld.EditorTools
         {
             string p = path.Replace('\\', '/');
             foreach (string f in NoNpotScaleFolders) if (p.Contains(f)) return true;
-            if (p.Contains("/Art/Sprites/Generated/lobby-ui-v1/") && (Path.GetFileName(p).StartsWith("LobbyCornerPlate_") || Path.GetFileName(p).StartsWith("LobbyChip_") || Path.GetFileName(p).StartsWith("LobbyJoin"))) return true;
+            if (p.Contains("/Art/Sprites/Generated/lobby-ui-v1/") && (Path.GetFileName(p).StartsWith("LobbyCornerPlate_") || Path.GetFileName(p).StartsWith("LobbyChip_") || Path.GetFileName(p).StartsWith("LobbyJoin") || Path.GetFileName(p).StartsWith("Icon_InvitePlus"))) return true;
             return false;
         }
 

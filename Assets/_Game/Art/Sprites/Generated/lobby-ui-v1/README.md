@@ -750,3 +750,59 @@ stage47 唯一一条失败就是它：`npotScale=ToNearest` / `alphaIsTransparen
 - **`stage47b_invite_fix.txt` + `stage47b_shots/`**（`f1_placeholder` / `f2_avatar_arrived`）：导入设置逐项 + `Window 360×240` / `Plate` 拉伸铺满 / 底板吃的就是 `Invite_Plate 1080×720`；头像那条——摆窗时那一格是 Steam 默认像，把一张 64×64 假头像写进缓存后**小窗自己换成了新图的圆裁**（`now == CircleCrop(_fake)`，窗口没关）。失败合计 0。
 - **两个执行器跑完都已自删**（`Assets/_Game/Editor/Stage47Invite.cs`、`Stage47bInviteFix.cs` 均已不在仓库）。
 - **注**：`f4_after_accept` 里那行「进不去这间房（可能刚被解散 / 已满）」是**测试环境的必然** —— 假 lobby ID 在离线环境 `JoinLobby` 必失败；真机走 Steam 那条路。另外 stage47 执行器第二版第一跑（19:51）自己把报告刷到 785KB（相位没置 `_acted`，被每帧重跑）—— 那是执行器的坑，不是产品的，已在第二版堵上（`WrapUp` + 每相位自置 `_acted`）。
+
+## 二十四次修正（2026-09-27）：邀请两块一起压扁 —— 好友行徽章 60×60 → 78×48、「收到邀请」小窗 360×240 → 420×192
+
+**用户原话**：「要做的更像长方形，更"扁"一点」+「上方的邀请滑出也应变"扁"」。两块**一起改**（下面所有数字都**覆盖**「二十三次修正」那一节里的同名数字）。
+
+**贴图（两块各出一条新口径，配方来源写在表里）**
+
+| 件 | 脚本 | 旧 → 新 |
+|---|---|---|
+| `Icon_InvitePlus.png` / `…Hover.png` / `…Cool.png` | `Tools/cardframe/LobbyInvitePlusV1.ps1`（预览 `Tools/cardframe/preview/lobby-invite-plus.png`） | 256×256 里 **168 方** → **234×144 = 屏幕 78×48（1.625:1）** |
+| `invite-v1/Invite_Plate.png` | `Tools/cardframe/InvitePanelV1.ps1`（预览 `Tools/cardframe/preview/invite-panel.png`） | 1080×720（= 360×240）→ **1260×576 = 屏幕 420×192（2.19:1）** |
+
+- **徽章换了整套配方**：从「单件自画」并到 `Tools/cardframe/LobbyRoomChipV1.ps1` 那一套 —— 3 倍出图 / 外墨边 9 / 等比内缩金线 3+18 / 左上亮楔 / 圆角 24 / 金线 α150。于是它与**「踢出 / 开始游戏」子背景**（`LobbyChip_Kick` 96×48）**同高、同语言**，不是另一路货。加号臂 33 / 线宽 10（旧 168 方那版的等比放大）。
+- **小窗底板配方没动**（还是 `match-wait-v1/MatchWait_Plate` 那一套），只换尺寸；**2.19:1 是往同族「匹配中」小窗的 2.37:1 靠**（`MatchWait_Plate` = 360×152）—— 两块都在屏幕顶中，不靠齐看着是两代东西。
+
+**版式（`LobbyUIBuilder` 常量段；窗矮了、格子扁了，里面每一样都得跟着重排）**
+
+| 位置 | 旧 | 新 |
+|---|---|---|
+| 徽章那一格 | 60×60，贴行右端 | **78×48**，贴行右端（右沿让 4），行内垂直居中（行高 84，上下各 18） |
+| 名字行让位 `InviteNameTrim` | 84（60+4+20） | **94**（78+4+12）⇒ `Text_Name` 宽 **219** |
+| 倒计时字号 | 26 | **30**（格子变矮反而加大：数字要顶满 48 高） |
+| 小窗 | 360×240（3:2） | **420×192**（2.19:1） |
+| 标题 | y −?? / 字号 30 | y **−14** / 高 **34** / 字号 **26** |
+| 头像环 / 井 | 72 / 56，横写 48 | **64 / 50**，**`InviteRingX = 70`**（原来硬写 48；井按环居中套） |
+| 名字 | x 136 / 字号 28 | x **150** / 字号 **26**（纵向跟环对齐） |
+| 两键 | y −168，x 56 / 208 | y **−128**，x **102 / 222**（子背景仍 96×48，右沿 318 ≤ 窗宽−8） |
+| 提示行让位 `toastDrop` | 写死 250 | **`InviteWinH + 10 = 202`**（原来只有字段默认值，这次改成建小窗时按窗高算；窗高再变它会自己跟） |
+| `hiddenY`（收窗起点） | 260 | **`InviteWinH + 20 = 212`** |
+
+**导入白名单**：`TextureImportSettingsGuard` 的 `lobby-ui-v1` 两处分支各加一条 `Icon_InvitePlus*` —— 234×144 **不是 2 的幂**且 >128，会走守卫的 `IsCandidate` 被吸成 256，不加白名单整块徽章会被拉坏。
+
+**自证**
+
+- **`stage48b_flat.txt`**（编辑态逐项，失败 2 项都在 Play 相位，见下）：三张图标 **234×144 / npot=None / alpha=1**；`Invite_Plate` **1260×576 / npot=None / alpha=1**；徽章那一格 **78×48 @(327,−18)**、右沿 405（行宽 409）、sibling 5/6、贴的就是 234×144、倒计时字号 30；`Text_Name` 219 且右沿 307 < 格左沿 327；小窗 **420×192** 静止位 y=−10、`Plate` 拉伸铺满、标题/环 64/井 50/名字/两键逐项、`toastDrop = 202`。
+- **`stage48e_row_shot2.txt` + `stage48_shots/f1b_row_plus.png` / `f2c_row_countdown.png`**（运行态，失败合计 **0**）：注入两行「在线」好友 → 徽章 **78×48（1.63:1）贴 234×144**；给第一行起 10s 冷却 → **同一格换空板 + 金数字「10」**，第二行仍是加号。
+- **`stage48_shots/f3_flat_window.png`**（运行态）：扁版小窗贴屏幕顶（y −10 / 420×192），标题 + 头像行 + 两键都在。
+- **三个执行器跑完都已自删**（`Stage48bInviteFlat.cs` / `Stage48cInviteRowShot.cs` / `Stage48eInviteRowShot2.cs` 均已不在仓库）。
+
+**排错记录（三支才拍成，根因值得记住）**：`stage48b` 的 Play 相位**找不到 `LobbyFriendListUI`** —— 好友侧边栏没开时那个物体整块 inactive，`FindObjectOfType` 是找不到的（编辑态几何不受影响，所以那 2 项失败纯粹是取景问题）；`stage48c` 冷却那一拍**被外部点击把侧边栏关了**（截到的是房间面板）；`stage48d` 三个 Instance 全空 —— **根因：编译触发的域重载会把 `EditorApplication.isPlaying = true` 推迟**，相位链于是**在编辑态空转**（编辑态下 `FriendListService.Instance` 这类运行时单例必然是 null）。`stage48e` 改成**条件驱动**：等到 `EditorApplication.isPlaying` **且** `FriendListService.Instance != null` 才走下一步，且 hold 计数与 `_acted` 一起存 `EditorPrefs`（域重载不丢），一次通过。
+
+
+## 二十五次修正（2026-09-27）：邀请小窗 v3 —— 去掉标题栏、再压一档、名字居中到右 1/3
+
+**用户原话**：「不要收到邀请了，把留出的空间再压更扁，同时文字调整至以右 1/3 处为中心对齐」（覆盖上一条里的同名数字）。
+
+- **标题栏整条删掉**：`LobbyUIBuilder.BuildInvitePanelMenu` 里那段 `Text_Title「收到邀请」`（金 26 号）连同 `InviteTitleY / InviteTitleH / InviteTitleFont` 三个常量一起去掉 —— 重建是**先删旧的 `Panel_Invite` 再重造**，所以老场景里那个 `Text_Title` 子物体不会残留。`LobbyInvitePanel.titleText` 字段留着（它是 null 会走空判断，不再赋值）。
+- **窗高 192 → 144**：① 标题那一栏省下 34 + 8；② 头像行上沿 −56 → **−12**（上留 12）；③ 两键 y −128 → **−82**（头像行底 −76 与两键顶 −82 之间留 6，底留 14）。合计 **12 + 64 + 6 + 48 + 14 = 144**，即 **420×144 = 2.92:1**（上一版 2.19，再上一版 3:2）。`hiddenY = 窗高 + 20 = 164`、`toastDrop = 窗高 + 10 = 154` —— 两个都已改成跟着窗高算，这次没动它们。
+- **底板重出**：`Invite_Plate.png` 1260×576 → **1260×432**（`Tools/cardframe/InvitePanelV1.ps1`，配方一字未改，只换尺寸）；`TextureImportSettingsGuard`（本目录在 `NoNpotScaleFolders` 里）那条注释也跟着改成 1260×432。
+- **名字（文字）居中到右 1/3**：名栏从 `x 150 宽 200 左对齐` 改成 **`x 148 宽 264 居中`** —— 148..412 的正中正好是 **280 = 420 的右 1/3 分界**（右边留 8 与窗内金线对齐）。字号 26、纵向仍与头像环（64）同心（名栏盒 40 高，中心 −44）。
+
+**自证：`stage49_invite_flat_v3.txt` + `stage48_shots/f4_invite_flat_v3.png`**（失败合计 **0**）
+
+- 编辑态：底板 `npotScale=None / alphaIsTransparency=True / 源尺寸 1260x432`；重建 + 存盘后 **窗 420×144（2.92:1）**、**没有 `Text_Title`**、`hiddenY=164`、`toastDrop=154`、`Plate` 吃的就是 1260×432、头像环 64 @(70,−12)、两键行 y=−82。
+- 文字：名栏锚左上（不是拉伸）、`264x40 @148,−24` → **中心 (280,−44)**、`alignment=Center`、奶油色。
+- 运行态（进 Play 摆一条假邀请）：**窗仍是 420×144**、滑到位 y=−10、窗口开着，名栏中心仍是 280。执行器跑完已自删。

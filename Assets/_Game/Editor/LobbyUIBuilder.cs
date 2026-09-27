@@ -1920,32 +1920,31 @@ public static class LobbyUIBuilder
     const string InviteDir        = "Assets/_Game/Art/Sprites/Generated/invite-v1/";
     const string InvitePlusName   = "Icon_InvitePlus";
     const string InviteTimerName  = "Text_InviteTimer";
-    const float  InvitePlusSize   = 60f;     // 贴图 256 画在 60（同批图标同档）
+        const float  InvitePlusW      = 78f;     // 贴图 234（78x3）：横向长方形那一格（用户：「更像长方形，更扁一点」）
+        const float  InvitePlusH      = 48f;     // 贴图 144（48x3）：与「踢出」子背景同高（LobbyChip_Kick）
     const float  InvitePlusRight  = 4f;      // 距行右沿
-    const float  InvitePlusTop    = -12f;    // 行高 84，60 高这块上下各留 12
-    const float  InviteNameTrim   = 76f;     // 名字那行要让给加号的宽度（60 + 4 + 12 间隙）
-    const float  InviteTimerFont  = 26f;
+        const float  InvitePlusTop    = -18f;    // 行高 84，48 高这块上下各留 18
+        const float  InviteNameTrim   = 94f;     // 名字那行要让给那一格的宽度（78 + 4 + 12 间隙）
+        const float  InviteTimerFont  = 30f;
 
     const string InvitePanelName  = "Panel_Invite";
     const string InviteWindowName = "Window";
-    const float  InviteWinW       = 360f;    // = Invite_Plate.png 贴图 1080 / 3
-    const float  InviteWinH       = 240f;    // = 720 / 3
+        const float  InviteWinW       = 420f;    // = Invite_Plate.png 贴图 1260 / 3（宽不变）
+        const float  InviteWinH       = 144f;    // = 432 / 3 —— 标题栏去掉后再压一档（420:144 = 2.92:1）
     const float  InviteRestY      = -10f;    // 静止位：贴屏幕顶（与匹配小窗同档）
-    const float  InviteTitleY     = -18f;
-    const float  InviteTitleH     = 38f;
-    const float  InviteTitleFont  = 30f;
-    const float  InviteRowY       = -70f;    // 头像行上沿
-    const float  InviteRingSize   = 72f;     // 与好友行同口径（环 88 : 井 68 的比例）
-    const float  InviteWellSize   = 56f;
-    const float  InviteNameX      = 136f;
-    const float  InviteNameW      = 200f;
-    const float  InviteNameFont   = 28f;
-    const float  InviteChipY      = -168f;
+        const float  InviteRowY       = -12f;    // 头像行上沿（上留 12）
+        const float  InviteRingSize   = 64f;     // 与好友行同口径（环 88 : 井 68 的比例）
+        const float  InviteWellSize   = 50f;
+        const float  InviteNameX      = 148f;
+        const float  InviteRingX      = 70f;     // 头像环左沿（整行 [环 64 + 16 + 名字] 居中）
+        const float  InviteNameW      = 264f;    // 148..412：正中 280 = 窗宽 420 的右 1/3 分界
+        const float  InviteNameFont   = 26f;
+        const float  InviteChipY      = -82f;
     const float  InviteChipW      = 96f;     // = 子背景 LobbyChip_Kick 的屏幕宽
     const float  InviteChipH      = 48f;
     const float  InviteChipFont   = 30f;
-    const float  InviteChipAX     = 56f;     // 同意
-    const float  InviteChipDX     = 208f;    // 拒绝
+        const float  InviteChipAX     = 102f;    // 同意
+        const float  InviteChipDX     = 222f;    // 拒绝
 
     /// <summary>
     /// 给好友行的行模板补上右端那格「邀请加号」（幂等：已经有了就只回填引用）。
@@ -1953,7 +1952,7 @@ public static class LobbyUIBuilder
     /// </summary>
     static GameObject WireInvitePlus(RectTransform rowRT, FriendRowUI row, float rowW)
     {
-        float plusX = rowW - InvitePlusSize - InvitePlusRight;
+        float plusX = rowW - InvitePlusW - InvitePlusRight;
         string normalPath = UiDir + InvitePlusName + ".png";
         string hoverPath  = UiDir + InvitePlusName + "Hover.png";
         string coolPath   = UiDir + InvitePlusName + "Cool.png";
@@ -1970,12 +1969,12 @@ public static class LobbyUIBuilder
             icon.rectTransform.anchorMax = AnchorTL;
             icon.rectTransform.pivot = PivotTL;
             icon.rectTransform.anchoredPosition = new Vector2(plusX, InvitePlusTop);
-            icon.rectTransform.sizeDelta = new Vector2(InvitePlusSize, InvitePlusSize);
+            icon.rectTransform.sizeDelta = new Vector2(InvitePlusW, InvitePlusH);
         }
         else
         {
             icon = NewRaw(rowRT, InvitePlusName, normalPath, AnchorTL, PivotTL,
-                          new Vector2(plusX, InvitePlusTop), new Vector2(InvitePlusSize, InvitePlusSize));
+                          new Vector2(plusX, InvitePlusTop), new Vector2(InvitePlusW, InvitePlusH));
             go = icon.gameObject;
             Undo.RegisterCreatedObjectUndo(go, "建 " + InvitePlusName);
         }
@@ -1994,7 +1993,7 @@ public static class LobbyUIBuilder
         else timer = null;
         if (timer == null)
         {
-            timer = NewLabel(go.transform, InviteTimerName, "10", Vector2.zero, new Vector2(InvitePlusSize, InvitePlusSize), InviteTimerFont);
+            timer = NewLabel(go.transform, InviteTimerName, "10", Vector2.zero, new Vector2(InvitePlusW, InvitePlusH), InviteTimerFont);
             var trt = timer.rectTransform;
             trt.anchorMin = Vector2.zero;
             trt.anchorMax = Vector2.one;
@@ -2056,8 +2055,8 @@ public static class LobbyUIBuilder
         EditorUtility.SetDirty(row);
         EditorSceneManager.MarkSceneDirty(canvas.gameObject.scene);
         Selection.activeGameObject = rowT.gameObject;
-        Debug.Log("[LobbyUI] 好友行已补上「邀请加号」：行宽 " + rowW + " · 加号 " + InvitePlusSize +
-                  "x" + InvitePlusSize + " 在 x=" + (rowW - InvitePlusSize - InvitePlusRight) + " y=" + InvitePlusTop +
+        Debug.Log("[LobbyUI] 好友行已补上「邀请加号」：行宽 " + rowW + " · 那一格 " + InvitePlusW +
+                  "x" + InvitePlusH + " 在 x=" + (rowW - InvitePlusW - InvitePlusRight) + " y=" + InvitePlusTop +
                   "（行内最后 = 压在其余件之上）· 名字那行已收窄到 " + (rowW - 96f - InviteNameTrim) + "。");
     }
 
@@ -2087,7 +2086,8 @@ public static class LobbyUIBuilder
         panel.window = win.gameObject;
         panel.windowRect = win;
         panel.restY = InviteRestY;
-        panel.hiddenY = InviteWinH + 20f;      // 整块（240 高）完全在屏幕顶之上
+        panel.hiddenY = InviteWinH + 20f;      // 整块完全在屏幕顶之上
+        panel.toastDrop = InviteWinH + 10f;    // 提示行让开小窗（窗高变了这里要跟着变）
 
         // 底板：整块拉伸铺满（贴图 1080x720 = 屏幕 360x240，正好 1:1）；raycastTarget 开着 = 小窗自己吃点击
         RawImage plate = NewRaw(win, "Plate", InviteDir + "Invite_Plate.png", Vector2.zero, PivotC, Vector2.zero, Vector2.zero);
@@ -2097,20 +2097,14 @@ public static class LobbyUIBuilder
         plate.rectTransform.offsetMax = Vector2.zero;
         plate.raycastTarget = true;
 
-        // 标题：金（与匹配小窗那行状态字同一档）
-        TextMeshProUGUI title = NewLabel(win, "Text_Title", "收到邀请",
-                                         new Vector2(0f, InviteTitleY), new Vector2(InviteWinW, InviteTitleH), InviteTitleFont);
-        title.alignment = TextAlignmentOptions.Midline;    // 居中
-        title.color = new Color32(200, 164, 74, 255);      // 本套金 #C8A44A
-        title.raycastTarget = false;
-        panel.titleText = title;
+        // 标题栏已取消（用户 2026-09-27：「不要收到邀请了」）—— 省下的高度直接压扁窗户，见 InviteWinH。
 
         // 一排：对方头像（环 72 + 井 56）+ 名称
         RawImage ring = NewRaw(win, "Avatar_Ring", UiDir + "LobbyAvatarRing.png", AnchorTL, PivotTL,
-                               new Vector2(48f, InviteRowY), new Vector2(InviteRingSize, InviteRingSize));
+                               new Vector2(InviteRingX, InviteRowY), new Vector2(InviteRingSize, InviteRingSize));
         ring.raycastTarget = false;
         var wellRT = NewRect(win, "Avatar_Image", AnchorTL, PivotTL,
-                             new Vector2(56f, InviteRowY - 8f), new Vector2(InviteWellSize, InviteWellSize));
+                             new Vector2(InviteRingX + (InviteRingSize - InviteWellSize) * 0.5f, InviteRowY - (InviteRingSize - InviteWellSize) * 0.5f), new Vector2(InviteWellSize, InviteWellSize));
         var well = wellRT.gameObject.AddComponent<RawImage>();
         well.texture = null;                              // 运行时填（先灰盘占位，Steam 头像到货自己换）
         well.raycastTarget = false;
@@ -2118,8 +2112,8 @@ public static class LobbyUIBuilder
         panel.avatarImage = well;
 
         TextMeshProUGUI who = NewLabel(win, "Text_Name", "好友",
-                                       new Vector2(InviteNameX, InviteRowY - 16f), new Vector2(InviteNameW, 40f), InviteNameFont);
-        who.alignment = TextAlignmentOptions.Left;
+                                       new Vector2(InviteNameX, InviteRowY - (InviteRingSize - 40f) * 0.5f), new Vector2(InviteNameW, 40f), InviteNameFont);
+        who.alignment = TextAlignmentOptions.Center;   // 用户：「文字调整至以右 1/3 处为中心对齐」= 280
         who.color = Cream;
         who.raycastTarget = false;
         panel.nameText = who;
@@ -2151,8 +2145,8 @@ public static class LobbyUIBuilder
         EditorSceneManager.MarkSceneDirty(canvas.gameObject.scene);
         Selection.activeGameObject = root.gameObject;
         Debug.Log("[LobbyUI] 已生成 " + InvitePanelName + "（收到邀请小窗）：屏幕顶中 " + InviteWinW + "x" + InviteWinH +
-                  "（贴图 Invite_Plate.png 1080x720 / 3）· 静止位 y=" + InviteRestY + "、起点 y=" + (InviteWinH + 20f) +
-                  "（从屏幕顶滑出）· 标题金 + 头像行（环 " + InviteRingSize + " / 井 " + InviteWellSize + "）+ 同意 / 拒绝（子背景 96x48）· " +
+"（贴图 Invite_Plate.png 1260x432 / 3）· 静止位 y=" + InviteRestY + "、起点 y=" + (InviteWinH + 20f) +
+                  "（从屏幕顶滑出）· 名字居中于右 1/3（名栏 148..412）· 头像行（环 " + InviteRingSize + " / 井 " + InviteWellSize + "）+ 同意 / 拒绝（子背景 96x48）· " +
                   "挂 " + HudLayerName + "（压在房间面板等全屏弹窗之上）。");
     }
 }

@@ -1,18 +1,22 @@
-# 「收到邀请」小窗 v1（2026-09-27）
+# 「收到邀请」小窗 v3（2026-09-27）—— 360x240（3:2）-> 420x192（2.19:1）-> **420x144（2.92:1）**
 #
-# 用户 2026-09-27：「邀请是从屏幕中央上顶滑出一个小框，上面标题是收到邀请，下面一排是对应玩家头像和名称，
-#   在下面是有子背景的同意和拒绝」。
+# 用户 2026-09-27：「要做的更像长方形，更"扁"一点」→ 之后又点明「上方的邀请滑出也应变"扁"」。
+# 同族的「匹配中」小窗（match-wait-v1）是 **360x152 = 2.37:1** —— 邀请小窗原来那张 3:2 摆在它旁边显得「方」，
+# 这一版按同族比例压扁：420x192 = 2.19:1。三行仍是「标题 / 头像+名称 / 同意+拒绝」，只是每行都收一档。
 #
 # 语言与手法同全套 UI（与 MatchWait_Plate 同配方、同一支笔）：深蓝黑石面 + 一条金细线 + 平板；
+#
+# v3（同日）：用户「不要收到邀请了，把留出的空间再压更扁，同时文字调整至以右 1/3 处为中心对齐」——
+# 标题栏整条去掉（省下 34 + 8），窗高 192 -> 144；名字那一栏改成 148..412（正中 280 = 窗宽的右 1/3 分界）居中。
 # 禁倒角 / 内阴影 / 外发光 / 双层面板 / 材质贴图。色值取共享调色板（TopBarV2 -> CardFrameV6）。
 #
 # 产物（Assets/_Game/Art/Sprites/Generated/invite-v1/）
-#   Invite_Plate.png   1080x720 = 屏幕 360x240 —— 小窗底板（固定尺寸，不切片）
+#   Invite_Plate.png   1260x432 = 屏幕 420x144 —— 小窗底板（固定尺寸，不切片）
 #   ---- 尺寸不是 2 的幂：TextureImportSettingsGuard 的 NoNpotScaleFolders 里已含本目录 ----
 #
 # 版式（屏幕 px，锚屏幕顶中；场景侧在 LobbyUIBuilder.BuildInvitePanelMenu）：
-#   上 18 留白 / 标题「收到邀请」38（金，30 号）/ 16 / 头像行 72（环 72 + 井 56 + 名字）/ 26 /
-#   同意 + 拒绝两键 96x48（各带子背景 LobbyChip_Kick）/ 下 24 留白
+#   上 12 / 头像行 64（环 64 + 井 50 + 名字居中于 x=280）/ 6 /
+#   同意 + 拒绝两键 96x48（各带子背景 LobbyChip_Kick，字 30）/ 下 14   —— 合计 144
 #
 # 预览：Tools/cardframe/preview/invite-panel.png（1:1 实尺 + 放大 + 版式标注）
 Add-Type -AssemblyName System.Drawing
@@ -25,7 +29,7 @@ if (-not (Test-Path $GEN))  { New-Item -ItemType Directory -Path $GEN  | Out-Nul
 if (-not (Test-Path $PREV)) { New-Item -ItemType Directory -Path $PREV | Out-Null }
 
 $S       = 3                       # 出图倍率：贴图 3px = 屏幕 1px（与 match-wait-v1 / lobby-ui-v1 同口径）
-$PLATE_W = 360; $PLATE_H = 240     # 屏幕 px
+$PLATE_W = 420; $PLATE_H = 144     # 屏幕 px（2.92:1：标题栏去掉后再压一档）
 $BTN_W   = 96;  $BTN_H   = 48      # 子背景两键 = LobbyChip_Kick 同规格
 
 $LW_INK  = 9                       # 贴图 px：外墨边（屏幕 3）
@@ -91,46 +95,47 @@ function Put-IvL($g, [string]$s, [single]$x, [single]$y, [single]$px, [int]$a = 
 }
 
 # 把「一块底板 + 一屏内容」画到给定位置（预览与场景共用同一套相对坐标）
+# 场景口径：头像环 x=70 y=12（64，井 50 内缩 7）/ 名字 x=148 宽 264 居中（字 26 → 正中 280）/
+#           两键 y=82（96x48，字 30）在 x=102 与 x=222
 function Draw-IvWindow($g, [string]$dir, [single]$px, [single]$py, [single]$k) {
   $w = $PLATE_W * $k; $h = $PLATE_H * $k
   $im = [System.Drawing.Image]::FromFile((Join-Path $dir 'Invite_Plate.png'))
   $g.DrawImage($im, $px, $py, $w, $h); $im.Dispose()
   $cx = $px + $w / 2.0
-  Put-IvGold $g '收到邀请' $cx ($py + 37 * $k) (30 * $k) 255
   # 头像行：环 + 井 + 名字（场景里环是 LobbyAvatarRing.png，这里为预览画一对同心圆）
-  $rx = $px + 48 * $k; $ry = $py + 70 * $k; $rr = 36 * $k
+  $rx = $px + 70 * $k; $ry = $py + 12 * $k; $rr = 64 * $k
   $pen = New-Object System.Drawing.Pen ((New-Col $GOLD 236)), (3 * $k)
-  $g.DrawEllipse($pen, $rx, $ry, (2 * $rr), (2 * $rr)); $pen.Dispose()
+  $g.DrawEllipse($pen, $rx, $ry, $rr, $rr); $pen.Dispose()
   $bs = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 60, 70, 86))
-  $g.FillEllipse($bs, ($rx + 8 * $k), ($ry + 8 * $k), (2 * $rr - 16 * $k), (2 * $rr - 16 * $k)); $bs.Dispose()
-  Put-IvL $g '心响' ($px + 136 * $k) ($py + 92 * $k) (28 * $k) 236
+  $g.FillEllipse($bs, ($rx + 7 * $k), ($ry + 7 * $k), ($rr - 14 * $k), ($rr - 14 * $k)); $bs.Dispose()
+  Put-IvC $g '心响' ($px + 280 * $k) ($py + 44 * $k) (26 * $k) 236
   # 两个子背景键
-  foreach ($t in @(@('同意', 56), @('拒绝', 208))) {
+  foreach ($t in @(@('同意', 102), @('拒绝', 222))) {
     $chip = [System.Drawing.Image]::FromFile((Join-Path $ROOT 'Assets/_Game/Art/Sprites/Generated/lobby-ui-v1/LobbyChip_Kick.png'))
-    $g.DrawImage($chip, ($px + [single]$t[1] * $k), ($py + 168 * $k), ($BTN_W * $k), ($BTN_H * $k)); $chip.Dispose()
-    Put-IvC $g $t[0] ($px + ([single]$t[1] + $BTN_W / 2.0) * $k) ($py + 192 * $k) (30 * $k) 255
+    $g.DrawImage($chip, ($px + [single]$t[1] * $k), ($py + 82 * $k), ($BTN_W * $k), ($BTN_H * $k)); $chip.Dispose()
+    Put-IvC $g $t[0] ($px + ([single]$t[1] + $BTN_W / 2.0) * $k) ($py + 106 * $k) (30 * $k) 255
   }
 }
 
 function New-IvSheet([string]$dir, [string]$out) {
-  $CW = 1180; $CH = 620
+  $CW = 1240; $CH = 600
   $res = New-Bmp $CW $CH; $b = $res[0]; $g = $res[1]
   $bs = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 9, 12, 18))
   $g.FillRectangle($bs, 0, 0, $CW, $CH); $bs.Dispose()
 
-  Put-IvL $g '收到邀请小窗 v1' 36 20 28 236
-  Put-IvL $g '底板 360x240 屏幕 px（贴图 3x = 1080x720）· 锚屏幕顶中 · 深蓝黑石面 + 一条金细线' 36 58 18
-  Put-IvL $g '标题「收到邀请」金 30 号 / 头像行（环 72 + 井 56 + 名字 28 号）/ 同意 + 拒绝（子背景 96x48、字 30 号）' 36 84 18
+  Put-IvL $g '收到邀请小窗 v3（无标题栏、再压扁：420x144 = 2.92:1）' 36 20 28 236
+  Put-IvL $g '底板 420x144 屏幕 px（贴图 3x = 1260x432）· 锚屏幕顶中 · 深蓝黑石面 + 一条金细线' 36 58 18
+  Put-IvL $g '无标题栏 · 头像行（环 64 + 井 50 + 名字 26 号，居中于 x=280）/ 同意 + 拒绝（子背景 96x48、字 30 号）' 36 84 18
   Put-IvL $g '入场：从屏幕顶滑到位（LobbyInvitePanel），滑动 0.28s 快进慢出' 36 110 18
 
   Draw-IvWindow $g $dir 56 150 1.0
-  Put-IvL $g '① 1:1 实尺（360x240）' 56 398 18 210
+  Put-IvL $g '① 1:1 实尺（420x144）' 56 360 18 210
 
-  Draw-IvWindow $g $dir 470 140 1.55
-  Put-IvL $g '② 1.55x（看金线与留白）' 470 520 18 210
+  Draw-IvWindow $g $dir 530 140 1.5
+  Put-IvL $g '② 1.5x（看金线与留白）' 530 470 18 210
 
-  Put-IvL $g '版式：上 18 / 标题 38 / 16 / 头像行 72 / 26 / 两键 96x48 / 下 24' 56 570 18
-  Put-IvL $g '金细线内缩 24 贴图 px（屏幕 8）· 尺寸非 2 的幂 —— 已进 NoNpotScaleFolders' 56 596 18
+  Put-IvL $g '版式：上 12 / 头像行 64 / 6 / 两键 96x48 / 下 14 = 144' 56 540 18
+  Put-IvL $g '金细线内缩 24 贴图 px（屏幕 8）· 尺寸非 2 的幂 —— 已进 NoNpotScaleFolders' 56 566 18
   $g.Dispose()
   $b.Save($out, [System.Drawing.Imaging.ImageFormat]::Png); $b.Dispose()
   return $out
