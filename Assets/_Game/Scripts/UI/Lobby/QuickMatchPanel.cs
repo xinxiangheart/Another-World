@@ -10,6 +10,13 @@ public class QuickMatchPanel : MonoBehaviour
     public string opponentName => _oppName;
     public Texture opponentTexture => opponentAvatar != null ? opponentAvatar.texture : null;
 
+    // 对手战绩（2026-09-27 加：加载界面要展示对方的总场次 / 胜率 / 连胜）——
+    // 由 RefreshOpponent() 解析到的那份 QMPD 存下来；opponentStatsKnown=false 时界面显示占位。
+    public bool opponentStatsKnown => _oppStatsKnown;
+    public int opponentTotalMatches => _oppTotal;
+    public double opponentWinRate => _oppWinRate;
+    public int opponentWinStreak => _oppStreak;
+
     [Header("面板")] public GameObject panelRoot;
     [Header("状态")] public TMP_Text statusText;
     [Header("对手")] public GameObject opponentInfoGroup;
@@ -28,11 +35,18 @@ public class QuickMatchPanel : MonoBehaviour
              "填上之后：找到对手 = 弹它（不自动接受）；双方确认 = 它播金色 3 秒倒计时 + 预加载；15 秒不双确认 = 它调 OnConfirmTimeout()。")]
     public MatchConfirmPanel confirmPanel;
 
+    [Header("双方确认后的加载界面（2026-09-27）：填了就用它顶替 JoinGamePanel")]
+    [Tooltip("真正全遮挡的战斗加载界面（BattleLoadingScreen）：上下两条带滑入 → 惯性漂移 + 饰纹自转 + xx% → 迅速滑出 → 切场景。")]
+    public BattleLoadingScreen battleLoading;
+
     enum State { Idle, Searching, Found, WaitingOpponent }
     State _state;
     float _countdown;
     bool _iAccepted, _iAmHost, _joining;
     string _oppName;
+    bool _oppStatsKnown;
+    int _oppTotal, _oppStreak;
+    double _oppWinRate;
     CSteamID _lobbyID;
     Coroutine _searchCoroutine, _bgSearchCoroutine;
     float _retryTimer, _bgSearchTimer;
@@ -103,6 +117,7 @@ public class QuickMatchPanel : MonoBehaviour
     void ResetState()
     {
         _state = State.Idle; _countdown = 15f; _iAccepted = false; _iAmHost = false; _joining = false; _oppName = "";
+        _oppStatsKnown = false;
         _foundHold = 0f; _goLatched = false;
         if (opponentInfoGroup) opponentInfoGroup.SetActive(false);
         if (acceptButton) { acceptButton.gameObject.SetActive(false); acceptButton.interactable = true; }
@@ -309,6 +324,9 @@ public class QuickMatchPanel : MonoBehaviour
         if (opp == null || string.IsNullOrEmpty(opp.playerName)) return;
         // 捕获对手 SteamID（Host 用于加载对方头像；Client 时 opp.steamID=HostSteamID，等效）
         if (opp.steamID != 0) LobbyConfig.RemoteSteamID = opp.steamID;
+        // 对手战绩（加载界面要展示）—— 放在下面那个 Found 早退之前，重复刷新也保持最新
+        _oppTotal = opp.totalMatches; _oppWinRate = opp.winRate; _oppStreak = opp.winStreak;
+        _oppStatsKnown = true;
         if (_state == State.Found || _state == State.WaitingOpponent) return;
 
         Debug.Log($"[QM] ★★★ 已找到对手: {opp.playerName} steamID={opp.steamID} matches={opp.totalMatches} ★★★");
@@ -535,7 +553,10 @@ public class QuickMatchPanel : MonoBehaviour
             if (panelRoot) panelRoot.SetActive(false);
             if (compactWait != null) compactWait.Hide();
             if (confirmPanel != null) confirmPanel.Hide();
-            JoinGamePanel.Instance?.Open();
+            // 双方确认后的「真正加载界面」顶替原来的 JoinGamePanel（2026-09-27 用户）；
+            // 没接的时候退回 JoinGamePanel，行为不变。
+            if (battleLoading != null) battleLoading.Open();
+            else JoinGamePanel.Instance?.Open();
         }
     }
 
