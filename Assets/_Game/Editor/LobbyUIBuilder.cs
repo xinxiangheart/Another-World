@@ -676,6 +676,7 @@ public static class LobbyUIBuilder
     const string SubLayerName = "Layer_Sub_v1";
     const string HudLayerName = "Layer_Hud_v1";
     const string CommonBgPath = "Assets/_Game/Art/Sprites/Generated/common-bg-v1/CommonBack_A_clean.png";
+    static readonly Vector2 AnchorBL = new Vector2(0f, 0f);   // 屏幕左下角（左下角那行常驻 ID 用）
     const string CloseIconPath = UiDir + "Icon_Close.png";
     const string CloseIconHoverPath = UiDir + "Icon_CloseHover.png";
 
@@ -787,6 +788,20 @@ public static class LobbyUIBuilder
         Selection.activeGameObject = panel;
         EditorSceneManager.MarkSceneDirty(canvas.gameObject.scene);
     }
+    // ── 左下角常驻玩家 ID（2026-09-27 用户：「左下角会常态以小字显示自己id」）────────────
+    const string IdTagName = "Text_PlayerId";
+    const float  IdTagX = 64f;        // 距左边框
+    const float  IdTagY = 26f;        // 距下边框
+    const float  IdTagFont = 24f;
+    const string IdTagPrefix = "ID  ";
+    const string IdTagToastName = "Text_CopyToast";
+    const string IdTagToastMsg  = "已复制到剪贴板";
+    const float  IdTagToastX = 380f;      // 提示语距 ID 行左端
+    const float  IdTagToastW = 520f;
+    static readonly Color IdTagColor      = new Color32(240, 232, 210, 140);   // 常态：奶油 #F0E8D2 · 55%
+    static readonly Color IdTagHoverColor = new Color32(252, 246, 228, 205);   // 悬停：只微亮一档，不换色相
+    static readonly Color IdTagToastColor = new Color32(228, 203, 132, 255);   // 提示语：本套亮金 #E4CB84
+
     const string OtherPanelName = "Panel_Other";
 
     /// <summary>「其它」子全屏弹窗：与 Panel_Battle 同一个壳（通用背景 + 通用关闭叉），
@@ -859,6 +874,99 @@ public static class LobbyUIBuilder
         }
         return list.ToArray();
     }
+
+    /// <summary>左下角那行常驻小字：显示自己的「异界号」；点击复制到剪贴板 + 右侧弹一句提示；悬停微亮。
+    /// 挂进 HUD 层（Canvas 最后一层 ⇒ 全屏子弹窗压不住它）；文字内容运行时由 <see cref="LobbyPlayerIdTag"/>
+    /// 从 SteamDataManager 现取。幂等：已有就只改位置 / 字号 / 颜色 / 补提示语子物体。</summary>
+    [MenuItem("Tools/异界/大厅：加左下角常驻玩家 ID")]
+    public static void AddPlayerIdTagMenu()
+    {
+        Canvas canvas = Object.FindObjectOfType<Canvas>();
+        if (canvas == null) { Debug.LogError("[LobbyUI] 当前场景没有 Canvas —— 请先打开 Assets/_Game/Scenes/Lobby.unity"); return; }
+
+        _font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontPath);
+        if (_font == null) Debug.LogWarning($"[LobbyUI] 找不到字体 {FontPath}，中文会落到 TMP 默认字体");
+
+        Transform sub, hud;
+        EnsureUiLayers(canvas, out sub, out hud);
+
+        Transform t = hud.Find(IdTagName);
+        TextMeshProUGUI text;
+        if (t == null)
+        {
+            RectTransform rt = NewRect(hud, IdTagName, AnchorBL, AnchorBL, new Vector2(IdTagX, IdTagY), new Vector2(600f, 34f));
+            Undo.RegisterCreatedObjectUndo(rt.gameObject, "加左下角玩家 ID");
+            text = rt.gameObject.AddComponent<TextMeshProUGUI>();
+        }
+        else
+        {
+            text = t.GetComponent<TextMeshProUGUI>();
+            if (text == null) text = t.gameObject.AddComponent<TextMeshProUGUI>();
+            Undo.RecordObject(text, "左下角玩家 ID");
+            var rt = (RectTransform)t;
+            rt.anchorMin = AnchorBL; rt.anchorMax = AnchorBL; rt.pivot = AnchorBL;
+            rt.anchoredPosition = new Vector2(IdTagX, IdTagY);
+            rt.sizeDelta = new Vector2(600f, 34f);
+        }
+
+        text.font = _font;
+        text.text = "";                                   // 运行时由 LobbyPlayerIdTag 填
+        text.fontSize = IdTagFont;
+        text.color = IdTagColor;
+        text.alignment = TextAlignmentOptions.BottomLeft;
+        text.enableWordWrapping = false;
+        text.overflowMode = TextOverflowModes.Overflow;
+        text.raycastTarget = true;                        // 要接悬停 / 点击（只是显示，所以以前关掉了）
+
+        // 提示语：ID 行的子物体（跟着一起走）；raycastTarget = false —— 别把父物体的悬停 / 点击抢走
+        TextMeshProUGUI toast = null;
+        Transform tt = text.transform.Find(IdTagToastName);
+        if (tt == null)
+        {
+            RectTransform trt = NewRect(text.transform, IdTagToastName, AnchorBL, AnchorBL,
+                                        new Vector2(IdTagToastX, 0f), new Vector2(IdTagToastW, 34f));
+            Undo.RegisterCreatedObjectUndo(trt.gameObject, "加复制提示语");
+            toast = trt.gameObject.AddComponent<TextMeshProUGUI>();
+        }
+        else
+        {
+            toast = tt.GetComponent<TextMeshProUGUI>();
+            if (toast == null) toast = tt.gameObject.AddComponent<TextMeshProUGUI>();
+            Undo.RecordObject(toast, "复制提示语");
+            var trt = (RectTransform)tt;
+            trt.anchorMin = AnchorBL; trt.anchorMax = AnchorBL; trt.pivot = AnchorBL;
+            trt.anchoredPosition = new Vector2(IdTagToastX, 0f);
+            trt.sizeDelta = new Vector2(IdTagToastW, 34f);
+        }
+        toast.font = _font;
+        toast.text = IdTagToastMsg;                       // 编辑器里能看清写的是什么；运行时 alpha 归 0 后才显示
+        toast.fontSize = IdTagFont;
+        toast.color = new Color(IdTagToastColor.r, IdTagToastColor.g, IdTagToastColor.b, 0f);
+        toast.alignment = TextAlignmentOptions.MidlineLeft;
+        toast.enableWordWrapping = false;
+        toast.overflowMode = TextOverflowModes.Overflow;
+        toast.raycastTarget = false;
+
+        var tag = text.GetComponent<LobbyPlayerIdTag>();
+        if (tag == null) tag = text.gameObject.AddComponent<LobbyPlayerIdTag>();
+        tag.label = text;
+        tag.prefix = IdTagPrefix;
+        tag.pending = "";
+        tag.normalColor = IdTagColor;
+        tag.hoverColor = IdTagHoverColor;
+        tag.toastText = toast;
+        tag.toastMessage = IdTagToastMsg;
+        tag.toastColor = IdTagToastColor;
+        tag.toastOffsetX = IdTagToastX;
+        EditorUtility.SetDirty(tag);
+
+        EditorSceneManager.MarkSceneDirty(canvas.gameObject.scene);
+        Debug.Log("[LobbyUI] 左下角常驻玩家 ID 已就位：" + HudLayerName + "/" + IdTagName +
+                  "（锚左下角 · 距边 " + IdTagX + "/" + IdTagY + " · 字号 " + IdTagFont + "）。" +
+                  "点击 = 复制 ID 到剪贴板 + 右侧弹「" + IdTagToastMsg + "」；悬停微亮。提示语 = 它的子物体 " + IdTagToastName + "。" +
+                  "位置 / 字号 / 颜色改本方法顶上的 IdTag* 常量。");
+    }
+
 
     /// <summary>通用子全屏弹窗的壳：全屏通用背景 +（可选标题 / 提示）+ 右上角通用关闭叉 + 留给内容的大框。</summary>
     static GameObject BuildSubPanel(Transform parent, GameObject hudLayer, string name, string title, bool rebuild = false, bool withHeader = true)
