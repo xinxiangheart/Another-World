@@ -98,13 +98,19 @@ public class LobbyManager : MonoBehaviour
         JoinRoomPanel.Instance?.Open();
     }
 
+    /// <summary>AI 对战（场景里那块隐藏的旧按钮）：与「其它」子弹窗的「离线模式」同一条路。</summary>
+    public void StartAIBattle() { EnterOfflineBattle(); }
+
     /// <summary>
-    /// AI 对战：离线单机模式。设 FromLobby=false（走离线 Host + AI 对手），
-    /// 复用 Preloader 异步加载 Game 场景（无对手头像/倒计时）。
+    /// 离线模式：不联机、直接进 Game 场景（「其它」子弹窗那张卡走这里 —— 用户 2026-09-27
+    /// 「现在做其它，和战斗点开几乎一模一样，只是目前只有一个『离线模式』点击后直接跳转到 Game 场景」）。
+    ///
+    /// 画面走战斗加载界面（BattleLoadingScreen，删掉黑幕后唯一全遮挡的界面）那套滑入 / 进度 / 滑出；
+    /// 它缺席时退回裸场景加载。配置沿用旧 StartAIBattle：FromLobby=false → AutoConnect 起本地 KCP Host + 挂 AI。
     /// </summary>
-    public void StartAIBattle()
+    public static void EnterOfflineBattle()
     {
-        Debug.Log("[Lobby] StartAIBattle — 进入 AI 对战");
+        Debug.Log("[Lobby] 离线模式 — 直接进入战斗场景");
         LobbyConfig.FromLobby = false; // 离线 Host 模式（AutoConnect 会 StartHost）
         LobbyConfig.IsAI = true;
 
@@ -115,7 +121,10 @@ public class LobbyManager : MonoBehaviour
             go.AddComponent<Preloader>();
         }
         Preloader.Instance.StartPreload();
-        Preloader.Instance.LoadGameScene();
+
+        var bl = UnityEngine.Object.FindObjectOfType<BattleLoadingScreen>(true);
+        if (bl != null) bl.OpenOffline();
+        else Preloader.Instance.LoadGameScene();
     }
 
     public void ReturnToWelcome()

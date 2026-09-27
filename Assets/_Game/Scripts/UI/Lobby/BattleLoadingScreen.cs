@@ -113,6 +113,7 @@ public class BattleLoadingScreen : MonoBehaviour
     Vector2 _restTop, _restBottom;
     bool _restCached;
     bool _finished;
+    bool _offline;                // 离线模式（对手半区写「AI 对手」，没有真实对手数据）
 
     GameObject _persistentRoot;   // 进度 100% 后整块搬过去的那张常驻画布（见 MoveToPersistentCanvas）
     bool _handedOff;
@@ -148,9 +149,17 @@ public class BattleLoadingScreen : MonoBehaviour
     // ===================== 开关 =====================
 
     /// <summary>双方确认后由 QuickMatchPanel 调 —— 顶替原来的 JoinGamePanel。</summary>
-    public void Open()
+    public void Open() { OpenInternal(false); }
+
+    /// <summary>离线模式（「其它」子弹窗里那张卡）：对手那半区写「AI 对手」，其余照旧。
+    /// 用户 2026-09-27：「现在做其它，和战斗点开几乎一模一样，只是目前只有一个『离线模式』点击后直接跳转到 Game 场景」。
+    /// 直接跳场景那一步在 LobbyManager.EnterOfflineBattle；这里只负责把遮挡界面播起来。</summary>
+    public void OpenOffline() { OpenInternal(true); }
+
+    void OpenInternal(bool offline)
     {
         if (IsOpen) return;
+        _offline = offline;
         CacheRest();
         EnsurePreloader();
         if (Preloader.Instance != null) Preloader.Instance.StartPreload();   // 幂等：MatchConfirmPanel 已经起过就不再起
@@ -388,7 +397,7 @@ public class BattleLoadingScreen : MonoBehaviour
         SetRow(localStreakLabel, localStreakValue, "连胜", sd != null ? sd.playerData.winStreak.ToString() : emptyNumber);
 
         // 对方（右上）
-        SetText(oppNameText, (qm != null && !string.IsNullOrEmpty(qm.opponentName)) ? qm.opponentName : "对手");
+        SetText(oppNameText, _offline ? "AI 对手" : ((qm != null && !string.IsNullOrEmpty(qm.opponentName)) ? qm.opponentName : "对手"));
         SetText(oppTitleText, titlePlaceholder);
         ApplyAvatar(oppAvatar, qm != null ? qm.opponentTexture as Texture2D : null);
         bool ok = qm != null && qm.opponentStatsKnown;

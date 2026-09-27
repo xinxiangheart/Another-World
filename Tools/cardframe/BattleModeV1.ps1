@@ -11,9 +11,11 @@
 # 产物（Assets/_Game/Art/Sprites/Generated/battle-mode-v1/）
 #   BattleModeCard_Match.png        900x1260 贴图 = 屏幕 300x420（$S=3）
 #   BattleModeCard_Ranked.png       同上
+#   BattleModeCard_Offline.png      同上（**其它子弹窗**里那张「离线模式」）
 #   BattleModeCard_MatchHover.png   悬停态；同上尺寸
 #   BattleModeCard_RankedHover.png  悬停态；同上尺寸
-#   ---- 两张只差徽记：文字在场景里是 TMP（不进贴图），贴图只出「标题槽 + 分隔线 + 徽记」----
+#   BattleModeCard_OfflineHover.png 悬停态；同上尺寸
+#   ---- 三张只差徽记：文字在场景里是 TMP（不进贴图），贴图只出「标题槽 + 分隔线 + 徽记」----
 #   ---- 悬停态只差色调（2026-09-27）：石面提亮 + 金 GOLD->GOLD_L + 金饰 α 上调；形体不动 -> 切换不跳位 ----
 #
 # 卡面版式（贴图 px，画布 900x1260）：
@@ -23,9 +25,10 @@
 #   徽记      : 圆心 (w/2, 0.655h)，半径 0.195w = 175.5 贴图 px（屏幕 58.5）—— 金线，α225
 #   收尾细线  : y=0.885h，居中短横线（呼应入口板标题下的那道短线）
 #
-# 两个徽记（金线勾形，圆角接头）：
-#   match  「匹配」= 两个相对的箭头 + 中央一枚菱形铆钉  —— 撮合 / 相遇
-#   ranked「排位」= 三级上升台阶连成一条折线 + 顶端一枚菱形 —— 段位晋升
+# 三个徽记（金线勾形，圆角接头）：
+#   match  「匹配」    = 两个相对的箭头 + 中央一枚菱形铆钉  —— 撮合 / 相遇
+#   ranked 「排位」    = 三级上升台阶连成一条折线 + 顶端一枚菱形 —— 段位晋升
+#   offline「离线模式」= 左右各留一道缺口的圆环 + 中央菱形铆钉 —— 没连线 / 不在网里
 #   （刻意避开库里已有的：战斗=双三角 / 成就=奖章 / 赛季=盾徽 / 战绩=三根分离柱+基线）
 #
 # 预览（Tools/cardframe/preview/）：
@@ -110,6 +113,13 @@ function New-ModeEmblem($g, [string]$kind, [single]$cx, [single]$cy, [single]$r,
     # 顶端（最高一级）上方一枚菱形
     $dm = New-Diamond ($x0 + 2.5 * $bw) ($base - $hs[2] * $r - $r * 0.34) ($r * 0.20)
     $g.DrawPath($pen, $dm); $dm.Dispose()
+  } elseif ($kind -eq 'offline') {
+    # 左右各留一道缺口的圆环（= 没连线 / 不在网里）+ 中央菱形铆钉
+    $rr = $r * 0.82
+    $rect = New-Object System.Drawing.RectangleF(($cx - $rr), ($cy - $rr), ($rr * 2), ($rr * 2))
+    foreach ($a0 in @(38, 218)) { $g.DrawArc($pen, $rect, $a0, 124) }
+    $dm = New-Diamond $cx $cy ($r * 0.26)
+    $g.DrawPath($pen, $dm); $dm.Dispose()
   } else {
     throw "New-ModeEmblem: 没有 '$kind' 这个徽记"
   }
@@ -171,11 +181,12 @@ function New-BattleModeCard([string]$out, [string]$kind, [switch]$hover) {
 
 # ── 预览：两张卡 1:1（含 TMP 文字的真实版式）+ 徽记放大 + 尺寸标注 ────────────
 $MODE_META = @(
-  @{ kind = 'match';  file = 'BattleModeCard_Match.png';  hover = 'BattleModeCard_MatchHover.png';  label = '匹配'; tip = '两个相对的箭头 + 中央菱形铆钉 —— 撮合 / 相遇' },
-  @{ kind = 'ranked'; file = 'BattleModeCard_Ranked.png'; hover = 'BattleModeCard_RankedHover.png'; label = '排位'; tip = '三级上升台阶 + 顶端菱形 —— 段位晋升' }
+  @{ kind = 'match';   file = 'BattleModeCard_Match.png';   hover = 'BattleModeCard_MatchHover.png';   label = '匹配';     tip = '两个相对的箭头 + 中央菱形铆钉 —— 撮合 / 相遇' },
+  @{ kind = 'ranked';  file = 'BattleModeCard_Ranked.png';  hover = 'BattleModeCard_RankedHover.png';  label = '排位';     tip = '三级上升台阶 + 顶端菱形 —— 段位晋升' },
+  @{ kind = 'offline'; file = 'BattleModeCard_Offline.png'; hover = 'BattleModeCard_OfflineHover.png'; label = '离线模式'; tip = '缺口圆环 + 中央菱形 —— 没连线 / 不在网里' }
 )
 function New-BattleModeSheet([string]$dir, [string]$out) {
-  $CW = 1560; $CH = 1340
+  $CW = 1900; $CH = 1340
   $b = New-Object System.Drawing.Bitmap($CW, $CH, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
   $g = [System.Drawing.Graphics]::FromImage($b)
   $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
@@ -184,15 +195,15 @@ function New-BattleModeSheet([string]$dir, [string]$out) {
   $bs = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 9, 12, 18))
   $g.FillRectangle($bs, 0, 0, $CW, $CH); $bs.Dispose()
 
-  Put-Text $g '战斗模式卡 v1 —— 「匹配」「排位」（上排常态 / 下排悬停态）' 40 26 32
+  Put-Text $g '战斗模式卡 v1 —— 「匹配」「排位」「离线模式」（上排常态 / 下排悬停态）' 40 26 32
   Put-Text $g '卡 300x420 屏幕 px（贴图 3x = 900x1260）· 深蓝黑石面 + 一条金细线 · 母题：菱形铆钉 / 平板' 40 70 20 176
-  Put-Text $g '文字是场景里的 TMP，不进贴图 —— 这里按最终版式画上去，给你看落点与字号；两张只差徽记' 40 100 20 176
+  Put-Text $g '文字是场景里的 TMP，不进贴图 —— 这里按最终版式画上去，给你看落点与字号；三张只差徽记' 40 100 20 176
   Put-Text $g '悬停态 = 石面提亮 + 金线 GOLD->GOLD_L（同一配方）；形体不动 -> 不跳位。标题变金由场景里的 TMP 负责。' 40 130 19 196
 
   # 上排 = 常态，下排 = 悬停态；卡间距 60 = 场景里两卡之间的净距（见 BattleModeCards.gap）
   $cyA = 190.0
   $cyB = 190.0 + $CARD_H + 96
-  $x = 150.0
+  $x = 110.0
   foreach ($m in $MODE_META) {
     foreach ($pair in @(@($m.file, $cyA, 236, $null, '常态'), @($m.hover, $cyB, 255, @(232, 209, 138), '悬停'))) {
       $im = [System.Drawing.Image]::FromFile((Join-Path $dir $pair[0]))
@@ -203,24 +214,24 @@ function New-BattleModeSheet([string]$dir, [string]$out) {
     }
     $x += $CARD_W + 60
   }
-  # 间距标注
+  # 间距标注（前两张之间 = 场景里的 gap）
   $pen = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(150, 200, 164, 74)), 1
-  $g.DrawLine($pen, 150, ($cyA - 22), 810, ($cyA - 22))
-  $g.DrawLine($pen, 450, ($cyA - 28), 450, ($cyA - 16))
-  $g.DrawLine($pen, 510, ($cyA - 28), 510, ($cyA - 16))
+  $g.DrawLine($pen, 110, ($cyA - 22), 470, ($cyA - 22))
+  $g.DrawLine($pen, 410, ($cyA - 28), 410, ($cyA - 16))
+  $g.DrawLine($pen, 470, ($cyA - 28), 470, ($cyA - 16))
   $pen.Dispose()
-  Put-TextC $g '净距 60' 480 ($cyA - 40) 18 200
-
-  # 右栏：两个徽记放大 1.2x（单独看图案）
-  $ex = 1210.0
-  $er = 195.0
+  Put-TextC $g '净距 60' 440 ($cyA - 40) 18 200
+  # 右栏：三个徽记放大（单独看图案）
+  $ex = 1500.0
+  $er = 120.0
   Put-TextC $g '徽记 · 放大看图案' $ex 150 22 210
-  New-ModeEmblem $g 'match' $ex 290 $er
-  Put-TextC $g '匹配' $ex 430 30
-  Put-TextC $g '两个相对的箭头 + 中央菱形铆钉 —— 撮合 / 相遇' $ex 462 17 170
-  New-ModeEmblem $g 'ranked' $ex 775 $er
-  Put-TextC $g '排位' $ex 950 30
-  Put-TextC $g '三级上升台阶 + 顶端菱形 —— 段位晋升' $ex 982 17 170
+  $ey = 280.0
+  foreach ($m in $MODE_META) {
+    New-ModeEmblem $g $m.kind $ex $ey $er
+    Put-TextC $g $m.label $ex ($ey + 160) 30
+    Put-TextC $g $m.tip $ex ($ey + 192) 17 170
+    $ey += 330
+  }
   $g.Dispose()
   $b.Save($out, [System.Drawing.Imaging.ImageFormat]::Png); $b.Dispose()
   return $out

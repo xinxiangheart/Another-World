@@ -783,21 +783,49 @@ public static class LobbyUIBuilder
         Selection.activeGameObject = panel;
         EditorSceneManager.MarkSceneDirty(canvas.gameObject.scene);
     }
+    const string OtherPanelName = "Panel_Other";
 
-    /// <summary>把「战斗」入口板的点击目标接到子全屏弹窗上（重建面板后必调 —— 见 BuildBattleSubPanelMenu 里的注释）。</summary>
-    static void WireBattleEntryToPanel(Canvas canvas, GameObject panel)
+    /// <summary>「其它」子全屏弹窗：与 Panel_Battle 同一个壳（通用背景 + 通用关闭叉），
+    /// 内容只有一张模式卡「离线模式」—— 点它直接进 Game 场景（离线 Host + AI 对手）。
+    /// 用户 2026-09-27：「现在做其它，和战斗点开几乎一模一样，只是目前只有一个『离线模式』点击后直接跳转到 Game 场景」。</summary>
+    [MenuItem("Tools/异界/大厅：生成「其它」子全屏弹窗（离线模式）")]
+    public static void BuildOtherSubPanelMenu()
+    {
+        Canvas canvas = Object.FindObjectOfType<Canvas>();
+        if (canvas == null) { Debug.LogError("[LobbyUI] 当前场景没有 Canvas —— 请先打开 Assets/_Game/Scenes/Lobby.unity"); return; }
+
+        Transform sub, hud;
+        EnsureUiLayers(canvas, out sub, out hud);
+        // 壳与 Panel_Battle 完全一致（withHeader:false = 不出标题 / 占位提示）
+        GameObject panel = BuildSubPanel(sub, hud.gameObject, OtherPanelName, "其它", true, false);
+        BattleModeCardsBuilder.BuildOfflineCard(panel);
+        WireEntryToPanel(canvas, "Entry_More", panel, "其它");
+        Selection.activeGameObject = panel;
+        EditorSceneManager.MarkSceneDirty(canvas.gameObject.scene);
+        Debug.Log("[LobbyUI] 已生成 Panel_Other（全屏子弹窗）：壳与 Panel_Battle 一致（CommonBack_A_clean + 通用关闭叉），" +
+                  "内容 = 一张「离线模式」模式卡（BattleModeCardsBuilder.BuildOfflineCard）；Entry_More（其它）已接到它。");
+    }
+
+
+    /// <summary>把某块入口板的点击目标接到子全屏弹窗上（重建面板后必调 —— 见 BuildBattleSubPanelMenu 里的注释）。</summary>
+    static void WireEntryToPanel(Canvas canvas, string entryName, GameObject panel, string title)
     {
         if (canvas == null || panel == null) return;
         var sub = panel.GetComponent<LobbySubPanel>();
-        Transform entry = FindDeep(canvas.transform, "Entry_Battle");
-        if (entry == null) { Debug.LogWarning("[LobbyUI] 找不到 Entry_Battle —— 战斗入口板的点击没接上子全屏弹窗"); return; }
+        Transform entry = FindDeep(canvas.transform, entryName);
+        if (entry == null) { Debug.LogWarning("[LobbyUI] 找不到 " + entryName + " —— 入口板的点击没接上子全屏弹窗"); return; }
         var hover = entry.GetComponent<LobbyPlateHover>();
-        if (hover == null) { Debug.LogWarning("[LobbyUI] Entry_Battle 上没有 LobbyPlateHover —— 点击没接上"); return; }
+        if (hover == null) { Debug.LogWarning("[LobbyUI] " + entryName + " 上没有 LobbyPlateHover —— 点击没接上"); return; }
         hover.subPanel = sub;
         hover.popup = null;          // 有子全屏弹窗就别再退回占位弹窗
-        hover.title = "战斗";
+        hover.title = title;
         EditorUtility.SetDirty(hover);
-        Debug.Log("[LobbyUI] Entry_Battle → " + panel.name + " 的点击引用已重接（原来指向已被销毁的旧组件时会是 null）。");
+        Debug.Log("[LobbyUI] " + entryName + " → " + panel.name + " 的点击引用已重接（原来指向已被销毁的旧组件时会是 null）。");
+    }
+
+    static void WireBattleEntryToPanel(Canvas canvas, GameObject panel)
+    {
+        WireEntryToPanel(canvas, "Entry_Battle", panel, "战斗");
     }
 
     /// <summary>那几个**没有底衬**、直接压在墙上的 HUD 图标 —— 开子全屏弹窗时临时藏掉。</summary>

@@ -3,8 +3,8 @@ using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using TMPro;
 
-/// <summary>战斗子弹窗里的模式卡（匹配 / 排位）：悬停换预提亮的贴图 + 标题变金；点击进流程。
-/// **未连接 Steam 时**：标题置灰、悬停不给金、点击不进入匹配 / 排位。</summary>
+/// <summary>子弹窗里的模式卡（战斗面板：匹配 / 排位；「其它」面板：离线模式）：悬停换预提亮的贴图 + 标题变金；点击进流程。
+/// **未连接 Steam 时**：标题置灰、悬停不给金、点击不进入匹配 / 排位（**离线模式不受这条限制**）。</summary>
 /// <remarks>2026-09-27 用户：「接入鼠标悬停交互（变金色），匹配点击后退出这个子弹窗进入之前做好的匹配流程，在大厅等待匹配」；
 /// 同日追加「若玩家未连接 steam，匹配和排位本身字体将会变成灰色并无法点击进入匹配或排位」+
 /// 「在匹配或者排位中再次点击匹配或者排位是不会再次进入匹配或者排位进程」。
@@ -14,10 +14,11 @@ using TMPro;
 /// （卡上 Text_Title 的 raycastTarget 在接线时置 false）。
 ///
 /// 点「匹配」= 关掉所在子弹窗 + QuickMatchPanel.Open()（匹配逻辑照旧，界面换成 MatchWaitPanel 小窗）。
-/// 点「排位」= 暂时走占位弹窗（排位赛还没做）。</remarks>
+/// 点「排位」= 暂时走占位弹窗（排位赛还没做）。
+/// 点「离线模式」（挂在「其它」子弹窗里）= 关掉子弹窗 + LobbyManager.EnterOfflineBattle()，直接进 Game 场景。</remarks>
 public class BattleModeCardButton : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler, IPointerClickHandler
 {
-    public enum Kind { QuickMatch, Ranked }
+    public enum Kind { QuickMatch, Ranked, Offline }
 
     [Header("这张卡是谁")]
     public Kind kind = Kind.QuickMatch;
@@ -48,6 +49,9 @@ public class BattleModeCardButton : MonoBehaviour, IPointerEnterHandler, IPointe
 
     bool _disabled;
 
+    /// <summary>这张卡要不要 Steam 连接（匹配 / 排位要；离线模式不要 —— 它本来就是给没连 Steam 的人用的）。</summary>
+    public bool RequiresSteam { get { return kind != Kind.Offline; } }
+
     static bool SteamReady()
     {
         if (steamGateOverride != null) return steamGateOverride();
@@ -74,7 +78,7 @@ public class BattleModeCardButton : MonoBehaviour, IPointerEnterHandler, IPointe
     /// <summary>按 Steam 连接状态切「可用 / 置灰」。未连接 = 灰字 + 点不动（悬停也不变金）。</summary>
     public void RefreshGate()
     {
-        _disabled = !SteamReady();
+        _disabled = RequiresSteam && !SteamReady();
         ApplyNormal();
     }
 
@@ -90,6 +94,15 @@ public class BattleModeCardButton : MonoBehaviour, IPointerEnterHandler, IPointe
             Debug.Log("[BattleModeCard] 未连接 Steam —— 「" + kind + "」置灰不可点");
             return;
         }
+        // 离线模式（用户 2026-09-27：「只有一个『离线模式』，点击后直接跳转到 Game 场景」）：
+        // 不联机、不进匹配池 —— 关掉所在子弹窗，直接走离线开局那条路。
+        if (kind == Kind.Offline)
+        {
+            if (panel != null) panel.Close();
+            LobbyManager.EnterOfflineBattle();
+            return;
+        }
+
 
         var qm = QuickMatchPanel.Instance;
 
