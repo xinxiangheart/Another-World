@@ -679,7 +679,12 @@ public static class LobbyUIBuilder
     //                   内容顶距屏幕 128（让开右上横栏那 95）—— 关闭叉与标题同一行，都在 128
     const float SubPanelPadX = 64f;
     const float SubPanelTop = 128f;
-    const float SubPanelCloseSize = 56f;
+    // 2026-09-27：关闭叉改到右上角**邮件那一格**（用户「叉ui改到右上角和邮箱位置一样」）——
+    // 锚右上（AnchorTR + PivotTL），与 Plate_TopBand / Icon_Mail 同一坐标系：
+    //   横栏 left = 屏右 - 538，邮件 left = 横栏 left + 370 = 屏右 - 168、top = 屏顶 - 66、60x60
+    const float SubPanelCloseX = -168f;
+    const float SubPanelCloseY = -66f;
+    const float SubPanelCloseSize = 60f;
 
     [MenuItem("Tools/异界/大厅：分层（HUD 常驻层 + 全屏子弹窗层）")]
     public static void ApplyUiLayers()
@@ -752,16 +757,79 @@ public static class LobbyUIBuilder
 
         Transform sub, hud;
         EnsureUiLayers(canvas, out sub, out hud);
-        GameObject panel = BuildSubPanel(sub, hud.gameObject, "Panel_Battle", "战斗", true);
+        GameObject panel = BuildSubPanel(sub, hud.gameObject, "Panel_Battle", "战斗", true, false);
+        // ⚠ 重建会把旧的 LobbySubPanel 组件销毁 —— 入口板上那条 subPanel 引用会被序列化成 null，
+        //   点击就退回占位弹窗（2026-09-27 用户实测踩到）。所以重建后必须由**本菜单自己**把引用接回去。
+        WireBattleEntryToPanel(canvas, panel);
         Selection.activeGameObject = panel;
         EditorSceneManager.MarkSceneDirty(canvas.gameObject.scene);
-        Debug.Log("[LobbyUI] 已生成 Panel_Battle（全屏子弹窗）：通用背景 CommonBack_A_clean + 标题 + 通用关闭叉（Icon_Close）；" +
-                  "内容区 = Body_Content（只限位、不画东西）；关闭叉位置改 SubPanelCloseSize / 那两个 64/128；" +
-                  "要让这个面板把 HUD 也藏掉就把 LobbySubPanel 的 hideHudOnOpen 勾上。");
+        Debug.Log("[LobbyUI] 已生成 Panel_Battle（全屏子弹窗）：通用背景 CommonBack_A_clean + 通用关闭叉（Icon_Close，右上角邮件格，锚右上 / 位置 SubPanelCloseX/Y / 尺寸 SubPanelCloseSize）；" +
+                  "本面板不出标题与提示（withHeader:false）；内容区 = Body_Content（只限位、不画东西）；" +
+                  "hideOnOpen 自动填「无底衬的 HUD 图标」（好友 / 商城 / 活动 / 教程 / 邮件），开面板时临时藏、关时还原；" +
+                  "要让这个面板把 HUD 也一起藏掉就把 LobbySubPanel 的 hideHudOnOpen 勾上。");
     }
 
-    /// <summary>通用子全屏弹窗的壳：全屏通用背景 + 标题 + 提示 + 右上角通用关闭叉 + 留给内容的大框。</summary>
-    static GameObject BuildSubPanel(Transform parent, GameObject hudLayer, string name, string title, bool rebuild = false)
+    /// <summary>把「战斗」入口板重接到子全屏弹窗 —— **不重建**面板，只修那条 null 引用。
+    /// （重建面板后入口板会指向已销毁的旧组件，点击就退回占位弹窗；那条路径见 BuildBattleSubPanelMenu。）</summary>
+    [MenuItem("Tools/异界/大厅：把「战斗」入口板重接到子全屏弹窗（修点到占位弹窗）")]
+    public static void RewireBattleEntryMenu()
+    {
+        Canvas canvas = Object.FindObjectOfType<Canvas>();
+        if (canvas == null) { Debug.LogError("[LobbyUI] 当前场景没有 Canvas —— 请先打开 Assets/_Game/Scenes/Lobby.unity"); return; }
+        Transform sub, hud;
+        EnsureUiLayers(canvas, out sub, out hud);
+        GameObject panel = BuildSubPanel(sub, hud.gameObject, "Panel_Battle", "战斗", false, false);   // rebuild:false = 已有就复用
+        WireBattleEntryToPanel(canvas, panel);
+        Selection.activeGameObject = panel;
+        EditorSceneManager.MarkSceneDirty(canvas.gameObject.scene);
+    }
+
+    /// <summary>把「战斗」入口板的点击目标接到子全屏弹窗上（重建面板后必调 —— 见 BuildBattleSubPanelMenu 里的注释）。</summary>
+    static void WireBattleEntryToPanel(Canvas canvas, GameObject panel)
+    {
+        if (canvas == null || panel == null) return;
+        var sub = panel.GetComponent<LobbySubPanel>();
+        Transform entry = FindDeep(canvas.transform, "Entry_Battle");
+        if (entry == null) { Debug.LogWarning("[LobbyUI] 找不到 Entry_Battle —— 战斗入口板的点击没接上子全屏弹窗"); return; }
+        var hover = entry.GetComponent<LobbyPlateHover>();
+        if (hover == null) { Debug.LogWarning("[LobbyUI] Entry_Battle 上没有 LobbyPlateHover —— 点击没接上"); return; }
+        hover.subPanel = sub;
+        hover.popup = null;          // 有子全屏弹窗就别再退回占位弹窗
+        hover.title = "战斗";
+        EditorUtility.SetDirty(hover);
+        Debug.Log("[LobbyUI] Entry_Battle → " + panel.name + " 的点击引用已重接（原来指向已被销毁的旧组件时会是 null）。");
+    }
+
+    /// <summary>那几个**没有底衬**、直接压在墙上的 HUD 图标 —— 开子全屏弹窗时临时藏掉。</summary>
+    static readonly string[] NoBackdropHudIcons = { "Icon_Friend", "Icon_Shop", "Icon_Event", "Icon_Tutorial", "Icon_Mail" };
+
+    static Transform FindDeep(Transform root, string name)
+    {
+        if (root == null) return null;
+        if (root.name == name) return root;
+        for (int i = 0; i < root.childCount; i++)
+        {
+            Transform r = FindDeep(root.GetChild(i), name);
+            if (r != null) return r;
+        }
+        return null;
+    }
+
+    static GameObject[] FindNoBackdropHudIcons(GameObject hudLayer)
+    {
+        var list = new List<GameObject>();
+        if (hudLayer == null) return list.ToArray();
+        foreach (string n in NoBackdropHudIcons)
+        {
+            Transform t = FindDeep(hudLayer.transform, n);
+            if (t != null) list.Add(t.gameObject);
+            else Debug.LogWarning("[LobbyUI] HUD 层里找不到 " + n + " —— hideOnOpen 会少一个");
+        }
+        return list.ToArray();
+    }
+
+    /// <summary>通用子全屏弹窗的壳：全屏通用背景 +（可选标题 / 提示）+ 右上角通用关闭叉 + 留给内容的大框。</summary>
+    static GameObject BuildSubPanel(Transform parent, GameObject hudLayer, string name, string title, bool rebuild = false, bool withHeader = true)
     {
         Transform old = parent.Find(name);
         if (old != null && !rebuild) return old.gameObject;   // 幂等：已经有的不重建（免得冲掉以后往里放的内容）
@@ -783,9 +851,13 @@ public static class LobbyUIBuilder
         bg.rectTransform.offsetMax = Vector2.zero;
         bg.raycastTarget = true;
 
-        panel.titleText = NewLabel(root, "Text_Title", title, new Vector2(SubPanelPadX, -SubPanelTop), new Vector2(720f, 64f), 48f);
-        TextMeshProUGUI hint = NewLabel(root, "Text_Hint", "占位 · 内容待接入", new Vector2(SubPanelPadX, -SubPanelTop - 78f), new Vector2(720f, 34f), 24f);
-        hint.color = new Color(240f / 255f, 232f / 255f, 210f / 255f, 0.62f);
+        // 2026-09-27：withHeader = false 就不出标题 / 占位提示（用户「左上角的战斗占位测试文字删掉」）。
+        if (withHeader)
+        {
+            panel.titleText = NewLabel(root, "Text_Title", title, new Vector2(SubPanelPadX, -SubPanelTop), new Vector2(720f, 64f), 48f);
+            TextMeshProUGUI hint = NewLabel(root, "Text_Hint", "占位 · 内容待接入", new Vector2(SubPanelPadX, -SubPanelTop - 78f), new Vector2(720f, 34f), 24f);
+            hint.color = new Color(240f / 255f, 232f / 255f, 210f / 255f, 0.62f);
+        }
 
         // 留给真实内容的大框（只限位、自己不画东西 —— 用法同 Entry_BottomRow）
         RectTransform body = NewRect(root, "Body_Content", Vector2.zero, PivotC, Vector2.zero, Vector2.zero);
@@ -796,7 +868,7 @@ public static class LobbyUIBuilder
 
         // 通用关闭叉：Icon_Close.png（Tools/cardframe/LobbyUIv1.ps1 出）+ 悬停换贴图 + Button → Close()
         RawImage close = NewRaw(root, "Btn_Close", CloseIconPath, AnchorTR, PivotTL,
-                                new Vector2(-SubPanelPadX, -SubPanelTop), new Vector2(SubPanelCloseSize, SubPanelCloseSize));
+                                new Vector2(SubPanelCloseX, SubPanelCloseY), new Vector2(SubPanelCloseSize, SubPanelCloseSize));
         var hover = close.gameObject.AddComponent<LobbyIconHover>();
         hover.icon = close;
         hover.normalTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(CloseIconPath);
@@ -812,6 +884,9 @@ public static class LobbyUIBuilder
 
         panel.hudLayer = hudLayer;
         panel.hideHudOnOpen = false;      // 默认：HUD 压在面板之上、一直可见
+        // 开窗时临时藏掉那几个**没有底衬**的 HUD 件（好友 / 商城 / 活动 / 教程 / 邮件）；
+        // 有底衬的（头像板 / 横栏 / 货币 / 齿轮 / 右下角入口条）照旧常驻 —— 用户 2026-09-27。
+        panel.hideOnOpen = FindNoBackdropHudIcons(hudLayer);
 
         root.SetAsLastSibling();
         // **存成 active**：在编辑器里就能直接看到版式、拖里面的东西；运行时由 LobbySubPanel.Start 的

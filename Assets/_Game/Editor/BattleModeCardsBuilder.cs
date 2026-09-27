@@ -76,6 +76,11 @@ public static class BattleModeCardsBuilder
         comp.gap = Gap;
         comp.anchorX = 0f;        // 最终位置贴左边框（用户 2026-09-27）
         comp.edgeMargin = 120f;   // 与左边框留出的那一段间隔
+        comp.delay = 0.06f;       // 迅速滑入（用户 2026-09-27：更快 + 更有「动态」感）
+        comp.duration = 0.42f;
+        comp.stagger = 0.07f;
+        comp.scaleFrom = 0.90f;
+        comp.ease = BattleModeCards.PunchEase();
         comp.cards = new RectTransform[Files.Length];
 
         for (int i = 0; i < Files.Length; i++)

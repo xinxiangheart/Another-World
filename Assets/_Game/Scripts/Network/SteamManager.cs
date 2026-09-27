@@ -177,7 +177,15 @@ public class SteamManager : MonoBehaviour {
 		}
 
 		// Run Steam client callbacks
-		SteamAPI.RunCallbacks();
+		// 2026-09-27：SteamAPI.Init() 半成功（脚本重载 / 回调分发器没起来）时 RunCallbacks 会每帧抛
+		// InvalidOperationException：Callback dispatcher is not initialized —— 刷爆 Console。这里兜住并停跑。
+		try {
+			SteamAPI.RunCallbacks();
+		}
+		catch (System.InvalidOperationException e) {
+			m_bInitialized = false;
+			Debug.LogWarning("[Steamworks.NET] CallbackDispatcher 未初始化，已停止 RunCallbacks（联机功能不可用，单人不受影响）：" + e.Message, this);
+		}
 	}
 #else
 	public static bool Initialized {

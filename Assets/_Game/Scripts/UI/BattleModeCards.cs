@@ -36,21 +36,52 @@ public class BattleModeCards : MonoBehaviour
 
     [Header("入场")]
     [Tooltip("开场延迟（秒）。")]
-    public float delay = 0.25f;
+    public float delay = 0.06f;
     [Tooltip("从屏幕右侧多远处滑入（屏幕 px，自屏幕右沿往外量）。")]
     public float slideFrom = 400f;
     [Tooltip("单张卡的滑入时长（秒）。")]
-    public float duration = 0.85f;
+    public float duration = 0.42f;
     [Tooltip("后一张比前一张晚多久起步（秒）。")]
-    public float stagger = 0.14f;
+    public float stagger = 0.07f;
     [Tooltip("缓动曲线。")]
-    public AnimationCurve ease = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
+    public AnimationCurve ease = PunchEase();
+    [Tooltip("起始缩放（1 = 不缩放）。滑入时从 scaleFrom 放到 1 —— 给「迅速 + 有力」再加一层动感。")]
+    public float scaleFrom = 0.90f;
 
     [Header("开关")]
     [Tooltip("勾上 = 本物体每次被启用（= 战斗子弹窗每次打开）都播一次滑入。")]
     public bool playOnEnable = true;
     [Tooltip("编辑器里改参数时，把卡摆在停位而不是起始位（方便对位）。")]
     public bool previewAtRest = true;
+
+    /// <summary>默认缓动：**冲过头再回坐**（0 → 1.025 → 0.988 → 1）。
+    /// 用户 2026-09-27「滑入是迅速滑入并且更有『动态』感」—— 光缩短时长会显得干，带一点过冲才有劲。
+    ///
+    /// 过冲距离 = (峰值 − 1) × 行程，行程 dx = 画布半宽 + slideFrom + 卡半宽 ≈ 2200（1920 宽下）；
+    /// 峰值 1.025 → 过冲 55px，组左沿从 120 走到 65，**不碰面板内缩金细框那条 x=46 的线**。
+    ///
+    /// **切线一律显式写成线性**（每段 in/out 切线 = 该段割线斜率）—— 这样三次 Hermite 退化成直线，
+    /// 峰值就**恰好**是 key 上的值。用 AddKey 默认的平滑切线会额外鼓出去：峰值 key 的 outSlope 仍是正的，
+    /// Hermite 在 0.52→0.80 段会冲到 1.063，过冲变 140px，左卡会被顶出屏幕左沿（2026-09-27 实测踩过）。
+    /// 另外调用方**不能**把曲线值 Clamp01，否则过冲会被裁掉。</summary>
+    public static AnimationCurve PunchEase()
+    {
+        // 段割线斜率：(0→0.52) 1.025/0.52、(0.52→0.80) (0.988−1.025)/0.28、(0.80→1.00) (1−0.988)/0.20
+        const float s0 = 1.025f / 0.52f;
+        const float s1 = (0.988f - 1.025f) / 0.28f;
+        const float s2 = (1f - 0.988f) / 0.20f;
+        var keys = new Keyframe[]
+        {
+            new Keyframe(0f,     0f,     0f, s0),
+            new Keyframe(0.52f,  1.025f, s0, s1),
+            new Keyframe(0.80f,  0.988f, s1, s2),
+            new Keyframe(1f,     1f,     s2, 0f),
+        };
+        var c = new AnimationCurve(keys);
+        c.preWrapMode = WrapMode.Clamp;
+        c.postWrapMode = WrapMode.Clamp;
+        return c;
+    }
 
     RectTransform _rt;
     float _canvasW = 1920f;
@@ -163,7 +194,13 @@ public class BattleModeCards : MonoBehaviour
 
         float startX = _canvasW * 0.5f + Mathf.Max(0f, slideFrom) + MaxHalfWidth();
         float dx = startX - _rest[i].x;
-        card.anchoredPosition = new Vector2(_rest[i].x + dx * (1f - Mathf.Clamp01(k)), _rest[i].y);
+        float kk = 1f - k;   // 不 Clamp：k > 1 就是「越过停位再回坐」的过冲（见 PunchEase）
+        card.anchoredPosition = new Vector2(_rest[i].x + dx * kk, _rest[i].y);
+        if (scaleFrom < 1f)
+        {
+            float s = Mathf.Lerp(scaleFrom, 1f, Mathf.Clamp01(k));
+            card.localScale = new Vector3(s, s, 1f);
+        }
     }
 
     /// <summary>最宽那张卡的一半宽度 —— 起始位要整张都在屏幕右沿之外。</summary>

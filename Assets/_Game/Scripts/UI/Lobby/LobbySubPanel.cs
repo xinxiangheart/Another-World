@@ -22,6 +22,10 @@ public class LobbySubPanel : MonoBehaviour
     [Header("标题")]
     public TextMeshProUGUI titleText;
 
+    [Header("开窗时临时藏掉的无底衬 HUD 件（好友 / 商城 / 活动 / 教程 / 邮件）")]
+    [Tooltip("这些件直接压在墙上、没有底衬，弹窗一开就和面板里的东西抢视线。开窗时 SetActive(false)，关窗还原原状态。")]
+    public GameObject[] hideOnOpen;
+
     [Header("HUD 例外（默认不勾 = HUD 压在面板之上、一直可见）")]
     [Tooltip("勾上 = 这个面板打开时把整个 HUD 层藏掉，关窗时还原。")]
     public bool hideHudOnOpen = false;
@@ -34,9 +38,33 @@ public class LobbySubPanel : MonoBehaviour
 
     public bool IsOpen { get { return gameObject.activeSelf; } }
 
+    bool[] _hideWasActive;
+
+    void Awake()
+    {
+        if (hideOnOpen != null)
+        {
+            _hideWasActive = new bool[hideOnOpen.Length];
+            for (int i = 0; i < hideOnOpen.Length; i++)
+                _hideWasActive[i] = hideOnOpen[i] != null && hideOnOpen[i].activeSelf;
+        }
+    }
+
     void Start()
     {
         if (closeOnStart) gameObject.SetActive(false);
+    }
+
+    /// <summary>按 <see cref="hideOnOpen"/> 藏 / 还原那几个无底衬 HUD 件。</summary>
+    void ApplyHide(bool hidden)
+    {
+        if (hideOnOpen == null) return;
+        for (int i = 0; i < hideOnOpen.Length; i++)
+        {
+            if (hideOnOpen[i] == null) continue;
+            bool want = hidden ? false : (_hideWasActive != null && i < _hideWasActive.Length ? _hideWasActive[i] : true);
+            hideOnOpen[i].SetActive(want);
+        }
     }
 
     /// <summary>开窗。可带一个新标题（不传就保持场景里那个）。</summary>
@@ -45,6 +73,7 @@ public class LobbySubPanel : MonoBehaviour
         if (titleText != null && !string.IsNullOrEmpty(title)) titleText.text = title;
 
         if (hideHudOnOpen && hudLayer != null) hudLayer.SetActive(false);
+        ApplyHide(true);
 
         gameObject.SetActive(true);
         // 同一层里后开的压在上面 —— HUD 层是 Canvas 的最后一个子物体，这里抬不出这一层，动不到 HUD
@@ -57,6 +86,7 @@ public class LobbySubPanel : MonoBehaviour
     public void Close()
     {
         gameObject.SetActive(false);
+        ApplyHide(false);
         if (hideHudOnOpen && hudLayer != null) hudLayer.SetActive(true);
     }
 
