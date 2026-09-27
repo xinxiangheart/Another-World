@@ -2470,6 +2470,33 @@ public static class LobbyUIBuilder
         const float  InviteChipAX     = 102f;    // 同意
         const float  InviteChipDX     = 222f;    // 拒绝
 
+    // ── 确认删除 / 确认拉黑：长条弹窗（2026-09-27）──────────────────────────────
+    // 用户：「删除好友和拉黑好友都有一个长子弹窗，上面是确认删除/拉黑（金色的好友名称），
+    //        下面是有子背景的确认和取消」。
+    // 长条比例：760x200 = 3.8:1 —— 比「收到邀请」小窗（420x144 = 2.92:1）再扁一档，
+    //   因为这一块只有「一行标题 + 一排两个键」，没有头像行。
+    // 层级：挂 Layer_Hud_v1（与 Panel_Invite / Panel_MatchWait 同级）—— 好友详情是全屏子弹窗，
+    //   确认窗必须压在它之上。**不画遮罩**：用户定的「左上 / 右上在弹窗里仍显示」，
+    //   一整块 Dim 会把头像与货币一起压黑。
+    const string CfPanelName  = "Panel_Confirm";
+    const string CfWindowName = "Window";
+    const string CfTitleName  = "Text_Title";
+    const string CfChipsName  = "Chips";
+    const string CfPlateTex   = UiDir + "LobbyConfirmPlate.png";
+        const float  CfWinW          = 760f;     // = LobbyConfirmPlate.png 贴图 760（存 1:1，不除 3）
+        const float  CfWinH          = 200f;
+        const float  CfTitleX        = 40f;      // 标题左让（宽 = 窗宽 - 80）
+        const float  CfTitleY        = -36f;
+        const float  CfTitleH        = 56f;      // ★ 必须容得下整行：34 号的实测行高 ~48.9，
+                                                 //   盒子矮于它 + Ellipsis = 一个字都不画（好友行那次的坑）
+        const float  CfTitleFS       = 34f;
+        const float  CfChipY         = -124f;    // 两键 96x48 @ y124 -> 下留 28
+    const float  CfChipW         = 96f;      // = 子背景 LobbyChip_Kick 的屏幕宽（与同意 / 拒绝同规格）
+    const float  CfChipH         = 48f;
+    const float  CfChipFS        = 30f;
+        const float  CfChipConfirmX = 272f;      // 确认
+        const float  CfChipCancelX  = 392f;      // 取消（整排 272..488 居中于 380 = 窗宽一半）
+
     /// <summary>
     /// 给好友行的行模板补上右端那格「邀请加号」（幂等：已经有了就只回填引用）。
     /// 顺手把名字那行收窄 —— 它原来铺到行右端，加号一进来就会压在字上。
@@ -2672,5 +2699,77 @@ public static class LobbyUIBuilder
 "（贴图 Invite_Plate.png 1260x432 / 3）· 静止位 y=" + InviteRestY + "、起点 y=" + (InviteWinH + 20f) +
                   "（从屏幕顶滑出）· 名字居中于右 1/3（名栏 148..412）· 头像行（环 " + InviteRingSize + " / 井 " + InviteWellSize + "）+ 同意 / 拒绝（子背景 96x48）· " +
                   "挂 " + HudLayerName + "（压在房间面板等全屏弹窗之上）。");
+    }
+
+    /// <summary>「确认删除 / 确认拉黑」长条弹窗（2026-09-27）：一行标题（动词 + 金色的好友名）+ 一排
+    /// 两个带子背景的键。幂等：先把旧的 Panel_Confirm 收掉再建。</summary>
+    [MenuItem("Tools/异界/大厅：生成「确认删除 / 拉黑」长条弹窗（占位）")]
+    public static void BuildConfirmPanelMenu()
+    {
+        Canvas canvas = Object.FindObjectOfType<Canvas>();
+        if (canvas == null) { Debug.LogError("[LobbyUI] 当前场景没有 Canvas —— 请先打开 Assets/_Game/Scenes/Lobby.unity"); return; }
+
+        _font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontPath);
+        if (_font == null) Debug.LogWarning($"[LobbyUI] 找不到字体 {FontPath}，中文会落到 TMP 默认字体");
+
+        Transform sub, hud;
+        EnsureUiLayers(canvas, out sub, out hud);
+
+        Transform old = hud.Find(CfPanelName);
+        if (old != null) Undo.DestroyObjectImmediate(old.gameObject);
+
+        // 根：常驻 active（Awake 要把 Instance 立起来，好友行才找得到它）
+        RectTransform root = NewRect(hud, CfPanelName, AnchorC, PivotC, Vector2.zero, Vector2.zero);
+        root.anchorMin = Vector2.zero;
+        root.anchorMax = Vector2.one;
+        root.offsetMin = Vector2.zero;
+        root.offsetMax = Vector2.zero;
+        var dlg = root.gameObject.AddComponent<LobbyConfirmDialog>();
+
+        // 视觉根：**存成 active**（方便在编辑器里直接看版式 / 拖位置），运行时 Awake 第一帧自己收掉
+        RectTransform win = NewRect(root, CfWindowName, AnchorC, PivotC, Vector2.zero, new Vector2(CfWinW, CfWinH));
+        dlg.window = win.gameObject;
+
+        // 底板：贴图 760x200 存成 1:1，所以 sizeDelta 直接用屏幕尺寸，不除 3
+        RawImage plate = NewRaw(win, "Plate", CfPlateTex, AnchorC, PivotC, Vector2.zero, new Vector2(CfWinW, CfWinH));
+        plate.raycastTarget = true;          // 窗自己吃掉点击（别点穿到底下的名单）
+
+        // 标题：一条富文本 —— 动词奶油、好友名亮金（长度不定，交给 TMP 自己居中）
+        TextMeshProUGUI title = NewLabel(win, CfTitleName, "确认删除 <color=#E4CB84>好友名</color>",
+                                         new Vector2(CfTitleX, CfTitleY),
+                                         new Vector2(CfWinW - CfTitleX * 2f, CfTitleH), CfTitleFS);
+        title.alignment = TextAlignmentOptions.Center;
+        title.overflowMode = TextOverflowModes.Ellipsis;   // 名字太长就截断（盒子 56 高，容得下整行）
+        title.richText = true;
+        title.color = new Color32(240, 232, 210, 236);     // 奶油 #F0E8D2
+        title.raycastTarget = false;
+        dlg.titleText = title;
+
+        RectTransform chips = NewRect(win, CfChipsName, AnchorTL, PivotTL,
+                                      new Vector2(0f, CfChipY), new Vector2(CfWinW, CfChipH));
+        Button ok = BuildTextChip(chips, "Btn_Confirm", "确认", AnchorTL, PivotTL,
+                                  new Vector2(CfChipConfirmX, 0f), new Vector2(CfChipW, CfChipH),
+                                  CfChipFS, "LobbyChip_Kick.png", "LobbyChip_KickHover.png");
+        Button no = BuildTextChip(chips, "Btn_Cancel", "取消", AnchorTL, PivotTL,
+                                  new Vector2(CfChipCancelX, 0f), new Vector2(CfChipW, CfChipH),
+                                  CfChipFS, "LobbyChip_Kick.png", "LobbyChip_KickHover.png");
+        dlg.confirmButton = ok;
+        dlg.cancelButton = no;
+        WireClick(ok, dlg.Confirm);
+        WireClick(no, dlg.Cancel);
+
+        // 插在提示行**之前**：提示行也在屏幕中央，压得住它（与邀请小窗同一条）
+        Transform toast = FindDeep(hud, "Text_LobbyToast");
+        if (toast != null) root.SetSiblingIndex(toast.GetSiblingIndex());
+        else root.SetAsLastSibling();
+
+        EditorSceneManager.MarkSceneDirty(canvas.gameObject.scene);
+        Selection.activeGameObject = root.gameObject;
+        Debug.Log("[LobbyUI] 已生成 " + CfPanelName + "（确认删除 / 拉黑长条弹窗）：屏幕居中 " + CfWinW + "x" + CfWinH +
+                  "（" + (CfWinW / CfWinH).ToString("0.00") + ":1，贴图 " + CfPlateTex + " 存 1:1）· " +
+                  "标题一行 " + CfTitleFS + " 号（动词奶油 + 好友名亮金 #E4CB84，一条富文本）· " +
+                  "确认 / 取消 = LobbyChip_Kick 子背景 " + CfChipW + "x" + CfChipH + " @ x=" + CfChipConfirmX + " / " + CfChipCancelX +
+                  " · 挂 " + HudLayerName + "（压在好友详情等全屏弹窗之上）· 不画遮罩。" +
+                  "位置 / 尺寸改 Cf* 常量，贴图由 Tools/cardframe/LobbyConfirmPlateV1.ps1 出。");
     }
 }

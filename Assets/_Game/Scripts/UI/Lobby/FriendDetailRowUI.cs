@@ -93,14 +93,33 @@ public class FriendDetailRowUI : MonoBehaviour
                 break;
 
             case FriendRowActionKind.Delete:
-                DeleteMe();
+                // 删除 / 拉黑都先过长条确认窗（用户 2026-09-27：「都有一个长子弹窗，上面是确认删除/拉黑
+                // （金色的好友名称），下面是有子背景的确认和取消」）
+                if (!Ask("确认删除", DeleteMe)) DeleteMe();      // 窗没进场景就别把动作卡住
                 break;
 
             case FriendRowActionKind.Block:
-                // 拉黑的口径用户还没定（是只屏蔽名单，还是连匹配也不碰他）—— 先明确报个待接入
-                LobbyToast.Show("拉黑还没接（口径待定）");
+                Ask("确认拉黑", BlockMe);
                 break;
         }
+    }
+
+    /// <summary>
+    /// 把一次破坏性操作挂到长条确认窗上。返回 false = 窗没进场景（调用方决定要不要直接做）。
+    /// </summary>
+    /// <remarks>窗在 HUD 层（<c>Panel_Confirm</c>），所以它压在好友详情这个全屏子弹窗之上。</remarks>
+    bool Ask(string verb, System.Action onConfirm)
+    {
+        LobbyConfirmDialog dlg = LobbyConfirmDialog.Instance;
+        if (dlg == null) { Debug.LogWarning("[FriendDetail] 场景里没有 Panel_Confirm —— " + verb + " 直接执行"); return false; }
+        dlg.Ask(verb, _entry.DisplayName, onConfirm);
+        return true;
+    }
+
+    /// <summary>拉黑：口径用户还没定（只屏蔽名单，还是连匹配也不碰他），先报个待接入。</summary>
+    void BlockMe()
+    {
+        LobbyToast.Show("拉黑还没接（口径待定）");
     }
 
     /// <summary>

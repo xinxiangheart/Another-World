@@ -1027,3 +1027,83 @@ stage47 唯一一条失败就是它：`npotScale=ToNearest` / `alphaIsTransparen
 - 三支执行器跑完**都已自删**（`Stage55FriendRowList.cs` / `Stage57NameProbe.cs` / `Stage58FriendRowList.cs` 均已不在仓库）。
 
 **下一步（等用户）**：另外三格（添加好友 / 申请列表 / 黑名单）的内容，以及「拉黑」的口径。
+
+## 二十九次修正（2026-09-27）：确认删除 / 拉黑 —— 长条弹窗
+
+**用户原话**：「删除好友和拉黑好友都有一个长子弹窗，上面是确认删除/拉黑（金色的好友名称），
+下面是有子背景的确认和取消」。
+
+### ① 出图（`Tools/cardframe/LobbyConfirmPlateV1.ps1`）
+
+| 件 | 尺寸 | 说明 |
+|---|---|---|
+| `LobbyConfirmPlate.png` | **760×200** = 3.8:1 | 窗口底板（固定尺寸，不切片） |
+
+- 配方与 `Invite_Plate` / `MatchWait_Plate` 同一支笔：平底竖渐变 + 左上亮楔 + 外墨边 9（屏幕 3）+ 等比内缩金线
+  （inset 24 / 线宽 3 / α150）+ 圆角 30（屏幕 10）。
+- **3.8:1 比「收到邀请」小窗（420×144 = 2.92:1）再扁一档** —— 这一块只有「一行标题 + 一排两个键」，没有头像行；
+  用户要的就是「长条」。
+- **存成 1:1**（不是全族那个 ×3）：760×3 = 2280 超过导入器默认 `maxTextureSize 2048` 会被静默缩掉。
+  做法同 `LobbyFriendRow`：脚本按 ×3 画、再高质量降采样到屏幕尺寸（`Save-Down`）。
+  **场景那边 `sizeDelta` 直接 = 贴图尺寸，不除 3。**
+- 两个键**不另出图**：复用 `LobbyChip_Kick` / `…Hover`（与「踢出 / 开始游戏 / 加入 / 同意 / 拒绝」同规格 96×48 / 字 30）。
+
+### ② 版式（`LobbyUIBuilder` 的 `Cf*` 常量段 · 屏幕 px）
+
+| 件 | 位置 / 尺寸 |
+|---|---|
+| `Window` | **760×200**，锚屏幕正中 |
+| `Plate` | 拉伸铺满窗（贴图存 1:1，所以尺寸就是 760×200），**吃点击**（别点穿到底下的名单） |
+| `Text_Title` | 左让 **40**、上让 **36**、盒 **680×56**、字号 **34**、居中一行、**Ellipsis**、富文本 |
+| `Chips` 行 | 上沿 **124**、宽 = 窗宽、高 **48** |
+| `Btn_Confirm` / `Btn_Cancel` | **96×48** @ x = **272 / 392**（间隔 24，整排 272..488 居中于窗心 380）、字 **30** |
+
+**标题是「一条富文本」而不是两段拼位置**：`确认删除 <color=#E4CB84>在线甲</color>` ——
+动词走 `LobbyConfirmDialog.verbColor` 奶油 `#F0E8D2`，好友名走 `whoColor` **亮金 `#E4CB84`**；
+名字长度不定，靠 TMP 自己居中，比摆两个文本块稳。
+
+`CfTitleH` 取 **56**（不是「34 号看着差不多」的 48）—— 见 ④ (a)。
+
+### ③ 运行时与层级
+
+- 组件 `Scripts/UI/Lobby/LobbyConfirmDialog.cs`：`Ask(verb, who, onConfirm)` / `Confirm()` / `Cancel()` / `Hide()`；
+  点「确认」才执行回调，点「取消」直接丢。
+- 面板 `Panel_Confirm` **挂 `Layer_Hud_v1`**（与 `Panel_Invite` / `Panel_MatchWait` / `Panel_MatchConfirm` 同级）——
+  好友详情是**全屏子弹窗**（在 `Layer_Sub_v1`），确认窗必须压在它之上。
+  根常驻 active（`Awake` 立 `Instance`），视觉全在子物体 `Window`（**场景里存成 active**，方便在编辑器里看版式；
+  运行时 `Awake` 第一帧自己收掉）。插在 `Text_LobbyToast` **之前**，提示行压得住它。
+- **不画遮罩**：用户定过「左上角和右上角的显示是在那些全屏显示的弹窗界面中仍显示在屏幕上」——
+  一整块暗色 Dim 会把左上头像 / 右上货币一起压黑，与那条口径冲突。代价是**点窗外不关窗**，要关就点「取消」。
+- 接入点 `Scripts/UI/Lobby/FriendDetailRowUI.cs`：`Delete` / `Block` 都先过 `Ask(...)`；
+  `Instance` 为空（窗没进场景）时**删除照样执行**（不把功能卡住），拉黑仍只弹「口径待定」。
+
+### ④ ★ 排错记录（两条）
+
+**（a）把上一轮那条坑提前避掉了**：标题 34 号的实测行高约 **48.9**，如果照「字号 + 一点余量」给 48，
+配 `Ellipsis` 又会变成「一个字都不画」（见「二十八次修正」④ (a)）。所以标题盒直接取 **56**，
+自证里也照旧带一条 `characterCount ≥ 5` + `盒高 ≥ preferredHeight` 的回归门。
+
+**（b）截图相位不能「请求完就接着改状态」**：`ScreenCapture.CaptureScreenshot` 是**帧末**落盘，
+第一版执行器在同一个 tick 里「请求截图 → 立刻点取消 → 再请求第二张」，结果第一张拍到的是**已经关掉的窗**
+（文件根本没生成）。第二版改成「一张落盘了再换下一个动作」（`Stage61`）。
+
+### ⑤ 导入守卫
+
+`TextureImportSettingsGuard`：`NoNpotScaleFolders` 的 `lobby-ui-v1` 分支加 `LobbyConfirmPlate`
+（760×200 不是 2 的幂，不禁止缩放会被吸成 1024×256）；`NeedsAlphaIsTransparency` 同上。
+
+### ⑥ 自证
+
+- **`stage60_confirm_dialog.txt`**（**失败合计 0**，OK 94）：贴图 `760x200 / npot=None / alpha=True`；
+  `Panel_Confirm` 在 `Layer_Hud_v1` 下、根全屏拉伸且**没有 Image（= 没有遮罩）**；`Window` 760×200 居中；
+  `Plate` 贴的就是 `LobbyConfirmPlate` 且吃点击；`Text_Title` 40/−36 / 680×56 / 字 34 / 居中 / Ellipsis /
+  富文本 / 带 `<color=#E4CB84>` / 动词奶油 / `whoColor` = `E4CB84`；两个键 96×48 @272 / 392、
+  各挂 Button（一条持久监听）+ 子背景 `LobbyChip_Kick`（不吃点击）+ 字 30；排在提示行之前。
+  运行态：**点拉黑 → 开窗、标题「确认拉黑 在线甲」且真的画出字；点取消 → 关窗、名单还是 3 行**；
+  点删除 → 标题「确认删除 在线甲」；点确认 → 关窗 + 写出 `removed=true` 墓碑；再点删除仍能开窗。
+  测试用的是假好友，`friends.json` **跑前备份、跑后还原**（不污染真名单）。
+- **`stage61_confirm_shots.txt`** + **`stage48_shots/f12_confirm_block.png`**（确认拉黑）/ **`f13_confirm_delete.png`**
+  /**`f14_confirm_delete.png`**（确认删除，名单在）：窗压在好友列表之上、左上 / 右上 HUD 照旧可见。
+- 两支执行器跑完**都已自删**（`Stage60ConfirmDialog.cs` / `Stage61ConfirmShots.cs` 均已不在仓库）。
+
+**下一步（等用户）**：另外三格（添加好友 / 申请列表 / 黑名单）的内容，以及「拉黑」的口径。

@@ -56,6 +56,8 @@ namespace AnotherWorld.EditorTools
         /// 板被吸成 1024x512 就不是屏幕 340x104 那块扁比例了（圆角与等比内缩金线会跟着变形）。</summary>
         /// <summary>2026-09-27 再加 LobbyFriendRow（好友列表那一行，1376x112 不是 2 的幂）+ Icon_FriendAct*（拉黑 / 删除两枚徽章）：
         /// 行底板存成 1:1（不是全族那个 x3），被吸成 1024x128 就不是屏幕 1360x96 那条长矩形了。</summary>
+        /// <summary>2026-09-27 再加 LobbyConfirmPlate（确认删除 / 拉黑的长条弹窗底板，760x200 = 3.8:1，不是 2 的幂）：
+        /// 也是存 1:1，被吸成 1024x256 就不是那条长比例了（圆角与等比内缩金线会跟着变形）。</summary>
         static readonly string[] NoNpotScaleFolders = { "/Art/Sprites/Generated/battle-mode-v1/", "/Art/Sprites/Generated/match-wait-v1/", "/Art/Sprites/Generated/match-confirm-v1/", "/Art/Sprites/Generated/battle-loading-v1/", "/Art/Sprites/Generated/invite-v1/" };
 
         public static bool NeedsNoNpotScale(string path)
@@ -63,7 +65,7 @@ namespace AnotherWorld.EditorTools
             string p = path.Replace('\\', '/');
             foreach (string f in NoNpotScaleFolders) if (p.Contains(f)) return true;
             if (!p.Contains("/Art/Sprites/Generated/lobby-ui-v1/")) return false;
-            return Path.GetFileName(p).StartsWith("LobbyCornerPlate_") || Path.GetFileName(p).StartsWith("LobbyChip_") || Path.GetFileName(p).StartsWith("LobbyJoin") || Path.GetFileName(p).StartsWith("Icon_InvitePlus") || Path.GetFileName(p).StartsWith("LobbyFriendTab") || Path.GetFileName(p).StartsWith("LobbyFriendRow");
+            return Path.GetFileName(p).StartsWith("LobbyCornerPlate_") || Path.GetFileName(p).StartsWith("LobbyChip_") || Path.GetFileName(p).StartsWith("LobbyJoin") || Path.GetFileName(p).StartsWith("Icon_InvitePlus") || Path.GetFileName(p).StartsWith("LobbyFriendTab") || Path.GetFileName(p).StartsWith("LobbyFriendRow") || Path.GetFileName(p).StartsWith("LobbyConfirmPlate");
         }
 
         /// <summary>带硬 alpha 边（圆角 / 挖空）的 UI 件：导入要做 alpha 扩散，否则缩小后边缘发黑。</summary>
@@ -71,7 +73,7 @@ namespace AnotherWorld.EditorTools
         {
             string p = path.Replace('\\', '/');
             foreach (string f in NoNpotScaleFolders) if (p.Contains(f)) return true;
-            if (p.Contains("/Art/Sprites/Generated/lobby-ui-v1/") && (Path.GetFileName(p).StartsWith("LobbyCornerPlate_") || Path.GetFileName(p).StartsWith("LobbyChip_") || Path.GetFileName(p).StartsWith("LobbyJoin") || Path.GetFileName(p).StartsWith("Icon_InvitePlus") || Path.GetFileName(p).StartsWith("Icon_FriendPlus") || Path.GetFileName(p).StartsWith("LobbyFriendTab") || Path.GetFileName(p).StartsWith("Icon_FriendTab") || Path.GetFileName(p).StartsWith("Icon_FriendAct") || Path.GetFileName(p).StartsWith("LobbyFriendRow"))) return true;
+            if (p.Contains("/Art/Sprites/Generated/lobby-ui-v1/") && (Path.GetFileName(p).StartsWith("LobbyCornerPlate_") || Path.GetFileName(p).StartsWith("LobbyChip_") || Path.GetFileName(p).StartsWith("LobbyJoin") || Path.GetFileName(p).StartsWith("Icon_InvitePlus") || Path.GetFileName(p).StartsWith("Icon_FriendPlus") || Path.GetFileName(p).StartsWith("LobbyFriendTab") || Path.GetFileName(p).StartsWith("Icon_FriendTab") || Path.GetFileName(p).StartsWith("Icon_FriendAct") || Path.GetFileName(p).StartsWith("LobbyFriendRow") || Path.GetFileName(p).StartsWith("LobbyConfirmPlate"))) return true;
             return false;
         }
 
