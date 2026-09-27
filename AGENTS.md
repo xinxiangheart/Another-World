@@ -59,9 +59,17 @@ Windows 包发布走 GitHub Release：改 `Assets/_Game/Scenes/Welcome.unity` �
 | `stat-orb-v1` | 左下生命 / 能量 |
 | `hud-btn-v1` | 抽牌 / 隐藏手牌圆盘 |
 | `icons-v1` | 特性 / 前缀 / 状态图标 |
-| `lobby-ui-v1`（生成脚本 `LobbyUIv1.ps1`，落地脚本 `Editor/LobbyUIBuilder.cs`） | 大厅：入口板（战斗 / 卡牌总览 / 房间 + 其它）、右上横栏与两个货币、左上头像衬托板、面板 / 按钮底 |
+| `lobby-ui-v1`（生成脚本 `LobbyUIv1.ps1`，落地脚本 `Editor/LobbyUIBuilder.cs`） | 大厅：入口板（战斗 / 卡牌总览 / 房间 + 其它）、右下角入口条（赛季 / 公告 / 藏品 / 成就）、右上横栏与两个货币、左上头像衬托板、面板 / 按钮底、**通用关闭叉** |
+| `common-bg-v1`（生成脚本 `CommonBgV1.ps1`） | **通用背景底板** —— 多个场景 / 面板共用的深色底（不是大厅背景），只有渐变 / 柔光 / 轴线细线 / 微尘，**禁任何有轮廓的纹样**（一拉就废） |
 
 各套的取舍、尺寸与出图脚本记在 `Assets/_Game/Art/Sprites/Generated/<套名>/README.md`；生成脚本统一在 `Tools/cardframe/`。
+
+**大厅三层：内容 / 全屏子弹窗 / 常驻 HUD（2026-09-27 定）**
+
+- 层级靠 **Canvas 下的同级先后顺序**（不嵌套 Canvas、不加第二套 raycaster）：`LobbyUI_v1` + `CornerRow_v1`（内容）→ `Layer_Sub_v1`（全屏子弹窗）→ `Layer_Hud_v1`（`Plate_Profile` 左上 + `Plate_TopBand` 右上，**最后一个子物体 = 画在最上面**）。
+- **左上与右上常驻**：任何全屏弹窗打开时它们仍显示在屏幕上（用户 2026-09-27 原话）。例外那半句走 `LobbySubPanel.hideHudOnOpen` —— 勾上才把 `Layer_Hud_v1` 整个 `SetActive(false)`，关窗还原。右下角 `CornerRow_v1` **不在**常驻层（用户只点名了左上与右上）。
+- 全屏子弹窗 = `Layer_Sub_v1` 下的 `Panel_*`：**通用背景** `common-bg-v1/CommonBack_A_clean.png`（**保持拉伸锚、别再加边** —— 它自带内缩 46px 金细框）+ 标题 + 右上角**通用关闭叉** + 内容大框 `Body_Content`（只限位、不画东西）。版式：内容左右留白 64、内容顶距屏幕 128（让开右上横栏那 95）。
+- 关闭叉是**全套弹窗共用的那一个**（`Icon_Close.png` / `Icon_CloseHover.png`，`LobbyUIv1.ps1` 出）—— 不要每个面板各画一个叉、也不要改用文字「关闭」。
 
 **色值（直接抄，别另起一套）**
 

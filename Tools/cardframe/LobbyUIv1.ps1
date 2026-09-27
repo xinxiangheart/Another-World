@@ -417,6 +417,24 @@ function New-MailGlyph($g) {
   $g.DrawPath($pen, $dd); $pen.Dispose(); $dd.Dispose()
   $body.Dispose()
 }
+# ── 通用关闭叉（2026-09-27 十八次修正）────────────────────────────────
+# 用户：「先生成一个通用的叉ui图标，用于关闭弹窗」。
+# 与「合起的书 / 信封」同族（金线石印）：深蓝黑平底 + 一条金细线；
+# 内缩一圈金框当那「一处金饰」，中间是金叉。常态 / 悬停两张只差色调（走同一套 Set-IconTone）。
+# 名字**不带 Lobby** —— 它是跨面板复用的那个叉，不属右上横栏 / 压墙那一族。
+function New-CloseGlyph($g) {
+  $body = New-RoundPath 44 44 168 168 20
+  Fill-GlyphBody $g $body
+  Stroke-GlyphGold $g (New-RoundPath 58 58 140 140 14)
+  $pen = New-Object System.Drawing.Pen (New-IconGold 235), ($ICON_GOLD * 2)
+  $pen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
+  $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+  $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+  $g.DrawLine($pen, 92, 92, 164, 164)
+  $g.DrawLine($pen, 164, 92, 92, 164)
+  $pen.Dispose()
+  $body.Dispose()
+}
 function New-LobbyIcon([string]$kind, [string]$out, [switch]$hover) {
   $res = New-Bmp 256 256; $b = $res[0]; $g = $res[1]
   Set-IconTone($hover.IsPresent)
@@ -427,6 +445,7 @@ function New-LobbyIcon([string]$kind, [string]$out, [switch]$hover) {
     'ticket'   { New-TicketGlyph $g }
     'tutorial' { New-BookGlyph $g }
     'mail'     { New-MailGlyph $g }
+    'close'    { New-CloseGlyph $g }
     'coin'     { New-CoinGlyph $g }
     'gear'     {
       $gp = New-GearPath
@@ -1153,6 +1172,35 @@ function New-LobbyIconHoverReview([string]$dir, [string]$out, [string]$bgPath) {
   return $out
 }
 
+# ── 预览：通用关闭叉（常态 / 悬停 + 真尺寸压在通用背景上）──────────
+function New-CloseReview([string]$dir, [string]$out, [string]$bgPath) {
+  $res = New-Bmp 1200 900; $b = $res[0]; $g = $res[1]
+  $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+  $bs = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 10, 13, 19))
+  $g.FillRectangle($bs, 0, 0, 1200, 900); $bs.Dispose()
+  Put-Text $g '通用关闭叉 Icon_Close（256 贴图）：圆角方印 + 内缩金框 + 金叉 · 常态 / 悬停' 40 22 25 236
+  Draw-At $g (Join-Path $dir 'Icon_Close.png') 40 62 256 256
+  Draw-At $g (Join-Path $dir 'Icon_CloseHover.png') 336 62 256 256
+  Put-Text $g '常态' 40 328 22 210
+  Put-Text $g '悬停' 336 328 22 236
+  Put-Text $g '真尺寸（屏幕 56px · 全屏子弹窗右上角那个位）压在通用背景 CommonBack_A_clean 上' 40 372 22 210
+  $scr = New-Object System.Drawing.Bitmap 1920, 1080
+  $sg = [System.Drawing.Graphics]::FromImage($scr)
+  $sg.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+  $bg = [System.Drawing.Image]::FromFile($bgPath)
+  $sg.DrawImage($bg, 0, 0, 1920, 1080); $bg.Dispose()
+  # 真场景坐标：Btn_Close 锚屏幕右上角、anchoredPosition (-64,-128)、56x56 ⇒ 中心 (1828,156)；下面那张是它的悬停态
+  Draw-Sprite $sg (Join-Path $dir 'Icon_Close.png') 1828 156 56 56 0
+  Draw-Sprite $sg (Join-Path $dir 'Icon_CloseHover.png') 1828 240 56 56 0
+  $sg.Dispose()
+  $g.DrawImage($scr, (New-Object System.Drawing.Rectangle 40, 412, 400, 440), (New-Object System.Drawing.Rectangle 1760, 96, 160, 176), [System.Drawing.GraphicsUnit]::Pixel)
+  $scr.Dispose()
+  Put-Text $g '上面 = 常态 · 下面 = 悬停（真尺寸 2.5x 放大）' 470 470 22 210
+  Put-Text $g '所有全屏子弹窗 / 占位弹窗的关闭钮都复用这一张' 470 506 22 210
+  $g.Dispose(); $b.Save($out, [System.Drawing.Imaging.ImageFormat]::Png); $b.Dispose()
+  return $out
+}
+
 # ── 主流程 ─────────────────────────────────────────────────
 $made = @()
 foreach ($t in @(@('LobbyPanelPlate.png', 0), @('LobbyBtnPlate.png', 0), @('LobbyBtnPlateHover.png', 1), @('LobbyBtnPlatePressed.png', 2))) {
@@ -1206,6 +1254,12 @@ foreach ($k in @('friend', 'shop', 'event', 'tutorial', 'mail')) {
   $nm = 'Icon_Lobby' + $k.Substring(0,1).ToUpper() + $k.Substring(1) + 'Hover.png'
   $made += (New-LobbyIcon $k (Join-Path $GEN $nm) -hover)
 }
+# ── 通用关闭叉（十八次修正）：全屏子弹窗 / 占位弹窗右上角共用的那一个 ──
+# 用户 2026-09-27：「先生成一个通用的叉ui图标，用于关闭弹窗」。
+$CMN = Join-Path $ROOT 'Assets/_Game/Art/Sprites/Generated/common-bg-v1/CommonBack_A_clean.png'
+$made += (New-LobbyIcon 'close' (Join-Path $GEN 'Icon_Close.png'))
+$made += (New-LobbyIcon 'close' (Join-Path $GEN 'Icon_CloseHover.png') -hover)
+$made += (New-CloseReview $GEN (Join-Path $PREV 'lobby-ui-v1-close.png') $CMN)
 # 占位弹窗（十三次修正）：面板 + 关闭按钮底 —— 同 New-PlateBmp 配方（平底渐变 + 外墨边 + 等比内缩金线）
 foreach ($pp in @(@('LobbyPopupPlate.png', 2700, 1560, 60), @('LobbyPopupBtnPlate.png', 600, 192, 36))) {
   $r = New-PlateBmp $pp[1] $pp[2] $pp[3] 0

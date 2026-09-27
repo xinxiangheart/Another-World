@@ -90,6 +90,10 @@ public static class LobbyUIBuilder
         rootRT.pivot = PivotC;
         rootRT.SetSiblingIndex(Mathf.Min(1, canvas.transform.childCount - 1));
 
+        // 两个层（HUD 常驻 / 全屏子弹窗）—— 见本文件末尾「分层 + 子全屏弹窗」那段
+        Transform subLayer, hudLayer;
+        EnsureUiLayers(canvas, out subLayer, out hudLayer);
+
         // ── 底 + 徽记 ──
         RawImage backdrop = NewRaw(rootRT, "Ref_Backdrop", BgDir + "LobbyBack.png", Vector2.zero, PivotC, Vector2.zero, Vector2.zero);
         backdrop.rectTransform.anchorMin = Vector2.zero;
@@ -103,13 +107,13 @@ public static class LobbyUIBuilder
         emblem.raycastTarget = false;
 
         // ── 左上：头像衬托板（圆框 = 头像位，右侧 = 名字位，好友图标挂下沿）──
-        RawImage profile = NewRaw(rootRT, "Plate_Profile", UiDir + "LobbyProfilePlate.png", AnchorTL, PivotTL, Vector2.zero, new Vector2(467f, 96f));
+        RawImage profile = NewRaw(hudLayer, "Plate_Profile", UiDir + "LobbyProfilePlate.png", AnchorTL, PivotTL, Vector2.zero, new Vector2(467f, 96f));
         NewRaw(profile.rectTransform, "Avatar_Ring", UiDir + "LobbyAvatarRing.png", AnchorTL, PivotTL, new Vector2(36f, -2f), new Vector2(88f, 88f));
         NewLabel(profile.rectTransform, "Text_PlayerName", "名字", new Vector2(184f, -12f), new Vector2(240f, 44f), 26f);
         RawImage iconFriend = NewRaw(profile.rectTransform, "Icon_Friend", UiDir + "Icon_LobbyFriend.png", AnchorTL, PivotTL, new Vector2(160f, -57f), new Vector2(46f, 46f));
 
         // ── 右上：横栏 + 两个货币 + 齿轮；栏下商城 / 活动 / 教程（无底板），整簇锚屏幕右上角 ──
-        RawImage band = NewRaw(rootRT, "Plate_TopBand", UiDir + "LobbyBandRight.png", AnchorTR, PivotTL, new Vector2(-538f, 0f), new Vector2(538f, 95f));
+        RawImage band = NewRaw(hudLayer, "Plate_TopBand", UiDir + "LobbyBandRight.png", AnchorTR, PivotTL, new Vector2(-538f, 0f), new Vector2(538f, 95f));
         NewRaw(band.rectTransform, "Icon_Coin", UiDir + "Icon_LobbyCoin.png", AnchorTL, PivotTL, new Vector2(110f, -16f), new Vector2(48f, 48f));
         NewLabel(band.rectTransform, "Text_Coin", "1,280", new Vector2(164f, -24f), new Vector2(150f, 46f), 28f);
         NewRaw(band.rectTransform, "Icon_Ticket", UiDir + "Icon_LobbyTicket.png", AnchorTL, PivotTL, new Vector2(300f, -16f), new Vector2(48f, 48f));
@@ -135,22 +139,22 @@ public static class LobbyUIBuilder
         RawImage entryMore = NewEntry(bottomRow, "Entry_More", "LobbyEntryPlate_More.png", "其它", AnchorTL, CellCenter(CellMore, new Vector2(324f, 130f)), new Vector2(324f, 130f), 30f, -1.5f);
 
         // ── 悬停 / 点击（2026-09-26）：四个「压墙」图标挂悬停组件，点开同一个占位弹窗 ──
-        LobbyPopup popup = NewPlaceholderPopup(rootRT, new Vector2(900f, 520f));
-        // 弹窗提到 Canvas 下、并排到最后 —— CornerRow_v1 是 Canvas 的最后一个子物体，
-        // 弹窗留在 LobbyUI_v1 里会被它盖住（Dim 遮罩盖不住右下角那一条）。
-        popup.transform.SetParent(canvas.transform, false);
-        popup.transform.SetAsLastSibling();
+        LobbyPopup popup = NewPlaceholderPopup(subLayer, new Vector2(900f, 520f));
         WireIconHover(iconFriend, "Icon_LobbyFriend.png", "Icon_LobbyFriendHover.png", popup, "好友");
         WireIconHover(iconShop, "Icon_LobbyShop.png", "Icon_LobbyShopHover.png", popup, "商城");
         WireIconHover(iconEvent, "Icon_LobbyEvent.png", "Icon_LobbyEventHover.png", popup, "活动");
         WireIconHover(iconTutorial, "Icon_LobbyTutorial.png", "Icon_LobbyTutorialHover.png", popup, "教程");
         WireIconHover(iconMail, "Icon_LobbyMail.png", "Icon_LobbyMailHover.png", popup, "邮件");
 
+        // ── 全屏子弹窗：战斗（通用背景 + 通用关闭叉）——HUD 层在它后面，所以左上 / 右上永远可见 ──
+        GameObject battlePanel = BuildSubPanel(subLayer, hudLayer.gameObject, "Panel_Battle", "战斗");
+
         // ── 接入实际功能（2026-09-27）：入口板 悬停变金 + 点击占位；左上 Steam 资料；右上齿轮接设置 ──
         WirePlateHover(entryBattle, popup, "战斗");
         WirePlateHover(entryCards, popup, "卡牌总览");
         WirePlateHover(entryRoom, popup, "房间");
         WirePlateHover(entryMore, popup, "其它");
+        entryBattle.GetComponent<LobbyPlateHover>().subPanel = battlePanel.GetComponent<LobbySubPanel>();   // 战斗 → 全屏子弹窗
         WireProfile(profile.rectTransform);
         WireSettingsGear(band.rectTransform);
 
@@ -510,12 +514,18 @@ public static class LobbyUIBuilder
         GameObject ui = GameObject.Find(RootName);
         if (ui == null) { Debug.LogError("[LobbyUI] 场景里没有 " + RootName + " —— 先跑「生成大厅 UI v1（占位）」"); return; }
 
+        // 先把两个层钉好（HUD 常驻 / 全屏子弹窗）—— 左上与右上会被搬进 HUD 层
+        Canvas canvas = ui.GetComponentInParent<Canvas>();
+        Transform sub = null, hud = null;
+        if (canvas != null) EnsureUiLayers(canvas, out sub, out hud);
+        else Debug.LogWarning("[LobbyUI] 找不到 Canvas —— 分层跳过（HUD 就不会常驻在弹窗之上）");
+
         var popup = Object.FindObjectOfType<LobbyPopup>(true);
         if (popup == null) Debug.LogWarning("[LobbyUI] 场景里找不到 LobbyPopup —— 点击先不接弹窗");
-        else
+        else if (sub != null)
         {
-            // 弹窗必须在 Canvas 的最后一个子物体上（CornerRow_v1 是最后一个），否则右下角那一条会盖在弹窗上
-            popup.transform.SetParent(ui.transform.parent, false);
+            // 占位弹窗归到子弹窗层：SetAsLastSibling 只在**本层**里抬，抬不过 HUD 层
+            popup.transform.SetParent(sub, false);
             popup.transform.SetAsLastSibling();
         }
 
@@ -529,16 +539,31 @@ public static class LobbyUIBuilder
         wired += WirePlate(ui.transform, CornerRootName + "/Entry_Collection", "藏品", popup);
         wired += WirePlate(ui.transform, CornerRootName + "/Entry_Achievement", "成就", popup);
 
-        Transform profile = ui.transform.Find("Plate_Profile");
+        // 左上 / 右上 现在都在 HUD 层里（先按层找，找不到再退回 LobbyUI_v1 —— 兼容没分层的旧场景）
+        Transform profile = hud != null ? hud.Find("Plate_Profile") : null;
+        if (profile == null) profile = ui.transform.Find("Plate_Profile");
         if (profile != null) WireProfile(profile);
         else Debug.LogWarning("[LobbyUI] 找不到 Plate_Profile —— 头像 / 昵称没接");
 
-        Transform band = ui.transform.Find("Plate_TopBand");
+        Transform band = hud != null ? hud.Find("Plate_TopBand") : null;
+        if (band == null) band = ui.transform.Find("Plate_TopBand");
         if (band != null) WireSettingsGear(band);
         else Debug.LogWarning("[LobbyUI] 找不到 Plate_TopBand —— 齿轮没接");
 
+        // 战斗 → 全屏子弹窗（已存在就复用，不重建）
+        int subPanels = 0;
+        if (sub != null && hud != null)
+        {
+            GameObject battle = BuildSubPanel(sub, hud.gameObject, "Panel_Battle", "战斗");
+            Transform bt = ui.transform.Find("Entry_Battle");
+            var btHover = bt != null ? bt.GetComponent<LobbyPlateHover>() : null;
+            if (btHover != null) { btHover.subPanel = battle.GetComponent<LobbySubPanel>(); subPanels = 1; }
+        }
+
         EditorSceneManager.MarkSceneDirty(ui.scene);
-        Debug.Log($"[LobbyUI] 已接入实际功能：{wired} 块入口板「悬停变金 + 点击占位」；左上接 Steam 头像 / 昵称；右上齿轮接设置面板。");
+        Debug.Log($"[LobbyUI] 已接入实际功能：{wired} 块入口板「悬停变金 + 点击占位」；左上接 Steam 头像 / 昵称；右上齿轮接设置面板；" +
+                  "分层已就位（" + SubLayerName + " / " + HudLayerName + "）；战斗子全屏弹窗 " + subPanels + " 个。" +
+                  "HUD 层是 Canvas 最后一个子物体 ⇒ 左上 / 右上永远压在全屏弹窗之上（要藏就在 LobbySubPanel 里勾 hideHudOnOpen）。");
     }
 
     /// <summary>按场景路径取一块入口板，接「悬停文字变金 + 点击占位弹窗」。返回 1 = 接上了。</summary>
@@ -629,6 +654,171 @@ public static class LobbyUIBuilder
             gear.gameObject.AddComponent<LobbySettingsButton>();
         else
             Debug.Log("[LobbyUI] Icon_Gear 已经有 LobbySettingsButton，跳过");
+    }
+
+    // ── 分层 + 子全屏弹窗（2026-09-27）──────────────────────────────────────────
+    // 用户：①「左上角和右上角的显示是在那些全屏显示的弹窗界面中仍显示在屏幕上（除非明确说明隐藏这些）的」
+    //      ②「现在做战斗的子全屏弹窗，通用背景，先生成一个通用的叉ui图标，用于关闭弹窗」
+    //
+    // 层级（Canvas 下的同级先后顺序，**不嵌套 Canvas、不加第二套 raycaster**）：
+    //   …  Ref_Backdrop / Bg_v2 / Entry_* / Entry_BottomRow      大厅本体
+    //      CornerRow_v1                                          右下角入口条
+    //      Layer_Sub_v1                                          全屏子弹窗层：Popup_Placeholder / Panel_Battle
+    //      Layer_Hud_v1                                          **常驻 HUD**：Plate_Profile（左上）+ Plate_TopBand（右上）
+    // UGUI 同层里后面的画在上面 ⇒ HUD 层是 Canvas 最后一个子物体 = 永远压在所有弹窗之上
+    // = 那半句「仍显示在屏幕上」。例外那半句由 LobbySubPanel.hideHudOnOpen 承担（勾上才藏）。
+    // 两块 HUD 板是从 LobbyUI_v1 里**搬**过来的：锚 / 轴都还钉在屏幕角、父级仍是全屏框 —— 位置一个数都没动。
+    // 右下角入口条**没有**放进 HUD：用户只点名了左上与右上（要一起常驻就说一声，搬进去是两行）。
+    const string SubLayerName = "Layer_Sub_v1";
+    const string HudLayerName = "Layer_Hud_v1";
+    const string CommonBgPath = "Assets/_Game/Art/Sprites/Generated/common-bg-v1/CommonBack_A_clean.png";
+    const string CloseIconPath = UiDir + "Icon_Close.png";
+    const string CloseIconHoverPath = UiDir + "Icon_CloseHover.png";
+
+    // 子全屏弹窗的版式：内容左右留白 64（让开通用背景自带那圈内缩 46 的金细框）
+    //                   内容顶距屏幕 128（让开右上横栏那 95）—— 关闭叉与标题同一行，都在 128
+    const float SubPanelPadX = 64f;
+    const float SubPanelTop = 128f;
+    const float SubPanelCloseSize = 56f;
+
+    [MenuItem("Tools/异界/大厅：分层（HUD 常驻层 + 全屏子弹窗层）")]
+    public static void ApplyUiLayers()
+    {
+        Canvas canvas = Object.FindObjectOfType<Canvas>();
+        if (canvas == null) { Debug.LogError("[LobbyUI] 当前场景没有 Canvas —— 请先打开 Assets/_Game/Scenes/Lobby.unity"); return; }
+
+        Transform sub, hud;
+        EnsureUiLayers(canvas, out sub, out hud);
+        EditorSceneManager.MarkSceneDirty(canvas.gameObject.scene);
+        Debug.Log("[LobbyUI] 层级已就位：… / " + CornerRootName + " / " + SubLayerName + "（全屏子弹窗）/ " + HudLayerName +
+                  "（常驻 HUD = 左上 Plate_Profile + 右上 Plate_TopBand，最后画、永远在最上面）。");
+    }
+
+    /// <summary>建 / 取两个层，并把顺序钉死成「… / Layer_Sub_v1 / Layer_Hud_v1(最后)」，同时把两块 HUD 板与弹窗归位。</summary>
+    static void EnsureUiLayers(Canvas canvas, out Transform sub, out Transform hud)
+    {
+        sub = EnsureLayer(canvas.transform, SubLayerName, "新建全屏子弹窗层");
+        hud = EnsureLayer(canvas.transform, HudLayerName, "新建常驻 HUD 层");
+
+        hud.SetAsLastSibling();                     // HUD 永远最后 → 画在最上面
+        sub.SetSiblingIndex(Mathf.Max(0, hud.GetSiblingIndex() - 1));
+
+        GameObject ui = GameObject.Find(RootName);
+        if (ui != null)
+        {
+            Reparent(ui.transform, hud, "Plate_Profile");
+            Reparent(ui.transform, hud, "Plate_TopBand");
+
+            Transform popup = ui.transform.Find("Popup_Placeholder");
+            if (popup != null) popup.SetParent(sub, false);
+        }
+
+        // 占位弹窗以前被提到 Canvas 下过，这里也收进子弹窗层（SetAsLastSibling 只在本层里抬，压不到 HUD）
+        var lp = Object.FindObjectOfType<LobbyPopup>(true);
+        if (lp != null && lp.transform.parent != sub) lp.transform.SetParent(sub, false);
+
+        Reparent(canvas.transform, hud, "Plate_Profile");     // 已经在 HUD 里的就不动
+        Reparent(canvas.transform, hud, "Plate_TopBand");
+    }
+
+    static Transform EnsureLayer(Transform parent, string name, string undoName)
+    {
+        Transform t = parent.Find(name);
+        if (t != null) return t;
+
+        RectTransform rt = NewRect(parent, name, Vector2.zero, PivotC, Vector2.zero, Vector2.zero);
+        rt.anchorMin = Vector2.zero;
+        rt.anchorMax = Vector2.one;
+        rt.offsetMin = Vector2.zero;
+        rt.offsetMax = Vector2.zero;
+        Undo.RegisterCreatedObjectUndo(rt.gameObject, undoName);
+        return rt;
+    }
+
+    /// <summary>把 from 下叫 name 的子物体搬到 to 下（锚 / 轴都不动，位置不变）。没有就跳过。</summary>
+    static void Reparent(Transform from, Transform to, string name)
+    {
+        if (from == null || to == null) return;
+        Transform t = from.Find(name);
+        if (t == null || t.parent == to) return;
+        t.SetParent(to, false);
+    }
+
+    [MenuItem("Tools/异界/大厅：生成战斗子全屏弹窗（通用背景 + 通用关闭叉）")]
+    public static void BuildBattleSubPanelMenu()
+    {
+        Canvas canvas = Object.FindObjectOfType<Canvas>();
+        if (canvas == null) { Debug.LogError("[LobbyUI] 当前场景没有 Canvas —— 请先打开 Assets/_Game/Scenes/Lobby.unity"); return; }
+
+        Transform sub, hud;
+        EnsureUiLayers(canvas, out sub, out hud);
+        GameObject panel = BuildSubPanel(sub, hud.gameObject, "Panel_Battle", "战斗", true);
+        Selection.activeGameObject = panel;
+        EditorSceneManager.MarkSceneDirty(canvas.gameObject.scene);
+        Debug.Log("[LobbyUI] 已生成 Panel_Battle（全屏子弹窗）：通用背景 CommonBack_A_clean + 标题 + 通用关闭叉（Icon_Close）；" +
+                  "内容区 = Body_Content（只限位、不画东西）；关闭叉位置改 SubPanelCloseSize / 那两个 64/128；" +
+                  "要让这个面板把 HUD 也藏掉就把 LobbySubPanel 的 hideHudOnOpen 勾上。");
+    }
+
+    /// <summary>通用子全屏弹窗的壳：全屏通用背景 + 标题 + 提示 + 右上角通用关闭叉 + 留给内容的大框。</summary>
+    static GameObject BuildSubPanel(Transform parent, GameObject hudLayer, string name, string title, bool rebuild = false)
+    {
+        Transform old = parent.Find(name);
+        if (old != null && !rebuild) return old.gameObject;   // 幂等：已经有的不重建（免得冲掉以后往里放的内容）
+        if (old != null) Undo.DestroyObjectImmediate(old.gameObject);
+
+        RectTransform root = NewRect(parent, name, Vector2.zero, PivotC, Vector2.zero, Vector2.zero);
+        root.anchorMin = Vector2.zero;
+        root.anchorMax = Vector2.one;
+        root.offsetMin = Vector2.zero;
+        root.offsetMax = Vector2.zero;
+        var panel = root.gameObject.AddComponent<LobbySubPanel>();
+
+        // 通用背景：**保持拉伸锚**（非等比拉伸正是这张图的设计前提，见 common-bg-v1/README）
+        // raycastTarget 开着 = 整层挡点击，面板开着时下面的入口板点不到
+        RawImage bg = NewRaw(root, "Bg", CommonBgPath, Vector2.zero, PivotC, Vector2.zero, Vector2.zero);
+        bg.rectTransform.anchorMin = Vector2.zero;
+        bg.rectTransform.anchorMax = Vector2.one;
+        bg.rectTransform.offsetMin = Vector2.zero;
+        bg.rectTransform.offsetMax = Vector2.zero;
+        bg.raycastTarget = true;
+
+        panel.titleText = NewLabel(root, "Text_Title", title, new Vector2(SubPanelPadX, -SubPanelTop), new Vector2(720f, 64f), 48f);
+        TextMeshProUGUI hint = NewLabel(root, "Text_Hint", "占位 · 内容待接入", new Vector2(SubPanelPadX, -SubPanelTop - 78f), new Vector2(720f, 34f), 24f);
+        hint.color = new Color(240f / 255f, 232f / 255f, 210f / 255f, 0.62f);
+
+        // 留给真实内容的大框（只限位、自己不画东西 —— 用法同 Entry_BottomRow）
+        RectTransform body = NewRect(root, "Body_Content", Vector2.zero, PivotC, Vector2.zero, Vector2.zero);
+        body.anchorMin = Vector2.zero;
+        body.anchorMax = Vector2.one;
+        body.offsetMin = new Vector2(SubPanelPadX, 64f);
+        body.offsetMax = new Vector2(-SubPanelPadX, -(SubPanelTop + 132f));
+
+        // 通用关闭叉：Icon_Close.png（Tools/cardframe/LobbyUIv1.ps1 出）+ 悬停换贴图 + Button → Close()
+        RawImage close = NewRaw(root, "Btn_Close", CloseIconPath, AnchorTR, PivotTL,
+                                new Vector2(-SubPanelPadX, -SubPanelTop), new Vector2(SubPanelCloseSize, SubPanelCloseSize));
+        var hover = close.gameObject.AddComponent<LobbyIconHover>();
+        hover.icon = close;
+        hover.normalTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(CloseIconPath);
+        hover.hoverTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(CloseIconHoverPath);
+        hover.popup = null;      // 叉子不弹占位窗
+        hover.title = "";
+        if (hover.hoverTexture == null) Debug.LogWarning("[LobbyUI] 找不到 " + CloseIconHoverPath + " —— 关闭叉没有悬停态");
+
+        var btn = close.gameObject.AddComponent<Button>();
+        btn.transition = Selectable.Transition.None;
+        btn.targetGraphic = close;
+        UnityEventTools.AddPersistentListener(btn.onClick, new UnityAction(panel.Close));
+
+        panel.hudLayer = hudLayer;
+        panel.hideHudOnOpen = false;      // 默认：HUD 压在面板之上、一直可见
+
+        root.SetAsLastSibling();
+        // **存成 active**：在编辑器里就能直接看到版式、拖里面的东西；运行时由 LobbySubPanel.Start 的
+        // closeOnStart 自己关掉（Start 在第一帧渲染前跑，不会闪一下），再由入口板 Open。
+        panel.closeOnStart = true;
+        root.gameObject.SetActive(true);
+        return root.gameObject;
     }
 
 }
