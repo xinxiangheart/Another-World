@@ -806,3 +806,224 @@ stage47 唯一一条失败就是它：`npotScale=ToNearest` / `alphaIsTransparen
 - 编辑态：底板 `npotScale=None / alphaIsTransparency=True / 源尺寸 1260x432`；重建 + 存盘后 **窗 420×144（2.92:1）**、**没有 `Text_Title`**、`hiddenY=164`、`toastDrop=154`、`Plate` 吃的就是 1260×432、头像环 64 @(70,−12)、两键行 y=−82。
 - 文字：名栏锚左上（不是拉伸）、`264x40 @148,−24` → **中心 (280,−44)**、`alignment=Center`、奶油色。
 - 运行态（进 Play 摆一条假邀请）：**窗仍是 420×144**、滑到位 y=−10、窗口开着，名栏中心仍是 280。执行器跑完已自删。
+
+## 二十六次修正（2026-09-27）：好友侧边栏表头那颗「+」+「好友详情」全屏子弹窗（占位壳）
+
+**用户原话**：「在好友右边靠近右边框的地方加上一个加号 ui 用于打开好友详情全屏（类似于战斗，但不要做卡牌的，我后续给你说怎么做）」。
+
+三件事：① 出图；② 表头加那颗「+」（悬停 / 点击）；③ 壳照抄 `Panel_Battle`，内容留空等用户后续说明。
+
+### ① 出图 `Tools/cardframe/LobbyFriendPlusV1.ps1`
+
+- **配方逐行照抄通用关闭叉 `Icon_Close`**（`Tools/cardframe/LobbyUIv1.ps1` 的 `New-CloseGlyph`，426 行）：圆角方印 `44,44,168,168`（圆角 20）+ 内框 `58,58,140,140`（圆角 14）+ 笔画 92..164、线宽 12、圆头。**只把叉那两笔改成加号**（横 `92,128 -> 164,128`、竖 `128,92 -> 128,164`）。
+- 悬停同全族配方：石面提亮（顶 `Mix(BAR_T,HILITE,0.12)` / 底 `Mix(BAR_B,BAR_T,0.40)`）、金 `GOLD -> GOLD_L` 且 α +40。
+- 产物 `Icon_FriendPlus.png` / `Icon_FriendPlusHover.png`，各 **256×256**（2 的幂，所以**不吃** npot 缩放；带硬 alpha 边，进的是守卫的 `alphaIsTransparency` 白名单）。
+
+### ② 表头那颗「+」
+
+| 项 | 值 |
+|---|---|
+| 名字 / 父节点 | `Icon_FriendPlus` / `Panel_Friends/Body` |
+| 位置 | 锚左上 + 轴左上，`(397, -58)` = `FriendsPanelW 465 - FriendPlusRight 24 - FriendPlusSize 44`；与「好友」标题**同一行**（标题盒 -58..-102） |
+| 尺寸 | **44×44 屏幕 px**（贴图 256；方印占 168/256 ⇒ 可见印面 **28.9**，比关闭叉的 39.4 轻一档 —— 它不是全屏弹窗的关闭件） |
+| 悬停 / 点击 | `LobbyIconHover`（常态 / 悬停两张贴图）+ 新字段 `subPanel` → `Toggle()` |
+| 不挂 `Button` | **同物体上两个 `IPointerClickHandler` 会被各触发一次**（`Toggle` 再 `Open` 正好互相抵消 = 点了没反应），所以入口一律只留 `LobbyIconHover` 一个处理器 |
+| 标题让路 | `Text_Title.raycastTarget = false` —— 「+」的盒右端压在标题盒（200 宽）上，不关掉会被标题吃掉点击；「+」本身也 `SetAsLastSibling` 排在标题之后 |
+
+常量都在 `BuildFriendsPanelMenu` 顶上：`FriendPlusName` / `FriendPlusSize 44` / `FriendPlusRight 24` / `FriendPlusY -58` / `FriendDetailPanelName`。
+
+### ③ 「好友详情」全屏子弹窗（占位壳）
+
+- `Panel_FriendDetail`，由 `LobbyUIBuilder.BuildFriendDetailSubPanelMenu`（菜单「Tools/异界/大厅：生成「好友详情」子全屏弹窗（好友表头 + 的落点 · 占位）」）出；**壳与 `Panel_Battle` 完全一致**：`BuildSubPanel(..., withHeader:false)` = 通用背景 `CommonBack_A_clean` + 右上角通用关闭叉 `Icon_Close` @ `(-168,-66)` / 60×60 + 内容限位框 `Body_Content`。
+- 不出标题与提示（内容等用户后续说明）；`hideOnOpen` 自动填「无底衬 HUD 图标」那 5 个（好友 / 商城 / 活动 / 教程 / 邮件）—— 与战斗面板同口径，`Icon_Friend` 也在内，所以详情页开着时左上那颗好友图标是藏的（要它常驻就说一声，改成 `FindNoBackdropHudIcons(hud, "Icon_Friend")` 即可）。
+- 打开路径：`LobbyIconHover.OnPointerClick` → `subPanel.Toggle()` → `LobbySubPanel.Open()`，**里面本来就会 `LobbyFriendPanel.Instance.Close()`** —— 正好等于「点 + 时侧边栏自己收回去」，没有额外代码。
+- 接线 `WireFriendDetailEntry(canvas)`：两个菜单**各自都会调**（重建任一边都会把旧引用变成 null，与「战斗」入口同一条坑）；`+` 由 `BuildFriendsPanelMenu` 建，所以**先跑详情菜单、后跑好友侧边栏菜单**的顺序最省事（`BuildFriendDetailSubPanelMenu` 自己也会回头把 `+` 接上）。
+
+### ④ 导入守卫
+
+`TextureImportSettingsGuard.NeedsAlphaIsTransparency` 的 `lobby-ui-v1` 分支加 `Icon_FriendPlus`（`StartsWith` 覆盖常态 + Hover 两张）。**不加这条**，256 缩到 44（5.8 倍）时圆角与金线边缘会发黑。
+
+**自证：`stage50_friend_detail.txt` + `stage48_shots/f5_friend_plus.png` / `f6_friend_detail.png`**（失败合计 **0**）
+
+- 编辑态：两张贴图 **256×256 / alpha=True / Bilinear**；「+」**44×44 @(397,-58)**、锚轴都左上、有 `LobbyIconHover`、两张贴图都在、`subPanel -> Panel_FriendDetail`、**无 Button**、sibling 1 > 标题 0、标题 `raycastTarget=False`；壳：`LobbySubPanel`、背景 `CommonBack_A_clean`、关闭叉 `Icon_Close` @(-168,-66) 60×60、无 `Text_Title`/`Text_Hint`、`Body_Content` 在、`hideOnOpen` 5 个、场景里存成 active。
+- 运行态：开侧边栏 → **IsOpen**、板身 x=0、「+」仍接着 `subPanel` → 截图 **f5**；调 `OnPointerClick` → **弹窗已打开**、**侧边栏已自动收回**（`IsOpen=False`）、弹窗铺的还是通用背景 → 截图 **f6**。执行器跑完已自删（`Stage50FriendDetail.cs` 不在仓库）。
+
+**下一步（等用户）**：详情页内容（头像 / 名称 / 战绩 / 加好友 / 邀请…）—— 用户明说「不要做卡牌的，我后续给你说怎么做」。
+## 二十七次修正（2026-09-27）：好友详情左侧四个 tab + 两条金线 + 右侧一块独立大格子
+
+**用户原话**：「左边有四个格子类似于大厅右下角那四个不过更扁平，分别是好友列表，添加好友，申请列表，黑名单，初始进入位于好友列表格子，在右上角的叉下面划一道长金线横跨左右分割一下，然后左边也有从上到下的一个金线将四个从上到下的格子与右边空间分开得到右边一个独立的大格子，四个格子每个格子的内容都将不一样」。
+
+四格自上而下 = **好友列表 / 添加好友 / 申请列表 / 黑名单**；右侧那块独立大格子里放**四块内容**，同一时刻只开当前选中那一块。
+
+### ① 出图 `Tools/cardframe/FriendDetailTabsV1.ps1`
+
+**配方照抄大厅右下角入口条**（`LobbyUIv1.ps1` 的 `New-LobbyEntryPlate`，`CornerBody*` 那套）：平底竖渐变 + 左上亮楔 + 外墨边 9 + 等比内缩金线（inset 24 / 线宽 3）+ 圆角 26。
+
+与右下角那套**只有两条差别**：
+
+| | 右下角入口条 | 本套四个 tab |
+|---|---|---|
+| 比例 | 300×120 = **2.5:1** | 340×104 = **3.27:1**（用户要的「更扁平」） |
+| 徽记 | **烤进板里**（一个入口一张板） | **不烤进板**：徽记另出 256 图标，运行时只改 alpha |
+
+第二条的理由：四格的**板没有格与格的区别**，区别只在徽记与文字 —— 徽记不烤进板，三态就只需要**三张板、四格共用**，而不是 3×4 = 12 张。
+
+- 板（`1068×360` 贴图 = 屏幕 `340×104`，板身之外每边 8 透明边；`PAD 24` 贴图 px / 3）：
+  `LobbyFriendTab.png`（常态）/ `LobbyFriendTabHover.png`（石面提亮 + 金 `GOLD→GOLD_L`）/ `LobbyFriendTabOn.png`（石面 +8 + 金线 α240 + **左侧一条 9px 金竖条**）。
+- 徽记（`256×256` 金线稿、透明底）：`Icon_FriendTabList`（列表）/ `Icon_FriendTabAdd`（人影 + 加号）/ `Icon_FriendTabRequest`（人影 + 来向箭头）/ `Icon_FriendTabBlock`（人影 + 斜杠）。
+- 预览：`Tools/cardframe/preview/lobby-friend-tabs.png`（三态板 + 四枚徽记）、`lobby-friend-detail-mock.png`（1920×1080 真坐标拼版）。
+
+**踩过的坑**：PowerShell **变量名大小写不敏感** —— 参数 `$tone` 与脚本级 `$TONE` 撞车（`$TONE['n']` 被解析成 `$tone` 索引）；参数名改 `$toneKey` 并加 null 断言。
+
+### ② 两个运行时脚本
+
+| 脚本 | 管什么 |
+|---|---|
+| `Scripts/UI/Lobby/LobbyFriendTab.cs` | **一格自己的皮**：`index` / `plate` / `emblem` / `label` / `tabs` / 三态贴图 / 三档 `*EmblemAlpha`（0.50 / 0.82 / 1.00）/ `normalColor` 奶油 / `goldColor` #E4CB84；`SetOn` / `SetHover` / `Apply`；`IsOn`；三个 `IPointer*` 接口 |
+| `Scripts/UI/Lobby/LobbyFriendDetailTabs.cs` | **控制器**：`tabs[]` / `contents[]` / `startIndex` / `Current`；`Select(index)` 切选中 + 只开对应内容；`OnEnable` 里 `Select(startIndex)` |
+
+- 格上**不挂 `Button`** —— 同物体两个 `IPointerClickHandler` 会各触发一次（与好友表头那颗「+」同一条坑）。`raycast` 目标是子物体 `Plate` 那张 `RawImage`（文字与徽记的 `raycastTarget` 关掉），落在板 / 字 / 徽记上都会沿父级冒泡到这一格。
+- **初始态每次打开都重置**：控制器挂在面板根上，面板 `closeOnStart` 关掉时整棵不激活，再 `Open` 就会走一遍 `OnEnable`。两处 `OnEnable` 都有 `if (!Application.isPlaying) return;` —— 编辑态由构建脚本摆好初始态，组件别去改场景。
+
+### ③ 几何（`LobbyUIBuilder.BuildFriendDetailContent`）
+
+一条轴线走通全篇：**所有边都是「屏幕像素」**，锚点 + offset，不写死 1920×1080。
+
+| 件 | 位置 |
+|---|---|
+| `Line_DividerTop` 横金线 | 距屏幕上沿 **156..158**（关闭叉底沿 126 之下）、横跨 `64 .. 屏幕右沿-64` |
+| `Line_DividerLeft` 竖金线 | 左沿 **428**、宽 2、从横线一路到下沿 64 |
+| `Rail_Tabs` 左侧竖栏 | x `64..404` |
+| 四格 | 竖栏里等分：格心锚 `y = 1-(i+0.5)/4`（1/8 · 3/8 · 5/8 · 7/8），板 **340×104**、板心 x = 170 |
+| 格内 | `Plate` **356×120** @ `(-8,+8)`（贴图外框，板身正好 340×104 居中）/ `Emblem` 64 @ 板宽 75.5% / 板高 50% / `Label` 距板身左沿 58、字号 28 |
+| `Body_Detail` 右侧大格子 | x `428 .. 屏幕右沿-64`、上沿 −156、下沿 64 |
+
+贴图外框比板身每边多 8 = `PAD 24 / 3`。竖向 `/4` 等分 + 拉伸锚 = 换分辨率不会散。
+
+### ④ ★ 排错记录（这一版真正的坑，两条）
+
+**（a）两条金线被拉成「一整块金板」** —— 两条线原本都写成「**四边全拉伸 + offset**」。金线是**没贴图的纯色方块**（`Image.sprite == null`，铺多大就画多大，本套既有做法同 `Hairline`），而沿**拉伸**那条轴的边长 = 父级边长 + `offsetMax - offsetMin`：
+
+- 横线 `offsetMin (64,154)` / `offsetMax (-64,-156)` → **1792×770**，屏幕上是一大块横跨左右的金色大板；
+- 竖线 `offsetMin (428,64)` / `offsetMax (430,-156)` → **1921 宽**，同样是整块金板。
+
+**改法**：`StretchRect` 加一个**带锚点**的重载，两条线改成**一边拉伸、一边钉死** —— 横线锚上沿（`anchorMin (0,1)` / `anchorMax (1,1)`，x 拉伸、y 钉死），竖线锚左沿（`(0,0)` / `(0,1)`，x 钉死、y 拉伸）。钉死那条轴的两个 offset 就是**屏幕上沿 / 左沿的像素距离**。改后横线 `2×1791.28`、竖线 `2×860`（面板 1919.28×1080）。
+
+> 教训：**拉伸锚 + offset 的「厚度」不是 `offsetMax - offsetMin`，而是「父级边长 + 那个差」**。要一条 2px 的线，必须把那条轴钉死。`Stage53` 的门（`rect.height == 2` / `rect.width == 2`）就是为这条留的。
+
+**（b）四格漏回指 → 点第 4 格毫无反应** —— `LobbyFriendTab.tabs` 建的时候漏了赋值：点下去只换了自己的皮，`Select` 没被调到，`Current` 仍是 0、内容也没换。**已补 `for` 循环回指 + `EditorUtility.SetDirty`**，并加了一条编辑态断言「`tabs` 回指的就是本面板的控制器」。
+
+**（c）执行器的坑**：截图那支相位**自己要有「等落盘」的门**（`ScreenCapture.CaptureScreenshot` 是帧末落盘）—— `Stage51` 漏了这个门，报「f8 缺失」是**假失败**（其实只是还没写盘）。
+
+### ⑤ 导入守卫
+
+`TextureImportSettingsGuard` 两处：`NoNpotScaleFolders` 的 `lobby-ui-v1` 分支加 `LobbyFriendTab`（**1068×360 不是 2 的幂**，不加会被吸成 1024×512）；`NeedsAlphaIsTransparency` 加 `LobbyFriendTab` + `Icon_FriendTab`。
+
+### ⑥ 自证
+
+- **`stage52_friend_tabs.txt`**（失败合计 **0**）：七张贴图导入设置（板 `1068x360 / npot=None / alpha=True`、图标 `256` alpha=True）；横竖两条线的 offset；四格的 340×104 + 格心锚 + `Plate 356×120` + `Emblem 64 @256.7,-52` + `Label @58 字号 28`；`Body_Detail` 边界；四块内容标题；控制器 `tabs/contents=4` / `startIndex=0` / 第 0 格 = `LobbyFriendTabOn`；关闭叉压最后；`hideOnOpen` 5 个。运行态：弹窗打开 / 初始进入 = 好友列表 / 只一块内容可见 / 四格回指都在。
+- **`stage53_friend_tabs_lines.txt`**（失败 **2** —— 就是上面 (a)，尺寸门抓到「2px 的金线被拉成 1082 高 / 1921 宽」）。
+- **`stage54_friend_tabs_lines.txt`**（失败合计 **0**）+ **`stage48_shots/f9b_friend_tabs_lines.png`**（初始 = 好友列表）/ **`f10b_friend_tabs_block.png`**（点第 4 格黑名单后）：锚点、`rect.height == 2`、`rect.width == 屏幕宽-128`、竖线 `2 × (屏幕高-220)`、层级 `Bg < 横线 < 竖线 < 竖栏 < 右侧大格子`、运行态两条线仍是 2px。
+- 三支执行器跑完**都已自删**（`Stage52FriendTabs.cs` / `Stage53FriendTabLines.cs` / `Stage54FriendTabLines.cs` 均已不在仓库）。
+
+**下一步（等用户）**：四格各自的内容（用户：「四个格子每个格子的内容都将不一样」）—— 现在每块只有「标题 + 占位 · 内容待接入」。
+
+## 二十八次修正（2026-09-27）：好友列表那一格的内容（行 + 三格动作 + 滚动 + n/50）
+
+**用户原话**：「好友列表（后续每个独立的玩家好友基本上都是按照这样）（上限50个好友），允许滑动，每个好友有个独立的
+长矩形子背景，从左到右分别是头像，名称，id（这个字体小一点），然后中间可以留空，右边分别是当前状态（在线/离线
+什么的），拉黑，删除，（仅在在线状态下）邀请，拉黑删除和邀请都是小ui图案代替文字，每个好友之间是有一点间隔，和底框
+也有间隔，右下角是以类似 23/50 小字这种形式展示好友数量」。追加一句（指令性）：**「仅在对方空闲在线才会出现邀请ui」**。
+
+### ① 出图（`Tools/cardframe/FriendDetailRowV1.ps1`）
+
+| 件 | 尺寸 | 说明 |
+|---|---|---|
+| `LobbyFriendRow.png` | **1376×112** | 行底板（可见板身 1360×96 + 每边 8 透明边） |
+| `Icon_FriendActBlock.png` / `…Hover.png` | 256×256 | 拉黑 = **禁止符**（圆 + 斜杠） |
+| `Icon_FriendActDelete.png` / `…Hover.png` | 256×256 | 删除 = 垃圾桶 |
+| （邀请） | — | **复用已有 `Icon_FriendPlus.png`** —— 与好友表头那颗「+」同源，不另出一套 |
+
+- 配方照抄入口板：平底竖渐变 + 左上亮楔 + 外墨边 9 + 等比内缩金线（inset 24 / 线宽 3）+ 圆角 30；徽章照抄 `Icon_FriendPlus` 的方印配方。
+- **底板存成 1:1（不是全族那个 ×3）** —— 1360×3 = 4080 超过导入器默认 `maxTextureSize 2048` 会**被静默缩掉**。
+  做法：脚本按 ×3 画、再高质量降采样到 1:1（`Save-BmpDown`）。**场景那边 `sizeDelta` 直接 = 贴图尺寸，不除 3。**
+- 形体决策：44px 显示尺寸下「人影 + 斜杠」会糊成一团（截图实测），拉黑改成**禁止符**；并把「黑名单」tab 那枚徽记**也改成同一个形体**。
+
+### ② 版式（`LobbyUIBuilder` 的 `Fd*` 常量段 · 屏幕 px）
+
+一条轴线：**行定宽 1360**（不是拉伸）—— 行底板是按尺寸出的图，金细线与圆角不等比拉伸就会变形；
+换分辨率时行不跟着拉长，与底框的间隔自然变大（用户要的「和底框也有间隔」）。
+
+| 件 | 位置 / 尺寸 |
+|---|---|
+| `Friends_List`（ScrollRect） | 左/右各让 **32**、上让 **124**（躲开标题）、下让 **60**（给右下角计数） |
+| 行 `RowTemplate` | **1360×96**，行距 **12**，存成 **inactive**（只给运行时克隆） |
+| 行底板 `Plate` | **1376×112** @ `(-8, +8)`，贴 `LobbyFriendRow.png`，**不吃点击**（拖拽交给 Viewport 那张 α=0 的图） |
+| 头像环 / 井 | 环 **64** @ `(14, -16)`；井里头像 **50** @ `(21, -23)`（口径 = `LobbyAvatarRing` 264 里井半径 102） |
+| 名称 | x **96**、宽 **260**、字号 **26**、左对齐、**Ellipsis**（长名截断，不糊到 id 上） |
+| id（小字） | x **364**、宽 **336**、字号 **20**、钢灰 `#8EA2B4` α190 |
+| 状态 | 右沿 **1172**、宽 **260**、字号 **22**、**右对齐** |
+| 三格动作 | **44×44** @ y **−26**，x = **1184 / 1240 / 1296**（间距 12、右让 20） |
+| 右下角计数 | 锚右下、`(-32, 18)`、字号 **22**、右对齐、钢灰 |
+
+**三列文字盒一律 40 高**（不是「刚好放下一行」）—— 见下面 ④ (a)，这是硬要求。
+
+### ③ 运行时（三支新文件）
+
+| 文件 | 干什么 |
+|---|---|
+| `Scripts/UI/Lobby/FriendRowAction.cs` | 一格动作：悬停换贴图、点击转给本行。**不挂 Button** —— 同物体两个 `IPointerClickHandler` 会各触发一次（与「+」、左侧四 tab 同一条坑） |
+| `Scripts/UI/Lobby/FriendDetailRowUI.cs` | 一行的皮：头像 / 名称 / id / 状态 / 邀请格；`Bind(FriendEntry)`；头像先铺灰再等 Steam 到货（0.5s 重试 / 20s 放弃） |
+| `Scripts/UI/Lobby/LobbyFriendDetailListUI.cs` | Content 上的名单：克隆行、高度、计数、超 50 截断、只在**行数变**时回顶 |
+
+- **邀请口径**：`e.Presence == FriendPresence.Online && e.SteamId != 0` —— `Online` 就是「没在匹配、也没在对局」那一档；
+  匹配中 / 对局中 / 离线都不出。三格位置**固定**，邀请那格只是 `SetActive(false)` 藏起来，所以拉黑 / 删除不会跳位。
+- **删除 = 墓碑**：好友表是从「Steam 好友 + 玩过本游戏」**推**出来的、每 20 秒重扫。直接 `FriendStore.Remove`
+  下一轮他就回来了 —— 所以 `FriendEntry` 加 `removed` 墓碑，`FriendListService.Refresh()` 两条路都过滤，
+  `FriendStore.AddManual` 遇到已存在且带墓碑的把墓碑清掉（= 重新加回来）。
+- **拉黑还是占位**（口径待用户定：只屏蔽名单，还是连匹配也不碰他）。
+
+### ④ ★ 排错记录（这一版真正的坑，三条）
+
+**（a）名字列一个字都不画 —— 盒子矮于一行行高 + Ellipsis 溢出。**
+`FdRowNameH` 原本按「字号 26 + 一点余量」取 **34**，而 NotoSerifCJK 26 号的实测 **`preferredHeight = 37.4`**。
+`overflowMode = Ellipsis` 在**连一行都放不下**时不是「截断成省略号」，而是**一个字符都不画**（实测 `textInfo.characterCount = 0`）；
+同一行的 id（`Overflow` 模式、行高 28.7 < 34）反而正常 —— 所以现象是「id 有、名字没有」，很像赋值漏了。
+**改法**：三列文字盒一律 **40** 高（名字 / id / 状态同高，顺带把三列的光学中线对齐）。
+**教训**：`Ellipsis` 的盒子必须容得下**整行行高**，不是容得下「字号」；而且**只断言 `.text` 有值查不出这种漏**
+（`.text` 是对的、`characterCount` 才是 0）—— 门要查 `characterCount`。
+
+**（b）导入守卫的尺寸门把 npot / alpha 一起漏掉了。**
+`LobbyFriendRow` 是 **1376×112**，高 112 < `MinSizeForMipmaps`（128），而 `OnPreprocessTexture` 的尺寸门
+在 `ApplyTo` **之前** `return` —— 于是「不许 Unity 缩放」（npot=None）与「alpha 扩散」两条**一起没套上**
+（重导后实测仍是 `ToNearest` / `alphaIsTransparency = false`，行底板会被吸成 1024×128）。
+**改法**：尺寸门只管「双线性 + mipmap」那一段（小控件不做缩小采样），
+把与尺寸无关的两条拆成 `ApplyFilterPart` / `ApplyScalePart`，**后者永远执行**；
+`NeedsFix` 加 `sized` 参数，菜单体检与报告两条路同样改。这是**守卫本身的通用修正**，不止这一件贴图受益。
+
+**（c）执行器的坑（复述）**：截图那支相位**自己要有「等落盘」的门**（`ScreenCapture.CaptureScreenshot` 是帧末落盘）；
+另外 **`GameObject.Find` 找不到 `closeOnStart` 关掉的 `Panel_FriendDetail`** —— 要用
+`Resources.FindObjectsOfTypeAll<LobbySubPanel>()` 找（含 inactive）。
+
+### ⑤ 导入守卫
+
+`TextureImportSettingsGuard`：`NoNpotScaleFolders` 的 `lobby-ui-v1` 分支加 `LobbyFriendRow`
+（1376×112 不是 2 的幂）；`NeedsAlphaIsTransparency` 加 `LobbyFriendRow` + `Icon_FriendAct`；
+并按 ④ (b) 把「与尺寸无关的两条」从尺寸门里拆出来。
+
+### ⑥ 自证
+
+- **`stage55_friend_row_list.txt`**（**失败 9** —— 就是 ④ (a)(b)：8 条 npot/alpha + 1 条名字列空拍，另有 3 条是我自己的断言写错）。
+- **`stage57_name_probe.txt`**（探针，定位 ④ (a)）：`Text_Name` 的 `text=[在线甲]` 而 `chars=0`、`preferredH=37.37 > rect 34`；
+  同一行 `Text_Id`（`overflow=Overflow`）`chars=20` —— 一眼定性。
+- **`stage58_friend_row_list.txt`**（**失败合计 0**，OK 189）+ **`stage48_shots/f11_friend_row_list.png`**：
+  贴图导入（行底板 `1376x112 / npot=None / alpha=True`、两枚徽章 256 / alpha=True）；
+  列表让边 64 / 离底 60 / 上沿 −124；行 1360×96 / 底板 1376×112 @(−8,8) / 环 64 @(14,−16) / 井 50 @(21,−23) /
+  名字 @96 字号 26 / id @364 字号 20 / 状态右沿 1172 字号 22 / 三格 44 @y−26 x=1184·1240·1296 / 计数 @(−32,18)；
+  三格都挂 `FriendRowAction`、**都没多挂 Button**、都回指本行、plate 不吃点击；
+  运行态注入 5 行（在线 / 对局中 / 在线 / 匹配中 / 离线）：行数 5、行距 12、Content 高 528、
+  计数 `5/50`、**两行「在线」才有邀请格**、状态字与颜色逐条、
+  **三列文字 `characterCount ≥ 期望` 且盒子容得下一行**（即 ④ (a) 的回归门）。
+- 三支执行器跑完**都已自删**（`Stage55FriendRowList.cs` / `Stage57NameProbe.cs` / `Stage58FriendRowList.cs` 均已不在仓库）。
+
+**下一步（等用户）**：另外三格（添加好友 / 申请列表 / 黑名单）的内容，以及「拉黑」的口径。

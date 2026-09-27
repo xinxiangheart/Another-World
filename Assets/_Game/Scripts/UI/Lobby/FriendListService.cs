@@ -94,6 +94,9 @@ public class FriendListService : MonoBehaviour
                 if (!e.playedOurGame && local.playedOurGame) { e.playedOurGame = true; e.evidence = "local-seen"; }
             }
 
+            // 用户删过的人：留了墓碑，重扫时不再收回来（FriendDetailRowUI.DeleteMe 写它）
+            if (local != null && local.removed) continue;
+
             if (!_chain.Keep(e)) continue;
             if (taken.Add(e.SteamId)) result.Add(e);
         }
@@ -103,6 +106,7 @@ public class FriendListService : MonoBehaviour
         {
             FriendEntry s = store[i];
             if (s == null || !s.manual) continue;
+            if (s.removed) continue;                                  // 同上：墓碑
             ulong sid = s.SteamId;
             if (sid != 0UL && !taken.Add(sid)) continue;      // 已经在 Steam 那条路里出现过
 

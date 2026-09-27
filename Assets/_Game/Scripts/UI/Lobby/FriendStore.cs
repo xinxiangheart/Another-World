@@ -101,7 +101,13 @@ public static class FriendStore
     public static bool AddManual(List<FriendEntry> store, string playerId, string name, ulong steamId)
     {
         if (store == null || string.IsNullOrEmpty(playerId)) return false;
-        if (FindByPlayerId(store, playerId) != null) return false;
+        FriendEntry existing = FindByPlayerId(store, playerId);
+        if (existing != null)
+        {
+            if (!existing.removed) return false;      // 已经在表里
+            existing.removed = false;                 // 之前删过 → 重新加回来就等于把墓碑清掉
+            return true;
+        }
 
         var e = new FriendEntry();
         e.playerId = playerId;

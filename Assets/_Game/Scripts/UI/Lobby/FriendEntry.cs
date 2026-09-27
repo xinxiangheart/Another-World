@@ -26,6 +26,8 @@ public class FriendEntry
     public bool steamFriend;          // 与该 SteamID **互为** Steam 好友
     public bool playedOurGame;        // 有「他玩过本游戏」的证据（见 evidence）
     public bool manual;               // 手动用异界号加的「游戏内好友」（不受 Steam 好友条件约束）
+    /// <summary>用户点过「删除」：**留一条墓碑**，Steam 那条路每 20 秒重扫时不再把他收回来（2026-09-27）。</summary>
+    public bool removed;
     public int presence;              // FriendPresence
     public long lastSeenUnix;         // 我们最后一次「见过他」的 Unix 秒（0 = 没见过）
     public int coplayUnix;            // Steam 记的「我俩一起玩过本游戏」时间（0 = 没记）

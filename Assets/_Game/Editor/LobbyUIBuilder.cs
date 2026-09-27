@@ -1692,6 +1692,104 @@ public static class LobbyUIBuilder
     const float FriendsPanelTop = 0f;
     const float FriendsPanelBottom = 0f;
 
+    // 好友表头右端那颗「+」：打开「好友详情」全屏子弹窗（2026-09-27 用户：「在好友右边靠近右边框的地方加上一个
+    // 加号 ui 用于打开好友详情全屏（类似于战斗，但不要做卡牌的，我后续给你说怎么做）」）。
+    const string FriendPlusName = "Icon_FriendPlus";
+    const float  FriendPlusSize = 44f;     // 屏幕 44（贴图 256，方印 168/256 -> 印面 28.9；配方同通用关闭叉）
+    const float  FriendPlusRight = 24f;    // 盒右沿距面板右边框（金细线右端让 28，这颗比它再靠里一点）
+    const float  FriendPlusY = -58f;       // 与「好友」标题同一行（标题盒 -58..-102）
+    const string FriendDetailPanelName = "Panel_FriendDetail";
+
+    // ── 好友详情：左侧四个格子 + 两条金线 + 右侧大格子（2026-09-27）──────────────
+    // 用户原话：「左边有四个格子类似于大厅右下角那四个不过更扁平，分别是好友列表，添加好友，申请列表，
+    //   黑名单，初始进入位于好友列表格子，在右上角的叉下面划一道长金线横跨左右分割一下，然后左边也有
+    //   从上到下的一个金线将四个从上到下的格子与右边空间分开得到右边一个独立的大格子，四个格子每个格子
+    //   的内容都将不一样」。
+    // 几何：竖栏 64..404（板 340 宽），四格在竖栏里**等分**（格高 = 竖栏/4、板 104 在格内居中）；
+    //       竖金线 x = 428（= 板右沿 404 + 24）；横金线 y = -156（关闭叉占 -66..-126，这条在它下面）；
+    //       横线横跨 64..屏幕右沿-64、竖线从上到下到距下沿 64 → 右边得到一块独立的大格子。
+    //       两个金线、竖栏、右侧大格子**一律用拉伸锚 + offset 定边**（不写死 1920x1080）：
+    //       四格的格心则按竖栏高度的 1/8、3/8、5/8、7/8 锚 —— 换分辨率不会散。
+    // 贴图：板 1068x360（= 屏幕 340x104 + 每边 8 的透明边，Tools/cardframe/FriendDetailTabsV1.ps1）；
+    //       三态三张、四格共用（板没有格与格的区别）；徽记另出 256 图标，运行时只改 alpha。
+    const string FdRailName     = "Rail_Tabs";
+    const string FdBodyName     = "Body_Detail";
+    const string FdLineTopName  = "Line_DividerTop";
+    const string FdLineLeftName = "Line_DividerLeft";
+    const string FdTabTex       = UiDir + "LobbyFriendTab.png";
+    const string FdTabHoverTex  = UiDir + "LobbyFriendTabHover.png";
+    const string FdTabOnTex     = UiDir + "LobbyFriendTabOn.png";
+    const float  FdPadX         = 64f;     // 左右让边（= SubPanelPadX）
+    const float  FdPadBottom    = 64f;
+    const float  FdLineTopY     = -156f;   // 横金线：距屏幕上沿 156（关闭叉底沿 126 之下）
+    const float  FdTabW         = 340f;    // 比右下角那四块（300x120）更扁平：340x104 = 3.27:1（那条 2.5:1）
+    const float  FdTabH         = 104f;
+    const float  FdLineLeftGap  = 24f;     // 竖金线距板右沿
+    const float  FdFontSize     = 28f;     // 与右下角入口条同号
+    const float  FdLabelX       = 58f;     // 与入口板同口径：距板身左沿 58
+    const float  FdLabelW       = 156f;    // 到徽记左边为止（徽记中心在板宽 75.5% 处）
+    const float  FdEmblemSize   = 64f;     // 徽记显示尺寸（贴图 256）
+    const float  FdEmblemCX     = 0.755f;  // 徽记中心：与入口板同位（板宽 75.5% / 板高 50%）
+    const float  FdPadTex       = 8f;      // 贴图外框比板身每边多 8（贴图 PAD 24 / 3）
+    static readonly Color FdLineColor = new Color32(200, 164, 74, 150);   // 金 #C8A44A · 59%
+    static readonly string[] FdTabNames   = { "Friends", "Add", "Request", "Block" };
+    static readonly string[] FdTabLabels  = { "好友列表", "添加好友", "申请列表", "黑名单" };
+    static readonly string[] FdTabEmblems = { "Icon_FriendTabList", "Icon_FriendTabAdd", "Icon_FriendTabRequest", "Icon_FriendTabBlock" };
+
+    // ── 好友列表那一格的内容（2026-09-27）──────────────────────────────────────────────
+    // 用户：「好友列表（后续每个独立的玩家好友基本上都是按照这样）（上限50个好友），允许滑动，每个好友有个独立的
+    //       长矩形子背景，从左到右分别是头像，名称，id（这个字体小一点），然后中间可以留空，右边分别是当前状态
+    //       （在线/离线什么的），拉黑，删除，（仅在在线状态下）邀请……每个好友之间是有一点间隔，和底框也有间隔，
+    //       右下角是以类似 23/50 小字这种形式展示好友数量」。
+    // 版式（屏幕 px）与 Tools/cardframe/FriendDetailRowV1.ps1 里那组数**逐条对齐**，改一处要两边一起改。
+    const string FdListName  = "Friends_List";
+    const string FdCountName = "Text_Count";
+    const string FdEmptyName = "Text_Empty";
+    const string FdRowTex        = UiDir + "LobbyFriendRow.png";
+    const string FdActBlockTex   = UiDir + "Icon_FriendActBlock.png";
+    const string FdActBlockHov   = UiDir + "Icon_FriendActBlockHover.png";
+    const string FdActDeleteTex  = UiDir + "Icon_FriendActDelete.png";
+    const string FdActDeleteHov  = UiDir + "Icon_FriendActDeleteHover.png";
+    const string FdActInviteTex  = UiDir + "Icon_FriendPlus.png";        // 邀请复用好友表头那颗「+」
+    const string FdActInviteHov  = UiDir + "Icon_FriendPlusHover.png";
+    const int    FdMaxFriends    = 50;      // 用户：上限 50 个好友
+    const float  FdListPadX      = 32f;     // 列表左右让边（和底框的间隔）
+    const float  FdListTop       = 124f;    // 列表上沿：让开标题
+    const float  FdListBottom    = 60f;     // 列表下沿：给右下角那行「n/50」留位
+    const float  FdRowW          = 1360f;   // 行宽（定宽，行底板按这个宽度出图，不跟着分辨率拉伸）
+    const float  FdRowH          = 96f;
+    const float  FdRowGap        = 12f;     // 行与行之间的间隔（用户：「一点间隔」）
+    const float  FdRowPlatePad   = 8f;      // 板身之外那圈透明边（贴图 24 / 3）
+    const float  FdRowRingX      = 14f;     // 头像环距行左沿
+    const float  FdRowRingY      = 16f;     // 头像环距行上沿（环 64 在 96 高的行里竖直居中 → 中心 y=-48）
+    const float  FdRowRingSize   = 64f;
+    const float  FdRowAvatarInset = 7f;     // 井里头像比环每边小 7（块 50）—— 口径 264 里井半径 102
+    const float  FdRowAvatarSize = 50f;
+    const float  FdRowNameX      = 96f;
+    const float  FdRowNameW      = 260f;
+    const float  FdRowNameH      = 40f;    // ★ 必须 >= 字号 x 字体行高：CJK 字体 26 号实测 preferredH 37.4，
+                                           //   盒子矮于它 + Ellipsis 溢出 = TMP 一个字符都不画（2026-09-27 实测踩到），
+                                           //   所以名字那格不能用「刚好放下一行」的高度
+    const float  FdRowNameFS     = 26f;
+    const float  FdRowIdX        = 364f;    // 名称右边就是 id（用户：「从左到右……名称，id」）
+    const float  FdRowIdW        = 336f;
+    const float  FdRowIdH        = 40f;    // 与名字同高 -> 两列的光学中线一致
+    const float  FdRowIdFS       = 20f;     // 用户：「这个字体小一点」
+    const float  FdRowStatusR    = 1172f;   // 状态字右沿（再往右就是拉黑那格）
+    const float  FdRowStatusW    = 260f;
+    const float  FdRowStatusH    = 40f;    // 同上：三列同高
+    const float  FdRowStatusFS   = 22f;
+    const float  FdActSize       = 44f;     // 三格动作：与好友表头那颗「+」同尺寸
+    const float  FdActY          = -26f;    // 44 高的盒在 96 高的行里竖直居中
+    const float  FdActInviteX    = FdRowW - 20f - FdActSize;   // 1296（右让 20）
+    const float  FdActDeleteX    = FdActInviteX - FdActSize - 12f;   // 1240
+    const float  FdActBlockX     = FdActDeleteX - FdActSize - 12f;   // 1184
+    const float  FdCountW        = 240f;
+    const float  FdCountH        = 30f;
+    const float  FdCountBottom   = 18f;     // 计数那行距底框
+    const float  FdCountFS       = 22f;
+    static readonly Color FdSteel = new Color32(142, 162, 180, 190);   // 钢 #8EA2B4 · 75%
+
     /// <summary>把 Selectable 的键盘 / 手柄导航关掉（这几个 Button 只是「吃掉点击」用的，不该参与 Tab 导航）。</summary>
     static Navigation NoNav(Navigation nav)
     {
@@ -1764,6 +1862,10 @@ public static class LobbyUIBuilder
                                          new Vector2(FriendIconRight + 16f, -58f), new Vector2(200f, 44f), 30f);
         title.alignment = TextAlignmentOptions.Left;   // 中线左对齐 = 竖向居中
         title.color = Cream;
+        title.raycastTarget = false;                    // 「+」落在标题盒右端，别让标题把点击吃掉
+
+        // ── 表头行右端那颗「+」：打开好友详情全屏（2026-09-27）──
+        WireFriendDetailPlus(body);
 
         var divider = NewRect(body, "Line_Divider", AnchorTL, PivotTL,
                               new Vector2(28f, -104f), new Vector2(FriendsPanelW - 56f, 2f)).gameObject.AddComponent<Image>();
@@ -1899,11 +2001,433 @@ public static class LobbyUIBuilder
 
         Selection.activeGameObject = root.gameObject;
         EditorSceneManager.MarkSceneDirty(canvas.gameObject.scene);
+        WireFriendDetailEntry(canvas);      // 「+」-> 好友详情面板（两边任一重建后都要重接）
+
         Debug.Log("[LobbyUI] 已生成 " + FriendsPanelName + "（好友侧边栏）：屏幕 " + FriendsPanelW + " x 1080 满高浮层" +
                   "（距上沿 " + FriendsPanelTop + " / 下沿 " + FriendsPanelBottom + "，让开量留给日后微调）+ " +
                   "整屏透明挡板（点它收回去）；好友图标 Icon_Friend 已改接它（再点一次也收回去）。" +
                   "宽 = Plate_Profile 右沿，底图 " + FriendsPanelTex + " 由 Tools/cardframe/LobbyUIv1.ps1 出。");
     }
+
+    /// <summary>好友侧边栏表头行右端那颗「+」（2026-09-27 用户：「在好友右边靠近右边框的地方加上一个加号 ui
+    /// 用于打开好友详情全屏」）。配方**逐行照抄通用关闭叉** Icon_Close（圆角方印 + 内缩金线 + 圆头金笔画，
+    /// 由 Tools/cardframe/LobbyFriendPlusV1.ps1 出），只把叉那两笔改成加号；悬停 = 石面提亮 + 金 GOLD->GOLD_L。
+    /// 位置：表头行右端、距右边框 FriendPlusRight，与「好友」标题同一行（y = FriendPlusY，盒 44x44）。
+    /// 点击**不挂 Button**，只走 LobbyIconHover.subPanel —— 同物体上两个 IPointerClickHandler 会被各触发一次
+    /// （Toggle 再 Open 正好互相抵消 = 点了没反应），所以入口一律只留一个处理器。
+    /// 幂等：已经有了就只回填贴图与引用。</summary>
+    static RawImage WireFriendDetailPlus(RectTransform body)
+    {
+        float x = FriendsPanelW - FriendPlusRight - FriendPlusSize;
+        string normalPath = UiDir + FriendPlusName + ".png";
+        string hoverPath  = UiDir + FriendPlusName + "Hover.png";
+
+        Transform old = body.Find(FriendPlusName);
+        RawImage icon;
+        if (old != null)
+        {
+            icon = old.GetComponent<RawImage>();
+            old.SetAsLastSibling();                  // 排在标题 / 金线之后：点击先命中它
+        }
+        else
+        {
+            icon = NewRaw(body, FriendPlusName, normalPath, AnchorTL, PivotTL,
+                          new Vector2(x, FriendPlusY), new Vector2(FriendPlusSize, FriendPlusSize));
+            icon.raycastTarget = true;
+        }
+
+        var hover = icon.GetComponent<LobbyIconHover>();
+        if (hover == null) hover = icon.gameObject.AddComponent<LobbyIconHover>();
+        hover.icon = icon;
+        hover.normalTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(normalPath);
+        hover.hoverTexture  = AssetDatabase.LoadAssetAtPath<Texture2D>(hoverPath);
+        hover.popup = null;                          // 不弹占位窗
+        hover.title = "";
+        if (hover.hoverTexture == null) Debug.LogWarning("[LobbyUI] 找不到 " + hoverPath + " —— 好友表头那颗「+」没有悬停态");
+        EditorUtility.SetDirty(hover);
+        EditorUtility.SetDirty(icon);
+        return icon;
+    }
+
+    /// <summary>把好友表头那颗「+」接到「好友详情」面板。两边任一重建后都要重接（重建会把旧引用变成 null）。</summary>
+    static void WireFriendDetailEntry(Canvas canvas)
+    {
+        if (canvas == null) return;
+        Transform plus = FindDeep(canvas.transform, FriendPlusName);
+        if (plus == null) { Debug.LogWarning("[LobbyUI] 找不到 " + FriendPlusName + " —— 好友详情入口没接上（先跑「大厅：生成好友侧边栏」）"); return; }
+
+        var hover = plus.GetComponent<LobbyIconHover>();
+        if (hover == null) { Debug.LogWarning("[LobbyUI] " + FriendPlusName + " 上没有 LobbyIconHover —— 点击没接上"); return; }
+        Transform panelT = FindDeep(canvas.transform, FriendDetailPanelName);
+        if (panelT == null)
+        {
+            hover.subPanel = null;
+            Debug.Log("[LobbyUI] 好友详情面板还没生成（" + FriendDetailPanelName + "）—— 「+」的点击等它生成后再接。");
+            return;
+        }
+
+        hover.subPanel = panelT.GetComponent<LobbySubPanel>();
+        EditorUtility.SetDirty(hover);
+        Debug.Log("[LobbyUI] " + FriendPlusName + " -> " + FriendDetailPanelName + " 的点击引用已重接（原来指向已被销毁的旧组件时会是 null）。");
+    }
+
+    /// <summary>铺满父级、用 offsetMin / offsetMax 定边的透明框（用法同 BuildSubPanel 里的 Body_Content）。</summary>
+    static RectTransform StretchRect(Transform parent, string name, Vector2 offsetMin, Vector2 offsetMax)
+    {
+        return StretchRect(parent, name, Vector2.zero, Vector2.one, offsetMin, offsetMax);
+    }
+
+    /// <summary>带锚点的版本：「一边拉伸、另一边钉死」用它 —— 两条金细线就是这么来的。</summary>
+    /// <remarks>2026-09-27 实测踩到：两条线都照「四边全拉伸 + offset」写时，沿**拉伸**那条轴的边长
+    /// = 父级边长 + offsetMax - offsetMin。线又是**没贴图的纯色方块**（铺多大就画多大），于是「一条 2px 的金线」
+    /// 被拉成 1792x770 一整块金色大板 —— 屏幕上一大片金。横线要锚上沿（y 钉死、x 拉伸）、竖线锚左沿（x 钉死、y 拉伸）。
+    /// 钉死那条轴的两个 offset 就是**屏幕上沿 / 左沿的像素距离**，换分辨率不会跟着面板一起被拉长。</remarks>
+    static RectTransform StretchRect(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax, Vector2 offsetMin, Vector2 offsetMax)
+    {
+        RectTransform rt = NewRect(parent, name, Vector2.zero, PivotC, Vector2.zero, Vector2.zero);
+        rt.anchorMin = anchorMin;
+        rt.anchorMax = anchorMax;
+        rt.offsetMin = offsetMin;
+        rt.offsetMax = offsetMax;
+        return rt;
+    }
+
+    /// <summary>好友详情的内容骨架：横金线（叉下面） + 竖金线（从上到下） + 左侧四格竖栏 + 右侧一块独立大格子。</summary>
+    /// <remarks>2026-09-27 用户：「左边有四个格子类似于大厅右下角那四个不过更扁平，分别是好友列表，添加好友，
+    /// 申请列表，黑名单，初始进入位于好友列表格子，在右上角的叉下面划一道长金线横跨左右分割一下，然后左边也有
+    /// 从上到下的一个金线将四个从上到下的格子与右边空间分开得到右边一个独立的大格子，四个格子每个格子的内容
+    /// 都将不一样」。
+    ///
+    /// 四格与内容一一对应：格 i 用 <see cref="LobbyFriendTab.index"/> 自报家门，右侧 Body_Detail 里的
+    /// Content_&lt;格&gt; 同一时刻只开当前那一块（<see cref="LobbyFriendDetailTabs"/>）。内容本体用户还没说，
+    /// 现在每块只放「标题 + 占位 · 内容待接入」。
+    /// 幂等：先把旧的四个件收掉再建（重跑本菜单不叠）。</remarks>
+    static void BuildFriendDetailContent(GameObject panel)
+    {
+        if (panel == null) return;
+        Transform bg = panel.transform.Find("Bg");
+        int at = bg != null ? bg.GetSiblingIndex() + 1 : 0;
+
+        string[] olds = { FdLineTopName, FdLineLeftName, FdRailName, FdBodyName };
+        for (int i = 0; i < olds.Length; i++)
+        {
+            Transform o = panel.transform.Find(olds[i]);
+            if (o != null) Undo.DestroyObjectImmediate(o.gameObject);
+        }
+
+        float lineLeftX = FdPadX + FdTabW + FdLineLeftGap;      // 428
+
+        // ① 横金线：右上关闭叉的下面，横跨左右
+        var lineTop = StretchRect(panel.transform, FdLineTopName, new Vector2(0f, 1f), new Vector2(1f, 1f),
+                                  new Vector2(FdPadX, FdLineTopY - 2f),
+                                  new Vector2(-FdPadX, FdLineTopY)).gameObject.AddComponent<Image>();
+        lineTop.color = FdLineColor;
+        lineTop.raycastTarget = false;
+        lineTop.transform.SetSiblingIndex(at);
+
+        // ② 竖金线：从横金线一路到下沿（把左侧四格与右边那块分开）
+        var lineLeft = StretchRect(panel.transform, FdLineLeftName, new Vector2(0f, 0f), new Vector2(0f, 1f),
+                                   new Vector2(lineLeftX, FdPadBottom),
+                                   new Vector2(lineLeftX + 2f, FdLineTopY)).gameObject.AddComponent<Image>();
+        lineLeft.color = FdLineColor;
+        lineLeft.raycastTarget = false;
+        lineLeft.transform.SetSiblingIndex(at + 1);
+
+        // ③ 左侧竖栏：四个格子在竖栏里等分，板在格内居中
+        RectTransform rail = StretchRect(panel.transform, FdRailName,
+                                         new Vector2(FdPadX, FdPadBottom),
+                                         new Vector2(FdPadX + FdTabW, FdLineTopY));
+        rail.SetSiblingIndex(at + 2);
+
+        var tabs = new LobbyFriendTab[FdTabNames.Length];
+        for (int i = 0; i < FdTabNames.Length; i++)
+        {
+            // 格心：竖栏高度上按 1/8、3/8、5/8、7/8 锚（换分辨率不会散）
+            float cy = 1f - (i + 0.5f) / FdTabNames.Length;
+            RectTransform tabRT = NewRect(rail, "Tab_" + FdTabNames[i], new Vector2(0f, cy), PivotC,
+                                          new Vector2(FdTabW * 0.5f, 0f), new Vector2(FdTabW, FdTabH));
+
+            // 板身 340x104，贴图外框 356x120（每边多 8）—— 框的左上角相对板身左上角是 (-8, +8)
+            RawImage plate = NewRaw(tabRT, "Plate", FdTabTex, AnchorTL, PivotTL,
+                                    new Vector2(-FdPadTex, FdPadTex),
+                                    new Vector2(FdTabW + FdPadTex * 2f, FdTabH + FdPadTex * 2f));
+            plate.raycastTarget = true;                     // 整格的可点区就是这张板
+
+            RawImage emblem = NewRaw(tabRT, "Emblem", UiDir + FdTabEmblems[i] + ".png", AnchorTL, PivotC,
+                                     new Vector2(FdTabW * FdEmblemCX, -FdTabH * 0.5f),
+                                     new Vector2(FdEmblemSize, FdEmblemSize));
+            emblem.raycastTarget = false;
+
+            TextMeshProUGUI label = NewLabel(tabRT, "Label", FdTabLabels[i],
+                                             new Vector2(FdLabelX, -(FdTabH * 0.5f - 0.87f * FdFontSize)),
+                                             new Vector2(FdLabelW, FdFontSize * 1.6f), FdFontSize);
+            label.raycastTarget = false;                    // 落在字上也要冒泡到这一格
+
+            var tab = tabRT.gameObject.AddComponent<LobbyFriendTab>();
+            tab.index = i;
+            tab.plate = plate;
+            tab.emblem = emblem;
+            tab.label = label;
+            tab.normalTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(FdTabTex);
+            tab.hoverTexture  = AssetDatabase.LoadAssetAtPath<Texture2D>(FdTabHoverTex);
+            tab.onTexture     = AssetDatabase.LoadAssetAtPath<Texture2D>(FdTabOnTex);
+            tab.normalColor = Cream;
+            tab.goldColor = GoldBright;
+            tab.normalEmblemAlpha = 0.50f;
+            tab.hoverEmblemAlpha = 0.82f;
+            tab.onEmblemAlpha = 1.00f;
+            tabs[i] = tab;
+        }
+
+        // ④ 右侧那块独立的大格子（四块内容叠在同一处，只开当前那格）
+        RectTransform body = StretchRect(panel.transform, FdBodyName,
+                                         new Vector2(lineLeftX, FdPadBottom),
+                                         new Vector2(-FdPadX, FdLineTopY));
+        body.SetSiblingIndex(at + 3);
+
+        var contents = new GameObject[FdTabNames.Length];
+        for (int i = 0; i < FdTabNames.Length; i++)
+        {
+            RectTransform c = StretchRect(body, "Content_" + FdTabNames[i], Vector2.zero, Vector2.zero);
+            TextMeshProUGUI head = NewLabel(c, "Text_Head", FdTabLabels[i],
+                                            new Vector2(40f, -40f), new Vector2(900f, 64f), 44f);
+            head.color = GoldBright;
+            head.raycastTarget = false;
+            // 第 1 格「好友列表」= 真名单（滚动 + 行 + 右下角 n/50）；其余三格还是占位
+            if (i == 0)
+            {
+                BuildFriendListInto(c);
+            }
+            else
+            {
+                TextMeshProUGUI hint = NewLabel(c, "Text_Hint", "占位 · 内容待接入",
+                                                new Vector2(40f, -116f), new Vector2(900f, 36f), 26f);
+                hint.color = new Color32(142, 162, 180, 170);    // 钢 #8EA2B4
+                hint.raycastTarget = false;
+            }
+
+            c.gameObject.SetActive(i == 0);
+            contents[i] = c.gameObject;
+        }
+
+        // ⑤ 控制器 + 把初始态摆好（初始进入 = 好友列表那一格）
+        var ctrl = panel.GetComponent<LobbyFriendDetailTabs>();
+        if (ctrl == null) ctrl = panel.gameObject.AddComponent<LobbyFriendDetailTabs>();
+        ctrl.tabs = tabs;
+        ctrl.contents = contents;
+        ctrl.startIndex = 0;
+
+        // ★ 每一格要回指控制器 —— 漏了这条，点击就只是换了自己的皮、切不动内容
+        //   （2026-09-27 实测踩到：LobbyFriendTab.tabs 为 null，点第 4 格毫无反应）
+        for (int i = 0; i < tabs.Length; i++)
+        {
+            tabs[i].tabs = ctrl;
+            EditorUtility.SetDirty(tabs[i]);
+        }
+        ctrl.Select(0);
+
+        Transform closeBtn = panel.transform.Find("Btn_Close");
+        if (closeBtn != null) closeBtn.SetAsLastSibling();   // 叉子始终压在内容之上
+
+        Debug.Log("[LobbyUI] " + panel.name + " 内容已就位：横金线 y " + FdLineTopY + "（横跨 " + FdPadX + "..屏幕右沿-" + FdPadX + "）" +
+                  " + 竖金线 x " + lineLeftX + "（从上到下到下沿 " + FdPadBottom + "）；左侧竖栏 " + FdTabW + " 宽、四格等分、板 " + FdTabW + "x" + FdTabH + "（比右下角那四块 300x120 更扁平）；" +
+                  "右侧大格子 = Body_Detail（四块 Content_* 只开当前那格）；初始格 = " + FdTabLabels[0] + "。" +
+                  "位置 / 尺寸改 Fd* 常量，贴图由 Tools/cardframe/FriendDetailTabsV1.ps1 出。");
+    }
+
+
+    /// <summary>「好友列表」那一格的内容：整块滚动名单 + 右下角「n/50」小字。</summary>
+    /// <remarks>2026-09-27 用户：「好友列表（后续每个独立的玩家好友基本上都是按照这样）（上限50个好友），允许滑动，
+    /// 每个好友有个独立的长矩形子背景，从左到右分别是头像，名称，id（这个字体小一点），然后中间可以留空，右边分别是
+    /// 当前状态（在线/离线什么的），拉黑，删除，（仅在在线状态下）邀请……每个好友之间是有一点间隔，和底框也有间隔，
+    /// 右下角是以类似 23/50 小字这种形式展示好友数量」。
+    ///
+    /// 滚动那一套照抄好友侧边栏（`Panel_Friends/Body/List`）：ScrollRect 只竖滚 + Clamped 不回弹，Viewport 用
+    /// RectMask2D 硬裁 + 一张 α=0 的 Image 吃拖拽，行都挂在 Viewport/Content 下。与侧边栏的差别只有三条：
+    /// **上限 50**、行底板是一整张贴图（`LobbyFriendRow`）、右下角有计数。
+    ///
+    /// 行是**定宽**（`FdRowW` 1360）不是拉伸：行底板是一张按尺寸出的图，金细线与圆角不等比拉伸就会变形；
+    /// 定宽换来的是换分辨率时行不跟着拉长，与底框的间隔自然变大（用户要的「和底框也有间隔」）。
+    /// 幂等：先把旧的列表 / 计数 / 空表那句收掉再建。</remarks>
+    static void BuildFriendListInto(RectTransform content)
+    {
+        string[] olds = { FdListName, FdCountName, FdEmptyName };
+        for (int i = 0; i < olds.Length; i++)
+        {
+            Transform o = content.Find(olds[i]);
+            if (o != null) Undo.DestroyObjectImmediate(o.gameObject);
+        }
+
+        // 三行文字各自在自己盒里竖直居中（盒心都落在行中线 y = -FdRowH/2 上）
+        float nameY   = -(FdRowH * 0.5f - FdRowNameH * 0.5f);
+        float idY     = -(FdRowH * 0.5f - FdRowIdH * 0.5f);
+        float statusY = -(FdRowH * 0.5f - FdRowStatusH * 0.5f);
+
+        // ① 列表 = ScrollRect（只竖滚 + Clamped 不回弹）
+        RectTransform list = StretchRect(content, FdListName,
+                                         new Vector2(FdListPadX, FdListBottom),
+                                         new Vector2(-FdListPadX, -FdListTop));
+        var scroll = list.gameObject.AddComponent<ScrollRect>();
+        scroll.horizontal = false;
+        scroll.vertical = true;
+        scroll.movementType = ScrollRect.MovementType.Clamped;
+        scroll.inertia = true;
+        scroll.decelerationRate = 0.12f;
+        scroll.scrollSensitivity = 40f;        // 滚轮灵敏度（默认 1 太肉）
+
+        RectTransform viewport = StretchRect(list, "Viewport", Vector2.zero, Vector2.zero);
+        viewport.gameObject.AddComponent<RectMask2D>();
+        var viewportImage = viewport.gameObject.AddComponent<Image>();
+        viewportImage.color = new Color(0f, 0f, 0f, 0f);
+        viewportImage.raycastTarget = true;    // 吃得到拖拽（Unity 不看 α）
+        scroll.viewport = viewport;
+
+        RectTransform listContent = NewRect(viewport, "Content", AnchorTL, PivotTL, Vector2.zero, Vector2.zero);
+        listContent.anchorMin = new Vector2(0f, 1f);
+        listContent.anchorMax = new Vector2(1f, 1f);
+        listContent.pivot = new Vector2(0.5f, 1f);
+        listContent.sizeDelta = new Vector2(0f, 0f);           // 高度运行时按行数改
+        scroll.content = listContent;
+
+        // ② 行模板（挂在 Content 下、存成 inactive，运行时克隆）：整行一块长矩形子背景 + 头像 + 名称 / id / 状态 + 三格动作
+        RectTransform rowRT = NewRect(listContent, "RowTemplate", AnchorTL, PivotTL, Vector2.zero, new Vector2(FdRowW, FdRowH));
+        var row = rowRT.gameObject.AddComponent<FriendDetailRowUI>();
+
+        // 贴图外框比板身每边多 8（PAD 24 / 3）—— 板身正好 1360x96 盖住整行
+        RawImage plate = NewRaw(rowRT, "Plate", FdRowTex, AnchorTL, PivotTL,
+                                new Vector2(-FdRowPlatePad, FdRowPlatePad),
+                                new Vector2(FdRowW + FdRowPlatePad * 2f, FdRowH + FdRowPlatePad * 2f));
+        plate.raycastTarget = false;           // 拖拽交给 Viewport 那张 α=0 的图
+
+        // 头环 + 井里头像（口径 = LobbyAvatarRing 264 里井半径 102 → 64 上 49.5 → 取 50）
+        RawImage ring = NewRaw(rowRT, "Avatar_Ring", UiDir + "LobbyAvatarRing.png", AnchorTL, PivotTL,
+                               new Vector2(FdRowRingX, -FdRowRingY), new Vector2(FdRowRingSize, FdRowRingSize));
+        ring.raycastTarget = false;
+        RectTransform avatarRT = NewRect(rowRT, "Avatar_Image", AnchorTL, PivotTL,
+                                         new Vector2(FdRowRingX + FdRowAvatarInset, -(FdRowRingY + FdRowAvatarInset)),
+                                         new Vector2(FdRowAvatarSize, FdRowAvatarSize));
+        var avatar = avatarRT.gameObject.AddComponent<RawImage>();
+        avatar.texture = null;                 // 运行时填：先灰盘，Steam 头像到货自己换
+        avatar.raycastTarget = false;
+        avatarRT.SetSiblingIndex(ring.transform.GetSiblingIndex() + 1);
+
+        TextMeshProUGUI name = NewLabel(rowRT, "Text_Name", "名字",
+                                        new Vector2(FdRowNameX, nameY), new Vector2(FdRowNameW, FdRowNameH), FdRowNameFS);
+        name.alignment = TextAlignmentOptions.Left;
+        name.overflowMode = TextOverflowModes.Ellipsis;    // 名字长了截断，别糊到 id 上
+        name.color = Cream;
+        name.raycastTarget = false;
+
+        TextMeshProUGUI id = NewLabel(rowRT, "Text_Id", "",
+                                      new Vector2(FdRowIdX, idY), new Vector2(FdRowIdW, FdRowIdH), FdRowIdFS);
+        id.alignment = TextAlignmentOptions.Left;
+        id.color = FdSteel;
+        id.raycastTarget = false;
+
+        TextMeshProUGUI status = NewLabel(rowRT, "Text_Status", "离线",
+                                          new Vector2(FdRowStatusR - FdRowStatusW, statusY),
+                                          new Vector2(FdRowStatusW, FdRowStatusH), FdRowStatusFS);
+        status.alignment = TextAlignmentOptions.Right;
+        status.color = FdSteel;
+        status.raycastTarget = false;
+
+        WireRowAction(rowRT, "Act_Block", FdActBlockX, FdActBlockTex, FdActBlockHov, FriendRowActionKind.Block, row);
+        WireRowAction(rowRT, "Act_Delete", FdActDeleteX, FdActDeleteTex, FdActDeleteHov, FriendRowActionKind.Delete, row);
+        FriendRowAction invite = WireRowAction(rowRT, "Act_Invite", FdActInviteX, FdActInviteTex, FdActInviteHov, FriendRowActionKind.Invite, row);
+
+        row.avatarImage = avatar;
+        row.nameText = name;
+        row.idText = id;
+        row.statusText = status;
+        row.inviteGroup = invite.gameObject;     // 只有「空闲在线」那一档才 SetActive(true)
+        rowRT.gameObject.SetActive(false);       // 模板自己藏着，只给克隆用
+
+        // ③ 右下角「实际 / 上限」小字（用户举的例子就是「23/50」）
+        TextMeshProUGUI count = NewLabel(content, FdCountName, "0/" + FdMaxFriends,
+                                         new Vector2(40f, -40f), new Vector2(FdCountW, FdCountH), FdCountFS);
+        RectTransform countRT = count.rectTransform;
+        countRT.anchorMin = new Vector2(1f, 0f);
+        countRT.anchorMax = new Vector2(1f, 0f);
+        countRT.pivot = new Vector2(1f, 0f);
+        countRT.anchoredPosition = new Vector2(-FdListPadX, FdCountBottom);
+        count.alignment = TextAlignmentOptions.Right;
+        count.color = FdSteel;
+        count.raycastTarget = false;
+
+        // ④ 空表那句话（摆在大格子正中）
+        TextMeshProUGUI empty = NewLabel(content, FdEmptyName, "", Vector2.zero, new Vector2(FdRowW, 40f), 24f);
+        RectTransform emptyRT = empty.rectTransform;
+        emptyRT.anchorMin = new Vector2(0.5f, 0.5f);
+        emptyRT.anchorMax = new Vector2(0.5f, 0.5f);
+        emptyRT.pivot = new Vector2(0.5f, 0.5f);
+        emptyRT.anchoredPosition = Vector2.zero;
+        empty.alignment = TextAlignmentOptions.Center;
+        empty.color = new Color32(142, 162, 180, 170);
+        empty.raycastTarget = false;
+
+        // ⑤ 名单 UI 挂在 Content 上（它就是「行的容器」）：高度按行数改 = ScrollRect 的可滚范围
+        var listUI = listContent.gameObject.AddComponent<LobbyFriendDetailListUI>();
+        listUI.rowTemplate = row;
+        listUI.scrollRect = scroll;
+        listUI.countText = count;
+        listUI.emptyText = empty;
+        listUI.maxFriends = FdMaxFriends;
+        listUI.rowGap = FdRowGap;
+
+        // ⑥ 两个服务挂在大厅 Canvas 上 —— 本菜单会反复重建面板，服务别跟着一起没
+        Canvas canvas = content.GetComponentInParent<Canvas>();
+        if (canvas != null)
+        {
+            if (canvas.gameObject.GetComponent<FriendListService>() == null) canvas.gameObject.AddComponent<FriendListService>();
+            if (canvas.gameObject.GetComponent<LobbyInviteService>() == null) canvas.gameObject.AddComponent<LobbyInviteService>();
+        }
+
+        Debug.Log("[LobbyUI] 好友列表内容已就位：上限 " + FdMaxFriends + "、行 " + FdRowW + "x" + FdRowH + "、行距 " + FdRowGap +
+                  "、列表让边 " + FdListPadX + "（上 " + FdListTop + " / 下 " + FdListBottom + " —— 下留给右下角那行 n/" + FdMaxFriends + "）。");
+    }
+
+    /// <summary>行右端一格式动作：图标（常态 / 悬停两张贴图）+ <see cref="FriendRowAction"/>。</summary>
+    /// <remarks>**不挂 Button** —— 同物体上两个 IPointerClickHandler 会被各触发一次（与「+」、左侧四个 tab 同一条坑）。</remarks>
+    static FriendRowAction WireRowAction(RectTransform rowRT, string name, float x, string normalTex, string hoverTex,
+                                         FriendRowActionKind kind, FriendDetailRowUI row)
+    {
+        RawImage icon = NewRaw(rowRT, name, normalTex, AnchorTL, PivotTL,
+                               new Vector2(x, FdActY), new Vector2(FdActSize, FdActSize));
+        icon.raycastTarget = true;
+        var act = icon.gameObject.AddComponent<FriendRowAction>();
+        act.kind = kind;
+        act.icon = icon;
+        act.normalTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(normalTex);
+        act.hoverTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(hoverTex);
+        act.row = row;
+        return act;
+    }
+
+
+    /// <summary>「好友详情」全屏子弹窗的壳（内容用户还没说，先只出壳 + 右上角通用关闭叉）。
+    /// 壳与 Panel_Battle 完全一致（BuildSubPanel：通用背景 CommonBack_A_clean + 关闭叉 Icon_Close）。</summary>
+    [MenuItem("Tools/异界/大厅：生成「好友详情」子全屏弹窗（好友表头 + 的落点 · 占位）")]
+    public static void BuildFriendDetailSubPanelMenu()
+    {
+        Canvas canvas = Object.FindObjectOfType<Canvas>();
+        if (canvas == null) { Debug.LogError("[LobbyUI] 当前场景没有 Canvas —— 请先打开 Assets/_Game/Scenes/Lobby.unity"); return; }
+
+        _font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontPath);
+        if (_font == null) Debug.LogWarning($"[LobbyUI] 找不到字体 {FontPath}，中文会落到 TMP 默认字体");
+
+        Transform sub, hud;
+        EnsureUiLayers(canvas, out sub, out hud);
+
+        GameObject panel = BuildSubPanel(sub, hud.gameObject, FriendDetailPanelName, "好友详情", true, false);
+        BuildFriendDetailContent(panel);            // 左侧四格 + 两条金线 + 右侧大格子（内容占位）
+        WireFriendDetailEntry(canvas);              // 顺便把好友侧边栏表头那颗「+」接上
+        Selection.activeGameObject = panel;
+        EditorSceneManager.MarkSceneDirty(canvas.gameObject.scene);
+        Debug.Log("[LobbyUI] 已生成 " + FriendDetailPanelName + "（全屏子弹窗）：壳同 Panel_Battle（CommonBack_A_clean + 通用关闭叉 Icon_Close 右上角）；" +
+                  "本面板不出标题与提示（withHeader:false），内容区 = Body_Content（只限位、不画东西）—— 详情页内容等用户后续说明；" +
+                  "入口 = 好友侧边栏表头右端那颗「+」（" + FriendPlusName + "，点击走 LobbyIconHover.subPanel -> Toggle）。");
+    }
+
 
     // ── 好友邀请（2026-09-27）──────────────────────────────────────────────────
     // 用户：「现在做邀请，好友栏中处于在线（非战斗状态和匹配状态）时其名字右边会出现一个加号，点击后发送邀请

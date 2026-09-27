@@ -52,6 +52,10 @@ namespace AnotherWorld.EditorTools
         /// 3:4.2 的画面被压成 1:2 再拉回 300x420 的卡框 —— 卡面会横向拉宽。</summary>
         /// <summary>2026-09-27 又加 Icon_InvitePlus（好友行那一格，78x48 -> 234x144 不是 2 的幂）与 invite-v1：「收到邀请」小窗底板 Invite_Plate.png 是 1260x432（屏幕 420x144，
         /// RawImage 整块拉伸铺满）—— 被吸成 1024x512（或 1024x256）就不是那条扁比例了，圆角与金线会跟着变形。</summary>
+        /// <summary>2026-09-27 再加 LobbyFriendTab（好友详情左侧那四格的**三态板**，1068x360 不是 2 的幂）+ Icon_FriendTab*：
+        /// 板被吸成 1024x512 就不是屏幕 340x104 那块扁比例了（圆角与等比内缩金线会跟着变形）。</summary>
+        /// <summary>2026-09-27 再加 LobbyFriendRow（好友列表那一行，1376x112 不是 2 的幂）+ Icon_FriendAct*（拉黑 / 删除两枚徽章）：
+        /// 行底板存成 1:1（不是全族那个 x3），被吸成 1024x128 就不是屏幕 1360x96 那条长矩形了。</summary>
         static readonly string[] NoNpotScaleFolders = { "/Art/Sprites/Generated/battle-mode-v1/", "/Art/Sprites/Generated/match-wait-v1/", "/Art/Sprites/Generated/match-confirm-v1/", "/Art/Sprites/Generated/battle-loading-v1/", "/Art/Sprites/Generated/invite-v1/" };
 
         public static bool NeedsNoNpotScale(string path)
@@ -59,7 +63,7 @@ namespace AnotherWorld.EditorTools
             string p = path.Replace('\\', '/');
             foreach (string f in NoNpotScaleFolders) if (p.Contains(f)) return true;
             if (!p.Contains("/Art/Sprites/Generated/lobby-ui-v1/")) return false;
-            return Path.GetFileName(p).StartsWith("LobbyCornerPlate_") || Path.GetFileName(p).StartsWith("LobbyChip_") || Path.GetFileName(p).StartsWith("LobbyJoin") || Path.GetFileName(p).StartsWith("Icon_InvitePlus");
+            return Path.GetFileName(p).StartsWith("LobbyCornerPlate_") || Path.GetFileName(p).StartsWith("LobbyChip_") || Path.GetFileName(p).StartsWith("LobbyJoin") || Path.GetFileName(p).StartsWith("Icon_InvitePlus") || Path.GetFileName(p).StartsWith("LobbyFriendTab") || Path.GetFileName(p).StartsWith("LobbyFriendRow");
         }
 
         /// <summary>带硬 alpha 边（圆角 / 挖空）的 UI 件：导入要做 alpha 扩散，否则缩小后边缘发黑。</summary>
@@ -67,7 +71,7 @@ namespace AnotherWorld.EditorTools
         {
             string p = path.Replace('\\', '/');
             foreach (string f in NoNpotScaleFolders) if (p.Contains(f)) return true;
-            if (p.Contains("/Art/Sprites/Generated/lobby-ui-v1/") && (Path.GetFileName(p).StartsWith("LobbyCornerPlate_") || Path.GetFileName(p).StartsWith("LobbyChip_") || Path.GetFileName(p).StartsWith("LobbyJoin") || Path.GetFileName(p).StartsWith("Icon_InvitePlus"))) return true;
+            if (p.Contains("/Art/Sprites/Generated/lobby-ui-v1/") && (Path.GetFileName(p).StartsWith("LobbyCornerPlate_") || Path.GetFileName(p).StartsWith("LobbyChip_") || Path.GetFileName(p).StartsWith("LobbyJoin") || Path.GetFileName(p).StartsWith("Icon_InvitePlus") || Path.GetFileName(p).StartsWith("Icon_FriendPlus") || Path.GetFileName(p).StartsWith("LobbyFriendTab") || Path.GetFileName(p).StartsWith("Icon_FriendTab") || Path.GetFileName(p).StartsWith("Icon_FriendAct") || Path.GetFileName(p).StartsWith("LobbyFriendRow"))) return true;
             return false;
         }
 
@@ -78,12 +82,17 @@ namespace AnotherWorld.EditorTools
             var importer = assetImporter as TextureImporter;
             if (importer == null) return;
 
-            int w, h;
+            // 尺寸门只管「双线性 + mipmap」那一段（小控件不做缩小采样，加了只会糊）。
+            // npot / alpha 是**与尺寸无关**的硬要求，永远要套 —— LobbyFriendRow 是 1376x112（高 112 < 128），
+            // 2026-09-27 实测：它被这道门挡在 ApplyTo 外面，npot 与 alpha 两条全漏了（表格量出来 ToNearest / false）。
+            bool sized = true;
+            int w = 0, h = 0;
             try { importer.GetSourceTextureWidthAndHeight(out w, out h); }
-            catch { return; }
-            if (w < MinSizeForMipmaps || h < MinSizeForMipmaps) return;
+            catch { sized = false; }
+            if (sized && (w < MinSizeForMipmaps || h < MinSizeForMipmaps)) sized = false;
 
-            ApplyTo(importer, assetPath);
+            if (sized) ApplyFilterPart(importer, assetPath);
+            ApplyScalePart(importer, assetPath);
         }
 
         public static bool IsCandidate(string path)
@@ -97,12 +106,15 @@ namespace AnotherWorld.EditorTools
             return ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".tga";
         }
 
-        public static bool NeedsFix(TextureImporter imp, string path)
+        public static bool NeedsFix(TextureImporter imp, string path, bool sized = true)
         {
-            if (imp.filterMode != FilterMode.Bilinear) return true;
-            if (!imp.mipmapEnabled) return true;
-            if (imp.anisoLevel != AnisoLevel) return true;
-            if (path.Contains(CardFolderToken) && !imp.mipMapsPreserveCoverage) return true;
+            if (sized)
+            {
+                if (imp.filterMode != FilterMode.Bilinear) return true;
+                if (!imp.mipmapEnabled) return true;
+                if (imp.anisoLevel != AnisoLevel) return true;
+                if (path.Contains(CardFolderToken) && !imp.mipMapsPreserveCoverage) return true;
+            }
             if (NeedsNoNpotScale(path) && imp.npotScale != TextureImporterNPOTScale.None) return true;
             if (NeedsAlphaIsTransparency(path) && !imp.alphaIsTransparency) return true;
             return false;
@@ -110,6 +122,13 @@ namespace AnotherWorld.EditorTools
 
         /// <summary>只在导入前置阶段调用，不要在这里 SaveAndReimport。</summary>
         public static void ApplyTo(TextureImporter imp, string path)
+        {
+            ApplyFilterPart(imp, path);
+            ApplyScalePart(imp, path);
+        }
+
+        /// <summary>「会被缩小显示」那一段：双线性 + mipmap（+ 卡图 alpha 覆盖）。小控件不做。</summary>
+        public static void ApplyFilterPart(TextureImporter imp, string path)
         {
             imp.filterMode = FilterMode.Bilinear;
             imp.anisoLevel = AnisoLevel;
@@ -125,7 +144,11 @@ namespace AnotherWorld.EditorTools
                 imp.mipMapsPreserveCoverage = true;
                 imp.alphaTestReferenceValue = 0.5f;
             }
+        }
 
+        /// <summary>与尺寸无关的两条硬修正：npot 原样采样、alpha 扩散。小控件也必须做。</summary>
+        public static void ApplyScalePart(TextureImporter imp, string path)
+        {
             if (NeedsNoNpotScale(path)) imp.npotScale = TextureImporterNPOTScale.None;
             if (NeedsAlphaIsTransparency(path)) imp.alphaIsTransparency = true;
         }
@@ -156,11 +179,14 @@ namespace AnotherWorld.EditorTools
                     int w, h;
                     try { imp.GetSourceTextureWidthAndHeight(out w, out h); }
                     catch { notTexture++; continue; }
-                    if (w < MinSizeForMipmaps || h < MinSizeForMipmaps) { skippedSmall++; continue; }
 
-                    if (!NeedsFix(imp, path)) { ok++; continue; }
+                    bool sized = !(w < MinSizeForMipmaps || h < MinSizeForMipmaps);
+                    if (!sized) skippedSmall++;      // 小控件跳过「双线性 + mipmap」，但下面那两条照做
 
-                    ApplyTo(imp, path);
+                    if (!NeedsFix(imp, path, sized)) { ok++; continue; }
+
+                    if (sized) ApplyFilterPart(imp, path);
+                    ApplyScalePart(imp, path);
                     EditorUtility.SetDirty(imp);
                     imp.SaveAndReimport();
                     changed++;
@@ -191,10 +217,11 @@ namespace AnotherWorld.EditorTools
                 if (!IsCandidate(path)) continue;
                 var imp = AssetImporter.GetAtPath(path) as TextureImporter;
                 if (imp == null) continue;
-                int w, h;
-                try { imp.GetSourceTextureWidthAndHeight(out w, out h); } catch { continue; }
-                if (w < MinSizeForMipmaps || h < MinSizeForMipmaps) continue;
-                if (NeedsFix(imp, path)) offenders.Add(path);
+                bool sized = true;
+                int w = 0, h = 0;
+                try { imp.GetSourceTextureWidthAndHeight(out w, out h); } catch { sized = false; }
+                if (sized && (w < MinSizeForMipmaps || h < MinSizeForMipmaps)) sized = false;
+                if (NeedsFix(imp, path, sized)) offenders.Add(path);
             }
 
             if (offenders.Count == 0) Debug.Log("[TextureImportSettingsGuard] 体检通过：所有「会被缩小」的贴图都是 双线性 + mipmap。");
