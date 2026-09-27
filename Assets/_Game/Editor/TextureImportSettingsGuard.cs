@@ -50,7 +50,7 @@ namespace AnotherWorld.EditorTools
         /// <summary>整套 UI 件：出图脚本按「屏幕 px x 3」出、场景按「贴图 / 3」摆 —— 必须原样 1:1，禁止 Unity 缩放。
         /// 2026-09-27 加 battle-mode-v1：卡 900x1260 是 RawImage 的贴图，被默认的 ToNearest 吸成 512x1024，
         /// 3:4.2 的画面被压成 1:2 再拉回 300x420 的卡框 —— 卡面会横向拉宽。</summary>
-        static readonly string[] NoNpotScaleFolders = { "/Art/Sprites/Generated/battle-mode-v1/", "/Art/Sprites/Generated/match-wait-v1/" };
+        static readonly string[] NoNpotScaleFolders = { "/Art/Sprites/Generated/battle-mode-v1/", "/Art/Sprites/Generated/match-wait-v1/", "/Art/Sprites/Generated/match-confirm-v1/" };
 
         public static bool NeedsNoNpotScale(string path)
         {

@@ -87,8 +87,9 @@ public class PlayerProfilePanel : MonoBehaviour
     static readonly Dictionary<int, Texture2D> _crops = new Dictionary<int, Texture2D>();
     static Texture2D _placeholder;
 
-    /// <summary>把源图裁成圆 —— 圆外 alpha 归零，圆边留 1px 软过渡（源图必须可读；运行时建的头像都满足）。</summary>
-    static Texture2D CircleCrop(Texture2D src)
+    /// <summary>把源图裁成圆 —— 圆外 alpha 归零，圆边留 1px 软过渡（源图必须可读；运行时建的头像都满足）。
+    /// public：确认弹窗（MatchConfirmPanel）复用同一份裁切与占位，不另写一套。</summary>
+    public static Texture2D CircleCrop(Texture2D src)
     {
         int id = src.GetInstanceID();
         Texture2D cached;
@@ -130,8 +131,8 @@ public class PlayerProfilePanel : MonoBehaviour
         return outTex;
     }
 
-    /// <summary>灰色圆盘占位（Steam 未初始化 / 头像还没异步回来时用）。</summary>
-    static Texture2D Placeholder()
+    /// <summary>灰色圆盘占位（Steam 未初始化 / 头像还没异步回来时用）。public：同上，供确认弹窗复用。</summary>
+    public static Texture2D Placeholder()
     {
         if (_placeholder != null) return _placeholder;
 

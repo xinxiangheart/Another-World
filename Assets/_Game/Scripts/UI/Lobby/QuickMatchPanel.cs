@@ -23,6 +23,11 @@ public class QuickMatchPanel : MonoBehaviour
     [Tooltip("找到对手后「已找到对手！」停留多久再进 JoinGamePanel（留一个节拍，否则同帧就被盖住）。")]
     public float foundHoldSeconds = 1.2f;
 
+    [Header("找到对手后的确认弹窗（2026-09-27）：填了就走它，不再自动接受")]
+    [Tooltip("左右双方头像 + 中央 15 秒倒计时 + 左下确认 / 右下拒绝（MatchConfirmPanel）。\n" +
+             "填上之后：找到对手 = 弹它（不自动接受）；双方确认 = 它播金色 3 秒倒计时 + 预加载；15 秒不双确认 = 它调 OnConfirmTimeout()。")]
+    public MatchConfirmPanel confirmPanel;
+
     enum State { Idle, Searching, Found, WaitingOpponent }
     State _state;
     float _countdown;
@@ -31,7 +36,8 @@ public class QuickMatchPanel : MonoBehaviour
     CSteamID _lobbyID;
     Coroutine _searchCoroutine, _bgSearchCoroutine;
     float _retryTimer, _bgSearchTimer;
-    float _foundHold;      // 「已找到对手！」的停留节拍（秒）
+    float _foundHold;      // 「已找到对手！」的停留节拍（秒）；确认弹窗路径下 = 金色 3 秒倒计时的节拍
+    bool _goLatched;       // 双方确认后只触发一次 BeginGo()
     Callback<LobbyMatchList_t> _listCB, _bgListCB;
     Callback<LobbyCreated_t> _createdCB;
     Callback<LobbyEnter_t> _enterCB;
@@ -76,6 +82,8 @@ public class QuickMatchPanel : MonoBehaviour
     /// <summary>把等待小窗抬到眼前（不重启流程、不重置计时）。重复点击「匹配」时用。</summary>
     public void SurfaceWait()
     {
+        // 确认弹窗已经在眼前：别再抬「匹配中」小窗，否则会盖在弹窗上
+        if (confirmPanel != null && confirmPanel.IsOpen) return;
         if (compactWait != null) { if (!compactWait.IsOpen) compactWait.Show(); }
         else if (panelRoot != null) panelRoot.SetActive(true);
     }
@@ -85,6 +93,7 @@ public class QuickMatchPanel : MonoBehaviour
         if (_searchCoroutine != null) { StopCoroutine(_searchCoroutine); _searchCoroutine = null; }
         LeaveLobby(); if (panelRoot) panelRoot.SetActive(false);
         if (compactWait != null) compactWait.Hide();
+        if (confirmPanel != null) confirmPanel.Hide();
         _state = State.Idle;
     }
 
@@ -94,7 +103,7 @@ public class QuickMatchPanel : MonoBehaviour
     void ResetState()
     {
         _state = State.Idle; _countdown = 15f; _iAccepted = false; _iAmHost = false; _joining = false; _oppName = "";
-        _foundHold = 0f;
+        _foundHold = 0f; _goLatched = false;
         if (opponentInfoGroup) opponentInfoGroup.SetActive(false);
         if (acceptButton) { acceptButton.gameObject.SetActive(false); acceptButton.interactable = true; }
         if (declineButton) { declineButton.gameObject.SetActive(false); declineButton.interactable = true; }
@@ -312,9 +321,17 @@ public class QuickMatchPanel : MonoBehaviour
         SetStatus($"等待确认（{_countdown:F0}s）");
         if (opp.steamID != 0 && opponentAvatar) LoadAvatar(opponentAvatar, opp.steamID);
 
-        if (compactWait != null)
+        if (confirmPanel != null)
         {
-            // 紧凑窗没有「接受 / 拒绝」两个键 —— 找到即自动接受，握手照旧走 host_ok / guest_ok。
+            // 确认弹窗路径（2026-09-27 用户）：找到对手 = 弹窗，**不自动接受** ——
+            // 双方各自点「确认」才置 host_ok / guest_ok，任一方 15 秒不确认就默认取消。
+            if (compactWait != null) compactWait.Hide();
+            _foundHold = 0f;
+            confirmPanel.Open();
+        }
+        else if (compactWait != null)
+        {
+            // 兜底旧路径（没有确认弹窗时）：紧凑窗没有「接受 / 拒绝」两个键 —— 找到即自动接受。
             compactWait.SetFound();
             _foundHold = Mathf.Max(0f, foundHoldSeconds);   // 留一个节拍，让「已找到对手！」看得见
             OnAccept();
@@ -457,8 +474,9 @@ public class QuickMatchPanel : MonoBehaviour
                 RefreshOpponent();
         }
 
-        // Countdown
-        if (_state == State.Found)
+        // Countdown —— 装了确认弹窗时，那 15 秒归 MatchConfirmPanel 自己走（它要驱动中央数字与两键显隐），
+        // 超时回调 OnConfirmTimeout()；这里只保留没有弹窗时的旧行为（超时重开搜索）。
+        if (_state == State.Found && confirmPanel == null)
         {
             _countdown -= Time.deltaTime;
             if (_countdown <= 0) { LeaveLobby(); ResetState(); StartSearch(); return; }
@@ -471,14 +489,39 @@ public class QuickMatchPanel : MonoBehaviour
         string guestOk = _iAmHost ? ReadMemberDataKey("guest_ok") : (_iAccepted ? "1" : "");
         string oppOk = _iAmHost ? guestOk : hostOk;
 
+        // 对方那格 = 1 → 解开弹窗里对方头像的压黑
+        if (confirmPanel != null && oppOk == "1") confirmPanel.NotifyOpponentAccepted();
+
         if ((_state == State.Found || _state == State.WaitingOpponent) && oppOk == "0")
         {
+            if (confirmPanel != null)
+            {
+                // 确认弹窗路径：对方拒绝 = 本局取消（给一行提示，弹窗自己收掉两键）。
+                // 与超时一致 —— **不自动重开匹配**，由玩家再点一次「匹配」。
+                SetStatus("对方已拒绝，本局取消");
+                confirmPanel.OpponentDeclined();
+                SetReject(); LeaveLobby(); ResetState();
+                Debug.Log("[QM] 对方拒绝确认 → 本局取消（不自动重匹配）");
+                return;
+            }
             SetStatus("对方已拒绝\n重新匹配..."); LeaveLobby(); ResetState(); StartSearch(); return;
         }
 
         if ((_state == State.WaitingOpponent || (_iAccepted && _state == State.Found)) && hostOk == "1" && guestOk == "1")
         {
-            if (_foundHold > 0f) { _foundHold -= Time.deltaTime; return; }   // 「已找到对手！」先露个面
+            if (confirmPanel != null)
+            {
+                // 双方确认：弹窗收掉「确认 / 拒绝」、倒计时转金色 3 秒、同时开始预加载战斗场景素材。
+                // 先让这 3 秒走完再进 JoinGamePanel（否则进度条同帧就把弹窗盖住了）。
+                if (!_goLatched)
+                {
+                    _goLatched = true;
+                    _foundHold = Mathf.Max(0f, confirmPanel.GoSeconds);
+                    confirmPanel.BeginGo();
+                }
+                if (_foundHold > 0f) { _foundHold -= Time.deltaTime; return; }
+            }
+            else if (_foundHold > 0f) { _foundHold -= Time.deltaTime; return; }   // 「已找到对手！」先露个面
             SetStatus("双方已接受！");
             LobbyConfig.FromLobby = true; LobbyConfig.IsHost = _iAmHost; LobbyConfig.IsDirectIP = false; LobbyConfig.ServerIP = "";
             LobbyConfig.CurrentLobbyID = _lobbyID;
@@ -490,13 +533,23 @@ public class QuickMatchPanel : MonoBehaviour
             _lobbyID = default; _state = State.Idle;
             if (panelRoot) panelRoot.SetActive(false);
             if (compactWait != null) compactWait.Hide();
+            if (confirmPanel != null) confirmPanel.Hide();
             JoinGamePanel.Instance?.Open();
         }
     }
 
     // ============ Buttons ============
 
-    void OnAccept()
+    /// <summary>确认弹窗 15 秒到、双方没都确认 —— 用户：「倒计时结束若双方有一个不确认就默认取消」。
+    /// 写拒绝标记 + 退房 + 复位，**不自动重开匹配**（玩家再点一次「匹配」）。</summary>
+    public void OnConfirmTimeout()
+    {
+        Debug.Log("[QM] 确认超时 → 本局取消（不自动重匹配）");
+        SetStatus("未确认，已取消");
+        SetReject(); LeaveLobby(); ResetState();
+    }
+
+    public void OnAccept()
     {
         if (_state != State.Found) return;
         _iAccepted = true;
@@ -508,7 +561,7 @@ public class QuickMatchPanel : MonoBehaviour
         _state = State.WaitingOpponent;
         SetStatus("已接受，等待对方确认");
     }
-    void OnDecline() { SetReject(); LeaveLobby(); Close(); }
+    public void OnDecline() { SetReject(); LeaveLobby(); Close(); }
     void OnCancel() { SetReject(); LeaveLobby(); Close(); }
     void SetReject()
     {
