@@ -112,8 +112,8 @@ public class MatchConfirmPanel : MonoBehaviour
         roomSource = room;
         var sd = SteamDataManager.Instance;
         OpenInternal(sd != null ? sd.localPlayerName : null, sd != null ? sd.localAvatar : null,
-                     room != null ? room.GuestName : null,
-                     room != null ? room.GuestAvatar : null);
+                     room != null ? room.OpponentName : null,     // 房主视角 = 客人；客人视角 = 房主
+                     room != null ? room.OpponentAvatar : null);
     }
 
     /// <summary>两条路共用的摆位：己方 + 对方头像 / 名字，双方默认未确认（都压黑）。</summary>

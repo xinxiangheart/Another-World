@@ -18,8 +18,10 @@ using UnityEngine.SceneManagement;
 ///   进度到 revealAt           槽位开始浮现 + UI 开始淡入
 ///   UI 淡入结束 + drawDelay   Revealed = true → 开局抽牌开始
 ///
-/// 入场两角的 3D 牌堆（右下＝己方 / 左上＝对方）也挂在这里：镜头飞行期间两摞牌从空中
-/// 迅速落下堆好，最后一张正好落在 UI 开始浮现那一刻，UI 淡完再收起。见 GameIntroDeck。
+/// 入场右侧中央的 3D 牌堆也挂在这里：镜头飞行期间那摞牌从空中迅速落下堆好，最后一张正好落在
+/// UI 开始浮现那一刻；默认不收起，一直留在场上（见 collapseDuration）。见 GameIntroDeck。
+/// 牌堆时间轴与镜头一样等「加载幕撤掉」才算起（Update 里那道 Covering 闸）—— 用户 2026-09-27：
+/// 「经过加载界面进入 game 场景后牌堆已经堆好了」，就是这里原先没等幕。
 ///
 /// 槽位浮现不在这里做，只是替 BoardManager 喊一声（BoardManager.PlaySlotReveal），
 /// 免得相机还在飞的时候槽位就自己浮出来了。
@@ -27,6 +29,9 @@ using UnityEngine.SceneManagement;
 [DisallowMultipleComponent]
 public class GameIntroCamera : MonoBehaviour
 {
+    /// <summary>加载幕一直不撤时的兜底秒数 —— Update（牌堆）与 Play（镜头）共用。</summary>
+    const float CoverWaitTimeout = 30f;
+
     [Header("起始位姿（场景里摆好空物体，选中它 Ctrl+Shift+F 对齐当前视角）")]
     public Transform startPose;
 
@@ -89,6 +94,7 @@ public class GameIntroCamera : MonoBehaviour
     Quaternion _startRot, _endRot;
     CanvasGroup _uiGroup;
     GameIntroDeck _decks;
+    float _coverWaitStart = -1f;   // 加载幕盖住期间的计时起点（< 0 = 幕没盖着）
 
     void Awake()
     {
@@ -134,6 +140,17 @@ public class GameIntroCamera : MonoBehaviour
     void Update()
     {
         if (_decks == null) return;
+
+        // 加载幕还盖着就先别推牌堆时间轴 —— 用户 2026-09-27：「经过加载界面进入 game 场景后牌堆已经堆好了」。
+        // 镜头那段协程自己会等 Covering（Play 里那句 while），牌堆这一路原先没等：场景一激活就开始计时，
+        // 1.54 s 的剧本全在幕后面跑完，玩家滑开时只看到一摞已经定格的牌。兜底与 Play 共用 CoverWaitTimeout。
+        if (BattleLoadingScreen.Covering)
+        {
+            if (_coverWaitStart < 0f) _coverWaitStart = Time.unscaledTime;
+            if (Time.unscaledTime - _coverWaitStart < CoverWaitTimeout) return;
+        }
+        else _coverWaitStart = -1f;
+
         _decks.Tick(Time.deltaTime);
         if (_decks.Finished) { _decks.Dispose(); _decks = null; }   // 收起后整棵删掉，不残留
     }
@@ -175,7 +192,7 @@ public class GameIntroCamera : MonoBehaviour
         // 等的是战斗加载界面自己（BattleLoadingScreen.Covering）—— 它搬到常驻画布上做完滑出才算完。
         // 30 秒兜底：万一幕因为异常一直没撤，入场也得自己起来（Revealed 卡住会连开局抽牌一起卡住）。
         float waitStart = Time.unscaledTime;
-        while (BattleLoadingScreen.Covering && Time.unscaledTime - waitStart < 30f) yield return null;
+        while (BattleLoadingScreen.Covering && Time.unscaledTime - waitStart < CoverWaitTimeout) yield return null;
 
         bool revealed = false;
         float t = 0f;

@@ -57,7 +57,7 @@ namespace AnotherWorld.EditorTools
             string p = path.Replace('\\', '/');
             foreach (string f in NoNpotScaleFolders) if (p.Contains(f)) return true;
             if (!p.Contains("/Art/Sprites/Generated/lobby-ui-v1/")) return false;
-            return Path.GetFileName(p).StartsWith("LobbyCornerPlate_") || Path.GetFileName(p).StartsWith("LobbyChip_");
+            return Path.GetFileName(p).StartsWith("LobbyCornerPlate_") || Path.GetFileName(p).StartsWith("LobbyChip_") || Path.GetFileName(p).StartsWith("LobbyJoin");
         }
 
         /// <summary>带硬 alpha 边（圆角 / 挖空）的 UI 件：导入要做 alpha 扩散，否则缩小后边缘发黑。</summary>
@@ -65,7 +65,7 @@ namespace AnotherWorld.EditorTools
         {
             string p = path.Replace('\\', '/');
             foreach (string f in NoNpotScaleFolders) if (p.Contains(f)) return true;
-            if (p.Contains("/Art/Sprites/Generated/lobby-ui-v1/") && (Path.GetFileName(p).StartsWith("LobbyCornerPlate_") || Path.GetFileName(p).StartsWith("LobbyChip_"))) return true;
+            if (p.Contains("/Art/Sprites/Generated/lobby-ui-v1/") && (Path.GetFileName(p).StartsWith("LobbyCornerPlate_") || Path.GetFileName(p).StartsWith("LobbyChip_") || Path.GetFileName(p).StartsWith("LobbyJoin"))) return true;
             return false;
         }
 

@@ -822,9 +822,14 @@ public static class LobbyUIBuilder
     const string RoomCodeName      = "Text_RoomCode";
     const string RoomCodeToastName = "Text_CopyToast";
     const float  RoomCodeFont      = 30f;
-    const float  RoomCodeX     = -252f;   // 距右沿：通用关闭叉左沿在 -228，再让 24
+    // 框是**锚右上 + 轴也右上**（BuildRoomCode 传的是 pivot (1,1)）⇒ RoomCodeX 量的是**右沿**距屏幕右沿的距离：
+    //   右沿 = 1919 − 252 = 1667（正好停在「加入房间」图标 1675 前 8）
+    //   左沿 = 1667 − 238 = 1429 = 板左沿（1381）+ JoinSidePadX 48 ⇒ 整行落在板里
+    // （2026-09-27 七改：原本 420 宽的框左探到 1247、压住板左沿 —— 用户「其它超出组件向右平移到内部」。
+    //   注意别把它当成「左沿距右沿」：−490 会把整行推到板外。）
+    const float  RoomCodeX     = -252f;
     const float  RoomCodeY     = -66f;    // 与关闭叉同一条水平线（框高 60 ⇒ 中线 -96 = 叉的中线）
-    const float  RoomCodeW     = 420f;
+    const float  RoomCodeW     = 238f;
     const float  RoomCodeH     = 60f;
     const float  RoomCodeToastFont = 24f;
     const float  RoomCodeToastY    = -60f;   // 提示语：紧贴在号那行下面
@@ -857,6 +862,47 @@ public static class LobbyUIBuilder
     const float  RoomJoinY     = SubPanelCloseY;                            // 与叉同一条水平线（-66）
     const string RoomJoinIcon  = "Icon_LobbyJoin.png";
     const string RoomJoinHover = "Icon_LobbyJoinHover.png";
+
+    // ── 「加入房间」右侧侧边栏（2026-09-27 四改）────────────────────────────────
+    // 用户原话：「加入房间是一个右侧侧边栏（到顶，但不需要完全到底），范围到右上角的左边，不遮挡房间号，
+    //   ui 等，再次点击（或者点击范围外）滑动回去，先是显示在右边房间号和 ui 下面的加入房间四个字，然后金线
+    //   分割一下，下面是一个输入框，再下面是输入后的预览，主要是展示搜索目标的头像/名称，其下面是人数 1/2
+    //   或者红色的 2/2，然后数字右边是加入（有子背景）（根据是否满人为白色（可变金色）或者红色）」
+    // 几何（2026-09-27 七改 —— 用户：「缩到和右上角顶端一样位置不变作为其背景」「好友侧边栏不是一样
+    //   的要求吗，和右上角最左侧持平」「其它超出组件向右平移到内部」）：
+    //   **板 = 右上横栏（Plate_TopBand / LobbyBandRight，538×95）那块的背景** —— 和好友侧边栏
+    //   （宽 = 左上 Plate_Profile 的宽度、齐屏幕左沿 / 上沿）同一套口径：
+    //     · 上沿 = 屏幕顶（0，与横栏同顶；横栏画在 Layer_Hud_v1 ⇒ 永远压在板顶那条之上）
+    //     · 左沿 = 横栏左沿（1920 − 538 = 1382）⇒ 板宽 538、右沿贴屏幕右沿（= 横栏右沿）
+    //     · 下沿让开 160（「不需要完全到底」）⇒ 板 538×920
+    //   右上角那行（房间号 / 加入 / 叉）靠**层级**压在板之上（本板插在 Text_RoomCode **之前**，见
+    //   BuildRoomSubPanelMenu）；房间号那个 420 宽的框原本探出板左沿，已右移进板内（RoomCodeX/W）。
+    //   底图 LobbyJoinSidebar.png（Tools/cardframe/LobbyJoinSidebarV1.ps1 出，1614x2760 = 538x920 x3）。
+    const string JoinSideName    = "Panel_JoinRoom";
+    const string JoinSideTex     = UiDir + "LobbyJoinSidebar.png";
+    const float  JoinSideW       = 538f;   // 左边缘（距屏幕右沿）= 右上横栏的左沿（= 它的宽度）
+    // 上沿：**屏幕顶**（与横栏同顶 ⇒ 板就是横栏那块的背景）。
+    const float  JoinSideTop     = 0f;
+    // 内容**位置不变**：Content 那一层仍从**屏幕顶**下来这么多（= 上一版的板顶），与 JoinSideTop 无关。
+    const float  JoinSideHead    = 126f;
+    // 右沿：贴屏幕右沿（= 横栏右沿）。
+    const float  JoinSideInset   = 0f;
+    const float  JoinSideBottom  = 160f;
+    const float  JoinSidePadX    = 48f;
+    const float  JoinTitleFont   = 40f;
+    const float  JoinLineY       = 118f;    // 标题下面那条金细线
+    const float  JoinInputTop    = 158f;    // 输入框上沿（距板顶）
+    const float  JoinInputH      = 76f;
+    const string JoinInputName   = "Input_RoomCode";
+    const float  JoinPrevTop     = 280f;    // 预览区上沿
+    const float  JoinRingSize    = 96f;
+    const float  JoinWellSize    = 74f;     // 环 88 : 井 68 的比例（96 → 74.2）
+    const string JoinBtnName     = "Btn_Join";
+    const string JoinStatusName  = "Text_JoinStatus";
+    const float  JoinStatusFont  = 24f;
+    static readonly Color JoinWellColor = new Color32(12, 17, 26, 235);    // 输入框那口井：面板渐变的暗端 #0C111A
+    static readonly Color JoinLineColor = new Color32(200, 164, 74, 132);  // 金 #C8A44A · 52%（与好友侧边栏那条同值）
+    static readonly Color JoinFullRed   = new Color32(182, 72, 72, 255);   // 满员：生命 #B64848
 
     const string RoomToastName = "Text_LobbyToast";
     const float  RoomToastY    = -150f;   // 屏幕中央上方（压到 -240 会正好叠在房主那行的名字上）
@@ -919,6 +965,16 @@ public static class LobbyUIBuilder
         BuildRoomRuntime(panel, hud.gameObject);   // 状态机（含 Steam 接入）+ 三条点击 + 顶中提示
         Transform closeBtn = panel.transform.Find("Btn_Close");
         if (closeBtn != null) closeBtn.SetAsLastSibling();   // 叉子始终压在内容之上
+        GameObject joinSide = BuildRoomJoinSidebar(panel);
+        // ★ 板顶到屏幕顶之后，右上角那行（房间号 / 加入 / 叉）靠**层级**压在它之上（用户 2026-09-27：
+        //   「上顶满的意思是像好友那样作为右上角和房间号 ui」）—— 所以插到 Text_RoomCode **之前**，
+        //   而不再 SetAsLastSibling；板自己那张全屏透明底仍在最上层，点板以外照旧滑回去。
+        if (joinSide != null)
+        {
+            Transform codeT = panel.transform.Find(RoomCodeName);
+            if (codeT != null) joinSide.transform.SetSiblingIndex(codeT.GetSiblingIndex());
+            else joinSide.transform.SetAsLastSibling();
+        }
         WireEntryToPanel(canvas, "Entry_Room", panel, "房间");
         Selection.activeGameObject = panel;
         EditorSceneManager.MarkSceneDirty(canvas.gameObject.scene);
@@ -1068,6 +1124,201 @@ public static class LobbyUIBuilder
         return join.gameObject;
     }
 
+    /// <summary>一条 1px 金细线（输入框那圈线就是四条这个）。</summary>
+    static Image Hairline(Transform parent, string name, Vector2 anchorMin, Vector2 anchorMax, Vector2 pivot, Vector2 size, Vector2 pos)
+    {
+        RectTransform rt = NewRect(parent, name, anchorMin, pivot, pos, size);
+        rt.anchorMin = anchorMin;
+        rt.anchorMax = anchorMax;
+        var img = rt.gameObject.AddComponent<Image>();
+        img.color = JoinLineColor;
+        img.raycastTarget = false;
+        return img;
+    }
+
+    /// <summary>「房间」面板里的「加入房间」右侧侧边栏（点右上角那个加入图标滑出 / 再点滑回）。</summary>
+    /// <remarks>结构（自上而下 = 用户口径的顺序）：
+    ///   加入房间（四个字）→ 金细线 → 输入框（平底凹井 + 四边金细线，满 6 位自动搜）→
+    ///   预览（头像环 + 名称 + 人数 1/2 或红色的 2/2 + 数字右边的「加入」子背景按钮）。
+    /// 滑动 / 点板以外滑回：LobbyJoinSidebar（与好友侧边栏同一套 progress 曲线，方向朝右）。
+    /// 「加入」的底复用 LobbyChip_Kick（96x48 / 两个字 / 字号 30 —— 与「踢出」同规格，不另出一张）。
+    /// 满员 = 生命红 #B64848 且点不动（走 Button 的 disabledColor）；不满 = 白、悬停金。</remarks>
+    static GameObject BuildRoomJoinSidebar(GameObject panel)
+    {
+        Transform old = panel.transform.Find(JoinSideName);
+        if (old != null) Undo.DestroyObjectImmediate(old.gameObject);
+
+        // ── 根：铺满全屏 + 一张全透明 Image（raycastTarget 开着才吃得到点击 —— 它就是「板以外」那块）──
+        RectTransform root = NewRect(panel.transform, JoinSideName, Vector2.zero, PivotC, Vector2.zero, Vector2.zero);
+        root.anchorMin = Vector2.zero;
+        root.anchorMax = Vector2.one;
+        root.offsetMin = Vector2.zero;
+        root.offsetMax = Vector2.zero;
+        var side = root.gameObject.AddComponent<LobbyJoinSidebar>();
+
+        var blocker = root.gameObject.AddComponent<Image>();
+        blocker.color = new Color(0f, 0f, 0f, 0f);
+        blocker.raycastTarget = true;
+        var blockerBtn = root.gameObject.AddComponent<Button>();
+        blockerBtn.transition = Selectable.Transition.None;
+        blockerBtn.targetGraphic = blocker;
+        blockerBtn.navigation = NoNav(blockerBtn.navigation);
+        UnityEventTools.AddPersistentListener(blockerBtn.onClick, new UnityAction(side.Close));
+
+        // ── 板身：贴屏幕右沿，上 / 下都让开 ──
+        RectTransform body = NewRect(root, "Body", new Vector2(1f, 0f), new Vector2(1f, 0.5f), Vector2.zero, Vector2.zero);
+        body.anchorMin = new Vector2(1f, 0f);
+        body.anchorMax = new Vector2(1f, 1f);
+        body.pivot = new Vector2(1f, 0.5f);
+        body.offsetMin = new Vector2(-JoinSideW, JoinSideBottom);
+        body.offsetMax = new Vector2(-JoinSideInset, -JoinSideTop);   // 右沿缩进 JoinSideInset / 上沿 JoinSideTop
+        side.body = body;
+        side.width = JoinSideW;
+
+        var bg = body.gameObject.AddComponent<RawImage>();
+        bg.texture = AssetDatabase.LoadAssetAtPath<Texture2D>(JoinSideTex);
+        if (bg.texture == null) Debug.LogWarning("[LobbyUI] 找不到贴图：" + JoinSideTex);
+        bg.raycastTarget = true;
+        var bodyBtn = body.gameObject.AddComponent<Button>();   // 只吃点击：免得冒泡到根节点那个「关」
+        bodyBtn.transition = Selectable.Transition.None;
+        bodyBtn.targetGraphic = bg;
+        bodyBtn.navigation = NoNav(bodyBtn.navigation);
+
+        // ── 内容层：板顶已经顶到屏幕顶，内容仍从 JoinSideHead 下来 —— **位置一个字都不动** ──
+        RectTransform content = NewRect(body, "Content", Vector2.zero, PivotC, Vector2.zero, Vector2.zero);
+        content.anchorMin = Vector2.zero;
+        content.anchorMax = Vector2.one;
+        content.offsetMin = Vector2.zero;
+        content.offsetMax = new Vector2(0f, -(JoinSideHead - JoinSideTop));   // 内容顶仍钉在屏幕顶下来 126
+
+        float innerW = JoinSideW - JoinSideInset - JoinSidePadX * 2f;   // 板宽 640 - 左右各 48
+
+        // ① 加入房间（四个字）
+        TextMeshProUGUI title = NewLabel(content, "Text_Title", "加入房间", new Vector2(JoinSidePadX, -40f), new Vector2(innerW, 56f), JoinTitleFont);
+        title.alignment = TextAlignmentOptions.Left;
+        title.color = Cream;
+        title.raycastTarget = false;
+
+        // ② 金细线
+        var line = NewRect(content, "Line_Divider", AnchorTL, PivotTL, new Vector2(JoinSidePadX, -JoinLineY), new Vector2(innerW, 2f)).gameObject.AddComponent<Image>();
+        line.color = JoinLineColor;
+        line.raycastTarget = false;
+
+        // ③ 输入框：平底凹井 + 四边金细线（不加渐变、不加内阴影）
+        RectTransform well = NewRect(content, JoinInputName, AnchorTL, PivotTL, new Vector2(JoinSidePadX, -JoinInputTop), new Vector2(innerW, JoinInputH));
+        var wellImg = well.gameObject.AddComponent<Image>();
+        wellImg.color = JoinWellColor;
+        wellImg.raycastTarget = true;
+        Hairline(well, "Line_Top",    new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, 1f), Vector2.zero);
+        Hairline(well, "Line_Bottom", new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 1f), Vector2.zero);
+        Hairline(well, "Line_Left",   new Vector2(0f, 0f), new Vector2(0f, 1f), new Vector2(0f, 0.5f), new Vector2(1f, 0f), Vector2.zero);
+        Hairline(well, "Line_Right",  new Vector2(1f, 0f), new Vector2(1f, 1f), new Vector2(1f, 0.5f), new Vector2(1f, 0f), Vector2.zero);
+
+        RectTransform area = NewRect(well, "Text Area", AnchorTL, PivotTL, new Vector2(24f, -14f), new Vector2(innerW - 48f, JoinInputH - 28f));
+        area.gameObject.AddComponent<RectMask2D>();
+
+        RectTransform textRT = NewRect(area, "Text", Vector2.zero, PivotC, Vector2.zero, Vector2.zero);
+        textRT.anchorMin = Vector2.zero; textRT.anchorMax = Vector2.one;
+        textRT.offsetMin = Vector2.zero; textRT.offsetMax = Vector2.zero;
+        var text = textRT.gameObject.AddComponent<TextMeshProUGUI>();
+        text.font = _font; text.text = ""; text.fontSize = 34f; text.color = Cream;
+        text.alignment = TextAlignmentOptions.MidlineLeft; text.raycastTarget = false;
+        text.enableWordWrapping = false; text.overflowMode = TextOverflowModes.Overflow;
+
+        RectTransform phRT = NewRect(area, "Placeholder", Vector2.zero, PivotC, Vector2.zero, Vector2.zero);
+        phRT.anchorMin = Vector2.zero; phRT.anchorMax = Vector2.one;
+        phRT.offsetMin = Vector2.zero; phRT.offsetMax = Vector2.zero;
+        var ph = phRT.gameObject.AddComponent<TextMeshProUGUI>();
+        ph.font = _font; ph.text = "输入 6 位房间号"; ph.fontSize = 30f;
+        ph.alignment = TextAlignmentOptions.MidlineLeft; ph.raycastTarget = false;
+        ph.enableWordWrapping = false; ph.overflowMode = TextOverflowModes.Overflow;
+        ph.color = RoomPendingColor;
+
+        var input = well.gameObject.AddComponent<TMP_InputField>();
+        input.targetGraphic = wellImg;
+        input.textViewport = area;
+        input.textComponent = text;
+        input.placeholder = ph;
+        input.characterLimit = 6;
+        input.contentType = TMP_InputField.ContentType.Alphanumeric;
+        input.lineType = TMP_InputField.LineType.SingleLine;
+        input.richText = false;
+        input.restoreOriginalTextOnEscape = true;
+        input.caretWidth = 2;
+        input.customCaretColor = true;
+        input.caretColor = Cream;
+        input.selectionColor = new Color32(200, 164, 74, 90);
+        UnityEventTools.AddPersistentListener(input.onValueChanged, new UnityAction<string>(side.OnCodeChanged));
+        side.input = input;
+
+        // 右键 = 把剪贴板里的房间号贴进来（用户 2026-09-27：「加入一个在输入栏右键自动粘贴复制的房间号功能」）。
+        // TMP_InputField 只认左键（非左键第一行就 return），右键这一下得自己挂一个监听接。
+        var paste = well.gameObject.AddComponent<LobbyJoinInputPaste>();
+        paste.owner = side;
+
+        // ④ 预览（搜到之前整组藏着）
+        RectTransform prev = NewRect(content, "Core_Preview", AnchorTL, PivotTL, new Vector2(JoinSidePadX, -JoinPrevTop), new Vector2(innerW, JoinRingSize + 8f));
+        side.previewGroup = prev.gameObject;
+
+        RawImage ring = NewRaw(prev, "Avatar_Ring", UiDir + "LobbyAvatarRing.png", AnchorTL, PivotTL, Vector2.zero, new Vector2(JoinRingSize, JoinRingSize));
+        ring.raycastTarget = false;
+        float inset = (JoinRingSize - JoinWellSize) * 0.5f;
+        RectTransform wellRT = NewRect(prev, "Avatar_Image", AnchorTL, PivotTL, new Vector2(inset, -inset), new Vector2(JoinWellSize, JoinWellSize));
+        var avatar = wellRT.gameObject.AddComponent<RawImage>();
+        avatar.raycastTarget = false;
+        avatar.color = new Color(1f, 1f, 1f, 0f);      // 空井不画白块（RawImage 无贴图默认纯白）
+        side.avatarWell = avatar;
+
+        float colX = JoinRingSize + 28f;
+        TextMeshProUGUI who = NewLabel(prev, "Text_Name", "玩家", new Vector2(colX, -8f), new Vector2(innerW - colX, 44f), 32f);
+        who.alignment = TextAlignmentOptions.Left;
+        who.color = Cream;
+        who.raycastTarget = false;
+        side.nameText = who;
+
+        TextMeshProUGUI cnt = NewLabel(prev, "Text_Count", "1/2", new Vector2(colX, -60f), new Vector2(140f, 40f), 30f);
+        cnt.alignment = TextAlignmentOptions.Left;
+        cnt.color = Cream;
+        cnt.raycastTarget = false;
+        side.countText = cnt;
+
+        Button join = BuildTextChip(prev, JoinBtnName, "加入", AnchorTL, PivotTL,
+                                    new Vector2(colX + 156f, -54f), new Vector2(96f, 48f), 30f,
+                                    "LobbyChip_Kick.png", "LobbyChip_KickHover.png");
+        var joinColors = join.colors;
+        joinColors.disabledColor = JoinFullRed;        // 满员：红 + 点不动（用户口径）
+        join.colors = joinColors;
+        side.joinButton = join;
+        UnityEventTools.AddPersistentListener(join.onClick, new UnityAction(side.OnJoinClicked));
+        side.joinLabel = TextOf(join.transform, "Text_Label");
+
+        TextMeshProUGUI status = NewLabel(content, JoinStatusName, "",
+                                         new Vector2(JoinSidePadX, -(JoinPrevTop + JoinRingSize + 24f)),
+                                         new Vector2(innerW, 40f), JoinStatusFont);
+        status.alignment = TextAlignmentOptions.Left;
+        status.color = RoomPendingColor;
+        status.raycastTarget = false;
+        side.statusText = status;
+
+        prev.gameObject.SetActive(false);
+
+        // 右上角那个「加入房间」图标：不再弹占位窗，改成开 / 关这个侧边栏
+        var roomPanel = panel.GetComponent<LobbyRoomPanel>();
+        if (roomPanel != null) roomPanel.joinSidebar = side;
+
+        Transform joinIcon = panel.transform.Find(RoomJoinName);
+        if (joinIcon != null)
+        {
+            var hover = joinIcon.GetComponent<LobbyIconHover>();
+            if (hover != null) { hover.joinSidebar = side; hover.popup = null; EditorUtility.SetDirty(hover); }
+        }
+        else Debug.LogWarning("[LobbyUI] 找不到 " + RoomJoinName + " —— 侧边栏没有入口");
+
+        side.closeOnStart = true;
+        return root.gameObject;
+    }
+
+
     /// <summary>「房间」面板的运行时状态机 + 三条点击的接点 + 屏幕中央上方那行提示。</summary>
     /// <remarks>三条点击（踢出 / 开始游戏 / 右上角的叉）都在这里接：目标方法是 <see cref="LobbyRoomPanel"/> 上的，
     /// 而那个组件是这里现加的 —— 不能像别的件那样在构造时顺手接。
@@ -1095,6 +1346,9 @@ public static class LobbyUIBuilder
         room.guestWell     = WellOf(guest);
         room.guestNameText = TextOf(guest, "Text_Name");
         room.guestRoleText = TextOf(guest, "Text_Role");
+        room.hostWell     = WellOf(host);                   // 客人视角要把房主槽换成对方
+        room.hostNameText = TextOf(host, "Text_Name");
+        room.joinSidebar  = null;   // 真引用在 BuildRoomJoinSidebar 末尾回填（那时侧边栏才建出来）
 
         Transform kick = guest != null ? guest.Find(RoomKickName) : null;
         Transform start = players != null ? players.Find(RoomStartName) : null;

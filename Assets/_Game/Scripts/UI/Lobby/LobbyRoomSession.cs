@@ -41,6 +41,15 @@ public class LobbyRoomSession : MonoBehaviour
     float    _poll;
     bool     _kickedPublished;
 
+    // ── 客人侧（「加入房间」侧边栏，2026-09-27）──────────────────────────────
+    bool     _suspended;                    // 搜号期间把自己的大厅让出去了（号还留着）
+    CSteamID _guestLobby = CSteamID.Nil;    // 已经进了别人的房 = 客人
+    float    _guestT;                       // 客人侧轮询计时
+    bool     _startSeen;                    // 读到 start=1 只放行一次
+    System.Action<LobbySearchResult> _findDone;
+    Callback<LobbyMatchList_t> _find;
+    Callback<LobbyEnter_t>     _enter;
+
     Callback<LobbyCreated_t>   _created;
     Callback<LobbyMatchList_t> _list;
 
@@ -48,6 +57,7 @@ public class LobbyRoomSession : MonoBehaviour
     public bool     Hosting { get { return _hosting; } }
     public string   Code    { get { return _code; } }
     public CSteamID LobbyID { get { return _lobby; } }
+    public bool     IsGuest { get { return _guestLobby.m_SteamID != 0; } }
 
     void Awake() { Instance = this; }
     void OnDestroy() { if (Instance == this) Instance = null; DisposeCallbacks(); }
@@ -56,6 +66,8 @@ public class LobbyRoomSession : MonoBehaviour
     {
         _created?.Dispose(); _created = null;
         _list?.Dispose();    _list = null;
+        _find?.Dispose();    _find = null;
+        _enter?.Dispose();   _enter = null;
     }
 
     /// <summary>Steam 在线 = 已初始化 + 已登录后端（离线 / 无网 / 被墙都为假）。</summary>
@@ -163,13 +175,18 @@ public class LobbyRoomSession : MonoBehaviour
             CreateLobby();
         }
 
-        if (!_hosting || _lobby.m_SteamID == 0) return;
+        if (_hosting && _lobby.m_SteamID != 0)
+        {
+            _poll += Time.deltaTime;
+            if (_poll >= PollStep)
+            {
+                _poll = 0f;
+                SteamMatchmaking.RequestLobbyData(_lobby);      // 不刷新缓存会一直读到空数据（旧壳同款）
+                PollGuest();
+            }
+        }
 
-        _poll += Time.deltaTime;
-        if (_poll < PollStep) return;
-        _poll = 0f;
-        SteamMatchmaking.RequestLobbyData(_lobby);      // 不刷新缓存会一直读到空数据（旧壳同款）
-        PollGuest();
+        PollGuestSide();        // 客人侧：读房主那两条信号（kicked / start）
     }
 
     /// <summary>房主侧：大厅里除了自己还有谁 → 填 / 清客人槽。</summary>
@@ -274,28 +291,217 @@ public class LobbyRoomSession : MonoBehaviour
         _searching = false;
         _kickedPublished = false;
         _code = null;          // 房间解散 → 号作废，下次开面板重新查重
+        _suspended = false;
         DisposeCallbacks();
     }
 
-    /// <summary>给联机侧（客人入口）留的接缝：按 6 位号搜大厅 → 命中就 JoinLobby。</summary>
-    /// <remarks>客人那侧的面板还没做（「加入房间」现在只弹占位窗），所以这里只留方法不接线 ——
-    /// 搜 / 进的写法与旧壳 <see cref="JoinRoomPanel"/> 完全一致（字符串过滤 room_code + 世界范围）。</remarks>
-    public bool JoinByCode(string code, System.Action<bool, string> done = null)
+    // ===================== 客人：「加入房间」侧边栏那套 =====================
+
+    /// <summary>按 6 位号搜一间房（**不进去**）—— 只把房主 / 人数读回来给侧边栏出预览。</summary>
+    /// <remarks>搜之前先 <see cref="SuspendHosting"/>：RequestLobbyList 不允许在「已经处于某个大厅」时调用
+    /// （自己开着房时搜号必然搜不到）。</remarks>
+    public bool SearchByCode(string code, System.Action<LobbySearchResult> done)
     {
-        if (!SteamOnline() || string.IsNullOrEmpty(code)) { done?.Invoke(false, "Steam 未登录 / 未连接"); return false; }
-        _list?.Dispose();
-        _list = Callback<LobbyMatchList_t>.Create(cb =>
-        {
-            if (cb.m_nLobbiesMatching == 0) { done?.Invoke(false, "没找到这个房间号"); return; }
-            CSteamID lid = SteamMatchmaking.GetLobbyByIndex(0);
-            if (SteamMatchmaking.GetNumLobbyMembers(lid) >= 2) { done?.Invoke(false, "房间已满"); return; }
-            SteamMatchmaking.JoinLobby(lid);
-            done?.Invoke(true, SteamMatchmaking.GetLobbyData(lid, "room_code"));
-        });
+        code = string.IsNullOrEmpty(code) ? "" : code.Trim().ToUpperInvariant();
+        if (!SteamOnline()) { done?.Invoke(Fail("Steam 未登录 / 未连接")); return false; }
+        if (code.Length != CodeLen) { done?.Invoke(Fail("房间号是 " + CodeLen + " 位")); return false; }
+        if (IsGuest) { done?.Invoke(Fail("你已经在别人的房间里了")); return false; }
+
+        SuspendHosting();
+        _find?.Dispose();
+        _findDone = done;
+        _find = Callback<LobbyMatchList_t>.Create(OnFindList);
         SteamMatchmaking.AddRequestLobbyListStringFilter("room_code", code, ELobbyComparison.k_ELobbyComparisonEqual);
+        // 显式世界范围：默认只返回同数据中心的大厅，号主在别处就搜不到（旧壳同款注释）
         SteamMatchmaking.AddRequestLobbyListDistanceFilter(ELobbyDistanceFilter.k_ELobbyDistanceFilterWorldwide);
         SteamMatchmaking.RequestLobbyList();
+        Debug.Log("[RoomSession] 搜房间号 " + code);
         return true;
+    }
+
+    void OnFindList(LobbyMatchList_t cb)
+    {
+        var done = _findDone;
+        _findDone = null;
+        if (cb.m_nLobbiesMatching == 0) { done?.Invoke(Fail("没找到这个房间号")); return; }
+
+        CSteamID lid = SteamMatchmaking.GetLobbyByIndex(0);
+        var r = new LobbySearchResult
+        {
+            found = true,
+            lobby = lid,
+            members = SteamMatchmaking.GetNumLobbyMembers(lid),
+            capacity = 2,
+            hostId = SteamMatchmaking.GetLobbyOwner(lid).m_SteamID,
+        };
+        string js = SteamMatchmaking.GetLobbyData(lid, "host_data");
+        if (!string.IsNullOrEmpty(js))
+        {
+            var d = JsonUtility.FromJson<PlayerData>(js);
+            if (d != null)
+            {
+                if (!string.IsNullOrEmpty(d.playerName)) r.hostName = d.playerName;
+                if (d.steamID != 0) r.hostId = d.steamID;
+            }
+        }
+        if (string.IsNullOrEmpty(r.hostName) && r.hostId != 0)
+        {
+            string n = SteamFriends.GetFriendPersonaName(new CSteamID(r.hostId));
+            if (!string.IsNullOrEmpty(n)) r.hostName = n;
+        }
+        Debug.Log("[RoomSession] 搜到房间 " + lid.m_SteamID + "  房主=" + r.hostName + "(" + r.hostId + ")  人数=" + r.members + "/" + r.capacity);
+        done?.Invoke(r);
+    }
+
+    static LobbySearchResult Fail(string msg)
+    {
+        return new LobbySearchResult { found = false, message = msg };
+    }
+
+    /// <summary>真进那间房：JoinLobby → 写自己的成员数据（客人只能写 member data）→ 房间面板切客人视角。</summary>
+    public bool JoinFound(CSteamID lobby, System.Action<bool, string> done = null)
+    {
+        if (!SteamOnline()) { done?.Invoke(false, "Steam 未登录 / 未连接"); return false; }
+        if (lobby.m_SteamID == 0) { done?.Invoke(false, "没找到这个房间号"); return false; }
+
+        _enter?.Dispose();
+        _enter = Callback<LobbyEnter_t>.Create(cb =>
+        {
+            if (cb.m_EChatRoomEnterResponse != (uint)EChatRoomEnterResponse.k_EChatRoomEnterResponseSuccess)
+            {
+                Debug.LogWarning("[RoomSession] 进大厅失败 response=" + cb.m_EChatRoomEnterResponse);
+                done?.Invoke(false, "进不去这间房（可能刚被解散 / 已满）");
+                return;
+            }
+            _guestLobby = new CSteamID(cb.m_ulSteamIDLobby);
+            _suspended = false;
+            _startSeen = false;
+            _guestT = 0f;
+            SteamMatchmaking.SetLobbyMemberData(_guestLobby, "player_data", MyJson());
+            SteamMatchmaking.RequestLobbyData(_guestLobby);
+
+            ulong hostId = SteamMatchmaking.GetLobbyOwner(_guestLobby).m_SteamID;
+            string hostName = HostNameOf(_guestLobby, hostId);
+            string code = SteamMatchmaking.GetLobbyData(_guestLobby, "room_code");
+            if (_room != null) _room.ApplyGuestLobby(hostName, SteamAvatarManager.GetAvatarTexture(hostId), hostId, code);
+            Debug.Log("[RoomSession] 已进别人的房 lobby=" + _guestLobby.m_SteamID + "  房主=" + hostName + "  号=" + code);
+            done?.Invoke(true, "");
+        });
+        SteamMatchmaking.JoinLobby(lobby);
+        return true;
+    }
+
+    static string HostNameOf(CSteamID lobby, ulong hostId)
+    {
+        string js = SteamMatchmaking.GetLobbyData(lobby, "host_data");
+        if (!string.IsNullOrEmpty(js))
+        {
+            var d = JsonUtility.FromJson<PlayerData>(js);
+            if (d != null && !string.IsNullOrEmpty(d.playerName)) return d.playerName;
+        }
+        if (hostId != 0)
+        {
+            string n = SteamFriends.GetFriendPersonaName(new CSteamID(hostId));
+            if (!string.IsNullOrEmpty(n)) return n;
+        }
+        return "玩家";
+    }
+
+    /// <summary>搜号期间先把自己的大厅让出来（号留着）。关掉侧边栏用同一个号重建 —— 屏幕上的号不会变。</summary>
+    public void SuspendHosting()
+    {
+        if (!_hosting || _lobby.m_SteamID == 0) return;
+        SteamMatchmaking.LeaveLobby(_lobby);
+        _hosting = false;
+        _suspended = true;
+        _kickedPublished = false;
+        Debug.Log("[RoomSession] 搜号期间先离开自己的大厅（号 " + _code + " 留着，收板再重建）");
+    }
+
+    /// <summary>侧边栏收起来了 → 用**同一个号**把大厅重建回来（不重查重：那个号刚由自己释放）。</summary>
+    public void ResumeHosting()
+    {
+        if (!_suspended) return;
+        _suspended = false;
+        if (IsGuest || string.IsNullOrEmpty(_code) || _room == null || !_room.gameObject.activeInHierarchy) return;
+        CreateLobby();
+        Debug.Log("[RoomSession] 侧边栏收起 —— 用同一个号 " + _code + " 重建大厅");
+    }
+
+    /// <summary>客人侧：离开别人的房，然后重新开自己的房（新号：查重 + 建房）。</summary>
+    public void RestartHosting()
+    {
+        LeaveGuestLobby();
+        _code = null;
+        _hosting = false;
+        _suspended = false;
+        if (_room != null && _room.gameObject.activeInHierarchy) BeginHosting(_room);
+    }
+
+    /// <summary>离开别人的房（自己被踢 / 客人点叉）。</summary>
+    public void LeaveGuestLobby()
+    {
+        if (_guestLobby.m_SteamID != 0)
+        {
+            SteamMatchmaking.LeaveLobby(_guestLobby);
+            Debug.Log("[RoomSession] 已离开别人的房 " + _guestLobby.m_SteamID);
+        }
+        _guestLobby = CSteamID.Nil;
+        _startSeen = false;
+        _enter?.Dispose();
+        _enter = null;
+    }
+
+    /// <summary>客人侧每帧：读房主那两条信号（kicked / start）。</summary>
+    void PollGuestSide()
+    {
+        if (_hosting) return;
+        if (_guestLobby.m_SteamID == 0) return;
+
+        _guestT += Time.deltaTime;
+        if (_guestT < PollStep) return;
+        _guestT = 0f;
+        SteamMatchmaking.RequestLobbyData(_guestLobby);      // 不刷新缓存会一直读到空数据（旧壳同款）
+
+        if (SteamMatchmaking.GetLobbyData(_guestLobby, "kicked") == "1")
+        {
+            if (_room != null) _room.OnKickedByHost();
+            return;
+        }
+        if (!_startSeen && SteamMatchmaking.GetLobbyData(_guestLobby, "start") == "1")
+        {
+            _startSeen = true;
+            FillGuestConfig();
+            if (_room != null) _room.OnRemoteStart();
+        }
+    }
+
+    /// <summary>客人进 Game 那套配置（旧壳 CreateRoomPanel 的客人分支同款：IsHost=false、对手 = 房主）。</summary>
+    void FillGuestConfig()
+    {
+        ulong hostId = SteamMatchmaking.GetLobbyOwner(_guestLobby).m_SteamID;
+        LobbyConfig.EnterMultiplayer();          // 清掉上一次 AI 对战留下的 IsAI
+        LobbyConfig.FromLobby = true;
+        LobbyConfig.IsHost = false;
+        LobbyConfig.IsDirectIP = false;
+        LobbyConfig.ServerIP = "";
+        LobbyConfig.CurrentLobbyID = _guestLobby;
+        LobbyConfig.MatchKey = "aw_" + _guestLobby.m_SteamID;
+        LobbyConfig.HostSteamID = hostId.ToString();
+        LobbyConfig.RemoteSteamID = hostId;      // 房主 = 对手（进 Game 用头像）
+        Debug.Log("[RoomSession] 客人侧看到 start=1 → 已填进 Game 那套配置（对手 = 房主 " + hostId + "）");
+    }
+
+    /// <summary>搜号结果（侧边栏那份预览数据）。</summary>
+    public class LobbySearchResult
+    {
+        public bool      found;
+        public string    message;
+        public CSteamID  lobby = CSteamID.Nil;
+        public ulong     hostId;
+        public string    hostName;
+        public int       members;
+        public int       capacity = 2;
     }
 
     // ===================== 自己的那份数据 =====================

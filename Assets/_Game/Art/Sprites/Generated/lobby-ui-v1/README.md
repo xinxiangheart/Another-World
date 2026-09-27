@@ -53,6 +53,7 @@
 | `LobbyProfilePlate.png` | 1401×288 | 467×96 | 左上头像衬托底板（固定尺寸）—— 形状见下面「两块异形板」 |
 | `LobbyAvatarRing.png` | 264×264 | 88×88 | 头像金圆框 |
 | `LobbyFriendPanel.png` | 1395×3240 | **465×1080** | **好友侧边栏**底板（固定尺寸，不切）—— 齐屏幕左沿 / 上沿 / 下沿，**右沿就是滑出后的可见边界**（2026-09-27） |
+| `LobbyJoinSidebar.png` | 1614×2760 | **538×920** | **「加入房间」右侧侧边栏**底板（固定尺寸，不切）—— **右上横栏（538×95）那一块的背景**：上沿 = 屏幕顶、左沿 = 横栏左沿、右沿贴屏幕右沿；板顶开口（只有下方两个圆角）（二十二次修正 · 七改） |
 | `LobbyChip_Kick.png` | 288×144 | **96×48** | 「踢出」的**子背景**（平底 + 一条金细线，**定尺不能切**）—— 二十次修正 |
 | `LobbyChip_KickHover.png` | 288×144 | **96×48** | 「踢出」子背景 · **悬停态**（底提亮一档 + 金线 α236，切图不跳位） |
 | `LobbyChip_Start.png` | 636×192 | **212×64** | 「开始游戏」的**子背景**（同配方；四个字 + 字号更大 ⇒ 底更大） |
@@ -655,7 +656,7 @@ LobbyUI_v1
 - 三个信号：踢出 → `kicked=1`（用完清 0）；双方确认 → `start=1` + `host_sid` + 填 `LobbyConfig`（旧壳进 Game 那套）；房主关面板 → `LeaveLobby` + 号作废。
 - **Steam 未登录 / 未连接**（`SteamManager.Initialized && SteamUser.BLoggedOn()` 为假）或建房失败 → `ApplySteamOffline()`：房间号那行换成灰字 `#6E7783` + 开始游戏 `interactable = false`（沿用匹配 / 排位那条规矩）。
 - `LobbyRoomCodeTag` 加 `_explicit`：被显式给过号 / 灰态之后，面板重开**不再自己生成占位号**（实测踩到过：真号被重开时的占位号顶掉）。
-- 客人那侧的面板还没做；接缝是 `LobbyRoomSession.JoinByCode(code, done)`（搜 / 进的写法与旧壳 `JoinRoomPanel` 完全一致）。
+- 客人那侧的面板还没做；接缝是 `LobbyRoomSession` 的 `SearchByCode(code, done)` + `JoinFound(lobby, done)`（2026-09-27 二十二次修正：旧的 `JoinByCode` 已被这两个替掉）。
 
 **自证**（`stage34_room_join.txt` + `stage34_shots/90..92`；执行器跑完已删）
 
@@ -664,3 +665,39 @@ LobbyUI_v1
 - **91**：点「加入房间」→ 占位弹窗（标题「加入房间」+ 一行提示）。
 - **92**：`ApplySteamOffline()` 后那行 = 「Steam 未登录 / 未连接」，颜色 `RGBA(0.43,0.47,0.51,1.00)` = `#6E7783`；开始游戏 `interactable = False`。
 - 顺带实测：测试里那个「假客人」（只调 `SetGuest`、不是真大厅成员）被真实大厅轮询清掉并弹了「玩家星野测试离开」—— 客人槽现在完全由大厅成员驱动。
+
+## 二十二次修正（2026-09-27）：房间面板「加入房间」= 右侧侧边栏
+
+**用户原话**：「加入房间是一个右侧侧边栏（到顶，但不需要完全到底），范围到右上角的左边，不遮挡房间号，ui等，再次点击（或者点击范围外）滑动回去，先是显示在右边房间号和 ui 下面的加入房间四个字，然后金线分割一下，下面是一个输入框，再下面是输入后的预览，主要是展示搜索目标的头像/名称，其下面是人数 1/2 或者红色的 2/2，然后数字右边是加入（有子背景）（根据是否满人为白色（可变金色）或者红色）」。
+
+**贴图**：`LobbyJoinSidebar.png` 1614×2760 = 屏幕 **538×920** ×3（`Tools/cardframe/LobbyJoinSidebarV1.ps1` 出，预览 `Tools/cardframe/preview/lobby-join-sidebar.png`）—— 与 `LobbyFriendPanel` 同一套配方：平底竖渐变 `#1E2938 → #0C111A` + 外墨边 3 + 等比内缩金细线 10。**板顶开口**：左右两条线跑到画面上沿、**只有下方两个圆角** —— 上封边会被横栏压着看不见，反而会在横栏左端斜切的左侧露出一小截横线，所以不画。
+
+**几何（画布 1080 口径；逐件实测「与板相交 = 否」）**
+
+- **（七改 · 最终）板 = 右上横栏（`Plate_TopBand` / `LobbyBandRight`，538×95）那一块的背景** —— 与好友侧边栏 `LobbyFriendPanel`（宽 = 左上头像板宽度、齐屏幕上沿 / 左沿）**同一套口径**：上沿 = 屏幕顶（**0**）、左沿 = 横栏左沿（1920 − 538 = **1382**）、右沿贴屏幕右沿 ⇒ 板宽 **538**；下沿让开 **160**（「不需要完全到底」）⇒ 板 **538×920**。逐项实测与横栏持平：上沿 0 / 右沿 0 / 左沿距右 538（`stage44`）。用户原话：「缩到和右上角顶端一样位置不变作为其背景」「好友侧边栏不是一样的要求吗，和右上角最左侧持平」。
+- **顶满靠层级、不靠躲**：本板在 `Panel_Room` 里的兄弟位次插在 `Text_RoomCode` **之前**，所以「房间号 / 加入 / 叉」压在板顶那一条上照样看得见、点得到（用户：「上顶满的意思是像好友那样作为右上角和房间号 ui」）。⚠ 运行时 `LobbyJoinSidebar.Open()` **不许再 `SetAsLastSibling`** —— 一抬到最上面这三个件就被板盖住了（stage40 实测踩过）。
+- **内容位置没动**：板一路顶到屏幕顶（172 → 58 → 0），板里那层 `Content` 始终钉在**屏幕顶下来 126**（现在是 `offsetMax = (0, −126)`），标题 / 金线 / 输入框 / 预览的**屏幕坐标从五改起一个字没变**（用户：「缩到和右上角顶端一样位置不变」）。逐项实测：`Text_Title` 顶 = 166、`Input_RoomCode` 顶 = 284。
+- **超出的件右移进板内**：`Text_RoomCode` 原本 420 宽、左探到 1247（压住板左沿）⇒ 收成 **238** 宽、右沿钉在距屏右 **252**（= 加入图标 244 + 8）⇒ 框 **1429..1667**，左沿正好 = 板左沿 1381 + `JoinSidePadX` 48（用户：「其它超出组件向右平移到内部」）。⚠ 这个框是**锚右上 + 轴也右上**（`pivot (1,1)`），`RoomCodeX` 量的是**右沿**不是左沿 —— 按左沿写成 −490 会把整行推出板外（stage43 实测踩过，已改 −252）。
+- 板内自上而下：标题「加入房间」`y=-40` → 金细线 `-118` → 输入框 `-158`（高 76，平底凹井 `#0C111A` + 四边金细线）→ 预览 `-280`（头像环 96 / 井 74）→ 名字 + 人数 → 人数右边「加入」`96×48` → 提示行 `-400`。
+
+**运行时**（新件 `Assets/_Game/Scripts/UI/Lobby/LobbyJoinSidebar.cs`）
+
+- 滑动与 `LobbyFriendPanel` 同一套（progress 0..1 + `MoveTowards` + 快进慢出，方向朝右）；根节点铺满全屏 + 一张全透明 `Image`（`raycastTarget` 开着）= **点板以外滑回去**；`OnDisable` 复位，父级关掉后不留滑出态。
+- 输入：只收大写字母 / 数字、≤6 位，满 6 位自动搜；搜之前先 `SuspendHosting`（`RequestLobbyList` 不允许在「已处于某个大厅」时调用），没搜到 / 关板再 `ResumeHosting` 用**同一个号**重建 —— 屏幕上的房间号不会因为来搜一次就变。
+- 加入：`JoinFound`（真 `JoinLobby` + 写成员数据）→ 关板 → 房间面板切客人视角。
+- 满员 = `2/2` 生命红 `#B64848` + 「加入」`interactable = false`（走 `Button` 的 `disabledColor`，与踢出 / 开始游戏同一个色）；不满 = 白、悬停金。**实测**：`Text_Count` 色 `F0E8D2EC → B64848FF`、提示行「房间已满」、子背景贴图两态不变（只有字变色）。
+- 入口：`Btn_JoinRoom` 的 `LobbyIconHover` 不再弹占位窗（`popup` 已置空），改成 `joinSidebar.Toggle()`。
+
+**右键粘贴（2026-09-27 · 八改）**
+
+**用户原话**：「加入一个在输入栏右键自动粘贴复制的房间号功能」。TMP_InputField 自己**只认左键** —— `OnPointerClick` 第一行就把非左键 `return` 掉（实测 `com.unity.textmeshpro@3.0.7`），所以右键一直是空的；键盘那套 Ctrl+V / Shift+Insert 有是有，但没有鼠标路径。
+
+- **新件** `Assets/_Game/Scripts/UI/Lobby/LobbyJoinInputPaste.cs`：`IPointerClickHandler`，挂在输入井（`Input_RoomCode`）**同一个物体**上（井自己那张平底 `Image` 就是 raycast 目标，整口井都能右键），只接**右键**（左键照旧留给 TMP 定位光标），转交 `LobbyJoinSidebar.PasteFromClipboard()`。以后另一口井（比方说好友 ID）挂一个本件 + 指一个 owner 就能复用。
+- **`LobbyJoinSidebar.PasteFromClipboard()`**：读 `GUIUtility.systemCopyBuffer` → 走**与手输同一条** `Clean()`（只留 A-Z / 0-9 + 转大写 + 截 6 位）→ **整段替换**（不是插到光标处 —— 6 位号的井替换才是想要的）→ `input.text = code` 照常派 `onValueChanged` ⇒ `OnCodeChanged`，满 6 位自动去搜，和手打进去没有区别 → 光标收到末尾。
+- **剪贴板拿不到 / 洗完是空的**：提示行显示「剪贴板里没有房间号」，**不动输入框**（免得平白把已输的号清掉）。
+- 贴完 `ActivateInputField()` 把焦点留在这口井上；TMP 的 `onFocusSelectAll`（默认 true）会把整段选中、光标停在末尾 —— 与「左键点进这口井」的既有行为**一致**，不是本件引入的。
+
+**自证**：**`stage44_join_box.txt` + `stage44_shots/`**（`r1_open` 滑出 / `r2_full` 预览填充）—— 实测 `Body offsetMin=(-538,160) offsetMax=(0,0)`、板 538×920、上沿 0 / 右沿 0 / 下沿 160 / 左沿距右 538（与 `Plate_TopBand` 三项逐项持平）、`Content` 顶 126、`Text_Title` 顶 166、`Input_RoomCode` 顶 284、`Text_RoomCode` 1429..1667（左距板 48 / 右距屏右 252，整行在板内）、运行态起点 546 → 静止位 `anchoredPosition.x = 0`、`Text_RoomCode` active 且兄弟位次 4（在板之上）。执行器跑完已删。
+**自证（八改 · 右键粘贴）**：**`stage45_paste.txt` + `stage45_shots/`**（`r2_paste` 贴完 / `r3_steady` 到位）—— 编辑态：`Input_RoomCode` 上 `TMP_InputField` + `LobbyJoinInputPaste` 都在、`paste.owner == LobbyJoinSidebar`、`side.input` 就是这口井、`onValueChanged` 持久监听 1 条 = `OnCodeChanged`；几何回归：板 538×920、上沿 0 / 右沿 0 / 下沿 160 / 左沿距右 538、`Text_RoomCode` 1429..1667 整行在板内、侧边栏兄弟位次 3 在房间号（4）之前。右键四测（直接调 `OnPointerClick` —— 真实鼠标右键 EventSystem 也是进这一个方法）：`" ab-12cd "` → `AB12CD`、`"房间号：gh-77kl"` → `GH77KL`、`"房间号：！！！"` → 输入框不动 + 提示「剪贴板里没有房间号」、**左键** `"ZZZZZZ"` → 输入框不变（左键不贴）。
+**注**：`stage45` 里「等了 0.9s 侧边栏还停在 546」是**执行器自己的时序 bug**（`Shot()` 设的 0.9s 等待被紧随其后的 `SetPhase()` 用 `_nextAt = Now` 冲掉，那一拍读在滑动第一帧之前），不是产品问题 —— `stage46_slide.txt` 逐帧打点（`Application.runInBackground = True`、60fps、`progress` 0 → 1、`x` 546 → 0）已证伪，`s_open.png` 是贴屏右沿的静止位。两个执行器跑完都已自删。
+回退链：`stage43_join_box.txt` + `stage43_shots/`（板与横栏已三项持平、但 `RoomCodeX` 误按左沿写成 −490、整行还在板外那一版）、`stage42_*`（564×862 / 顶缝 58 / 右缩进 108）、`stage41_*`（板顶 58 / 右沿 168，叉留在板外）、`stage40_*`（顶到屏幕顶那一版）、`stage37_join_sidebar2.txt`（板顶 172）、`stage36_*`（板顶 120，与房间号那行有 6 单位矩形重叠）。

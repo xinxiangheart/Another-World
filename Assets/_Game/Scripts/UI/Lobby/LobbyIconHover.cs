@@ -28,6 +28,9 @@ public class LobbyIconHover : MonoBehaviour, IPointerEnterHandler, IPointerExitH
     [Header("好友图标勾它：点击改成开 / 关左侧的好友侧边栏（勾了就不再弹占位窗）")]
     public LobbyFriendPanel friendsPanel;
 
+    [Header("房间面板右上角那个加入图标勾它：点击改成开 / 关右侧的「加入房间」侧边栏")]
+    public LobbyJoinSidebar joinSidebar;
+
     void Awake()
     {
         if (icon == null) icon = GetComponent<RawImage>();
@@ -52,6 +55,7 @@ public class LobbyIconHover : MonoBehaviour, IPointerEnterHandler, IPointerExitH
     {
         // 好友图标：不弹占位窗，改成开 / 关左侧的好友侧边栏（2026-09-27 用户：点好友从屏幕左侧滑出侧边栏）
         if (friendsPanel != null) { friendsPanel.Toggle(); return; }
+        if (joinSidebar != null) { joinSidebar.Toggle(); return; }     // 「加入房间」：同上，改成开 / 关右侧侧边栏
 
         // 别的图标弹占位窗之前，把好友侧边栏收回去 —— 两块抢同一块屏幕
         if (LobbyFriendPanel.Instance != null) LobbyFriendPanel.Instance.Close();

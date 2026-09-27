@@ -34,8 +34,10 @@ public class LobbyRoomPanel : MonoBehaviour, ILobbySubPanelOpen
     [Header("壳（右上角的叉走它的 Close）")]
     public LobbySubPanel shell;
 
-    [Header("房主槽")]
+    [Header("房主槽（客人视角：头像 / 名字这两件要换成对方）")]
     public TMP_Text hostRoleText;
+    public RawImage hostWell;
+    public TMP_Text hostNameText;
 
     [Header("加入玩家槽")]
     public RawImage guestWell;
@@ -52,6 +54,9 @@ public class LobbyRoomPanel : MonoBehaviour, ILobbySubPanelOpen
     [Header("Steam 接入（2026-09-27）：真房间号 + 大厅状态机 —— 面板一打开就建房")]
     public LobbyRoomCodeTag codeTag;
     public LobbyRoomSession session;
+
+    [Header("「加入房间」右侧侧边栏（它自己滑动；这里只留一个引用）")]
+    public LobbyJoinSidebar joinSidebar;
 
     [Header("收尾：确认弹窗 / 双方确认后的战斗加载界面")]
     public MatchConfirmPanel confirmPanel;
@@ -103,6 +108,17 @@ public class LobbyRoomPanel : MonoBehaviour, ILobbySubPanelOpen
     public string GuestName { get { return _guestName; } }
     public Texture2D GuestAvatar { get { return _guestAvatar; } }
 
+    // ── 客人视角（进了别人的房）────────────────────────────────────────────
+    string    _hostName;
+    Texture2D _hostAvatar;
+    ulong     _hostSteamID;
+    bool      _guestMode;
+
+    public bool GuestMode { get { return _guestMode; } }
+    /// <summary>确认弹窗要的「对方」：房主视角 = 客人；客人视角 = 房主（2026-09-27）。</summary>
+    public string OpponentName { get { return _guestMode ? _hostName : _guestName; } }
+    public Texture2D OpponentAvatar { get { return _guestMode ? _hostAvatar : _guestAvatar; } }
+
     void Awake()
     {
         Instance = this;
@@ -130,7 +146,7 @@ public class LobbyRoomPanel : MonoBehaviour, ILobbySubPanelOpen
     /// 挂 OnEnable 会在玩家没点过「房间」的时候就开一间 Steam 大厅。</remarks>
     public void OnSubPanelOpened()
     {
-        if (Session != null) Session.BeginHosting(this);
+        if (!_guestMode && Session != null) Session.BeginHosting(this);   // 客人视角别再开自己的房
     }
 
     void OnDestroy() { if (Instance == this) Instance = null; }
@@ -175,6 +191,72 @@ public class LobbyRoomPanel : MonoBehaviour, ILobbySubPanelOpen
         Toast("房主已离开，你已成为房主");
     }
 
+    // ===================== 客人视角（进了别人的房） =====================
+
+    /// <summary>真进了别人的房（<see cref="LobbyRoomSession.JoinFound"/> 里调）：房主槽换成对方、客人槽 = 自己。</summary>
+    public void ApplyGuestLobby(string hostName, Texture2D hostAvatar, ulong hostId, string code)
+    {
+        _guestMode = true;
+        _established = true;
+        _isHost = false;
+        _hostName = string.IsNullOrEmpty(hostName) ? "玩家" : hostName;
+        _hostAvatar = hostAvatar;
+        _hostSteamID = hostId;
+
+        // 房主槽本来挂 PlayerProfilePanel（填本机资料），客人视角要把它换成对方 → 把那个组件关掉
+        if (hostWell != null)
+        {
+            var view = hostWell.GetComponentInParent<PlayerProfilePanel>();
+            if (view != null) view.enabled = false;
+            hostWell.texture = _hostAvatar != null ? PlayerProfilePanel.CircleCrop(_hostAvatar) : PlayerProfilePanel.Placeholder();
+            hostWell.color = Color.white;
+        }
+        if (hostNameText != null)
+        {
+            hostNameText.text = _hostName;
+            hostNameText.color = guestNameColor;
+        }
+
+        // 客人槽放自己（自己是加入的那位）
+        var sd = SteamDataManager.Instance;
+        _hasGuest = true;
+        _guestName = sd != null && !string.IsNullOrEmpty(sd.localPlayerName) ? sd.localPlayerName : "我";
+        _guestAvatar = sd != null ? sd.localAvatar : null;
+        _guestSteamID = sd != null ? sd.localSteamID.m_SteamID : 0;
+
+        if (CodeTag != null && !string.IsNullOrEmpty(code)) CodeTag.SetCode(code);   // 屏幕上那行换成对方的号
+        Refresh();
+        Toast("已加入 " + _hostName + " 的房间");
+    }
+
+    /// <summary>客人视角：自己点了右上角的叉 —— 离开对方的房（提示留给房主那侧）。</summary>
+    public void LeaveGuestRoom()
+    {
+        if (!_guestMode) return;
+        if (Session != null) Session.LeaveGuestLobby();
+        ResetRoom();
+        ClearGuest();
+    }
+
+    /// <summary>客人视角：被房主踢了 → 回自己的房（重新查重开一间，号会变）。</summary>
+    public void OnKickedByHost()
+    {
+        if (!_guestMode) return;
+        Toast("你已被移出房间");
+        ResetRoom();
+        ClearGuest();
+        if (Session != null) Session.RestartHosting();
+    }
+
+    /// <summary>客人视角：读到房主的 start=1 → 关房间面板、进确认弹窗（对手 = 房主）。</summary>
+    public void OnRemoteStart()
+    {
+        if (!_guestMode) return;
+        Debug.Log("[LobbyRoom] 房主开了 → 客人侧进确认弹窗（对手 = " + _hostName + "）");
+        if (shell != null) shell.Close();
+        if (confirmPanel != null) confirmPanel.OpenFromRoom(this);
+    }
+
     // ===================== 三个按钮 =====================
 
     /// <summary>踢出（只在房主视角 + 房里有人时出现）。</summary>
@@ -201,6 +283,7 @@ public class LobbyRoomPanel : MonoBehaviour, ILobbySubPanelOpen
     /// <summary>右上角那个叉。房主走 = 把房主让给客人；客人走 = 单纯离开（提示留给对面）。</summary>
     public void OnCloseClicked()
     {
+        if (_guestMode) { LeaveGuestRoom(); if (shell != null) shell.Close(); return; }
         if (_established)
         {
             if (_isHost)
@@ -295,6 +378,10 @@ public class LobbyRoomPanel : MonoBehaviour, ILobbySubPanelOpen
     void ResetRoom()
     {
         _established = false;
+        _guestMode = false;
+        _hostName = null;
+        _hostAvatar = null;
+        _hostSteamID = 0;
         _isHost = false;
         _hasGuest = false;
         _guestName = null;
