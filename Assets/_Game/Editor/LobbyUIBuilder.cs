@@ -1863,6 +1863,8 @@ public static class LobbyUIBuilder
         row.avatarImage = rowAvatar;
         row.nameText = rowName;
         row.statusText = rowStatus;
+        // 右端那格「邀请加号」（2026-09-27）——排在行内最后：画在其余件之上，点击也先命中它
+        WireInvitePlus(rowRT, row, rowW);
         rowRT.gameObject.SetActive(false);                   // 模板自己藏着，只给克隆用
 
         // 名单 UI 挂在 Content 上（它就是「行的容器」）：高度按行数改 = ScrollRect 的可滚范围
@@ -1874,6 +1876,10 @@ public static class LobbyUIBuilder
         // 服务挂在大厅 Canvas 上（本菜单会反复重建 Panel_Friends，服务别跟着一起没）
         if (canvas.gameObject.GetComponent<FriendListService>() == null)
             canvas.gameObject.AddComponent<FriendListService>();
+
+        // 邀请服务同待遇：它要活过 Panel_Friends 的重建（冷却表 / 收邀请的回调都在它身上）
+        if (canvas.gameObject.GetComponent<LobbyInviteService>() == null)
+            canvas.gameObject.AddComponent<LobbyInviteService>();
 
         // ── 接到好友图标（左上头像板下沿那颗）：点击不再弹占位窗，改成开 / 关这个侧边栏 ──
         Transform friend = FindDeep(hud, "Icon_Friend");
@@ -1897,5 +1903,256 @@ public static class LobbyUIBuilder
                   "（距上沿 " + FriendsPanelTop + " / 下沿 " + FriendsPanelBottom + "，让开量留给日后微调）+ " +
                   "整屏透明挡板（点它收回去）；好友图标 Icon_Friend 已改接它（再点一次也收回去）。" +
                   "宽 = Plate_Profile 右沿，底图 " + FriendsPanelTex + " 由 Tools/cardframe/LobbyUIv1.ps1 出。");
+    }
+
+    // ── 好友邀请（2026-09-27）──────────────────────────────────────────────────
+    // 用户：「现在做邀请，好友栏中处于在线（非战斗状态和匹配状态）时其名字右边会出现一个加号，点击后发送邀请
+    //       并且加号变成 10 秒倒计时（倒计时结束后才能继续邀请）（若自己此时不是在房间界面就进入房间并开房间），
+    //       邀请是从屏幕中央上顶滑出一个小框，上面标题是收到邀请，下面一排是对应玩家头像和名称，在下面是有
+    //       子背景的同意和拒绝，同意后会加入其房间，拒绝后对方也会收到：对方暂无法响应」。
+    //
+    // 两件东西：
+    //   ① 好友行右端那一格 —— 建在 RowTemplate 里（所以名单里每一行克隆出来都带），运行时由 FriendRowUI
+    //      按「在不在线 / 在不在冷却 / 悬没悬停」切三张贴图（加号 / 悬停 / 倒计时那块空板）。
+    //   ② Panel_Invite —— 屏幕顶中的小窗，常驻 active 的根 + 存 inactive 的 Window（滑出 / 收窗都靠它），
+    //      挂在 Layer_Hud_v1 下 ⇒ 永远压在房间面板等全屏弹窗之上（与 Panel_MatchWait 同一套层级约定）。
+    //      插在 Text_LobbyToast **之前**：提示行在正中偏上、小窗也在正中偏上，提示得压得住它。
+    const string InviteDir        = "Assets/_Game/Art/Sprites/Generated/invite-v1/";
+    const string InvitePlusName   = "Icon_InvitePlus";
+    const string InviteTimerName  = "Text_InviteTimer";
+    const float  InvitePlusSize   = 60f;     // 贴图 256 画在 60（同批图标同档）
+    const float  InvitePlusRight  = 4f;      // 距行右沿
+    const float  InvitePlusTop    = -12f;    // 行高 84，60 高这块上下各留 12
+    const float  InviteNameTrim   = 76f;     // 名字那行要让给加号的宽度（60 + 4 + 12 间隙）
+    const float  InviteTimerFont  = 26f;
+
+    const string InvitePanelName  = "Panel_Invite";
+    const string InviteWindowName = "Window";
+    const float  InviteWinW       = 360f;    // = Invite_Plate.png 贴图 1080 / 3
+    const float  InviteWinH       = 240f;    // = 720 / 3
+    const float  InviteRestY      = -10f;    // 静止位：贴屏幕顶（与匹配小窗同档）
+    const float  InviteTitleY     = -18f;
+    const float  InviteTitleH     = 38f;
+    const float  InviteTitleFont  = 30f;
+    const float  InviteRowY       = -70f;    // 头像行上沿
+    const float  InviteRingSize   = 72f;     // 与好友行同口径（环 88 : 井 68 的比例）
+    const float  InviteWellSize   = 56f;
+    const float  InviteNameX      = 136f;
+    const float  InviteNameW      = 200f;
+    const float  InviteNameFont   = 28f;
+    const float  InviteChipY      = -168f;
+    const float  InviteChipW      = 96f;     // = 子背景 LobbyChip_Kick 的屏幕宽
+    const float  InviteChipH      = 48f;
+    const float  InviteChipFont   = 30f;
+    const float  InviteChipAX     = 56f;     // 同意
+    const float  InviteChipDX     = 208f;    // 拒绝
+
+    /// <summary>
+    /// 给好友行的行模板补上右端那格「邀请加号」（幂等：已经有了就只回填引用）。
+    /// 顺手把名字那行收窄 —— 它原来铺到行右端，加号一进来就会压在字上。
+    /// </summary>
+    static GameObject WireInvitePlus(RectTransform rowRT, FriendRowUI row, float rowW)
+    {
+        float plusX = rowW - InvitePlusSize - InvitePlusRight;
+        string normalPath = UiDir + InvitePlusName + ".png";
+        string hoverPath  = UiDir + InvitePlusName + "Hover.png";
+        string coolPath   = UiDir + InvitePlusName + "Cool.png";
+
+        Transform old = rowRT.Find(InvitePlusName);
+        RawImage icon;
+        GameObject go;
+        if (old != null)
+        {
+            go = old.gameObject;
+            icon = go.GetComponent<RawImage>();
+            if (icon == null) icon = go.AddComponent<RawImage>();
+            icon.rectTransform.anchorMin = AnchorTL;
+            icon.rectTransform.anchorMax = AnchorTL;
+            icon.rectTransform.pivot = PivotTL;
+            icon.rectTransform.anchoredPosition = new Vector2(plusX, InvitePlusTop);
+            icon.rectTransform.sizeDelta = new Vector2(InvitePlusSize, InvitePlusSize);
+        }
+        else
+        {
+            icon = NewRaw(rowRT, InvitePlusName, normalPath, AnchorTL, PivotTL,
+                          new Vector2(plusX, InvitePlusTop), new Vector2(InvitePlusSize, InvitePlusSize));
+            go = icon.gameObject;
+            Undo.RegisterCreatedObjectUndo(go, "建 " + InvitePlusName);
+        }
+        icon.texture = AssetDatabase.LoadAssetAtPath<Texture2D>(normalPath);
+        icon.raycastTarget = true;                 // 它自己就是 raycast 目标（同那几个压墙图标）
+        go.transform.SetAsLastSibling();           // 行内最后：画在其余件之上，点击也先命中它
+
+        // 倒计时数字：铺满那一格、居中、亮金（常态藏着，冷却那 10 秒才出来）
+        Transform oldT = go.transform.Find(InviteTimerName);
+        TextMeshProUGUI timer;
+        if (oldT != null)
+        {
+            timer = oldT.GetComponent<TextMeshProUGUI>();
+            if (timer == null) { Undo.DestroyObjectImmediate(oldT.gameObject); timer = null; }
+        }
+        else timer = null;
+        if (timer == null)
+        {
+            timer = NewLabel(go.transform, InviteTimerName, "10", Vector2.zero, new Vector2(InvitePlusSize, InvitePlusSize), InviteTimerFont);
+            var trt = timer.rectTransform;
+            trt.anchorMin = Vector2.zero;
+            trt.anchorMax = Vector2.one;
+            trt.pivot = PivotC;
+            trt.offsetMin = Vector2.zero;
+            trt.offsetMax = Vector2.zero;
+        }
+        timer.alignment = TextAlignmentOptions.Midline;   // 居中 = 正好压在空板中央
+        timer.color = GoldBright;                         // 本套亮金 #E4CB84
+        timer.fontSize = InviteTimerFont;
+        timer.raycastTarget = false;                      // 别抢这块的点击（点击归 FriendInviteButton）
+
+        var btn = go.GetComponent<FriendInviteButton>();
+        if (btn == null) btn = go.AddComponent<FriendInviteButton>();
+        btn.icon = icon;
+        btn.owner = row;
+
+        row.inviteGroup  = go;
+        row.inviteIcon   = icon;
+        row.inviteTimer  = timer;
+        row.inviteNormal = AssetDatabase.LoadAssetAtPath<Texture2D>(normalPath);
+        row.inviteHover  = AssetDatabase.LoadAssetAtPath<Texture2D>(hoverPath);
+        row.inviteCool   = AssetDatabase.LoadAssetAtPath<Texture2D>(coolPath);
+        if (row.inviteHover == null) Debug.LogWarning("[LobbyUI] 找不到 " + hoverPath + " —— 加号没有悬停态");
+        if (row.inviteCool == null)  Debug.LogWarning("[LobbyUI] 找不到 " + coolPath  + " —— 倒计时没有空板");
+
+        Transform nameT = rowRT.Find("Text_Name");
+        if (nameT != null)
+        {
+            var nrt = nameT as RectTransform;
+            if (nrt != null) nrt.sizeDelta = new Vector2(rowW - 96f - InviteNameTrim, 40f);
+        }
+        if (timer != null) timer.gameObject.SetActive(false);
+        return go;
+    }
+
+    /// <summary>补丁式：给场景里**已经存在**的好友行模板补加号（重复执行幂等）。</summary>
+    [MenuItem("Tools/异界/大厅：给好友行补「邀请加号」（好友邀请）")]
+    public static void AddInvitePlusMenu()
+    {
+        Canvas canvas = Object.FindObjectOfType<Canvas>();
+        if (canvas == null) { Debug.LogError("[LobbyUI] 当前场景没有 Canvas —— 请先打开 Assets/_Game/Scenes/Lobby.unity"); return; }
+
+        Transform sub, hud;
+        EnsureUiLayers(canvas, out sub, out hud);
+
+        Transform rowT = FindDeep(sub, "RowTemplate");
+        if (rowT == null) { Debug.LogError("[LobbyUI] 找不到 Panel_Friends 的 RowTemplate —— 先跑一次「生成好友侧边栏」"); return; }
+        var rowRT = rowT as RectTransform;
+        var row = rowT.GetComponent<FriendRowUI>();
+        if (rowRT == null || row == null) { Debug.LogError("[LobbyUI] RowTemplate 上没有 FriendRowUI / RectTransform"); return; }
+
+        float rowW = rowRT.sizeDelta.x;
+        WireInvitePlus(rowRT, row, rowW);
+
+        if (canvas.gameObject.GetComponent<LobbyInviteService>() == null)
+            canvas.gameObject.AddComponent<LobbyInviteService>();
+
+        EditorUtility.SetDirty(row);
+        EditorSceneManager.MarkSceneDirty(canvas.gameObject.scene);
+        Selection.activeGameObject = rowT.gameObject;
+        Debug.Log("[LobbyUI] 好友行已补上「邀请加号」：行宽 " + rowW + " · 加号 " + InvitePlusSize +
+                  "x" + InvitePlusSize + " 在 x=" + (rowW - InvitePlusSize - InvitePlusRight) + " y=" + InvitePlusTop +
+                  "（行内最后 = 压在其余件之上）· 名字那行已收窄到 " + (rowW - 96f - InviteNameTrim) + "。");
+    }
+
+    /// <summary>生成「收到邀请」小窗（Panel_Invite）：锚屏幕顶中，滑出 / 收窗由 LobbyInvitePanel 驱动。</summary>
+    [MenuItem("Tools/异界/大厅：生成「收到邀请」小窗（好友邀请）")]
+    public static void BuildInvitePanelMenu()
+    {
+        Canvas canvas = Object.FindObjectOfType<Canvas>();
+        if (canvas == null) { Debug.LogError("[LobbyUI] 当前场景没有 Canvas —— 请先打开 Assets/_Game/Scenes/Lobby.unity"); return; }
+
+        _font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontPath);
+        if (_font == null) Debug.LogWarning($"[LobbyUI] 找不到字体 {FontPath}，中文会落到 TMP 默认字体");
+
+        Transform sub, hud;
+        EnsureUiLayers(canvas, out sub, out hud);
+
+        Transform old = hud.Find(InvitePanelName);
+        if (old != null) Undo.DestroyObjectImmediate(old.gameObject);
+
+        // 根：常驻 active（它的 Awake 要把 Instance 立起来，服务才找得到它）；滑动的是子物体 Window
+        RectTransform root = NewRect(hud, InvitePanelName, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+                                     Vector2.zero, new Vector2(InviteWinW, InviteWinH));
+        var panel = root.gameObject.AddComponent<LobbyInvitePanel>();
+
+        RectTransform win = NewRect(root, InviteWindowName, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+                                    new Vector2(0f, InviteRestY), new Vector2(InviteWinW, InviteWinH));
+        panel.window = win.gameObject;
+        panel.windowRect = win;
+        panel.restY = InviteRestY;
+        panel.hiddenY = InviteWinH + 20f;      // 整块（240 高）完全在屏幕顶之上
+
+        // 底板：整块拉伸铺满（贴图 1080x720 = 屏幕 360x240，正好 1:1）；raycastTarget 开着 = 小窗自己吃点击
+        RawImage plate = NewRaw(win, "Plate", InviteDir + "Invite_Plate.png", Vector2.zero, PivotC, Vector2.zero, Vector2.zero);
+        plate.rectTransform.anchorMin = Vector2.zero;
+        plate.rectTransform.anchorMax = Vector2.one;
+        plate.rectTransform.offsetMin = Vector2.zero;
+        plate.rectTransform.offsetMax = Vector2.zero;
+        plate.raycastTarget = true;
+
+        // 标题：金（与匹配小窗那行状态字同一档）
+        TextMeshProUGUI title = NewLabel(win, "Text_Title", "收到邀请",
+                                         new Vector2(0f, InviteTitleY), new Vector2(InviteWinW, InviteTitleH), InviteTitleFont);
+        title.alignment = TextAlignmentOptions.Midline;    // 居中
+        title.color = new Color32(200, 164, 74, 255);      // 本套金 #C8A44A
+        title.raycastTarget = false;
+        panel.titleText = title;
+
+        // 一排：对方头像（环 72 + 井 56）+ 名称
+        RawImage ring = NewRaw(win, "Avatar_Ring", UiDir + "LobbyAvatarRing.png", AnchorTL, PivotTL,
+                               new Vector2(48f, InviteRowY), new Vector2(InviteRingSize, InviteRingSize));
+        ring.raycastTarget = false;
+        var wellRT = NewRect(win, "Avatar_Image", AnchorTL, PivotTL,
+                             new Vector2(56f, InviteRowY - 8f), new Vector2(InviteWellSize, InviteWellSize));
+        var well = wellRT.gameObject.AddComponent<RawImage>();
+        well.texture = null;                              // 运行时填（先灰盘占位，Steam 头像到货自己换）
+        well.raycastTarget = false;
+        wellRT.SetSiblingIndex(ring.transform.GetSiblingIndex() + 1);
+        panel.avatarImage = well;
+
+        TextMeshProUGUI who = NewLabel(win, "Text_Name", "好友",
+                                       new Vector2(InviteNameX, InviteRowY - 16f), new Vector2(InviteNameW, 40f), InviteNameFont);
+        who.alignment = TextAlignmentOptions.Left;
+        who.color = Cream;
+        who.raycastTarget = false;
+        panel.nameText = who;
+
+        // 同意 / 拒绝：各带子背景（复用踢出那套 LobbyChip_Kick，同规格 96x48 / 字 30）
+        RectTransform chips = NewRect(win, "Chips", AnchorTL, PivotTL,
+                                      new Vector2(0f, InviteChipY), new Vector2(InviteWinW, InviteChipH));
+        panel.chipsGroup = chips.gameObject;
+        Button accept = BuildTextChip(chips, "Btn_Accept", "同意", AnchorTL, PivotTL,
+                                      new Vector2(InviteChipAX, 0f), new Vector2(InviteChipW, InviteChipH),
+                                      InviteChipFont, "LobbyChip_Kick.png", "LobbyChip_KickHover.png");
+        Button decline = BuildTextChip(chips, "Btn_Decline", "拒绝", AnchorTL, PivotTL,
+                                       new Vector2(InviteChipDX, 0f), new Vector2(InviteChipW, InviteChipH),
+                                       InviteChipFont, "LobbyChip_Kick.png", "LobbyChip_KickHover.png");
+        panel.acceptButton = accept;
+        panel.declineButton = decline;
+        WireClick(accept, panel.Accept);
+        WireClick(decline, panel.Decline);
+
+        // 收邀请的回调 / 冷却表都在服务上；服务挂大厅 Canvas（重跑本菜单别重建它）
+        if (canvas.gameObject.GetComponent<LobbyInviteService>() == null)
+            canvas.gameObject.AddComponent<LobbyInviteService>();
+
+        // 插在提示行**之前**：提示（「对方暂无法响应」/「已加入…」）压在小窗之上
+        Transform toast = FindDeep(hud, "Text_LobbyToast");
+        if (toast != null) root.SetSiblingIndex(toast.GetSiblingIndex());
+        else root.SetAsLastSibling();
+
+        EditorSceneManager.MarkSceneDirty(canvas.gameObject.scene);
+        Selection.activeGameObject = root.gameObject;
+        Debug.Log("[LobbyUI] 已生成 " + InvitePanelName + "（收到邀请小窗）：屏幕顶中 " + InviteWinW + "x" + InviteWinH +
+                  "（贴图 Invite_Plate.png 1080x720 / 3）· 静止位 y=" + InviteRestY + "、起点 y=" + (InviteWinH + 20f) +
+                  "（从屏幕顶滑出）· 标题金 + 头像行（环 " + InviteRingSize + " / 井 " + InviteWellSize + "）+ 同意 / 拒绝（子背景 96x48）· " +
+                  "挂 " + HudLayerName + "（压在房间面板等全屏弹窗之上）。");
     }
 }

@@ -391,6 +391,27 @@ public class LobbyRoomSession : MonoBehaviour
         return true;
     }
 
+    /// <summary>
+    /// 客人视角：从「收到邀请」点同意进来 —— 直接进对方那间大厅（大厅 ID 是邀请回调给的，不用再按号搜）。
+    /// </summary>
+    /// <remarks>2026-09-27：与 <see cref="JoinFound"/> 的两点不同 ——
+    /// ① 面板可能一次都没开过（从好友栏直接点进来），所以 <c>_room</c> 得由调用方显式交进来
+    ///   （<see cref="ApplyGuestLobby"/> 要它才把两个槽换成对方的房）；
+    /// ② 自己可能正开着房（点过房间 / 刚邀过别人），Steam 同时只能在一个大厅 ⇒ 先让位再进
+    ///   （<see cref="StopHosting"/> 会 LeaveLobby 并清掉自己的号）。</remarks>
+    public bool JoinInviteAsGuest(CSteamID lobby, LobbyRoomPanel room, System.Action<bool, string> done = null)
+    {
+        if (room != null) _room = room;
+        if (!SteamOnline()) { done?.Invoke(false, "Steam 未登录 / 未连接"); return false; }
+        if (lobby.m_SteamID == 0) { done?.Invoke(false, "这张邀请已经失效了"); return false; }
+
+        if (IsGuest) LeaveGuestLobby();     // 已经在别人的房里换一间
+        if (_hosting) StopHosting();        // 自己开着房 → 让位（同时只能在一个大厅里）
+
+        Debug.Log("[RoomSession] 收到邀请 → 进对方的大厅 " + lobby.m_SteamID);
+        return JoinFound(lobby, done);
+    }
+
     static string HostNameOf(CSteamID lobby, ulong hostId)
     {
         string js = SteamMatchmaking.GetLobbyData(lobby, "host_data");

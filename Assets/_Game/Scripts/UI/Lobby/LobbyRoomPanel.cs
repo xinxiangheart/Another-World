@@ -149,6 +149,25 @@ public class LobbyRoomPanel : MonoBehaviour, ILobbySubPanelOpen
         if (!_guestMode && Session != null) Session.BeginHosting(this);   // 客人视角别再开自己的房
     }
 
+    /// <summary>
+    /// 客人视角：从「收到邀请」点同意进来 —— 只把面板打开，**不建自己的房**。
+    /// </summary>
+    /// <remarks>2026-09-27：这条入口与「加入房间」侧边栏不同 —— 那条是在房间面板里搜号，面板本来就是开的；
+    /// 这条是从好友栏直接点进来，面板还是关的，而直接 <see cref="LobbySubPanel.Open"/> 会走
+    /// <see cref="OnSubPanelOpened"/> ⇒ <c>BeginHosting</c> 先建一间自己的房，紧接着 JoinLobby 就会撞车
+    /// （Steam 同时只能在一个大厅里）。所以先把 _guestMode 立起来（OnSubPanelOpened 看到它就不建房），
+    /// 再开面板。真进大厅由 <see cref="LobbyRoomSession.JoinInviteAsGuest"/> 那条走，进来后
+    /// <see cref="ApplyGuestLobby"/> 把两个槽换成对方的房。
+    /// </remarks>
+    public void OpenAsGuest()
+    {
+        _guestMode = true;                 // 让 OnSubPanelOpened 跳过建房
+        _established = true;               // 让 OnEnable 不要再把 _isHost 翻回来
+        _isHost = false;
+        if (shell != null) shell.Open(null);
+        Refresh();
+    }
+
     void OnDestroy() { if (Instance == this) Instance = null; }
 
     // ===================== 联机侧的接缝 =====================

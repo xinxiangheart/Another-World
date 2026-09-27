@@ -701,3 +701,52 @@ LobbyUI_v1
 **自证（八改 · 右键粘贴）**：**`stage45_paste.txt` + `stage45_shots/`**（`r2_paste` 贴完 / `r3_steady` 到位）—— 编辑态：`Input_RoomCode` 上 `TMP_InputField` + `LobbyJoinInputPaste` 都在、`paste.owner == LobbyJoinSidebar`、`side.input` 就是这口井、`onValueChanged` 持久监听 1 条 = `OnCodeChanged`；几何回归：板 538×920、上沿 0 / 右沿 0 / 下沿 160 / 左沿距右 538、`Text_RoomCode` 1429..1667 整行在板内、侧边栏兄弟位次 3 在房间号（4）之前。右键四测（直接调 `OnPointerClick` —— 真实鼠标右键 EventSystem 也是进这一个方法）：`" ab-12cd "` → `AB12CD`、`"房间号：gh-77kl"` → `GH77KL`、`"房间号：！！！"` → 输入框不动 + 提示「剪贴板里没有房间号」、**左键** `"ZZZZZZ"` → 输入框不变（左键不贴）。
 **注**：`stage45` 里「等了 0.9s 侧边栏还停在 546」是**执行器自己的时序 bug**（`Shot()` 设的 0.9s 等待被紧随其后的 `SetPhase()` 用 `_nextAt = Now` 冲掉，那一拍读在滑动第一帧之前），不是产品问题 —— `stage46_slide.txt` 逐帧打点（`Application.runInBackground = True`、60fps、`progress` 0 → 1、`x` 546 → 0）已证伪，`s_open.png` 是贴屏右沿的静止位。两个执行器跑完都已自删。
 回退链：`stage43_join_box.txt` + `stage43_shots/`（板与横栏已三项持平、但 `RoomCodeX` 误按左沿写成 −490、整行还在板外那一版）、`stage42_*`（564×862 / 顶缝 58 / 右缩进 108）、`stage41_*`（板顶 58 / 右沿 168，叉留在板外）、`stage40_*`（顶到屏幕顶那一版）、`stage37_join_sidebar2.txt`（板顶 172）、`stage36_*`（板顶 120，与房间号那行有 6 单位矩形重叠）。
+
+## 二十三次修正（2026-09-27）：好友邀请（加号 · 10 秒冷却 · 「收到邀请」小窗）
+
+**用户原话**：「好友栏中处于在线（非战斗状态和匹配状态）时其名字右边会出现一个加号，点击后发送邀请并且加号变成 10 秒倒计时（倒计时结束后才能继续邀请）（若自己此时不是在房间界面就进入房间并开房间），邀请是从屏幕中央上顶滑出一个小框，上面标题是收到邀请，下面一排是对应玩家头像和名称，在下面是有子背景的同意和拒绝，同意后会加入其房间，拒绝后对方也会收到：对方暂无法响应」。
+
+**贴图**（三张新 + 一个目录）
+
+| 件 | 出处 | 规格 |
+|---|---|---|
+| `Icon_InvitePlus.png` / `…Hover.png` / `…Cool.png` | `Tools/cardframe/LobbyInvitePlusV1.ps1`（预览 `Tools/cardframe/preview/lobby-invite-plus.png`） | 256×256 = 屏幕 **60**（同批图标同档）。常态 / 悬停（石面提亮）/ **空板** |
+| `invite-v1/Invite_Plate.png` | `Tools/cardframe/InvitePanelV1.ps1`（预览 `Tools/cardframe/preview/invite-panel.png`） | 1080×720 = 屏幕 **360×240**（RawImage 拉伸铺满；`New-MwPlate` 配方逐行照抄 `MatchWait_*`：平底渐变 + 外墨边 + 等比内缩金细线，**开口只在上沿**，同匹配小窗） |
+
+- **加号是烘进贴图的**（不是场景里的字 / 图形），冷却那 10 秒藏不掉它 —— 所以另出一张**同一块空板** `Icon_InvitePlusCool.png`，冷却期间整张换掉、金数字叠在上面。三张的尺寸完全一致，换图不会跳。
+- **`invite-v1` 进了 `TextureImportSettingsGuard.NoNpotScaleFolders`**（→ 同一条数组也带上了 `NeedsAlphaIsTransparency`）：1080×720 被默认的 `npotScale=ToNearest` 吸成 1024×1024 就不是 3:2 了，圆角与金线会跟着变形。
+
+**新件 / 改动**
+
+- `Assets/_Game/Scripts/UI/Lobby/FriendInviteButton.cs`（新）：加号那一格上的 `IPointerEnter/Exit/Click`，只转交 `FriendRowUI`；`OnDisable` 只清 hover、**不回填贴图**（回填会把它自己 `SetActive(true)` 出来，反而藏不住）。
+- `Assets/_Game/Scripts/UI/Lobby/LobbyInviteService.cs`（新，挂在 Canvas 上）：冷却表 `Dictionary<ulong,float>` + 队列 + `Invite(id,name)` / `CanInvite` / **`static CooldownLeft(id)`**（行每帧读它，所以列表 20 秒重排一次也不会把倒计时洗掉）/ `EnsureRoom()` / `OnInviteReceived` / `PublishDecline` / `PollReplies`。
+- `Assets/_Game/Scripts/UI/Lobby/LobbyInvitePanel.cs`（新，`Canvas/Layer_Hud_v1/Panel_Invite`）：`Show(inviter, name, lobby)` → 返回 false = 排队（一次只摆一条）。
+- `FriendRowUI`：`inviteGroup / inviteIcon / inviteTimer / inviteNormal / inviteHover / inviteCool` + `InviteClicked / ApplyInviteVisual / TickInvite`（`Update` 拆成 `TickAvatar` + `TickInvite`）；`_canInvite = Presence == Online && SteamId != 0`。
+- `LobbyRoomPanel.OpenAsGuest()` + `LobbyRoomSession.JoinInviteAsGuest(lobby, room, done)`：**同意 = 进对方的房** —— 先立「客人视角」再开面板（**跳过建房**，建房再 `JoinLobby` 会撞车），然后真 `JoinLobby`。
+- `LobbyToast.SetExtraDrop(float)`：小窗开着时把提示行往下顶 `toastDrop = 250`（两者同在屏幕顶中，不顶就会叠在一起）。
+- `LobbyUIBuilder`：常量段 + `WireInvitePlus(...)`（幂等；顺手把 `Text_Name` 收窄到 `409-96-76 = 237`）+ 两个菜单（`Tools/异界/大厅：给好友行补「邀请加号」（好友邀请）`、`…生成「收到邀请」小窗（好友邀请）`）。
+
+**口径**
+
+- **只有「在线」给加号** —— 匹配中 / 对局中 / 离线一律不出现（所以名字那行在场景里已经按「让出那一格」收窄过）。无 Steam 身份（`SteamId == 0`）也不给。
+- **冷却 10 秒按 SteamID 记在服务里**，不在行上；冷却没走完点它**没有任何反应**（不重置冷却）。
+- **点加号时若不在房间界面 → 自动进房间并开房**：`EnsureRoom()` 走的就是「点房间」那条壳（`shell.Open(null)`），用户要的那条。
+- 小窗：锚 / pivot 都在屏幕顶中，`restY = -10`（贴屏幕顶，与匹配小窗同档）、`hiddenY = 260`（整块在屏幕顶之上）、滑出 `0.28s` / 收回 `0.16s`，曲线 `1-(1-p)^3`（与两个侧边栏同一条）；**收干净了才 `SetActive(false)`**，所以收窗也有动画。
+- **拒绝** → `PublishDecline`：往自己的 rich presence 写 `aw_invite_reply = "<邀请者ID>|decline|<unix秒>"`，邀请方 `PollReplies` 读到 `to == 自己 && unix >= 发出时间` 才弹「对方暂无法响应」（带上 unix 是为了幂等，读到的旧回信不会重复触发）。
+- **同意** → `OpenAsGuest` + `JoinInviteAsGuest` + 收窗；大厅 ID 是邀请回调直接给的（`LobbyInvite_t.m_ulSteamIDLobby`），不用按号搜。
+
+**两个自己踩到的坑（都已在代码里堵上）**
+
+1. **`Hide()` 在 `_p <= 0` 时收不掉** —— 同帧 `Show → Hide`（走脚本调用时会发生）时 `_p` 还是 0，`Update` 首行判断直接 return，窗口就停在「active 但看不见」，`_cur` 也不清 ⇒ 之后每条邀请都只排队。现在 `Hide()` 里 `if (_p <= 0f) Collapse();` 当场收干净。
+2. **头像到货不补图** —— `Present` 那一次 `GetAvatarTexture` 只是**触发请求**（当场拿到的是灰占位 / Steam 默认像），小窗不像好友行那样每帧问缓存，于是会一直停在占位上。现在 `LobbyInvitePanel.Update` 先 `TickAvatar()`：每 `0.5s` 问一次 `PeekAvatar`，**拿到真图才重裁一次**（`_avatarSeen` 记住上次那张，避免每 0.5s `CircleCrop` 一张废图）。
+
+**收尾（stage47b）：`Invite_Plate` 的导入设置**
+
+stage47 唯一一条失败就是它：`npotScale=ToNearest` / `alphaIsTransparency=0` —— 贴图先落盘、守卫（`OnPreprocessTexture`）后补的那条**时序差**，守卫**不会回头重导**已有资源。`stage47b` 补跑 `TextureImportSettingsGuard.ApplyTo(imp, path)` + `SaveAndReimport()`，实测变成 `npotScale=None / alphaIsTransparency=True / filterMode=Bilinear / mipmap=True / aniso=4` —— **与 `match-wait-v1/MatchWait_Plate.png` 逐项同档**，源尺寸仍 1080×720。
+
+**自证**
+
+- **`stage47_invite.txt` + `stage47_shots/`**（`f1_friend_plus` / `f2_countdown` / `f3_invite_window` / `f4_after_accept`）：注入一行在线好友 → 加号 active；改「匹配中 / 对局中 / 离线」→ 加号隐藏；换回在线 → 回来；点加号 → 冷却 10.00s、贴图=空板、数字显示「10」、再点无效（10.00 → 10.00）、**`Panel_Room 开着 = True`**（自动进房间那条）；小窗 `y 260 → -10` 滑到位（标题 / 名字 / 两键 / 头像井逐项）；拒绝 → 队列空 + 收窗 + 回信实测写出 `76561198000000002|decline|1790509701`；同意 → `GuestMode False→True`、`IsHost = False`、窗口当场收掉；把剩余冷却压到 0.35s → **冷却走完加号自己回来**（贴图 = 常态加号 / 数字藏起）。失败合计 0。
+- **`stage47b_invite_fix.txt` + `stage47b_shots/`**（`f1_placeholder` / `f2_avatar_arrived`）：导入设置逐项 + `Window 360×240` / `Plate` 拉伸铺满 / 底板吃的就是 `Invite_Plate 1080×720`；头像那条——摆窗时那一格是 Steam 默认像，把一张 64×64 假头像写进缓存后**小窗自己换成了新图的圆裁**（`now == CircleCrop(_fake)`，窗口没关）。失败合计 0。
+- **两个执行器跑完都已自删**（`Assets/_Game/Editor/Stage47Invite.cs`、`Stage47bInviteFix.cs` 均已不在仓库）。
+- **注**：`f4_after_accept` 里那行「进不去这间房（可能刚被解散 / 已满）」是**测试环境的必然** —— 假 lobby ID 在离线环境 `JoinLobby` 必失败；真机走 Steam 那条路。另外 stage47 执行器第二版第一跑（19:51）自己把报告刷到 785KB（相位没置 `_acted`，被每帧重跑）—— 那是执行器的坑，不是产品的，已在第二版堵上（`WrapUp` + 每相位自置 `_acted`）。

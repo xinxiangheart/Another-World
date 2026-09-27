@@ -31,6 +31,7 @@ public class LobbyToast : MonoBehaviour
 
     float _t = -1f;        // < 0 = 不在显示
     float _baseY;
+    float _extraDrop;      // 临时往下让出的距离（见 SetExtraDrop）
 
     void Awake()
     {
@@ -53,6 +54,17 @@ public class LobbyToast : MonoBehaviour
         else Debug.Log("[LobbyToast] " + msg + "（场景里没有 LobbyToast，没能弹出来）");
     }
 
+    /// <summary>
+    /// 临时把这行提示往下顶一段（0 = 还原）。
+    /// </summary>
+    /// <remarks>2026-09-27：「收到邀请」小窗也占屏幕顶中那一块，两者会正面撞上（实测提示行正好压在小窗的两个键上）。
+    /// 谁占着这块谁调它 —— 小窗由 <see cref="LobbyInvitePanel"/> 在滑出时顶下来、收窗时还原。
+    /// 只动这一次性的提示行，不动任何常驻件的位置。</remarks>
+    public static void SetExtraDrop(float drop)
+    {
+        if (Instance != null) Instance._extraDrop = Mathf.Max(0f, drop);
+    }
+
     public void ShowNow(string msg)
     {
         if (text == null) return;
@@ -62,7 +74,7 @@ public class LobbyToast : MonoBehaviour
         text.color = c;
         var rt = text.rectTransform;
         var p = rt.anchoredPosition;
-        p.y = _baseY + slideFrom;
+        p.y = _baseY + _extraDrop + slideFrom;
         rt.anchoredPosition = p;
     }
 
@@ -90,7 +102,7 @@ public class LobbyToast : MonoBehaviour
 
         var rt = text.rectTransform;
         var p = rt.anchoredPosition;
-        p.y = _baseY + slideFrom * Mathf.Exp(-_t * 16f);   // 弹出：一丁点滑到位
+        p.y = _baseY + _extraDrop + slideFrom * Mathf.Exp(-_t * 16f);   // 弹出：一丁点滑到位
         rt.anchoredPosition = p;
     }
 }
