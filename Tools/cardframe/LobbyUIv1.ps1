@@ -16,6 +16,7 @@
 #   LobbyBandRight.png         1614x285 右上横栏（屏幕 538x95，固定尺寸）—— 齐屏幕上沿+右沿，左端 45° 斜切，右端底边下沉一级
 #   LobbyProfilePlate.png      1401x288 左上头像衬托板（屏幕 467x96，固定尺寸）—— 齐屏幕上沿+左沿，圆框=头像 / 右侧=名字，底边一级台阶
 #   LobbyAvatarRing.png        264x264  头像金圆框（屏幕 88px）
+#   LobbyFriendPanel.png      1395x3240 好友侧边栏底板（屏幕 465x1080，固定尺寸）—— 齐屏幕上沿/左沿/下沿，右沿 = 打开后的可见边界（2026-09-27）
 #   Icon_Lobby*.png            256x256  7 个图标：Gear/Coin/Ticket（横栏里的实心族）+ Friend/Shop/Gift/Tutorial（压墙的金线石印族，十一次修正）
 #   LobbyEntryPlate_*.png      定尺×3   四个**入口板**（战斗 666x145 / 卡牌总览 661x149 / 房间 287x130 / 其它 295x129），贴图比板身大一圈
 #                                        —— 每块一张定尺贴图，**不能 9-slice**：端头斜切 + 远端收缩烤进贴图，倾斜由场景的 Rotation Z 承担（见「九次修正」）
@@ -1210,6 +1211,22 @@ foreach ($t in @(@('LobbyPanelPlate.png', 0), @('LobbyBtnPlate.png', 0), @('Lobb
 $made += (New-LobbyBand (Join-Path $GEN 'LobbyBandRight.png'))
 $made += (New-LobbyProfilePlate (Join-Path $GEN 'LobbyProfilePlate.png'))
 $made += (New-LobbyAvatarRing (Join-Path $GEN 'LobbyAvatarRing.png'))
+
+# ── 好友侧边栏底板（2026-09-27）──────────────────────────────────────────────
+# 用户：「点击好友后从屏幕左侧滑出（速度较快）一个侧边栏，大概到左上角那个图案的右边缘」；
+# 随后「不遮挡左上角的组件，以及下面的 id」→ 澄清「不是不贴边，而是在它们层级之下」。
+# 所以本条只管外形：板是**满高**的（465x1080，贴屏幕左沿），「不遮挡」由场景层级保证 ——
+# 侧边栏挂 Layer_Sub_v1，而 Layer_Hud_v1（头像板 + 横栏 + 五个压墙图标 + 左下 ID 行）是 Canvas
+# 最后一个子物体，永远画在它之上。右沿 = 左上头像板 LobbyProfilePlate 的右沿（贴图右缘 1396 折 465.3 → 465）。
+# 形体与 LobbyProfilePlate 同源（同一条 BAR_T→BAR_B 平底 + 外墨边 + 等比内缩 24 的金细线），本体不另加装饰。
+function New-LobbyFriendPanel([string]$out) {
+  $W = 1395; $H = 3240
+  $outer = [System.Drawing.PointF[]]@(
+    (New-Object System.Drawing.PointF(5, 5)),       (New-Object System.Drawing.PointF(1390, 5)),
+    (New-Object System.Drawing.PointF(1390, 3235)), (New-Object System.Drawing.PointF(5, 3235)))
+  return (New-ShapedPlate $out $W $H $outer (Get-InsetPoly $outer 24))
+}
+$made += (New-LobbyFriendPanel (Join-Path $GEN 'LobbyFriendPanel.png'))
 foreach ($e in @(@('Battle', 666, 145, 'battle'), @('Cards', 661, 149, 'cards'), @('Room', $CELL_W, 130, 'room'), @('More', $CELL_W, 130, 'more'))) {
   $made += (New-LobbyEntryPlate (Join-Path $GEN ('LobbyEntryPlate_' + $e[0] + '.png')) $e[1] $e[2] $e[3])
 }

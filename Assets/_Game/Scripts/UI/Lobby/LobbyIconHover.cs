@@ -7,8 +7,10 @@ using UnityEngine.UI;
 /// 两张贴图由 Tools/cardframe/LobbyUIv1.ps1 出，**只差色调**（石面提亮 + 金线 GOLD→GOLD_L），
 /// 形体 / 尺寸完全一致，所以切换时不会跳位。没有 Button —— 直接用 IPointer* 接口，
 /// 图标自己的 RawImage 就是 raycast 目标。悬停只有在 Play 模式下才触发（EventSystem 不进编辑模式）。
-/// 2026-09-27：加**弹窗提示行**。好友图标勾 <see cref="showMyId"/> —— 点击时把提示行换成
-/// 「我的 ID：P00-…」（<c>SteamDataManager.PlayerIdLabel</c>），这是玩家看到并抄下自己号的地方。</remarks>
+/// 2026-09-27：加**弹窗提示行**。好友图标曾勾 <see cref="showMyId"/> —— 点击时把提示行换成
+/// 「我的 ID：P00-…」（<c>SteamDataManager.PlayerIdLabel</c>），那是玩家看到并抄下自己号的地方。
+/// 2026-09-27 同日再改：好友图标改挂 <see cref="friendsPanel"/> —— 点击不再弹占位窗，改成开 / 关
+/// 左侧的好友侧边栏（<see cref="LobbyFriendPanel"/>）；「我的 ID」那行随占位窗一起退出这个入口。</remarks>
 public class LobbyIconHover : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler, IPointerClickHandler
 {
     [Header("图标")] public RawImage icon;
@@ -22,6 +24,9 @@ public class LobbyIconHover : MonoBehaviour, IPointerEnterHandler, IPointerExitH
 
     [Header("好友图标勾它：点击时提示行换成「我的 ID：…」")]
     public bool showMyId;
+
+    [Header("好友图标勾它：点击改成开 / 关左侧的好友侧边栏（勾了就不再弹占位窗）")]
+    public LobbyFriendPanel friendsPanel;
 
     void Awake()
     {
@@ -45,6 +50,12 @@ public class LobbyIconHover : MonoBehaviour, IPointerEnterHandler, IPointerExitH
 
     public void OnPointerClick(PointerEventData eventData)
     {
+        // 好友图标：不弹占位窗，改成开 / 关左侧的好友侧边栏（2026-09-27 用户：点好友从屏幕左侧滑出侧边栏）
+        if (friendsPanel != null) { friendsPanel.Toggle(); return; }
+
+        // 别的图标弹占位窗之前，把好友侧边栏收回去 —— 两块抢同一块屏幕
+        if (LobbyFriendPanel.Instance != null) LobbyFriendPanel.Instance.Close();
+
         if (popup == null) return;
         popup.Show(title, showMyId ? MyIdLabel() : hint);
     }

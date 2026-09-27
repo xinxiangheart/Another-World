@@ -52,6 +52,7 @@
 | `LobbyBandRight.png` | 1614×285 | 538×95 | 右上横栏（固定尺寸，不切片）—— 形状见下面「两块异形板」 |
 | `LobbyProfilePlate.png` | 1401×288 | 467×96 | 左上头像衬托底板（固定尺寸）—— 形状见下面「两块异形板」 |
 | `LobbyAvatarRing.png` | 264×264 | 88×88 | 头像金圆框 |
+| `LobbyFriendPanel.png` | 1395×3240 | **465×1080** | **好友侧边栏**底板（固定尺寸，不切）—— 齐屏幕左沿 / 上沿 / 下沿，**右沿就是滑出后的可见边界**（2026-09-27） |
 | `Icon_LobbyGear.png` | 256×256 | 92×92 | 设置 · 齿轮（与 `icons-v1` 的 `Icon_Settings` 同配方）· 压在横栏右端 |
 | `Icon_LobbyFriend.png` | 256×256 | 46×46 | 好友 · 人影（**金线石印族**，十一次修正）· 无底板 |
 | `Icon_LobbyShop.png` | 256×256 | 60×60 | 商城 · 货篮 + 两段金线提手 + 两只金环轮（**金线石印族**）· 无底板 |
@@ -485,3 +486,15 @@ LobbyUI_v1
    64 让开通用背景那圈 46 的金框、128 让开右上横栏（高 95）。`New-CloseReview` 里合成用的就是这组真坐标。
 2. 左上 `Plate_Profile` 与右上 `Plate_TopBand` 被搬进了 `Layer_Hud_v1`（Canvas 最后一个子物体）——
    **贴图一个字没改，只是画在弹窗之上**；锚 / 轴 / `sizeDelta` 全部原样（`m_Father` 是唯一变过的字段）。
+
+### 好友侧边栏底板（2026-09-27）
+
+`LobbyFriendPanel.png` —— 屏幕上 **465×1080**（贴图 3 倍 1395×3240），生成函数 `Tools/cardframe/LobbyUIv1.ps1` 的 `New-LobbyFriendPanel`。
+
+- **宽 465 从哪来**：左上头像衬托板 `LobbyProfilePlate.png` 的贴图右缘 `x=1396`，折屏幕 `465.3` —— 侧边栏的右沿正好接在头像板右沿上，两条边在同一条竖线上。
+- **满高、贴左沿**：上沿 / 左沿 / 下沿都齐屏幕边，只有右沿是滑出后的可见边界。
+- **"不遮挡左上头像板 + 左下 ID 行" 不靠躲，靠层级**（用户 2026-09-27「不是不贴边，而是在它们层级之下」）：侧边栏挂在 `Layer_Sub_v1`，那两块在 `Layer_Hud_v1`，而 `Layer_Hud_v1` 是 Canvas 最后一个子物体 ⇒ 永远画在侧边栏之上。
+- **形体**与 `LobbyProfilePlate` 同源：`BAR_T → BAR_B` 平底渐变 + 外墨边 `LW_INK` + 等比内缩 24 的金细线 `LW_GOLD`。不另加装饰。
+- **场景侧**由 `Assets/_Game/Editor/LobbyUIBuilder.cs` 的菜单 **`Tools/异界/大厅：生成好友侧边栏（点击好友从左侧滑出）`** 建：`Canvas/Layer_Sub_v1/Panel_Friends`（根铺满全屏 + 全透明 Image + `Button`→`Close()`；子 `Body` 是那块满高板 + 一个**不带监听**的 `Button` 只吃点击），运行时由 `LobbyFriendPanel`（`Assets/_Game/Scripts/UI/Lobby/`）滑入 / 滑出（`slideTime` 0.18s）。
+- ⚠ **别用自定义的第二个 MonoBehaviour 去接点击**：同一个 `.cs` 里除文件名那个类，Unity 都序列化不了（2026-09-27 实测在场景里存成 missing script）。用内置 `Button`。
+- 面板里的 `Text_Title`「好友」**不摆在面板左上角**，而是紧挨好友图标右边（用户 2026-09-27「左上角的好友字改为这个地方，ui图标右边一点」）—— 图标在 `Plate_Profile` 局部 `(160,-57)`、`46×46`，所以标题 `x` 从 `160+46+16=222` 起、竖向对齐图标中线。

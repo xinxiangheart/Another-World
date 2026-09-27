@@ -1036,4 +1036,129 @@ public static class LobbyUIBuilder
         return root.gameObject;
     }
 
+
+    // ── 好友侧边栏（2026-09-27）────────────────────────────────────────────────
+    // 用户：「现在做好友侧边栏展示，点击好友后从屏幕左侧滑出（速度较快）一个侧边栏，大概到左上角那个
+    //       图案的右边缘，再次点击好友或者点击侧边栏之外的区域会滑动回去」；随后「不遮挡左上角的组件，
+    //       以及下面的 id」→ 澄清「不是不贴边，而是在它们层级之下」。
+    //
+    // 几何：板是**满高**的浮层（贴屏幕上沿 / 左沿 / 下沿），宽 FriendsPanelW = 左上头像衬托板
+    //       LobbyProfilePlate 的右沿（它贴图右缘 1396 / 3 = 465.3 → 465）。底图 LobbyFriendPanel.png
+    //       就按屏幕 465x1080 定尺出（贴图 1395x3240，3 倍口径）。
+    // 层级：「不遮挡左上角组件 + 左下 ID 行」**不靠躲**，靠层级 —— 本面板挂 Layer_Sub_v1，而
+    //       Layer_Hud_v1（头像板 + 横栏 + 五个压墙图标 + 左下那行常驻 ID）是 Canvas 最后一个子物体，
+    //       永远画在它之上。好友图标也因此能在侧边栏开着时再点一次把它关掉。
+    //       FriendsPanelTop / Bottom 是留给日后微调的「上下让开量」，现在都是 0（满高）。
+    const string FriendsPanelName = "Panel_Friends";
+    const string FriendsPanelTex = UiDir + "LobbyFriendPanel.png";
+    const float FriendsPanelW = 465f;
+    const float FriendsPanelTop = 0f;
+    const float FriendsPanelBottom = 0f;
+
+    /// <summary>把 Selectable 的键盘 / 手柄导航关掉（这几个 Button 只是「吃掉点击」用的，不该参与 Tab 导航）。</summary>
+    static Navigation NoNav(Navigation nav)
+    {
+        nav.mode = Navigation.Mode.None;
+        return nav;
+    }
+
+    /// <summary>好友侧边栏：点好友图标从屏幕左侧滑出，再点一次 / 点面板以外滑回去。
+    /// 场景里存成 active（方便拖版式），运行时由 LobbyFriendPanel.Start 的 closeOnStart 自己关掉。</summary>
+    [MenuItem("Tools/异界/大厅：生成好友侧边栏（点击好友从左侧滑出）")]
+    public static void BuildFriendsPanelMenu()
+    {
+        Canvas canvas = Object.FindObjectOfType<Canvas>();
+        if (canvas == null) { Debug.LogError("[LobbyUI] 当前场景没有 Canvas —— 请先打开 Assets/_Game/Scenes/Lobby.unity"); return; }
+
+        _font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontPath);
+        if (_font == null) Debug.LogWarning($"[LobbyUI] 找不到字体 {FontPath}，中文会落到 TMP 默认字体");
+
+        Transform sub, hud;
+        EnsureUiLayers(canvas, out sub, out hud);
+
+        Transform old = sub.Find(FriendsPanelName);
+        if (old != null) Undo.DestroyObjectImmediate(old.gameObject);
+        // ── 根：铺满全屏 + 一张全透明 Image（raycastTarget 开着才吃得到点击；α=0 也挡，Unity 不看 α）──
+        RectTransform root = NewRect(sub, FriendsPanelName, Vector2.zero, PivotC, Vector2.zero, Vector2.zero);
+        root.anchorMin = Vector2.zero;
+        root.anchorMax = Vector2.one;
+        root.offsetMin = Vector2.zero;
+        root.offsetMax = Vector2.zero;
+        var panel = root.gameObject.AddComponent<LobbyFriendPanel>();
+
+        // 全透明 Image：raycastTarget 开着才吃得到点击（Unity 不看 α）。它就是「面板以外」那块。
+        var blocker = root.gameObject.AddComponent<Image>();
+        blocker.color = new Color(0f, 0f, 0f, 0f);
+        blocker.raycastTarget = true;
+        // 用内置 Button 接「点面板以外 = 关」——**别用自定义的第二个 MonoBehaviour**：
+        // 同一个 .cs 里除文件名那个类，Unity 都序列化不了（2026-09-27 实测存成 missing script）。
+        var blockerButton = root.gameObject.AddComponent<Button>();
+        blockerButton.transition = Selectable.Transition.None;
+        blockerButton.targetGraphic = blocker;
+        blockerButton.navigation = NoNav(blockerButton.navigation);
+        UnityEventTools.AddPersistentListener(blockerButton.onClick, new UnityAction(panel.Close));
+
+        // ── 板身：满高、贴屏幕左沿；只有横向参与滑动 ──
+        RectTransform body = NewRect(root, "Body", new Vector2(0f, 0f), new Vector2(0f, 0.5f), Vector2.zero, Vector2.zero);
+        body.anchorMin = new Vector2(0f, 0f);
+        body.anchorMax = new Vector2(0f, 1f);
+        body.pivot = new Vector2(0f, 0.5f);
+        body.offsetMin = new Vector2(0f, FriendsPanelBottom);
+        body.offsetMax = new Vector2(FriendsPanelW, -FriendsPanelTop);
+        panel.body = body;
+        panel.width = FriendsPanelW;
+
+        var bg = body.gameObject.AddComponent<RawImage>();
+        bg.texture = AssetDatabase.LoadAssetAtPath<Texture2D>(FriendsPanelTex);
+        if (bg.texture == null) Debug.LogWarning("[LobbyUI] 找不到贴图：" + FriendsPanelTex);
+        bg.raycastTarget = true;                 // 点在板上不该穿到整屏挡板
+        // 板身也挂一个 Button，但**不挂任何监听**：它只是把点击吃掉，免得冒泡到根节点那个 Button 把面板关了。
+        var bodyButton = body.gameObject.AddComponent<Button>();
+        bodyButton.transition = Selectable.Transition.None;
+        bodyButton.targetGraphic = bg;
+        bodyButton.navigation = NoNav(bodyButton.navigation);
+
+        // ── 内容：标题 + 金细线 + 列表位（好友系统还没做，先一句「暂无好友」）──
+        // 标题不摆在面板左上角，而是**紧挨好友图标右边**（用户 2026-09-27：「左上角的好友字改为这个地方，
+        // ui图标右边一点」）—— 图标本身在 Plate_Profile 局部 (160,-57) 46x46，所以 x 从 160+46+16 = 222 起；
+        // 竖向对齐图标中线（y = 57+23 = 80）。这段在头像板下沿之下，不会被那块板压住。
+        const float FriendIconRight = 160f + 46f;
+        TextMeshProUGUI title = NewLabel(body, "Text_Title", "好友",
+                                         new Vector2(FriendIconRight + 16f, -58f), new Vector2(200f, 44f), 30f);
+        title.alignment = TextAlignmentOptions.Left;   // 中线左对齐 = 竖向居中
+        title.color = Cream;
+
+        var divider = NewRect(body, "Line_Divider", AnchorTL, PivotTL,
+                              new Vector2(28f, -104f), new Vector2(FriendsPanelW - 56f, 2f)).gameObject.AddComponent<Image>();
+        divider.color = new Color32(200, 164, 74, 132);           // 本套金 #C8A44A · 52%
+        divider.raycastTarget = false;
+
+        TextMeshProUGUI empty = NewLabel(body, "Text_Empty", "暂无好友", new Vector2(0f, -487f), new Vector2(FriendsPanelW, 40f), 24f);
+        empty.alignment = TextAlignmentOptions.Center;
+        empty.color = new Color32(142, 162, 180, 170);            // 钢 #8EA2B4 · 67%
+        empty.raycastTarget = false;
+
+        // ── 接到好友图标（左上头像板下沿那颗）：点击不再弹占位窗，改成开 / 关这个侧边栏 ──
+        Transform friend = FindDeep(hud, "Icon_Friend");
+        if (friend == null) Debug.LogWarning("[LobbyUI] HUD 层里找不到 Icon_Friend —— 侧边栏没有入口");
+        else
+        {
+            var hover = friend.GetComponent<LobbyIconHover>();
+            if (hover == null) hover = friend.gameObject.AddComponent<LobbyIconHover>();
+            hover.friendsPanel = panel;
+            hover.showMyId = false;              // 「我的 ID」那行退出这个入口；左下角常驻那行仍在
+            EditorUtility.SetDirty(hover);
+        }
+
+        panel.closeOnStart = true;
+        root.SetAsLastSibling();
+        root.gameObject.SetActive(true);
+
+        Selection.activeGameObject = root.gameObject;
+        EditorSceneManager.MarkSceneDirty(canvas.gameObject.scene);
+        Debug.Log("[LobbyUI] 已生成 " + FriendsPanelName + "（好友侧边栏）：屏幕 " + FriendsPanelW + " x 1080 满高浮层" +
+                  "（距上沿 " + FriendsPanelTop + " / 下沿 " + FriendsPanelBottom + "，让开量留给日后微调）+ " +
+                  "整屏透明挡板（点它收回去）；好友图标 Icon_Friend 已改接它（再点一次也收回去）。" +
+                  "宽 = Plate_Profile 右沿，底图 " + FriendsPanelTex + " 由 Tools/cardframe/LobbyUIv1.ps1 出。");
+    }
 }
