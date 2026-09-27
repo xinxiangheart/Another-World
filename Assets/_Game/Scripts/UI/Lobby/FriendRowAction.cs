@@ -8,6 +8,9 @@ public enum FriendRowActionKind
     Block = 0,     // 拉黑
     Delete = 1,    // 删除
     Invite = 2,    // 邀请（仅「空闲在线」那一档出现）
+    Accept = 3,    // 同意好友申请（申请列表那格）
+    Refuse = 4,    // 拒绝好友申请（申请列表那格）
+    Unblock = 5,   // 取消拉黑（黑名单那格）
 }
 
 /// <summary>行右端一个小图标动作：悬停换贴图、点击转给 <see cref="FriendDetailRowUI"/>。</summary>
@@ -25,7 +28,9 @@ public class FriendRowAction : MonoBehaviour, IPointerEnterHandler, IPointerExit
     public Texture normalTexture;
     public Texture hoverTexture;
 
-    [Header("点下去交给哪一行")] public FriendDetailRowUI row;
+    [Header("点下去交给哪一行（好友列表那三格）")] public FriendDetailRowUI row;
+
+    [Header("点下去交给哪一行（申请列表 / 黑名单那两格）")] public FriendPanelRowUI panelRow;
 
     void Awake()
     {
@@ -49,6 +54,7 @@ public class FriendRowAction : MonoBehaviour, IPointerEnterHandler, IPointerExit
 
     public void OnPointerClick(PointerEventData eventData)
     {
-        if (row != null) row.Action(kind);
+        if (panelRow != null) panelRow.Action(kind);     // 申请列表 / 黑名单
+        else if (row != null) row.Action(kind);          // 好友列表那三格
     }
 }

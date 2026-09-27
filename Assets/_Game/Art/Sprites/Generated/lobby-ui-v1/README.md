@@ -1193,4 +1193,148 @@ stage47 唯一一条失败就是它：`npotScale=ToNearest` / `alphaIsTransparen
   两轮都**备份 / 还原 `friends.json`**（测试不污染真名单）。
 - 复跑命令：看图 `pwsh -File Tools/cardframe/FriendAddV1.ps1`；重建面板 `LobbyUIBuilder.BuildFriendDetailSubPanelMenu()`。
 
-**下一步（等用户）**：申请列表 / 黑名单两格的内容，以及「拉黑」的口径。
+## 三十一次修正（2026-09-27）：申请列表 / 黑名单 + 「拉黑」的口径
+
+**用户原话**：「申请列表和黑名单一起做，展示申请加好友的列表（均在右下角类似限制50）只在右边显示不同，申请列表有一个勾和叉的ui图案用于同意和申请，黑名单则只有一个取消拉黑的，另外说明拉黑，拉黑的玩家无法搜索到拉黑他的玩家也无法对其发送好友申请，匹配倒是能正常匹配到」。
+
+**口径拆解**（照此实现）：① 两格**同一段代码建**，只右端互不相同；② 右下角计数写 `n/50`；③ 拉黑 = **双向搜不到 + 双向加不了 + 匹配完全不受影响**。
+
+### ① 出图（`Tools/cardframe/FriendRequestV1.ps1`）
+
+| 件 | 尺寸 | 说明 |
+|---|---|---|
+| `Icon_FriendActAccept.png` / `…Hover` | 256×256 | 同意（勾） |
+| `Icon_FriendActRefuse.png` / `…Hover` | 256×256 | 拒绝（叉） |
+| `Icon_FriendActUnblock.png` / `…Hover` | 256×256 | 取消拉黑（**圆 + 勾**，与拉黑那颗「圆 + 斜杠」正反对照） |
+
+- 配方**逐条照抄** `Icon_FriendActBlock`（同一支笔）：圆角方印 (44,44,168,168,r20) + 外墨边 9 + 内缩金细线 (58,58,140,140,r14,6px) + 圆头金笔画 `GLW=13`。
+  ⇒ 三枚新徽章与拉黑 / 删除 / 邀请是**一个族里的四档**，悬停态只差色调、形体尺寸一致（悬停不跳位）。
+- 预览：`preview/lobby-friend-request.png`（三枚 × 两档）/ `lobby-friend-request-mock.png` / `lobby-friend-block-mock.png`（1920×1080 真坐标）。
+
+### ② 版式（`LobbyUIBuilder` 的 `Fp*` 常量段 · 屏幕 px）
+
+| 件 | 位置 / 尺寸 |
+|---|---|
+| `Text_Head` | 沿用四格共用的那一套（左上 40 / 高 44 字 44；金字）。文字 = tab 名：`申请列表` / `黑名单` |
+| `Panel_List` | 左右让边 **32** / 上沿 **124**（这两格没有输入井，列表直接顶到标题下）/ 下沿让 **60** |
+| 一行 | **1360×96**，行距 **12**（12 + 96 = 108）；底板复用同一张 `LobbyFriendRow.png`（1376×112） |
+| 行内（与「添加好友」那行同列） | 金环 64 @14 / 井 50 / 名称 **340×40 @96** 字 26 / 异界号 **480×40 @456** 字 20 / 状态 **240 宽右对齐** 字 22 |
+| 右端动作 | 申请列表：勾 **44×44 @1240**（次）+ 叉 **44×44 @1296**（主）；黑名单：取消拉黑 **44×44 @1296**。y 一律 **−26** |
+| `Text_Count` | 右下角，距右 **32** / 距底 **18**，字 22，右对齐（「n/50」） |
+| `Text_Empty` | 挂 `Panel_List` 下（**不跟滚**），写 `暂无好友申请` / `黑名单是空的` |
+
+**状态列的右沿（这两格唯一一处与「添加好友」不同的让步）**：黑名单右端只有一颗动作，沿用 `FaRowStatusR = 1272`；
+申请列表右端是**两枚**（勾在 1240），沿用 1272 会**压到勾上** —— 所以 `statusR = mode == Block ? FaRowStatusR : FpActSubX - 12f`（= **1228**）。
+让法仍是同一档间隙：**右沿 + 12 = 动作左边**（好友列表 1172 → 1184 就是这个档）。
+
+### ③ 运行时与层级
+
+- **`FriendBlock.cs`** —— 拉黑的**唯一**实现处（别人不许再写一遍）。`SetBlocked(playerId, steamId, name, on)` 只落
+  `FriendEntry.blocked` 旗子，**不删好友**（删了「取消拉黑」就回不来）；`List()` 是黑名单那格的数据源（按 `lastSeenUnix` 倒序）；
+  `IsHidden(...)` 给搜索用；`BlocksMe(...)` 走 `BlockedByLookup`（`Func<string,ulong,bool>`）—— **现在恒 null ⇒ 恒 false**，
+  这是「他拉黑了我」那半边的**改造位**（要服务端说了算）。
+- **`FriendRequestStore.cs`** —— 申请落盘 `persistentDataPath/friend_requests.json`（一行一个 `FriendEntry`，不另立模型）。
+  上限 `MaxRequests = 50`，满了 **FIFO 滚掉最旧**。**改造位**：后端收到申请时调 `Add` 即可，界面不用动。
+- **`FriendPanelRowUI.cs`** —— 一行（`FriendPanelMode{Request, Block}`）。`Accept` → `FriendStore.AddManual` 进好友表 + 删申请
+  （**没有异界号的那种留着那一行**并 toast 说明，不悄悄吃掉）；`Refuse` → 只删申请、不留墓碑（对方以后还能再申请）；
+  `Unblock` → 放旗子。占位词 `未知玩家` / `未绑定异界号`（与「添加好友」那行同规）。
+- **`FriendPanelListUI.cs`** —— 名单控制器（克隆行 / 内容高度 / `n/50` / 空态 / 回顶两坑）。**挂在 `Panel_List/Viewport/Content` 上**
+  —— 与「好友列表」那份（`LobbyFriendDetailListUI`）**同一处挂法**，见 ④(a)。
+- **拉黑的口径落地**：搜**异界号**精确命中前先 `IsHidden` ⇒ `搜不到这个异界号`；搜**昵称**逐条 `continue` 掉；硬加也会被
+  `TryAdd` 挡 ⇒ `加不了这个人`（**不吐「你被拉黑了」**，不告诉对方）。**匹配那半边一处都没调 `FriendBlock`** ⇒ 匹配不受影响。
+- 拉黑之后**好友行的小字变「已拉黑」（#B64848）**，并且**邀请那枚收掉**（`_canInvite && !e.blocked`）。
+- **`FriendDataDebugMenu.cs`**（菜单 `Tools/异界/`）—— 没后端时看版式用：塞一条好友申请 / 清空好友申请 / 塞一个陌生人进黑名单 /
+  清空黑名单；Play 模式下顺手 `Rebuild()`。
+
+### ④ ★ 排错记录（四条）
+
+**（a）名单类控制器挂错一层 —— 整格一条行都出不来。** 第一版把 `FriendPanelListUI` 加在**大格子**（`Content_Request`）上，而
+`CloneRow()` 克隆到 `transform`、内容高度也写 `transform` ⇒ 行被挂到了 `ScrollRect.content` **外面**。表现极具迷惑性：
+**右下角计数照样变成 `3/50`、空态也照样清掉**（那两句都是控制器的字段），但**列表里一行都看不见**，执行器 `RowsOf()` 数到 0。
+「好友列表」那份的注释其实已经写着「名单 UI 挂在 Content 上（**它就是「行的容器」**）」—— 照抄那一处才对。
+**规矩：名单控制器的 `transform` 必须就是行的容器（= `ScrollRect.content`）。**
+
+**（b）状态列压到动作上 —— 字被徽章盖掉一半。** 见 ② 末段。这一条是**自证 176/0 全绿之后、肉眼看截图才发现的**：
+断言的期望值（`Text_Status` 左沿 1032）是照着**当时的场景几何**写的，而场景几何本身就错 ⇒ **断言全绿掩盖了真 bug**。
+已按 ② 收到 1228，并**补一道门**：「状态盒右沿 + 8 ≤ 右端第一枚动作的左沿」（申请 / 黑名单两格各一条）。
+**教训：板式类断言要拿「让法」算（右沿 = 动作左边 − 间隙），不要拿当前场景的值反抄回去。**
+
+**（c）一次性执行器会把自己转成死循环。** `Tick()` 在 `switch` **之前**就 `EditorApplication.delayCall += Tick`，
+所以**任一相位里抛异常 = 同一相位一帧一次无限重试**（不报错退出、不前进）。这轮踩的是 TMP：刚进 Play 模式的头几帧
+`ForceMeshUpdate()` 会抛 NRE（字体图集还没热起来），`R1_Structure` 因此原地重跑了 70 多帧，报告被刷成 400+ 行噪声。
+两处一起改：`Drawn()` 把 `ForceMeshUpdate()` 包 try/catch 并退回按 `text.Length` 数；`Tick()` 把 `switch` 包 try/catch，
+**吞掉异常并把相位往前推**（`P2` 则 `_step++`），绝不原地打转。
+
+**（d）改名别只改一半。** 换执行器时只替换了 `public static class Stage64FriendPanels`，**漏了静态构造函数那行**
+（`static Stage64FriendPanels()`）⇒ Unity 报 `CS1520: Method must have a return type`；同时生成脚本的 `dst` 路径是**反斜杠**写法、
+替换串却是正斜杠 ⇒ 新代码被写进了**旧文件名**里。两条都要对着 `Test-Path` + `aw_check.ps1` 复核。
+
+### ⑤ 导入守卫
+
+`TextureImportSettingsGuard`：三枚新徽章走 `Icon_FriendAct*` **前缀**那条（已被 `Icon_FriendActBlock` 覆盖），
+**不用改代码**，只在注释里把这一族补全。
+
+### ⑥ 自证
+
+- **`stage65_friend_panels.txt`**（**OK 176 / 失败 0**）：结构（两格盒子 / `Panel_List` / ScrollRect 只竖滚 Clamped / RectMask2D /
+  行内部逐个数 1360×96 + 六格列宽 + 三枚动作坐标）；运行态：**3 条申请** ⇒ 勾 = 同意（申请 3→2、进好友表且 `manual`、当场重排、计数跟着变）
+  ⇒ 叉 = 拒绝（2→1、**没**进好友表）⇒ 黑名单空态 ⇒ 真按钮拉黑（长条确认窗「确认拉黑 夜莺」→ 确认 → 名单 1 行、好友行小字变「已拉黑」、
+  邀请收掉）⇒ 取消拉黑（名单空、**好友关系还在**）⇒ 拉黑口径（搜号 0 条且只说「搜不到这个异界号」、搜昵称被遮、硬加「加不了这个人」、
+  没被拉黑的人照样搜得到）。
+- **`stage66_friend_panels.txt`**（**OK 178 / 失败 0**）：④(b) 修完之后复跑，多出来的两条就是新加的**状态列不压动作**那两道门。
+- 截图（`stage48_shots/`）：`f22_friend_requests.png`（三行 + 勾 / 叉 + `3/50`）/ `f23_friend_blocklist.png`（一行 + 取消拉黑 + `1/50`）/
+  `f24_blocked_in_friend_list.png`（好友列表里那一行写「已拉黑」、邀请那枚已收）。
+- 两支执行器跑完**都已自删**（`Stage65FriendPanels.cs` / `Stage66FriendPanels.cs` 均已不在仓库）；两轮都
+  **备份 / 还原 `friends.json` + `friend_requests.json`**（测试不污染真数据）。
+- 复跑命令：看图 `pwsh -File Tools/cardframe/FriendRequestV1.ps1`；重建面板 `LobbyUIBuilder.BuildFriendDetailSubPanelMenu()`。
+
+## 三十二次修正（2026-09-27）：拉黑 = 从好友列表**挪进**黑名单
+
+**用户原话**：「拉黑后的好友不再存在于好友列表而是转到黑名单里」。
+
+**这是对三十一次那一版口径的修正**：三十一次拉黑后是**两边都显示**（好友列表里把那行状态顶成「已拉黑」，黑名单里另有一份）；
+从这一版起，人在**哪一格是唯一的** —— 拉黑之后**只**在黑名单里。
+
+### ① 改在哪（一处过滤，两处 UI 一起变）
+
+- `FriendListService.Refresh()` 第 ④ 步（在 `result.Sort(...)` 之前）：`result.RemoveAll(x => x != null && x.blocked);`
+- 为什么一处就够：**「好友列表」那格（`LobbyFriendDetailListUI`）与左侧好友侧边栏（`LobbyFriendListUI`）读的都是
+  `FriendListService.Entries`** —— 过滤放在合成名单的这一处，两处 UI 同时生效（侧边栏也订阅了 `Refreshed`）；
+  右下角 `n/50` 拿的也是 `Entries.Count`，跟着减。
+- **本地那条记录不删**（旗子留在 `friends.json` 里）：取消拉黑就是把旗子放下来，人**当场回到好友列表**。
+  这正是三十一次那条「拉黑**不删好友**」现在换来的好处 —— 当时是为了「取消拉黑能回来」，现在还是。
+- 拉黑的长条确认窗、`n/50`、以及 `FriendBlock` 那三条口径（搜不到 / 加不了 / 匹配不受影响）**一律没动**。
+
+### ② 黑名单那格的状态位：现在写「已拉黑」
+
+那个红字信号原来是挂在好友行上的（三十一次），现在那一行不在好友列表里了 —— 把信号**挪到黑名单那一行**：
+`FriendPanelRowUI.Bind` 里 `mode == Block` ⇒ 状态位「已拉黑」+ 生命红 `#B64848`（与好友行 `BlockedColor` 同一档）。
+申请列表那格**不受影响**，仍是正常的四态（在线 / 匹配中 / 对局中 / 离线）。
+
+### ③ 自证
+
+- **`stage68_block_moves.txt`**（**OK 33 / 失败 0**）：起手 2 个好友（`2/50`）⇒ 走**真按钮**拉黑「夜莺」
+  （长条确认窗 → 确认）⇒ **★ `Entries` 里没有他、好友表 1 个人、好友列表那格只剩 1 行、再也找不到「夜莺」、
+  计数 `1/50`**，没被拉黑的「离线丁」还在，**本地记录没被删** ⇒ 黑名单那格 1 行（`1/50`）、状态位「已拉黑」、
+  颜色实测就是生命红、只有「取消拉黑」一枚 ⇒ 取消拉黑 ⇒ **★ 好友表回到 2 个人、好友列表里他又出现、
+  计数回到 `2/50`、黑名单空掉**。
+- 截图（`stage48_shots/`）：`f25_blocked_left_friend_list.png`（拉黑后好友列表只剩离线丁 + `1/50`）/
+  `f26_blocklist_shows_blocked.png`（黑名单里「夜莺 · 已拉黑」红字 + 取消拉黑）/
+  `f27_unblock_back_to_friends.png`（取消拉黑后两人都在 + `2/50`）。
+- 执行器跑完**已自删**；跑前备份 / 跑后还原 `friends.json` + `friend_requests.json`。
+- **没动场景**：这一轮改的全是运行时脚本（`FriendListService` / `FriendPanelRowUI` / `FriendDetailRowUI`），
+  所以没有重建面板 —— 执行器自己就先报了这句。
+
+### ④ ★ 排错记录（一条，还是同一个坑）
+
+**计时器又取错地方。** `Stage67` 的 `FriendCount()` 写的是
+`panel.transform.Find("Body_Detail/Content_Friends").GetComponent<LobbyFriendDetailListUI>()`，
+而组件其实挂在**再往下三层**的 `…/Friends_List/Viewport/Content` 上 —— 就是三十一次 ④(a) 那个坑。
+拿到的 `ui` 是 null，于是三条计数断言全报「取不到 countText」的**假 FAIL**（`stage67_block_moves.txt`，OK 30 / 失败 3）。
+**规矩（再写一遍）：这一族名单控制器一律挂在 `ScrollRect` 的 Content 上，取组件必须走 `…/Viewport/Content`。**
+产品那边的三条计数是好的 —— 换成正确路径之后同一套断言全绿（`stage68`）。
+
+**下一步（等用户）**：① 申请列表的**真来源**（后端收包 → `FriendRequestStore.Add`；现在没有任何来源，平时是空的）；
+② 拉黑里「**他拉黑了我**」那半边（`FriendBlock.BlockedByLookup` 接服务端）；③ 推荐好友进「添加好友」那格
+（现在昵称只能搜到已知玩家）。**另有两处口径是我顺手定的，若不同意请说**：拉黑**不影响邀请**；「匹配不受影响」
+目前靠**代码里一处都没调**保证，没有可跑的门（要真验得等匹配流程接进来）。

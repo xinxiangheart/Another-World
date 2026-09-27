@@ -1798,7 +1798,7 @@ public static class LobbyUIBuilder
     //   → 一条金细线 → 结果列表（ScrollRect；行底板复用 LobbyFriendRow.png，1360x96 / 行距 12）
     //   → 右下角「n 位相关玩家」+ 列表正中那句空态。
     // 井与结果行**同宽同列**（都在 x32 .. x1392）：上下看过去是一条竖列，比「输入框比行窄一圈」稳。
-    // 贴图由 Tools/cardframe/FriendAddV1.ps1 出（井底板 1364x92 存 1:1 / 放大镜徽章 256 按全族 x3）。
+    // 贴图由 Tools/cardframe/FriendAddV1.ps1 出（井底板 1376x92 存 1:1 / 放大镜徽章 256 按全族 x3）。
     // 搜索规则与「加好友」全在 Scripts/UI/Lobby/FriendAddSearch.cs，本类只管版式与接线。
     const string FaInputName  = "Input_Query";
     const string FaLineName   = "Line_Divider";
@@ -1856,6 +1856,39 @@ public static class LobbyUIBuilder
     const float  FaCountFS    = 22f;
     static readonly Color FaSteel = new Color32(142, 162, 180, 190);   // 钢 #8EA2B4 · 75%
     static readonly Color FaHint  = new Color32(142, 162, 180, 205);   // 钢 #8EA2B4 · 80%
+
+    // ══════════════════════════════════════════════════════════════════════
+    // 申请列表 / 黑名单 两格（2026-09-27）—— 用户：「申请列表和黑名单一起做，展示申请加好友的列表
+    // （均在右下角类似限制50）只在右边显示不同，申请列表有一个勾和叉的ui图案用于同意和申请，
+    // 黑名单则只有一个取消拉黑的」。
+    // 左半（环 / 井 / 名称 / 异界号 / 状态）与好友列表逐个数一样，直接复用 FaRow* 那一组，
+    // 这里只补「两格自己的」：列表盒、计数、右端两枚动作。
+    // 贴图由 Tools/cardframe/FriendRequestV1.ps1 出（三枚徽章 256 按全族 x3）。
+    // ══════════════════════════════════════════════════════════════════════
+    const string FpListName   = "Panel_List";
+    const string FpCountName  = "Text_Count";
+    const string FpEmptyName  = "Text_Empty";
+    const string FpRowName    = "RowTemplate";
+    const string FpActAccept  = "Act_Accept";
+    const string FpActRefuse  = "Act_Refuse";
+    const string FpActUnblock = "Act_Unblock";
+    const string FpAcceptTex  = UiDir + "Icon_FriendActAccept.png";
+    const string FpAcceptHov  = UiDir + "Icon_FriendActAcceptHover.png";
+    const string FpRefuseTex  = UiDir + "Icon_FriendActRefuse.png";
+    const string FpRefuseHov  = UiDir + "Icon_FriendActRefuseHover.png";
+    const string FpUnblockTex = UiDir + "Icon_FriendActUnblock.png";
+    const string FpUnblockHov = UiDir + "Icon_FriendActUnblockHover.png";
+    const float  FpColX       = 32f;      // 与好友列表 / 添加好友同一档让边
+    const float  FpListTop    = 124f;     // 这两格没有输入井，列表直接顶到标题下面（与好友列表同一档）
+    const float  FpListBottom = 60f;      // 给右下角「n/50」留位
+    const float  FpCountW     = 300f;
+    const float  FpCountH     = 30f;
+    const float  FpCountBottom = 18f;
+    const float  FpCountFS    = 22f;
+    const float  FpActSize    = 44f;      // 与好友列表那三格同尺寸
+    const float  FpActY       = -26f;
+    const float  FpActMainX   = FaAddX;                       // 1296：拒绝 / 取消拉黑
+    const float  FpActSubX    = FaAddX - 44f - 12f;           // 1240：同意
 
 
     /// <summary>把 Selectable 的键盘 / 手柄导航关掉（这几个 Button 只是「吃掉点击」用的，不该参与 Tab 导航）。</summary>
@@ -2270,12 +2303,13 @@ public static class LobbyUIBuilder
             {
                 BuildFriendAddInto(c);
             }
+            else if (i == 2)
+            {
+                BuildFriendPanelInto(c, false);      // 申请列表（勾 / 叉）
+            }
             else
             {
-                TextMeshProUGUI hint = NewLabel(c, "Text_Hint", "占位 · 内容待接入",
-                                                new Vector2(40f, -116f), new Vector2(900f, 36f), 26f);
-                hint.color = new Color32(142, 162, 180, 170);    // 钢 #8EA2B4
-                hint.raycastTarget = false;
+                BuildFriendPanelInto(c, true);       // 黑名单（只有取消拉黑）
             }
 
             c.gameObject.SetActive(i == 0);
@@ -2717,6 +2751,199 @@ public static class LobbyUIBuilder
         row.statusText = status;
         row.addGroup = addRT.gameObject;       // 只有「可添加」那一档才 SetActive(true)
         return row;
+    }
+
+
+    /// <summary>「申请列表 / 黑名单」那一格的内容：整块滚动名单 + 右下角「n/50」小字。</summary>
+    /// <remarks>2026-09-27 用户：「申请列表和黑名单一起做……（均在右下角类似限制50）只在右边显示不同」。
+    ///
+    /// 两格**同一段代码**建（<paramref name="block"/> = false 申请列表 / true 黑名单）：左半与好友列表逐个数一样
+    /// （同一张 `LobbyFriendRow` 底板、同样的列宽 / 行高 / 行距 / 让边），差的只有两处 ——
+    /// **右端动作**（申请：勾 + 叉；黑名单：取消拉黑）与**数据源**，两边都在
+    /// <see cref="FriendPanelRowUI"/> / <see cref="FriendPanelListUI"/> 里。
+    ///
+    /// 滚动配方与好友列表逐条一致：ScrollRect 只竖滚 + Clamped 不回弹，Viewport 用 RectMask2D 硬裁 +
+    /// 一张 α=0 的 Image 吃拖拽，行模板挂在 Viewport/Content 下、存成 inactive，运行时克隆。
+    /// 幂等：先把旧的列表 / 计数 / 空表那句收掉再建。
+    /// **还要收掉早先那版留下的 `Text_Hint`（占位 · 内容待接入）** —— 第 3、4 格以前放的是它。</remarks>
+    static void BuildFriendPanelInto(RectTransform content, bool block)
+    {
+        string[] olds = { FpListName, FpCountName, FpEmptyName, "Text_Hint" };
+        for (int i = 0; i < olds.Length; i++)
+        {
+            Transform o = content.Find(olds[i]);
+            if (o != null) Undo.DestroyObjectImmediate(o.gameObject);
+        }
+
+        // ① 名单 = ScrollRect（配方与好友列表 / 添加好友结果逐条一致）
+        RectTransform list = StretchRect(content, FpListName,
+                                         new Vector2(FpColX, FpListBottom),
+                                         new Vector2(-FpColX, -FpListTop));
+        var scroll = list.gameObject.AddComponent<ScrollRect>();
+        scroll.horizontal = false;
+        scroll.vertical = true;
+        scroll.movementType = ScrollRect.MovementType.Clamped;
+        scroll.inertia = true;
+        scroll.decelerationRate = 0.12f;
+        scroll.scrollSensitivity = 40f;
+
+        RectTransform viewport = StretchRect(list, "Viewport", Vector2.zero, Vector2.zero);
+        viewport.gameObject.AddComponent<RectMask2D>();
+        var viewportImage = viewport.gameObject.AddComponent<Image>();
+        viewportImage.color = new Color(0f, 0f, 0f, 0f);
+        viewportImage.raycastTarget = true;    // 吃得到拖拽（Unity 不看 α）
+        scroll.viewport = viewport;
+
+        RectTransform listContent = NewRect(viewport, "Content", AnchorTL, PivotTL, Vector2.zero, Vector2.zero);
+        listContent.anchorMin = new Vector2(0f, 1f);
+        listContent.anchorMax = new Vector2(1f, 1f);
+        listContent.pivot = new Vector2(0.5f, 1f);
+        listContent.sizeDelta = new Vector2(0f, 0f);           // 高度运行时按行数改
+        scroll.content = listContent;
+
+        // ② 行模板
+        FriendPanelMode mode = block ? FriendPanelMode.Block : FriendPanelMode.Request;
+        FriendPanelRowUI row = BuildFriendPanelRow(listContent, mode);
+
+        // ③ 右下角「n/50」（与好友列表同一口径）
+        TextMeshProUGUI count = NewLabel(content, FpCountName, "", new Vector2(40f, -40f),
+                                         new Vector2(FpCountW, FpCountH), FpCountFS);
+        RectTransform countRT = count.rectTransform;
+        countRT.anchorMin = new Vector2(1f, 0f);
+        countRT.anchorMax = new Vector2(1f, 0f);
+        countRT.pivot = new Vector2(1f, 0f);
+        countRT.anchoredPosition = new Vector2(-FpColX, FpCountBottom);
+        count.alignment = TextAlignmentOptions.Right;
+        count.color = FaSteel;
+        count.raycastTarget = false;
+
+        // ④ 列表正中那句（暂无好友申请 / 黑名单是空的）—— 挂在 list 下（不是 Content 下）：不跟着滚
+        TextMeshProUGUI empty = NewLabel(list, FpEmptyName, "", Vector2.zero, new Vector2(FaColW, 40f), 26f);
+        RectTransform emptyRT = empty.rectTransform;
+        emptyRT.anchorMin = new Vector2(0.5f, 0.5f);
+        emptyRT.anchorMax = new Vector2(0.5f, 0.5f);
+        emptyRT.pivot = new Vector2(0.5f, 0.5f);
+        emptyRT.anchoredPosition = Vector2.zero;
+        empty.alignment = TextAlignmentOptions.Center;
+        empty.color = new Color32(142, 162, 180, 170);
+        empty.raycastTarget = false;
+
+        // ⑤ 名单 UI 挂在 Content 上（它就是「行的容器」）：高度按行数改 = ScrollRect 的可滚范围
+        //    —— 与「好友列表」那份（BuildFriendListInto 第 ⑤ 步）同一处挂法；挂在行上比挂在大格子上少一层
+        //    跨层：克隆出来的行直接在 ScrollRect.content 里，高度也直接写在它身上。
+        var ui = listContent.gameObject.AddComponent<FriendPanelListUI>();
+        ui.mode = mode;
+        ui.rowTemplate = row;
+        ui.scrollRect = scroll;
+        ui.countText = count;
+        ui.emptyText = empty;
+        ui.maxRows = FriendRequestStore.MaxRequests;
+        ui.rowGap = FaRowGap;
+
+        // 这两格要读好友表（黑名单就是好友表里 flagged 的那些）—— 服务挂在大厅 Canvas 上
+        Canvas canvas = content.GetComponentInParent<Canvas>();
+        if (canvas != null && canvas.gameObject.GetComponent<FriendListService>() == null)
+            canvas.gameObject.AddComponent<FriendListService>();
+
+        row.gameObject.SetActive(false);
+
+        Debug.Log("[LobbyUI] 「" + (block ? "黑名单" : "申请列表") + "」已就位：列表 x" + FpColX + "..右让 " + FpColX +
+                  " / 上沿 " + FpListTop + " / 下沿让 " + FpListBottom + "（行 " + FdRowW + "x" + FaRowH + " / 行距 " + FaRowGap +
+                  "，底板复用 LobbyFriendRow）；右端动作 " + (block ? "取消拉黑 x" + FpActMainX : "同意 x" + FpActSubX + " + 拒绝 x" + FpActMainX) +
+                  "；右下角「n/" + FriendRequestStore.MaxRequests + "」。数据与规则见 Scripts/UI/Lobby/FriendPanelListUI.cs。");
+    }
+
+    /// <summary>「申请列表 / 黑名单」的一行（模板）：底板 + 头像 + 名称 / 异界号 / 状态 + 右端一到两枚动作。</summary>
+    /// <remarks>列宽 / 盒高 / 头像那几件**与「添加好友」那行用的是同一组 Fa* 常量** ——
+    /// 用户要的「只在右边显示不同」在代码里就是这一句。</remarks>
+    static FriendPanelRowUI BuildFriendPanelRow(RectTransform listContent, FriendPanelMode mode)
+    {
+        RectTransform rowRT = NewRect(listContent, FpRowName, AnchorTL, PivotTL, Vector2.zero, new Vector2(FdRowW, FaRowH));
+        var row = rowRT.gameObject.AddComponent<FriendPanelRowUI>();
+        row.mode = mode;
+
+        // 三行文字各自在自己盒里竖直居中（盒心都落在行中线 y = -FaRowH/2 上）
+        float nameY   = -(FaRowH * 0.5f - FaRowNameH * 0.5f);
+        float idY     = -(FaRowH * 0.5f - FaRowIdH * 0.5f);
+        float statusY = -(FaRowH * 0.5f - FaRowStatusH * 0.5f);
+
+        RawImage plate = NewRaw(rowRT, "Plate", FdRowTex, AnchorTL, PivotTL,
+                                new Vector2(-FaRowPlatePad, FaRowPlatePad),
+                                new Vector2(FdRowW + FaRowPlatePad * 2f, FaRowH + FaRowPlatePad * 2f));
+        plate.raycastTarget = false;           // 拖拽交给 Viewport 那张 α=0 的图
+
+        RawImage ring = NewRaw(rowRT, "Avatar_Ring", UiDir + "LobbyAvatarRing.png", AnchorTL, PivotTL,
+                               new Vector2(FaRowRingX, -(FaRowH * 0.5f - FaRowRingSize * 0.5f)),
+                               new Vector2(FaRowRingSize, FaRowRingSize));
+        ring.raycastTarget = false;
+
+        RectTransform avatarRT = NewRect(rowRT, "Avatar_Image", AnchorTL, PivotTL,
+                                         new Vector2(FaRowRingX + FaRowAvatarInset, -(FaRowH * 0.5f - FaRowAvatarSize * 0.5f)),
+                                         new Vector2(FaRowAvatarSize, FaRowAvatarSize));
+        var avatar = avatarRT.gameObject.AddComponent<RawImage>();
+        avatar.texture = null;                 // 运行时填：先灰盘，Steam 头像到货自己换
+        avatar.raycastTarget = false;
+        avatarRT.SetSiblingIndex(ring.transform.GetSiblingIndex() + 1);
+
+        TextMeshProUGUI name = NewLabel(rowRT, "Text_Name", "名字",
+                                        new Vector2(FaRowNameX, nameY), new Vector2(FaRowNameW, FaRowNameH), FaRowNameFS);
+        name.alignment = TextAlignmentOptions.Left;
+        name.overflowMode = TextOverflowModes.Ellipsis;
+        name.color = Cream;
+        name.raycastTarget = false;
+
+        TextMeshProUGUI id = NewLabel(rowRT, "Text_Id", "",
+                                      new Vector2(FaRowIdX, idY), new Vector2(FaRowIdW, FaRowIdH), FaRowIdFS);
+        id.alignment = TextAlignmentOptions.Left;
+        id.overflowMode = TextOverflowModes.Ellipsis;
+        id.color = FdSteel;
+        id.raycastTarget = false;
+
+        // 状态字的右沿要让开**这一格最左边那枚动作**：黑名单右边只有一颗「取消拉黑」(1296)，沿用
+        // 「添加好友」那一档右沿（FaRowStatusR 1272）；申请列表右边是**两枚**（同意 1240 / 拒绝 1296），
+        // 1272 会压到「同意」身上（2026-09-27 实测：状态只剩半个「离」字）—— 右沿收到 1228。
+        // 让法沿用同一档间隙：右沿 + 12 = 动作左边（好友列表 1172 → 1184 就是这一档）。
+        float statusR = mode == FriendPanelMode.Block ? FaRowStatusR : FpActSubX - 12f;
+        TextMeshProUGUI status = NewLabel(rowRT, "Text_Status", "",
+                                          new Vector2(statusR - FaRowStatusW, statusY),
+                                          new Vector2(FaRowStatusW, FaRowStatusH), FaRowStatusFS);
+        status.alignment = TextAlignmentOptions.Right;
+        status.color = FaSteel;
+        status.raycastTarget = false;
+
+        // 右端动作：申请列表 = 勾（1240）+ 叉（1296）；黑名单 = 取消拉黑（1296）
+        GameObject accept  = BuildPanelAct(rowRT, FpActAccept,  FpActSubX,  FpAcceptTex,  FpAcceptHov,  FriendRowActionKind.Accept,  row);
+        GameObject refuse  = BuildPanelAct(rowRT, FpActRefuse,  FpActMainX, FpRefuseTex,  FpRefuseHov,  FriendRowActionKind.Refuse,  row);
+        GameObject unblock = BuildPanelAct(rowRT, FpActUnblock, FpActMainX, FpUnblockTex, FpUnblockHov, FriendRowActionKind.Unblock, row);
+
+        row.avatarImage = avatar;
+        row.nameText = name;
+        row.idText = id;
+        row.statusText = status;
+        row.actAccept = accept;
+        row.actRefuse = refuse;
+        row.actUnblock = unblock;
+        return row;
+    }
+
+    /// <summary>行右端一枚小图标动作（与好友列表那三格同一套接线：不挂 Button，自己处理悬停 / 点击）。</summary>
+    static GameObject BuildPanelAct(Transform rowRT, string name, float x, string tex, string hoverTex,
+                                    FriendRowActionKind kind, FriendPanelRowUI row)
+    {
+        RectTransform rt = NewRect(rowRT, name, AnchorTL, PivotTL, new Vector2(x, FpActY),
+                                   new Vector2(FpActSize, FpActSize));
+        var icon = rt.gameObject.AddComponent<RawImage>();
+        icon.texture = AssetDatabase.LoadAssetAtPath<Texture2D>(tex);
+        if (icon.texture == null) Debug.LogWarning("[LobbyUI] 找不到贴图：" + tex);
+        icon.raycastTarget = true;
+
+        var act = rt.gameObject.AddComponent<FriendRowAction>();
+        act.kind = kind;
+        act.icon = icon;
+        act.normalTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(tex);
+        act.hoverTexture  = AssetDatabase.LoadAssetAtPath<Texture2D>(hoverTex);
+        act.panelRow = row;
+        return rt.gameObject;
     }
 
     /// <summary>给 TMP_InputField.onValueChanged 接一条**持久**监听（与 WireClick 同一套口径：先清再挂）。</summary>

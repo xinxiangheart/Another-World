@@ -28,6 +28,9 @@ public class FriendEntry
     public bool manual;               // 手动用异界号加的「游戏内好友」（不受 Steam 好友条件约束）
     /// <summary>用户点过「删除」：**留一条墓碑**，Steam 那条路每 20 秒重扫时不再把他收回来（2026-09-27）。</summary>
     public bool removed;
+    /// <summary>我们把他拉黑了（2026-09-27 定）：搜索里**互相看不见**、也加不了；
+    /// **匹配不受影响**。口径与实现全在 <see cref="FriendBlock"/>。</summary>
+    public bool blocked;
     public int presence;              // FriendPresence
     public long lastSeenUnix;         // 我们最后一次「见过他」的 Unix 秒（0 = 没见过）
     public int coplayUnix;            // Steam 记的「我俩一起玩过本游戏」时间（0 = 没记）

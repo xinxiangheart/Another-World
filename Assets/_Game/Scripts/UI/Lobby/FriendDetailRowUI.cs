@@ -35,6 +35,9 @@ public class FriendDetailRowUI : MonoBehaviour
     const float AvatarRetryStep = 0.5f;      // 到货前 0.5 秒问一次
     const float AvatarGiveUpSeconds = 20f;   // 20 秒还没到就认了（保持灰盘）
 
+    /// <summary>拉黑过的人仍然留在好友列表里，那一行的状态字换成这个（见 <see cref="BlockMe"/>）。</summary>
+    static readonly Color32 BlockedColor = new Color32(182, 72, 72, 235);   // 生命红 #B64848
+
     FriendEntry _entry;
     ulong _steamId;
     bool _canInvite;
@@ -54,12 +57,14 @@ public class FriendDetailRowUI : MonoBehaviour
         if (idText != null) idText.text = string.IsNullOrEmpty(e.playerId) ? "" : e.playerId;
         if (statusText != null)
         {
-            statusText.text = e.StatusLabel;
-            statusText.color = e.StatusColor;
+            // 防御：拉黑的人**正常情况下到不了这张表**（FriendListService.Refresh ④ 会把他们剔出去，
+            // 他们只在「好友详情 → 黑名单」那一格 —— 用户 2026-09-27 追加口径）。留着这一手是防漏。
+            statusText.text = e.blocked ? "已拉黑" : e.StatusLabel;
+            statusText.color = e.blocked ? (Color)BlockedColor : e.StatusColor;
         }
 
         // 用户口径：只有「空闲在线」（既不在匹配、也不在对局）才给邀请；另外没有 Steam 身份就没法邀
-        _canInvite = e.Presence == FriendPresence.Online && e.SteamId != 0UL;
+        _canInvite = e.Presence == FriendPresence.Online && e.SteamId != 0UL && !e.blocked;   // 同上：拉黑的防御（他们不在表里）
         if (inviteGroup != null) inviteGroup.SetActive(_canInvite);
 
         _nextTryAt = 0f;
@@ -116,10 +121,22 @@ public class FriendDetailRowUI : MonoBehaviour
         return true;
     }
 
-    /// <summary>拉黑：口径用户还没定（只屏蔽名单，还是连匹配也不碰他），先报个待接入。</summary>
+    /// <summary>
+    /// 拉黑（用户 2026-09-27 定的口径）：「拉黑的玩家无法搜索到拉黑他的玩家，也无法对其发送好友申请，
+    /// 匹配倒是能正常匹配到」—— 三条规则全在 <see cref="FriendBlock"/>，这里只负责落一次旗子。
+    ///
+    /// **不删好友**：取消拉黑只是把旗子放下来（见 <see cref="FriendBlock.SetBlocked"/>），
+    /// 所以拉黑不能顺手把人删掉，否则取消之后好友就回不来了。
+    /// </summary>
     void BlockMe()
     {
-        LobbyToast.Show("拉黑还没接（口径待定）");
+        if (_entry == null) return;
+        if (!FriendBlock.SetBlocked(_entry.playerId, _steamId, _entry.DisplayName, true)) return;
+
+        if (FriendListService.Instance != null) FriendListService.Instance.Refresh();   // 黑名单那格跟着更新
+        LobbyToast.Show("已拉黑「" + _entry.DisplayName + "」");
+        Debug.Log("[FriendDetail] 拉黑「" + _entry.DisplayName + "」" + FriendBlock.Describe()
+                  + "（匹配不受影响；取消拉黑见黑名单那格）");
     }
 
     /// <summary>

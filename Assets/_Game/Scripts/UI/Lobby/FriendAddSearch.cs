@@ -72,6 +72,7 @@ public static class FriendAddSearch
 
         string selfId = SteamDataManager.Instance != null ? SteamDataManager.Instance.PlayerIdText : "";
         ulong selfSteam = LobbyConfig.LocalSteamID;
+        List<FriendEntry> blockStore = FriendStore.Load();   // 拉黑名单读一次，下面按行判（别每行读一遍文件）
 
         var takenKeys = new HashSet<string>();
         var takenSteam = new HashSet<ulong>();
@@ -85,6 +86,13 @@ public static class FriendAddSearch
                 || (!string.IsNullOrEmpty(selfId) && PlayerId.Normalize(selfId) == PlayerId.Normalize(q)))
             {
                 message = "这是你自己的异界号";
+                return hits;
+            }
+
+            // 拉黑（任一方向）⇒ 这个人当不存在。理由**不吐给用户**：被拉黑的一方不该从 UI 上读出来
+            if (FriendBlock.IsHidden(blockStore, PlayerId.Pretty(q), sid))
+            {
+                message = "搜不到这个异界号";
                 return hits;
             }
 
@@ -115,6 +123,7 @@ public static class FriendAddSearch
             bool byId = qn.Length >= 4 && !string.IsNullOrEmpty(e.playerId)
                         && PlayerId.Normalize(e.playerId).IndexOf(qn, StringComparison.Ordinal) >= 0;
             if (!byName && !byId) continue;
+            if (FriendBlock.IsHidden(blockStore, e.playerId, e.SteamId)) continue;   // 拉黑（任一方向）⇒ 搜不出来
 
             var h = new FriendSearchHit();
             h.displayName = e.DisplayName;
@@ -139,6 +148,13 @@ public static class FriendAddSearch
     public static bool TryAdd(FriendSearchHit hit, out string message)
     {
         if (hit == null) { message = "没有这一行"; return false; }
+
+        // 拉黑（任一方向）⇒ 加不了。**不写「你被拉黑了」**：只报「加不了这个人」（见 FriendBlock 口径②）
+        if (FriendBlock.IsHidden(FriendStore.Load(), hit.playerId, hit.steamId))
+        {
+            message = "加不了这个人";
+            return false;
+        }
 
         if (hit.state == FriendAddState.Existing) { message = "「" + hit.displayName + "」已经是好友了"; return false; }
         if (hit.state == FriendAddState.SteamFriend || string.IsNullOrEmpty(hit.playerId))

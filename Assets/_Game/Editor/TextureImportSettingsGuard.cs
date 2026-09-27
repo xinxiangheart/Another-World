@@ -58,7 +58,9 @@ namespace AnotherWorld.EditorTools
         /// 行底板存成 1:1（不是全族那个 x3），被吸成 1024x128 就不是屏幕 1360x96 那条长矩形了。</summary>
         /// <summary>2026-09-27 再加 LobbyConfirmPlate（确认删除 / 拉黑的长条弹窗底板，760x200 = 3.8:1，不是 2 的幂）：
         /// 2026-09-27 又加 LobbyFriendAddInput（「添加好友」那口井的底板，1376x92 也是 1:1，既不是 2 的幂、高又小于 128 —— 两道门都得进）
-        /// 与 Icon_FriendSearch（井右端那枚放大镜徽章，256 不吃 npot 那条，进 alpha 那条）。</summary>
+        /// 与 Icon_FriendSearch（井右端那枚放大镜徽章，256 不吃 npot 那条，进 alpha 那条）。
+        /// 2026-09-27 再加 Icon_FriendActAccept / Refuse / Unblock（申请列表的勾 / 叉、黑名单的取消拉黑，
+        /// 都是 256 —— 与拉黑 / 删除同一条 Icon_FriendAct* 前缀，两道门都不用另开）。</summary>
         /// 也是存 1:1，被吸成 1024x256 就不是那条长比例了（圆角与等比内缩金线会跟着变形）。</summary>
         static readonly string[] NoNpotScaleFolders = { "/Art/Sprites/Generated/battle-mode-v1/", "/Art/Sprites/Generated/match-wait-v1/", "/Art/Sprites/Generated/match-confirm-v1/", "/Art/Sprites/Generated/battle-loading-v1/", "/Art/Sprites/Generated/invite-v1/" };
 

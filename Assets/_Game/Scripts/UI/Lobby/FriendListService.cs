@@ -92,6 +92,7 @@ public class FriendListService : MonoBehaviour
                 if (local.lastSeenUnix > 0) e.lastSeenUnix = local.lastSeenUnix;
                 if (e.coplayUnix == 0 && local.coplayUnix != 0) e.coplayUnix = local.coplayUnix;
                 if (!e.playedOurGame && local.playedOurGame) { e.playedOurGame = true; e.evidence = "local-seen"; }
+                if (local.blocked) e.blocked = true;      // 拉黑旗子存在本地表里，这里得带过来 —— 下面 ④ 据此把他剔出好友表
             }
 
             // 用户删过的人：留了墓碑，重扫时不再收回来（FriendDetailRowUI.DeleteMe 写它）
@@ -117,11 +118,17 @@ public class FriendListService : MonoBehaviour
             e.manual = true;
             e.playedOurGame = s.playedOurGame;
             e.lastSeenUnix = s.lastSeenUnix;
+            e.blocked = s.blocked;
             // 只有异界号、没有 Steam 身份的手动好友 —— 我们看不见他的状态，四态里按「离线」算
             e.Presence = FriendPresence.Offline;
             if (sid != 0UL) taken.Add(sid);
             result.Add(e);
         }
+
+        // ④ 拉黑的人**不出现在好友表里**（用户 2026-09-27 追加：「拉黑后的好友不再存在于好友列表而是转到黑名单里」）。
+        //    本地那条记录**不删**（旗子留在 store 里，取消拉黑当场就回到这张表 —— 见 FriendBlock.SetBlocked）。
+        //    好友列表那格与左侧好友侧边栏读的都是这份 Entries，所以过滤只放这一处。
+        result.RemoveAll(x => x != null && x.blocked);
 
         result.Sort(CompareEntries);
         _entries.Clear();
