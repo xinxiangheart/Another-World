@@ -36,6 +36,9 @@ public class MatchConfirmPanel : MonoBehaviour
     [Header("归属 —— 确认 / 拒绝 / 超时的 Steam 收尾都回调给它")]
     public QuickMatchPanel owner;
 
+    [Header("房间来源（点「开始游戏」进来的那一份）—— 填了就按房间规则收尾：拒绝 / 超时回房间，不重排")]
+    public LobbyRoomPanel roomSource;
+
     [Header("己方")]
     public RawImage localAvatar;
     public RawImage localFrame;
@@ -94,18 +97,37 @@ public class MatchConfirmPanel : MonoBehaviour
     public void Open()
     {
         SteamPresence.Matching();   // 已找到对手、在等双方确认 —— 仍算「匹配中」（金）
+        roomSource = null;          // 匹配这条路不该带着上一次房间的状态
         var sd = SteamDataManager.Instance;
+        OpenInternal(sd != null ? sd.localPlayerName : null, sd != null ? sd.localAvatar : null,
+                     owner != null ? owner.opponentName : null,
+                     owner != null ? owner.opponentTexture as Texture2D : null);
+    }
 
+    /// <summary>房主点了「开始游戏」→ 直接进这个确认弹窗（**不进匹配池子**）。对方 = 房间里的那位客人。</summary>
+    /// <remarks>2026-09-27 用户：「点击后关闭房间界面（只是关闭信息都在），直接转到确认确认弹窗里（不进入匹配池子），
+    /// 若此时玩家点拒绝不会和之前一样，而是两个玩家返回房间中」。拒绝 / 超时 / 对方拒绝三条在房间来源下一律回房间。</remarks>
+    public void OpenFromRoom(LobbyRoomPanel room)
+    {
+        roomSource = room;
+        var sd = SteamDataManager.Instance;
+        OpenInternal(sd != null ? sd.localPlayerName : null, sd != null ? sd.localAvatar : null,
+                     room != null ? room.GuestName : null,
+                     room != null ? room.GuestAvatar : null);
+    }
+
+    /// <summary>两条路共用的摆位：己方 + 对方头像 / 名字，双方默认未确认（都压黑）。</summary>
+    void OpenInternal(string myName, Texture2D myAvatar, string oppName, Texture2D oppAvatar)
+    {
         // 己方：Steam 头像 + 昵称（未就绪给灰圆盘占位，不留黑洞）
         if (localNameText != null)
-            localNameText.text = (sd != null && !string.IsNullOrEmpty(sd.localPlayerName)) ? sd.localPlayerName : "我";
-        ApplyAvatar(localAvatar, sd != null ? sd.localAvatar : null);
+            localNameText.text = string.IsNullOrEmpty(myName) ? "我" : myName;
+        ApplyAvatar(localAvatar, myAvatar);
 
-        // 对方：QuickMatchPanel 已经按对手 SteamID 取过图了
-        string oppName = owner != null ? owner.opponentName : null;
+        // 对方：匹配那条路由 QuickMatchPanel 按对手 SteamID 取过图了；房间那条路拿的是客人头像
         if (opponentNameText != null)
             opponentNameText.text = string.IsNullOrEmpty(oppName) ? "对手" : oppName;
-        ApplyAvatar(opponentAvatar, owner != null ? owner.opponentTexture as Texture2D : null);
+        ApplyAvatar(opponentAvatar, oppAvatar);
 
         // 双方默认未确认
         _localOk = false; _oppOk = false; _goStarted = false; _reMatchPending = false;
@@ -128,6 +150,7 @@ public class MatchConfirmPanel : MonoBehaviour
     {
         SteamPresence.Idle();       // 关掉确认弹窗 → 回「在线」（真进战斗时由 BattleLoadingScreen 改「对局中」）
         _st = State.Idle;
+        roomSource = null;          // 关窗即摘掉房间来源（房间那边自己会重开面板）
         if (window != null) window.SetActive(false);
     }
 
@@ -151,8 +174,16 @@ public class MatchConfirmPanel : MonoBehaviour
     public void OnDeclineClicked()
     {
         if (_st != State.Accept && _st != State.Go) return;
-        Debug.Log("[MatchConfirm] 己方点「拒绝」→ 本局取消（自己拒绝**不重排**）");
         _reMatchPending = false;
+        // 房间那条路（用户 2026-09-27）：「若此时玩家点拒绝不会和之前一样，而是两个玩家返回房间中」。
+        if (roomSource != null)
+        {
+            var room = roomSource;
+            Hide();
+            if (room != null) room.ReturnToRoomAfterDecline();
+            return;
+        }
+        Debug.Log("[MatchConfirm] 己方点「拒绝」→ 本局取消（自己拒绝**不重排**）");
         if (owner != null) owner.OnDecline();
         else Hide();
     }
@@ -194,6 +225,8 @@ public class MatchConfirmPanel : MonoBehaviour
     public void Timeout()
     {
         if (!IsOpen) return;
+        // 房间里 15 秒没双确认：房间还在，回房间继续等（不是把整局取消掉）。
+        if (roomSource != null) { var room = roomSource; Hide(); if (room != null) room.ReturnToRoomAfterDecline(); return; }
         Hide();
         if (owner != null) owner.OnConfirmTimeout();
     }
@@ -203,6 +236,8 @@ public class MatchConfirmPanel : MonoBehaviour
     public void OpponentDeclined()
     {
         if (!IsOpen) return;
+        // 房间那条路：对方拒绝 = 双方回房间（用户口径同「自己拒绝」那条，都不进匹配池子）。
+        if (roomSource != null) { var room = roomSource; Hide(); if (room != null) room.ReturnToRoomAfterDecline(); return; }
         _reMatchPending = true;
         SetSideDeclined(false);        // 只有对方那一侧压红
         NoticeStopRed();               // 中央倒计时停表 + 变红（用户：不显示「对方已拒绝」几个字）
@@ -244,6 +279,14 @@ public class MatchConfirmPanel : MonoBehaviour
             case State.Go:
                 _t -= Time.unscaledDeltaTime;
                 Tick();
+                // 房间那条路没有 QuickMatchPanel 在外面轮询，金色 3 秒走完由这里自己收尾（进战斗加载界面）。
+                if (_t <= 0f && roomSource != null)
+                {
+                    var room = roomSource;
+                    Hide();
+                    if (room != null) room.OnBothConfirmed();
+                    break;
+                }
                 break;
 
             case State.Notice:

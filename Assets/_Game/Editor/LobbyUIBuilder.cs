@@ -830,6 +830,33 @@ public static class LobbyUIBuilder
     const float  RoomCodeToastY    = -60f;   // 提示语：紧贴在号那行下面
     static readonly Color RoomRoleColor    = new Color32(240, 232, 210, 140);   // 身份小字：奶油 55%
     static readonly Color RoomPendingColor = new Color32(142, 162, 180, 205);   // 「等待加入…」：本套钢色
+    // ── 房间里的新件（2026-09-27 三改）：踢出 / 开始游戏 / 屏幕中央上方那行提示 ──────
+    // 用户原话：「在房主自己视角里加入玩家头像左边做一个踢出的按钮（仅在有玩家在房间中显示），当房间内加入
+    //   玩家后在双方头像中央靠右一点出现一个开始游戏（只有房主能点，客人视角里虽然出现但是字体颜色是灰色的，
+    //   房主视角是白色悬停点击时变金色）……另外若房主点击右上角的叉会退出房间并将房主转交给客人……同时屏幕
+    //   中央上方弹出提示：房主已离开，你已成为房主，客人点击叉就单纯离开房间了，同时弹出提示：玩家xxxx离开」
+    const string RoomKickName  = "Btn_Kick";
+    const float  RoomKickRight = -20f;    // 相对加入玩家槽左沿（环左沿 = 640）再往左让 20
+    const float  RoomKickY     = -80f;    // 与环的中线同高
+    const float  RoomKickW     = 96f;     // = 子背景 LobbyChip_Kick 的屏幕宽
+    const float  RoomKickH     = 48f;     // = 子背景的屏幕高
+    const float  RoomKickFont  = 30f;
+
+    const string RoomStartName = "Btn_StartGame";
+    const float  RoomStartX    = 820f;    // = 环列右沿 800 再让 20（与「踢出」那 20 对称），也正好落在名字 / 身份那列的左沿（RoomSlotX 640 + RoomNameX 180）
+    const float  RoomStartY    = -400f;   // 两条槽的正中（房主环心 -300 与客人环心 -500 的中点）
+    const float  RoomStartW    = 212f;    // = 子背景 LobbyChip_Start 的屏幕宽
+    const float  RoomStartH    = 64f;
+    const float  RoomStartFont = 42f;
+
+    const string RoomToastName = "Text_LobbyToast";
+    const float  RoomToastY    = -150f;   // 屏幕中央上方（压到 -240 会正好叠在房主那行的名字上）
+    const float  RoomToastW    = 1200f;
+    const float  RoomToastH    = 64f;
+    const float  RoomToastFont = 34f;
+
+    /// <summary>客人视角那条「开始游戏」的灰（钢 #8EA2B4 压一档 —— 与 MatchConfirmPanel 的 frameLocked 同值）。</summary>
+    static readonly Color RoomStartOffColor = new Color32(110, 119, 131, 255);
 
     /// <summary>「其它」子全屏弹窗：与 Panel_Battle 同一个壳（通用背景 + 通用关闭叉），
     /// 内容只有一张模式卡「离线模式」—— 点它直接进 Game 场景（离线 Host + AI 对手）。
@@ -878,6 +905,7 @@ public static class LobbyUIBuilder
         // 贴图与 BattleModeCardsBuilder.BuildRoomCard 都留着备用，只是这里不再挂。
         BuildRoomPlayers(panel);
         BuildRoomCode(panel);
+        BuildRoomRuntime(panel, hud.gameObject);   // 状态机 + 踢出 / 开始游戏 / 叉三条点击 + 顶中提示
         Transform closeBtn = panel.transform.Find("Btn_Close");
         if (closeBtn != null) closeBtn.SetAsLastSibling();   // 叉子始终压在内容之上
         WireEntryToPanel(canvas, "Entry_Room", panel, "房间");
@@ -909,6 +937,19 @@ public static class LobbyUIBuilder
 
         BuildRoomSlot(root, "Slot_Host",  "房主",     "你自己",     RoomHostTop,  true);
         BuildRoomSlot(root, "Slot_Guest", "加入玩家", "等待加入…", RoomGuestTop, false);
+        // 开始游戏：出现在**两个头像的正中再靠右一点**（用户原话），房里有人才显示 —— 显隐与「房主能点 / 客人是灰的」
+        // 都在 LobbyRoomPanel.Refresh 里控。这里不接点击：目标是 LobbyRoomPanel 上的方法，等 BuildRoomRuntime 接。
+        BuildTextChip(root, RoomStartName, "开始游戏", AnchorTL, new Vector2(0f, 0.5f),
+                      new Vector2(RoomStartX, RoomStartY), new Vector2(RoomStartW, RoomStartH), RoomStartFont,
+                      "LobbyChip_Start.png", "LobbyChip_StartHover.png");
+
+        // 踢出：挂在**加入玩家槽**里、头像环的左边（用户：「加入玩家头像左边」）；只有房主 + 房里有人时才显示。
+        Transform guestSlot = root.Find("Slot_Guest");
+        if (guestSlot != null)
+            BuildTextChip(guestSlot, RoomKickName, "踢出", AnchorTL, new Vector2(1f, 0.5f),
+                          new Vector2(RoomKickRight, RoomKickY), new Vector2(RoomKickW, RoomKickH), RoomKickFont,
+                          "LobbyChip_Kick.png", "LobbyChip_KickHover.png");
+
         return root.gameObject;
     }
 
@@ -989,6 +1030,134 @@ public static class LobbyUIBuilder
         tag.toastOffsetY = RoomCodeToastY;
         tag.toastSlide = 12f;
         return rt.gameObject;
+    }
+    /// <summary>「房间」面板的运行时状态机 + 三条点击的接点 + 屏幕中央上方那行提示。</summary>
+    /// <remarks>三条点击（踢出 / 开始游戏 / 右上角的叉）都在这里接：目标方法是 <see cref="LobbyRoomPanel"/> 上的，
+    /// 而那个组件是这里现加的 —— 不能像别的件那样在构造时顺手接。
+    /// ⚠ 叉上原本那条 `Close()` 监听要**摘掉**：叉得先走房间逻辑（房主走 = 把房主让给客人；客人走 = 单纯离开），
+    /// 再由房间逻辑自己调 `Close()`。</remarks>
+    static LobbyRoomPanel BuildRoomRuntime(GameObject panel, GameObject hudLayer)
+    {
+        var room = panel.GetComponent<LobbyRoomPanel>();
+        if (room == null) room = panel.AddComponent<LobbyRoomPanel>();
+        room.shell = panel.GetComponent<LobbySubPanel>();
+
+        Transform players = panel.transform.Find(RoomPlayersName);
+        Transform host = players != null ? players.Find("Slot_Host") : null;
+        Transform guest = players != null ? players.Find("Slot_Guest") : null;
+
+        room.hostRoleText  = TextOf(host, "Text_Role");
+        room.guestWell     = WellOf(guest);
+        room.guestNameText = TextOf(guest, "Text_Name");
+        room.guestRoleText = TextOf(guest, "Text_Role");
+
+        Transform kick = guest != null ? guest.Find(RoomKickName) : null;
+        Transform start = players != null ? players.Find(RoomStartName) : null;
+        room.kickGroup   = kick != null ? kick.gameObject : null;
+        room.startGroup  = start != null ? start.gameObject : null;
+        room.startButton = start != null ? start.GetComponent<Button>() : null;
+
+        // 收尾那两件（拒绝回房间 / 双方确认进战斗加载）都在 HUD 层常驻，场景里各只有一份
+        room.confirmPanel  = Object.FindObjectOfType<MatchConfirmPanel>();
+        room.battleLoading = Object.FindObjectOfType<BattleLoadingScreen>();
+
+        if (kick != null) WireClick(kick.GetComponent<Button>(), room.OnKickClicked);
+        if (room.startButton != null) WireClick(room.startButton, room.OnStartGameClicked);
+        Transform close = panel.transform.Find("Btn_Close");
+        if (close != null) WireClick(close.GetComponent<Button>(), room.OnCloseClicked);
+
+        EnsureLobbyToast(hudLayer);
+        return room;
+    }
+
+    /// <summary>把一条 onClick 换成唯一一条持久监听（原来的先摘干净 —— 通用关闭叉上本来那条 Close 就是这么换的）。</summary>
+    static void WireClick(Button btn, UnityAction action)
+    {
+        if (btn == null) return;
+        while (btn.onClick.GetPersistentEventCount() > 0) UnityEventTools.RemovePersistentListener(btn.onClick, 0);
+        UnityEventTools.AddPersistentListener(btn.onClick, action);
+    }
+
+    /// <summary>文字按钮：颜色全交给 Button 的 ColorTint（TMP 自己设成纯白，别拿它自己的 color 去压）。</summary>
+    /// <summary>「子背景 + 一行字」的小按钮（踢出 / 开始游戏）：底 = LobbyChip_*（平底 + 一条金细线），
+    /// 字悬停 / 点击变金、底悬停提亮一档（两张底只差色调，切图不跳位）。</summary>
+    /// <remarks>用户 2026-09-27：「踢出和开始游戏是有个子背景的」—— 与 MatchWait 那个「取消」的子背景同一套配方
+    /// （Tools/cardframe/LobbyRoomChipV1.ps1 出图，屏幕 96x48 / 212x64）。点击归 Button（targetGraphic = 那行字），
+    /// 悬停换底归 LobbyIconHover（挂在同一个物体上，popup 留空 → 它只管换贴图）。</remarks>
+    static Button BuildTextChip(Transform parent, string name, string text, Vector2 anchor, Vector2 pivot,
+                                Vector2 pos, Vector2 size, float fontSize, string chipFile, string chipHoverFile)
+    {
+        RectTransform rt = NewRect(parent, name, anchor, pivot, pos, size);
+
+        // 底先建（兄弟序在前 = 画在字下面），字后建
+        RawImage plate = NewRaw(rt, "Chip", UiDir + chipFile, AnchorC, PivotC, Vector2.zero, size);
+        plate.raycastTarget = false;
+
+        TextMeshProUGUI label = NewLabel(rt, "Text_Label", text, Vector2.zero, size, fontSize);
+        label.alignment = TextAlignmentOptions.Midline;   // 居中 = 正好压在子背景上
+        label.color = Color.white;                        // 纯白 = 把颜色让给 Button 的 ColorTint
+        Button btn = MakeTextButton(rt, label, Cream, GoldBright, RoomStartOffColor);
+
+        var hover = rt.gameObject.AddComponent<LobbyChipHover>();
+        hover.chip = plate;
+        hover.normalTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(UiDir + chipFile);
+        hover.hoverTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(UiDir + chipHoverFile);
+        return btn;
+    }
+
+    static Button MakeTextButton(RectTransform rt, TextMeshProUGUI label, Color normal, Color hover, Color disabled)
+    {
+        var btn = rt.gameObject.AddComponent<Button>();
+        btn.transition = Selectable.Transition.ColorTint;
+        btn.targetGraphic = label;
+        var cb = btn.colors;
+        cb.normalColor = normal;
+        cb.highlightedColor = hover;      // 悬停 → 金
+        cb.pressedColor = hover;          // 点击 → 金
+        cb.selectedColor = normal;
+        cb.disabledColor = disabled;      // 客人那条：灰
+        cb.colorMultiplier = 1f;
+        cb.fadeDuration = 0.08f;
+        btn.colors = cb;
+        return btn;
+    }
+
+    /// <summary>屏幕中央上方那行一次性提示（房主转交 / 玩家离开）—— 挂 HUD 层，所以压在房间面板之上。</summary>
+    static GameObject EnsureLobbyToast(GameObject hudLayer)
+    {
+        if (hudLayer == null) { Debug.LogWarning("[LobbyUI] 没有 HUD 层 —— 顶中那行提示没地方挂"); return null; }
+        Transform old = hudLayer.transform.Find(RoomToastName);
+        if (old != null) Undo.DestroyObjectImmediate(old.gameObject);
+
+        RectTransform rt = NewRect(hudLayer.transform, RoomToastName, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+                                   new Vector2(0f, RoomToastY), new Vector2(RoomToastW, RoomToastH));
+        var text = rt.gameObject.AddComponent<TextMeshProUGUI>();
+        text.font = _font;
+        text.text = "";
+        text.fontSize = RoomToastFont;
+        text.color = Cream;
+        text.alignment = TextAlignmentOptions.Center;
+        text.enableWordWrapping = false;
+        text.overflowMode = TextOverflowModes.Overflow;
+        text.raycastTarget = false;
+
+        var toast = rt.gameObject.AddComponent<LobbyToast>();
+        toast.text = text;
+        return rt.gameObject;
+    }
+
+    static RawImage WellOf(Transform slot)
+    {
+        if (slot == null) return null;
+        Transform t = slot.Find("Avatar_Image");
+        return t != null ? t.GetComponent<RawImage>() : null;
+    }
+
+    static TextMeshProUGUI TextOf(Transform parent, string name)
+    {
+        if (parent == null) return null;
+        Transform t = parent.Find(name);
+        return t != null ? t.GetComponent<TextMeshProUGUI>() : null;
     }
 
 

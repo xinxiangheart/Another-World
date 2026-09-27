@@ -53,6 +53,10 @@
 | `LobbyProfilePlate.png` | 1401×288 | 467×96 | 左上头像衬托底板（固定尺寸）—— 形状见下面「两块异形板」 |
 | `LobbyAvatarRing.png` | 264×264 | 88×88 | 头像金圆框 |
 | `LobbyFriendPanel.png` | 1395×3240 | **465×1080** | **好友侧边栏**底板（固定尺寸，不切）—— 齐屏幕左沿 / 上沿 / 下沿，**右沿就是滑出后的可见边界**（2026-09-27） |
+| `LobbyChip_Kick.png` | 288×144 | **96×48** | 「踢出」的**子背景**（平底 + 一条金细线，**定尺不能切**）—— 二十次修正 |
+| `LobbyChip_KickHover.png` | 288×144 | **96×48** | 「踢出」子背景 · **悬停态**（底提亮一档 + 金线 α236，切图不跳位） |
+| `LobbyChip_Start.png` | 636×192 | **212×64** | 「开始游戏」的**子背景**（同配方；四个字 + 字号更大 ⇒ 底更大） |
+| `LobbyChip_StartHover.png` | 636×192 | **212×64** | 「开始游戏」子背景 · **悬停态** |
 | `Icon_LobbyGear.png` | 256×256 | 92×92 | 设置 · 齿轮（与 `icons-v1` 的 `Icon_Settings` 同配方）· 压在横栏右端 |
 | `Icon_LobbyFriend.png` | 256×256 | 46×46 | 好友 · 人影（**金线石印族**，十一次修正）· 无底板 |
 | `Icon_LobbyShop.png` | 256×256 | 60×60 | 商城 · 货篮 + 两段金线提手 + 两只金环轮（**金线石印族**）· 无底板 |
@@ -574,3 +578,47 @@ LobbyUI_v1
 - `stage28_room_ui.txt` + `stage28_shots/43_room_fixed.png`（复验空槽白方块：`texture=<null> color=RGBA(1.000,1.000,1.000,0.000)`，井是空的深色环）。
 - 实测断言：`Panel_Room` 里 `ModeCards = False`（对照 `Panel_Battle` = `True`）；房主行 = 「心响」；点号后剪贴板 = `BELWJ8`／另一轮 `RUZGEL`；
   悬停字色 `RGBA(0.894, 0.796, 0.518, 1)` = `#E4CB84`；房间面板开着时 `Icon_Friend activeInHierarchy = True`。
+
+## 二十次修正（2026-09-27）：「房间」的踢出 / 开始游戏 —— 两个文字按钮各自带子背景
+
+**用户原话**：「踢出和开始游戏是有个子背景的」；随后「哦开始游戏没有对齐啊」。
+
+**贴图**（`Tools/cardframe/LobbyRoomChipV1.ps1`，产物进本目录 + 上面那张表）
+
+- 配方 = MatchWait「取消」那套（`New-MwPlate`）：**平底竖渐变**（`#1E2938 → #0C111A`）+ 左上亮楔 + 外墨边 9 + 等比内缩金线 3
+  （内缩 18 / 圆角 22）。常态金线 **α150**、悬停 **α236**；两张底只差色调 ⇒ **切图不跳位**。
+- `LobbyChip_Kick{,Hover}.png` 288×144 = 屏幕 **96×48**（两个字 / 字号 30）；`LobbyChip_Start{,Hover}.png` 636×192 = 屏幕 **212×64**（四个字 / 字号 42）。
+- 两条都是 **NPOT** ⇒ `Assets/_Game/Editor/TextureImportSettingsGuard.cs` 的白名单加了 `LobbyChip_` 前缀（`NeedsNopotScale` 第 60 行 / `NeedsAlphaIsTransparency` 第 68 行各一处）。
+
+**场景侧**（`Assets/_Game/Editor/LobbyUIBuilder.cs`）
+
+- 新件 **`BuildTextChip(...)`**：一个物体出齐「底（`Chip`，RawImage，`raycastTarget = false`）+ 字（`Text_Label`，TMP 居中）+ `Button` + `LobbyChipHover`」。
+  点击归 `Button`（`targetGraphic` = 那行字；ColorTint = 常态奶油 `#F0E8D2` / 悬停与点击金 `#E4CB84` / 禁用灰 `#6E7783`）；
+  悬停换底归 `LobbyChipHover`（`IPointerEnter/Exit` 只换贴图）—— **故意不复用 `LobbyIconHover`**：后者 OnPointerClick 会顺手关好友侧边栏。
+- **踢出**：`RoomPlayers/Slot_Guest/Btn_Kick`，`RoomKickRight = -20`（右沿距头像环左沿 20）、`RoomKickY = -80`（与环中线同高）、96×48、字号 30。
+- **开始游戏**：`RoomPlayers/Btn_StartGame`，`RoomStartX = 820`、`RoomStartY = -400`（两条槽的正中）、212×64、字号 42。
+- 顶中提示 `Text_LobbyToast`（挂在 `Layer_Hud_v1` 下）由 **−240 上移到 −150** —— −240 正好叠在房主那行名字上。
+
+**对齐**（第二句的修法）
+
+- 原 `RoomStartX = 812` ⇒ 子背景左沿比**名字 / 身份那列**（`RoomSlotX 640 + RoomNameX 180 = 820`）还左 **8**（屏幕 ≈ 6 px）—— 看着就是「差一点点」。
+- 改成 **820** 之后：子背景左沿 = 名字列左沿（实测差 **0.0 px**），同时距头像环右沿正好 **20**（与「踢出」那 20 **对称**：
+  踢出右沿 − 环左沿 = −15.5 px = −20×scale）。竖直不变：子背景中线 = 两条头像环中线的中点（实测 527.6 / 527.8 相等）。
+
+**运行时逻辑**（三个新件：`LobbyRoomPanel.cs` / `LobbyChipHover.cs` / `LobbyToast.cs`）
+
+- `LobbyRoomPanel` = 本机房间状态机（`_isHost` / `_hasGuest` / 客人名 + 头像）+ 三个点击（`OnKickClicked` / `OnStartGameClicked` / `OnCloseClicked`）+ `Refresh()`：
+  **踢出** = 房主视角 **且** 房里有人；**开始游戏** = 房里有人就显示（客人也看得见），但 `Button.interactable` 只有房主为 true ⇒ 客人那条是**灰的**。
+- 「关面板不清状态」：`_established` 让房间信息在关面板后留着（用户：「只是关闭信息都在」）；面板重开时只有 `!_established` 才重置成房主。
+- 收尾接缝：`MatchConfirmPanel.OpenFromRoom(room)` —— 拒绝 / 15 秒超时 / 对方拒绝三条都走 `ReturnToRoomAfterDecline()`（**回房间、不重排**）；双方确认走 `OnBothConfirmed()` → `BattleLoadingScreen.Open()`。
+- `LobbyToast.Show(msg)` = 屏幕中央上方一次性提示（淡入 0.22 / 全亮 2.2 / 淡出 0.55 秒）；物体**常驻 active**、只把 α 归零（它自己的 Update 负责淡出）。
+- 联机接缝（真 Steam 大厅进来时接）：`SetGuest` / `ClearGuest` / `OnGuestLeft` / `OnHostLeft`。
+
+**自证**（`stage29` ~ `stage32` 的报告与图都在 `%USERPROFILE%\.codex\visualizations\2026\09\26\01a0dccd-*`；执行器跑完已删）
+
+- `stage29_room_flow.txt` + `stage29_shots/50…57`：空房态两键不显 → 有客人 → 客人视角（`interactable = False`，渲染色灰 `RGBA(0.431,0.467,0.514,1)`）→
+  点开始游戏（房间面板关、确认弹窗开）→ 拒绝（**回房间**）→ 踢出 → 房主离开（转交 + 提示）→ 双方确认（倒计时金 `#C8A44A` + 3）。
+- `stage30_room_chip.txt` + `stage30_shots/60…64`：子背景实测 96×48 / 212×64、贴图 `LobbyChip_Kick` / `LobbyChip_Start`（悬停贴图 `…Hover`）。
+- `stage31_room_hover.txt` + `stage31_shots/70…71`：常态 / 悬停对照 —— 悬停换 `…Hover` 贴图 + 字色转金。
+- `stage32_room_align.txt` + `stage32_shots/80_room_align_guest.png`：**对齐修正**（`RoomStartX 812 → 820`）——
+  开始游戏子背景左沿 − 名字列左沿 = **0.0 px**、− 环右沿 = 15.5 px（= 20×0.7759）、踢出右沿 − 环左沿 = −15.5 px；竖直中线 527.6 = 两条环中线中点 527.6。
