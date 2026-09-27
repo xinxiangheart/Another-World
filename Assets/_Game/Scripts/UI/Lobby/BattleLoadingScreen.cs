@@ -21,11 +21,12 @@ using TMPro;
 ///   头像·名字·称号 x = ±740；上带取正、下带全部镜像（左右与上下同时翻）。进度 xx% 挂在根上 (0, -440)，
 ///   不随带滑动。
 ///
-/// 时序：In（0.5s 缓出滑入）→ Hold（**单向惯性滑行**（上带向左 / 下带向右，见 Drift/SlideLength）+ 饰纹自转 + 进度爬升）→ Out（0.35s 缓入加速甩出）→
-///   甩完才 Preloader.LoadGameScene()（之后由 LoadingScreen 的黑幕接着盖到战斗开始）。
+/// 时序：In（0.5s 缓出滑入）→ Hold（**单向惯性滑行**（上带向左 / 下带向右，见 Drift/SlideLength）+ 饰纹自转 + 进度爬升）→
+///   进度 100% 时把整块搬到常驻画布（DontDestroyOnLoad）并放行 Game 场景激活 → 场景就位后 Out（0.18s 迅速甩出）→
+///   甩完才放开战入场动画（GameIntroCamera 等 Covering 变 false）。
 ///
-/// 进度只取 Preloader.Progress（资源预加载那一半；场景那 60% 还没开始），并且被 minSeconds 的爬升速度
-/// 封顶 —— 双方确认那一刻 Preloader 就已经跑起来了，进这屏时资源往往早就加载完，不封顶这屏会一闪而过。
+/// 进度只取 Preloader.Progress（资源预加载那一半；场景那 60% 还没开始），**原样显示、不封顶** ——
+/// 用户 2026-09-27：百分比必须跟着实际加载走，不许用固定速度爬；minSeconds 只管「这屏至少停多久」。
 ///
 /// 层级：挂在 Canvas/Layer_Hud_v1 下的 Panel_BattleLoading（常驻 active），视觉全在子物体 window
 /// （存 inactive，用 Inspector 右键菜单「预览（显示）」看效果）—— 与 MatchConfirmPanel 同一种写法。
@@ -37,6 +38,9 @@ public class BattleLoadingScreen : MonoBehaviour
 
     [Header("视觉根（Open / Hide 切这个 —— 整块全遮挡）")]
     public GameObject window;
+
+    [Tooltip("整屏底（滑出阶段要关掉，否则挡住要露出来的战斗场景）。留空则由代码在 window 下找 Bg。")]
+    public GameObject bg;
 
     [Header("上下两个半区（2400x560 的背景带 —— 比屏幕宽 480，留给单向惯性）")]
     public RectTransform bandTop;      // 对方：从右滑入 / 向右滑出
@@ -72,8 +76,8 @@ public class BattleLoadingScreen : MonoBehaviour
     [Tooltip("进场：上带从右侧滑入 / 下带从左侧滑入（缓出）。")]
     public float openSeconds = 0.5f;
     [Tooltip("收工：上带向右 / 下带向左迅速甩出（缓入加速）。")]
-    public float outSeconds = 0.35f;
-    [Tooltip("至少显示这么久 —— 进度按 1/minSeconds 的速度爬升封顶，免得这屏一闪而过。")]
+    public float outSeconds = 0.18f;
+    [Tooltip("这屏至少停这么久（与进度无关）—— 免得加载太快时一闪而过。")]
     public float minSeconds = 1.4f;
 
     [Header("惯性漂移（缓慢的匀速滑行 —— 「缓慢能看出来动态即可」）")]
@@ -110,17 +114,35 @@ public class BattleLoadingScreen : MonoBehaviour
     bool _restCached;
     bool _finished;
 
+    GameObject _persistentRoot;   // 进度 100% 后整块搬过去的那张常驻画布（见 MoveToPersistentCanvas）
+    bool _handedOff;
+
     public bool IsOpen { get { return window != null && window.activeSelf; } }
 
     /// <summary>是否正处在「停位惯性滑行」这一段 —— 冒烟脚本按状态判定单向窗口，
     /// 不用 x 阈值猜：滑出段起步 x 也会往回走，拿阈值卡会把甩出误判成反向帧。</summary>
     public bool IsDrifting { get { return _st == State.Hold; } }
 
+    /// <summary>加载界面还盖着（含滑出动画，直到整块收掉）—— 战斗场景的入场镜头等它变 false 才起飞。
+    /// static：进度 100% 时这个组件被搬到 DontDestroyOnLoad，静态字段跟着跨场景活下来。</summary>
+    public static bool Covering { get { return _cover; } }
+    static bool _cover;
+
     void Awake()
     {
         Instance = this;
         CacheRest();
+        if (bg == null && window != null)
+        {
+            var t = window.transform.Find("Bg");
+            if (t != null) bg = t.gameObject;
+        }
         if (window != null && window != gameObject) window.SetActive(false);
+    }
+
+    void OnDestroy()
+    {
+        if (Instance == this) Instance = null;
     }
 
     // ===================== 开关 =====================
@@ -136,16 +158,19 @@ public class BattleLoadingScreen : MonoBehaviour
         FillContent();
 
         _st = State.In; _t = 0f; _holdT = 0f; _finished = false;
+        _handedOff = false; _cover = true;
         _dx = _dx2 = 0f;
         LayoutBands(slideDistance, -slideDistance);   // 先摆到屏外
         SetProgress(0f);
         if (window != null) window.SetActive(true);
+        // 场景异步加载在 Hold 期间就跑起来（不激活）—— 等要滑出时它已装好，滑开直接就是战斗场景
+        if (!DebugSkipSceneLoad && Preloader.Instance != null) Preloader.Instance.BeginSceneLoad();
     }
 
     /// <summary>收工 / 取消：直接收掉整块（不走滑出动画）。</summary>
     public void Hide()
     {
-        _st = State.Idle;
+        _st = State.Idle; _cover = false;
         if (window != null && window != gameObject) window.SetActive(false);
     }
 
@@ -176,7 +201,8 @@ public class BattleLoadingScreen : MonoBehaviour
                 LayoutBands(0f, 0f);
                 SpinOrnament(dt);
                 SetProgress(ShownProgress());
-                if (Ready()) { _st = State.Out; _t = 0f; }
+                if (RealProgress() >= 0.999f) HandOffToScene();
+                if (Ready()) { _st = State.Out; _t = 0f; OnOutStart(); }
                 break;
             }
 
@@ -246,12 +272,11 @@ public class BattleLoadingScreen : MonoBehaviour
 
     // ===================== 进度 =====================
 
-    /// <summary>显示进度 = 真实进度，但爬升速度不超过 1/minSeconds（防止一闪而过）。</summary>
+    /// <summary>显示进度 = 真实进度原样输出（Preloader「已完成 / 总数」，只增不减）。
+    /// 用户 2026-09-27：百分比必须跟着实际加载走 —— 旧的 min(real, _holdT/minSeconds) 固定速度封顶作废。</summary>
     float ShownProgress()
     {
-        float real = RealProgress();
-        float ramp = _holdT / Mathf.Max(0.05f, minSeconds);
-        return Mathf.Clamp01(Mathf.Min(real, ramp));
+        return RealProgress();
     }
 
     /// <summary>真实进度只取资源预加载那一半（Preloader.Progress；场景那 60% 还没开始）。</summary>
@@ -265,7 +290,12 @@ public class BattleLoadingScreen : MonoBehaviour
 
     bool Ready()
     {
-        return RealProgress() >= 0.999f && _holdT >= Mathf.Max(0f, minSeconds);
+        if (RealProgress() < 0.999f) return false;
+        if (_holdT < Mathf.Max(0f, minSeconds)) return false;
+        if (DebugSkipSceneLoad) return true;
+        // 场景得真的顶上来，滑开才有东西露出来
+        var p = Preloader.Instance;
+        return p != null && p.SceneReady;
     }
 
     void SetProgress(float v)
@@ -279,10 +309,67 @@ public class BattleLoadingScreen : MonoBehaviour
         if (_finished) return;
         _finished = true;
         _st = State.Idle;
+        _cover = false;                                   // 先放行入场动画，再拆这一块
         if (window != null && window != gameObject) window.SetActive(false);
-        EnsurePreloader();
-        if (Preloader.Instance != null && !DebugSkipSceneLoad) Preloader.Instance.LoadGameScene();
-        Debug.Log("[BattleLoading] 加载界面收工 → 切战斗场景");
+        if (_persistentRoot != null) { Destroy(_persistentRoot); _persistentRoot = null; }
+        Debug.Log("[BattleLoading] 加载界面收工 —— 战斗场景入场交给 GameIntroCamera");
+    }
+
+    /// <summary>进度 100% 那一刻：把整块搬到一张常驻画布（切场景不会把它一起删掉），再放行 Game 场景激活。
+    /// 于是「滑出」是在战斗场景里做的 —— 滑开就直接看到战斗场景，中间不再压一层黑幕（用户 2026-09-27）。</summary>
+    void HandOffToScene()
+    {
+        if (_handedOff) return;
+        _handedOff = true;
+        var p = Preloader.Instance;
+        if (p == null) return;
+        MoveToPersistentCanvas();
+        p.AllowSceneActivation();
+        Debug.Log("[BattleLoading] 进度 100% → 已搬到常驻画布，放行 Game 场景激活");
+    }
+
+    /// <summary>把 Panel_BattleLoading 搬到一张运行时建的常驻画布下。
+    /// 画布参数照抄 Lobby 那张（1920x1080 / MatchHeight），而本物体是 0..1 满拉伸，所以搬过去位置尺寸不变。</summary>
+    void MoveToPersistentCanvas()
+    {
+        if (_persistentRoot != null) return;
+
+        _persistentRoot = new GameObject("BattleLoadingOverlay", typeof(RectTransform));
+        DontDestroyOnLoad(_persistentRoot);
+
+        var canvas = _persistentRoot.AddComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.sortingOrder = 29001;              // 压住战斗场景 UI
+        var scaler = _persistentRoot.AddComponent<CanvasScaler>();
+        var src = GetComponentInParent<CanvasScaler>();
+        if (src != null)
+        {
+            scaler.uiScaleMode = src.uiScaleMode;
+            scaler.referenceResolution = src.referenceResolution;
+            scaler.screenMatchMode = src.screenMatchMode;
+            scaler.matchWidthOrHeight = src.matchWidthOrHeight;
+        }
+        else
+        {
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1920f, 1080f);
+            scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+            scaler.matchWidthOrHeight = 1f;
+        }
+        _persistentRoot.AddComponent<GraphicRaycaster>();
+
+        transform.SetParent(_persistentRoot.transform, false);
+    }
+
+    /// <summary>开始滑出：整屏底（Bg）必须关掉，否则它挡在要露出来的战斗场景前面。</summary>
+    void OnOutStart()
+    {
+        if (bg == null && window != null)
+        {
+            var t = window.transform.Find("Bg");
+            if (t != null) bg = t.gameObject;
+        }
+        if (bg != null) bg.SetActive(false);
     }
 
     // ===================== 内容 =====================

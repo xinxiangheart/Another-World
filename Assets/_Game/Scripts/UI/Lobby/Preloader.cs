@@ -83,7 +83,7 @@ public class Preloader : MonoBehaviour
         // ── 通用 UI Prefab ────────────────────────────────────
         Preload<GameObject>("UI/SpellCard2D");
         Preload<GameObject>("UI/Card2D");
-        // LoadingScreen 和 DamageFloater 用的字体
+        // BattleLoadingScreen 和 DamageFloater 用的字体
         Preload<TMP_FontAsset>("Fonts & Materials/NotoSansSC SDF");
         Preload<TMP_FontAsset>("Fonts & Materials/NotoSerifCJKsc-Bold SDF");
 
@@ -148,21 +148,40 @@ public class Preloader : MonoBehaviour
         Debug.Log("[Preloader] 资源预加载完成");
     }
 
-    /// <summary>异步加载Game场景——先异步加载场景（不激活），资源就绪后激活。</summary>
+    /// <summary>
+    /// 起异步加载 Game 场景（不激活）——场景内 Awake/Start 不会执行。
+    /// 战斗加载界面（BattleLoadingScreen）在 Hold 期间就调它，等要滑出时场景已经装好；
+    /// 幂等：这一局已经在装了就不再起第二次；上一局留下的、已经装完的 op 不算数（会重起）。</summary>
+    public void BeginSceneLoad()
+    {
+        // Preloader 是 DontDestroyOnLoad：打完一局回大厅再开第二局时，上一局的 op 早就 isDone 了，
+        // 那种不算「已经在装」，要重起一次；只有真正在装的这一次才跳过。
+        if (_sceneLoadOp != null && !_sceneLoadOp.isDone) return;
+        _peakTotal = 0f;                  // 每次重新加载都从头计
+        _sceneLoadOp = SceneManager.LoadSceneAsync("Game");
+        if (_sceneLoadOp != null)
+            _sceneLoadOp.allowSceneActivation = false;
+    }
+
+    /// <summary>放行激活：下一帧 Unity 卸掉当前场景、把 Game 场景顶上来。
+    /// 战斗加载界面在「进度 100%」那一刻调它，滑出动画再等 SceneReady。</summary>
+    public void AllowSceneActivation()
+    {
+        if (_sceneLoadOp != null) _sceneLoadOp.allowSceneActivation = true;
+    }
+
+    /// <summary>异步加载 Game 场景（先不激活，资源就绪后再激活）。
+    /// 加载画面由 BattleLoadingScreen 自己全程遮挡（全黑幕的 LoadingScreen 于 2026-09-27 删除）。</summary>
     public void LoadGameScene()
     {
-        _peakTotal = 0f;                  // 每次重新加载都从头计
-        LoadingScreen.BeginLoad();        // 全黑 + 右下角白字进度，一直盖到战斗开始
+        BeginSceneLoad();
         StartCoroutine(LoadGameSceneRoutine());
     }
 
     IEnumerator LoadGameSceneRoutine()
     {
         // 1. 异步加载场景（不激活）——场景内Awake/Start不会执行
-        _sceneLoadOp = SceneManager.LoadSceneAsync("Game");
-        if (_sceneLoadOp != null)
-            _sceneLoadOp.allowSceneActivation = false;
-
+        BeginSceneLoad();
         // 2. 等待资源预加载完成或超时（10秒）
         const float preloadTimeout = 10f;
         while (!IsDone)
@@ -184,14 +203,13 @@ public class Preloader : MonoBehaviour
         }
 
         // 4. 激活场景
-        if (_sceneLoadOp != null)
-            _sceneLoadOp.allowSceneActivation = true;
+        AllowSceneActivation();
     }
 
     /// <summary>目标场景是否已经加载完（激活完成）。加载界面用它决定何时收掉进度行 / 自动隐藏。</summary>
     public bool SceneReady => _sceneLoadOp == null || _sceneLoadOp.isDone;
 
-    /// <summary>预加载完成 + 场景已激活的总进度（供 LoadingScreen 显示）。</summary>
+    /// <summary>预加载完成 + 场景已激活的总进度（0~1，只增不减）。</summary>
     /// 场景激活后 Unity 的 progress 会停在 0.9 甚至回落，所以这里只增不减，且场景一加载完就直接报 1。
     public float TotalProgress
     {

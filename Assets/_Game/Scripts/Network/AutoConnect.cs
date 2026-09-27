@@ -11,7 +11,6 @@ public class AutoConnect : MonoBehaviour
     private float _startTime;
     private bool _returningToLobby;
     private bool _hostReadyShown;
-    private bool _fadeRequested;
 
     void Awake()
     {
@@ -21,9 +20,8 @@ public class AutoConnect : MonoBehaviour
         // 放在 Awake：早于任何连接/板面同步，主机与纯客户端都会各执行一次。
         CardInstance.ResetShadowGlobals();
         BoardSlot.ResetRemoteFirstStrikeFlags();
-        // 进入战斗场景的加载界面：全黑 + 右下角白字进度（画面由 LoadingScreen 负责）
-        LoadingScreen.Show();
-        if (!LobbyConfig.FromLobby) { LoadingScreen.RequestFadeOut(0.35f); return; }
+        // 加载画面由 BattleLoadingScreen 负责（全黑幕 LoadingScreen 于 2026-09-27 删除）
+        if (!LobbyConfig.FromLobby) return;
         NetworkClient.OnConnectedEvent += OnConnected;
         NetworkClient.OnDisconnectedEvent += OnDisconnected;
         NetworkServer.OnDisconnectedEvent += OnServerDisconnected;
@@ -60,12 +58,12 @@ public class AutoConnect : MonoBehaviour
             SetupKCP();
             if (LobbyConfig.IsHost)
             {
-                SetText("正在创建本地房间...");
+                Debug.Log("[AutoConnect] 直接连接模式：创建本地房间");
                 _nm.StartHost();
             }
             else
             {
-                SetText($"正在连接 {LobbyConfig.ServerIP} ...");
+                Debug.Log($"[AutoConnect] 直接连接 {LobbyConfig.ServerIP}");
                 _nm.networkAddress = LobbyConfig.ServerIP;
                 _nm.StartClient();
             }
@@ -74,14 +72,13 @@ public class AutoConnect : MonoBehaviour
 
         if (!SteamManager.Initialized)
         {
-            SetText("Steam 未就绪\n请先启动 Steam 客户端\n或在输入框填写对方 IP");
+            Debug.LogError("[AutoConnect] Steam 未就绪 —— 请先启动 Steam 客户端，或在输入框填写对方 IP");
             return;
         }
 
         if (LobbyConfig.IsHost)
         {
             Debug.LogWarning($"[AutoConnect-Timing] Host → 调用 CreateLobby @{Time.time - _startTime:F2}s");
-            SetText("正在建立连接 (1/3)...");
             SetupFizzy();
             RegisterCallbacks();
             SteamMatchmaking.CreateLobby(ELobbyType.k_ELobbyTypePublic, 2);
@@ -106,7 +103,6 @@ public class AutoConnect : MonoBehaviour
             }
 
             Debug.LogWarning($"[AutoConnect-Timing] Client → 没有房主 SteamID，回退搜索大厅 @{Time.time - _startTime:F2}s");
-            SetText("正在搜索对手 (1/2)...");
             InvokeRepeating(nameof(SearchLobbies), 0f, 2f);
         }
     }
@@ -199,19 +195,18 @@ public class AutoConnect : MonoBehaviour
         _lcb?.Dispose(); _llcb?.Dispose(); _leb?.Dispose();
         _lcb = Callback<LobbyCreated_t>.Create(r =>
         {
-            if (r.m_eResult != EResult.k_EResultOK) { SetText("创建房间失败"); return; }
+            if (r.m_eResult != EResult.k_EResultOK) { Debug.LogError("[AutoConnect] 创建房间失败"); return; }
             var lid = new CSteamID(r.m_ulSteamIDLobby);
             string matchKey = !string.IsNullOrEmpty(LobbyConfig.MatchKey) ? LobbyConfig.MatchKey : "anotherworld";
             SteamMatchmaking.SetLobbyData(lid, "game", matchKey);
             SteamMatchmaking.SetLobbyData(lid, "host_sid", SteamUser.GetSteamID().m_SteamID.ToString());
             Debug.Log($"[AutoConnect] Lobby {lid}, host SteamID64: {SteamUser.GetSteamID().m_SteamID}");
             Debug.LogWarning($"[AutoConnect-Timing] LobbyCreated 回调 @{Time.time - _startTime:F2}s — StartHost 即将执行");
-            SetText("正在建立连接 (2/3)...");
             _nm.StartHost();
             // Mirror 的 host 模式**不会**触发 NetworkClient.OnConnectedEvent
             // （NetworkClient.ConnectHost() 直接置 connectState=Connected、走 HostMode.SetupConnections()，
-            //   不经过 OnTransportConnected()），所以 OnConnected 里那句文案永远执行不到 ——
-            // 不自己补一刀，黑幕上的字就会永远停在 (2/3)，看起来像"卡在建立连接"。
+            //   不经过 OnTransportConnected()），所以 OnConnected 永远执行不到 ——
+            // 这里自己补一刀，只为把「Host 就绪」写进日志。
             ShowHostReady();
         });
         _llcb = Callback<LobbyMatchList_t>.Create(r =>
@@ -250,7 +245,6 @@ public class AutoConnect : MonoBehaviour
 
             CancelInvoke(nameof(SearchLobbies));
             Debug.LogWarning($"[AutoConnect-Timing] LobbyMatchList 回调 @{elapsed:F2}s — 找到房间 {target.m_SteamID}, 正在 JoinLobby");
-            SetText("找到对手, 正在加入...");
             SteamMatchmaking.JoinLobby(target);
         });
         _leb = Callback<LobbyEnter_t>.Create(r =>
@@ -263,7 +257,6 @@ public class AutoConnect : MonoBehaviour
             Debug.Log($"[AutoConnect] LobbyEnter — host SteamID64={hostSid}");
             Debug.LogWarning($"[AutoConnect-Timing] LobbyEnter 回调 @{Time.time - _startTime:F2}s — 准备 StartMirrorClient(1.5s延迟)");
             _nm.networkAddress = hostSid;
-            SetText("正在连接 Steam P2P (2/2)...");
             Invoke(nameof(StartMirrorClient), 1.5f);
         });
     }
@@ -285,7 +278,6 @@ public class AutoConnect : MonoBehaviour
             if (NetworkClient.isConnected) yield break;
             if (attempt > 1) { try { _nm.StopClient(); } catch { } }
 
-            SetText($"正在连接房主 (2/2)... {attempt}/{maxTries}");
             Debug.LogWarning($"[AutoConnect-Client] 直连房主 SteamID={hostSid}（第 {attempt}/{maxTries} 次）");
             _nm.networkAddress = hostSid;
             _nm.StartClient();
@@ -300,11 +292,10 @@ public class AutoConnect : MonoBehaviour
         }
 
         Debug.LogError("[AutoConnect-Client] 直连房主失败，回退搜索大厅");
-        SetText("正在搜索对手 (1/2)...");
         InvokeRepeating(nameof(SearchLobbies), 0f, 2f);
     }
 
-    /// <summary>Host 就绪后的黑幕文案（服务端已监听、本地客户端已连上）。
+    /// <summary>Host 就绪判定（服务端已监听、本地客户端已连上）—— 只写日志。
     /// Mirror 在 host 模式下不给 OnConnected 回调，只能自己推；见 LobbyCreated 回调里的说明。</summary>
     void ShowHostReady()
     {
@@ -314,13 +305,12 @@ public class AutoConnect : MonoBehaviour
             _hostReadyShown = true;
             Debug.LogWarning($"[AutoConnect-Timing] Host 就绪 — 服务端已监听，等待对手接入 @{Time.time - _startTime:F2}s");
         }
-        SetText("已连接, 等待对手加入...");
     }
 
     void SearchLobbies()
     {
         if (NetworkClient.isConnected || NetworkServer.active) { CancelInvoke(nameof(SearchLobbies)); return; }
-        if (Time.time - _startTime > 60f) { CancelInvoke(nameof(SearchLobbies)); SetText("搜索超时"); return; }
+        if (Time.time - _startTime > 60f) { CancelInvoke(nameof(SearchLobbies)); Debug.LogError("[AutoConnect] 搜索对手超时（60s）"); return; }
         string matchKey = !string.IsNullOrEmpty(LobbyConfig.MatchKey) ? LobbyConfig.MatchKey : "anotherworld";
         SteamMatchmaking.AddRequestLobbyListStringFilter("game", matchKey, ELobbyComparison.k_ELobbyComparisonEqual);
         // 显式世界范围——默认只返回同数据中心的大厅，Host 在不同数据中心时 Client 搜不到（与 Lobby 场景同一根因）
@@ -328,12 +318,8 @@ public class AutoConnect : MonoBehaviour
         SteamMatchmaking.RequestLobbyList();
     }
 
-    void SetText(string m) { LoadingScreen.SetStatus(m); }
-    void HideUI() { LoadingScreen.Hide(); }
-    void ShowUI(string msg) { LoadingScreen.Show(); LoadingScreen.SetStatus(msg); }
     void OnConnected(){
         Debug.LogWarning($"[AutoConnect-Timing] OnConnected — 连接建立 @{Time.time - _startTime:F2}s");
-        SetText(NetworkServer.active?"正在建立连接 (3/3)...":"已连接, 等待对手...");
     }
     void OnDisconnected()
     {
@@ -353,7 +339,6 @@ public class AutoConnect : MonoBehaviour
         if (_returningToLobby) return;
         _returningToLobby = true;
         Debug.Log($"[AutoConnect] ReturnToLobby: {reason}");
-        ShowUI($"{reason}\n即将返回大厅...");
         StartCoroutine(DoReturnToLobby());
     }
     System.Collections.IEnumerator DoReturnToLobby()
@@ -361,19 +346,8 @@ public class AutoConnect : MonoBehaviour
         yield return new WaitForSeconds(2f);
         if (NetworkServer.active) _nm.StopHost();
         else if (NetworkClient.isConnected) _nm.StopClient();
-        LoadingScreen.Hide();
         if (_nm != null) { Destroy(_nm.gameObject); _nm = null; }
         SceneManager.LoadScene("Lobby");
     }
     void OnDestroy(){ _lcb?.Dispose(); _llcb?.Dispose(); _leb?.Dispose(); NetworkClient.OnConnectedEvent-=OnConnected; NetworkClient.OnDisconnectedEvent-=OnDisconnected; NetworkServer.OnDisconnectedEvent-=OnServerDisconnected; }
-    void Update(){
-        if(!LoadingScreen.IsVisible)return;
-        if(!_hostReadyShown) ShowHostReady();   // host 模式文本兜底（StartHost 抛异常时不会走到这里）
-        if(_turnManager!=null&&_turnManager.enabled&&NetworkTurnSync.Instance!=null&&NetworkTurnSync.Instance.gameStarted){
-            if (_fadeRequested) return;
-            _fadeRequested = true;
-            Debug.LogWarning($"[AutoConnect-Timing] 请求淡出加载界面 — gameStarted=true @{Time.time - _startTime:F2}s 总耗时");
-            LoadingScreen.RequestFadeOut();
-        }
-    }
 }

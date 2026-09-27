@@ -170,11 +170,12 @@ public class GameIntroCamera : MonoBehaviour
 
     IEnumerator Play()
     {
-        // 加载界面（LoadingScreen）还盖着就先停在起始位姿不动 —— 等它撤掉（淡出完）那一刻再从近景起飞。
-        // 否则整段入场（相机飞行 + 槽位浮现 + UI 淡入）会被那块全黑幕吃掉，玩家什么都看不到。
+        // 屏幕还被盖着就先停在起始位姿不动 —— 等盖的东西撤掉那一刻再从近景起飞，否则整段入场
+        // （相机飞行 + 槽位浮现 + UI 淡入）会被幕吃掉，玩家什么都看不到。
+        // 等的是战斗加载界面自己（BattleLoadingScreen.Covering）—— 它搬到常驻画布上做完滑出才算完。
         // 30 秒兜底：万一幕因为异常一直没撤，入场也得自己起来（Revealed 卡住会连开局抽牌一起卡住）。
         float waitStart = Time.unscaledTime;
-        while (LoadingScreen.IsVisible && Time.unscaledTime - waitStart < 30f) yield return null;
+        while (BattleLoadingScreen.Covering && Time.unscaledTime - waitStart < 30f) yield return null;
 
         bool revealed = false;
         float t = 0f;

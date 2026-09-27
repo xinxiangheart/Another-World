@@ -7555,6 +7555,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   window: {fileID: 1056539473}
+  bg: {fileID: 0}
   bandTop: {fileID: 1535581190}
   bandBottom: {fileID: 1000675846}
   ornTop: {fileID: 166889159}
@@ -7581,7 +7582,7 @@ MonoBehaviour:
   localStreakValue: {fileID: 469011482}
   progressText: {fileID: 854466164}
   openSeconds: 0.5
-  outSeconds: 0.35
+  outSeconds: 0.18
   minSeconds: 1.4
   driftSpeed: 10
   driftRamp: 0.8
