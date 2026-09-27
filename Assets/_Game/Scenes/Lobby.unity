@@ -1335,6 +1335,8 @@ MonoBehaviour:
   hoverTexture: {fileID: 2800000, guid: 3c463d379c3650444a84b86eeebb7b99, type: 3}
   popup: {fileID: 346749046}
   title: "\u90AE\u4EF6"
+  hint: 
+  showMyId: 0
 --- !u!114 &116563208
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -4180,6 +4182,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   titleText: {fileID: 366107205}
+  hintText: {fileID: 596505190}
 --- !u!1 &349773708
 GameObject:
   m_ObjectHideFlags: 0
@@ -7961,6 +7964,8 @@ MonoBehaviour:
   hoverTexture: {fileID: 2800000, guid: 10826656ded0d8b4fa96dde6c67375e5, type: 3}
   popup: {fileID: 346749046}
   title: "\u6559\u7A0B"
+  hint: 
+  showMyId: 0
 --- !u!114 &627360920
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -15215,6 +15220,8 @@ MonoBehaviour:
   hoverTexture: {fileID: 2800000, guid: a51bb14f799fae84e949c0df7526fad3, type: 3}
   popup: {fileID: 0}
   title: 
+  hint: 
+  showMyId: 0
 --- !u!114 &1109629183
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -19655,6 +19662,8 @@ MonoBehaviour:
   hoverTexture: {fileID: 2800000, guid: ee0c5e0ca939a7c45b98d154e8184bf9, type: 3}
   popup: {fileID: 346749046}
   title: "\u597D\u53CB"
+  hint: 
+  showMyId: 1
 --- !u!114 &1413409190
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -20746,6 +20755,8 @@ MonoBehaviour:
   hoverTexture: {fileID: 2800000, guid: a51bb14f799fae84e949c0df7526fad3, type: 3}
   popup: {fileID: 0}
   title: 
+  hint: 
+  showMyId: 0
 --- !u!114 &1450701013
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -21826,6 +21837,8 @@ MonoBehaviour:
   hoverTexture: {fileID: 2800000, guid: f6587bd03f3099643903e2709521ed8d, type: 3}
   popup: {fileID: 346749046}
   title: "\u6D3B\u52A8"
+  hint: 
+  showMyId: 0
 --- !u!114 &1524892663
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -26123,6 +26136,8 @@ MonoBehaviour:
   hoverTexture: {fileID: 2800000, guid: 81960297b79c61a4fb1010a0734d5a8e, type: 3}
   popup: {fileID: 346749046}
   title: "\u5546\u57CE"
+  hint: 
+  showMyId: 0
 --- !u!114 &1900945629
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -27720,7 +27735,7 @@ MonoBehaviour:
   m_fontMaterials: []
   m_fontColor32:
     serializedVersion: 2
-    rgba: 4294967295
+    rgba: 3973245168
   m_fontColor: {r: 0.9411765, g: 0.9098039, b: 0.8235294, a: 0.9254902}
   m_enableVertexGradient: 0
   m_colorMode: 3
@@ -27733,7 +27748,7 @@ MonoBehaviour:
   m_spriteAsset: {fileID: 0}
   m_tintAllSprites: 0
   m_StyleSheet: {fileID: 0}
-  m_TextStyleHashCode: 0
+  m_TextStyleHashCode: -1183493901
   m_overrideHtmlColors: 0
   m_faceColor:
     serializedVersion: 2

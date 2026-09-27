@@ -140,7 +140,7 @@ public static class LobbyUIBuilder
 
         // ── 悬停 / 点击（2026-09-26）：四个「压墙」图标挂悬停组件，点开同一个占位弹窗 ──
         LobbyPopup popup = NewPlaceholderPopup(subLayer, new Vector2(900f, 520f));
-        WireIconHover(iconFriend, "Icon_LobbyFriend.png", "Icon_LobbyFriendHover.png", popup, "好友");
+        WireIconHover(iconFriend, "Icon_LobbyFriend.png", "Icon_LobbyFriendHover.png", popup, "好友", null, true);   // 好友 = 弹窗里显示自己的「异界号」
         WireIconHover(iconShop, "Icon_LobbyShop.png", "Icon_LobbyShopHover.png", popup, "商城");
         WireIconHover(iconEvent, "Icon_LobbyEvent.png", "Icon_LobbyEventHover.png", popup, "活动");
         WireIconHover(iconTutorial, "Icon_LobbyTutorial.png", "Icon_LobbyTutorialHover.png", popup, "教程");
@@ -427,7 +427,8 @@ public static class LobbyUIBuilder
 
     // ── 悬停 / 点击（2026-09-26）：四个「压墙」图标 + 占位弹窗 ─────────────────
     /// <summary>给图标挂悬停组件：常态 / 悬停两张贴图只差色调（形体尺寸一致），切换时不会跳位。</summary>
-    static void WireIconHover(RawImage icon, string normalFile, string hoverFile, LobbyPopup popup, string title)
+    static void WireIconHover(RawImage icon, string normalFile, string hoverFile, LobbyPopup popup, string title,
+                                            string hint = null, bool showMyId = false)
     {
         var hover = icon.GetComponent<LobbyIconHover>();
         if (hover == null) hover = icon.gameObject.AddComponent<LobbyIconHover>();
@@ -436,6 +437,8 @@ public static class LobbyUIBuilder
         hover.hoverTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(UiDir + hoverFile);
         hover.popup = popup;
         hover.title = title;
+        hover.hint = hint;
+        hover.showMyId = showMyId;
         if (hover.hoverTexture == null) Debug.LogWarning($"[LobbyUI] 找不到悬停贴图：{UiDir + hoverFile}");
     }
 
@@ -465,6 +468,7 @@ public static class LobbyUIBuilder
         popup.titleText = NewLabel(panel.rectTransform, "Text_Title", "占位", new Vector2(48f, -34f), new Vector2(panelSize.x - 96f, 64f), 42f);
         TextMeshProUGUI hint = NewLabel(panel.rectTransform, "Text_Hint", "占位 · 待接真实面板", new Vector2(48f, -112f), new Vector2(panelSize.x - 96f, 40f), 24f);
         hint.color = new Color(240f / 255f, 232f / 255f, 210f / 255f, 0.62f);
+        popup.hintText = hint;
 
         RawImage close = NewRaw(panel.rectTransform, "Btn_Close", UiDir + "LobbyPopupBtnPlate.png", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-36f, 36f), new Vector2(200f, 64f));
         var closeButton = close.gameObject.AddComponent<Button>();
