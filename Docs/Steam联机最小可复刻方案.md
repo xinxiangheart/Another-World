@@ -435,3 +435,44 @@ ReturnToLobby(reason):
 10. [ ] `NetworkTurnSync` 用 `gameStarted` 门闩 + 双方 NetworkPlayer 就绪后开局。
 11. [ ] 断线：`OnDisconnected` / `OnServerDisconnectedEvent` → 提示 → Stop → 回 Lobby。
 12. [ ] 所有 Steam 调用前 `SteamUser.BLoggedOn()` 预检；所有回调检查 `m_eResult`；所有等待加超时。
+
+---
+
+## 7. 好友表（大厅左侧边栏）与 Web API 改造位
+
+**一句话**：大厅「好友」图标点开左侧边栏，名单 = **互为 Steam 好友** ∩（**他玩过本游戏**）。这一步**不需要** Web API Key；拿到 Key 之后只要装一个委托，其余代码一行不动。
+
+### 7.1 数据链
+
+| 环节 | 类 | 干什么 |
+|---|---|---|
+| ① 取 Steam 好友 + 运行时证据 | `SteamFriendSource` | `GetFriendCount/GetFriendByIndex(k_EFriendFlagImmediate)` + `GetFriendRelationship == k_EFriendRelationshipFriend`；三条证据见 §7.2 |
+| ② 过滤 | `SteamFriendAndPlayedFilter` / `FriendFilterChain` | 必须 `steamFriend`，且（`playedOurGame` 或 `FriendEvidence.OwnsGame`） |
+| ③ 合并 / 排序 / 重扫 | `FriendListService` | 并上本地名单里的「游戏内好友」；20 秒重扫一次；`Refreshed` 事件广播给 UI |
+| ④ 本地名单 | `FriendStore` | `Application.persistentDataPath/friends.json`；SteamID 存**文本**（JsonUtility 对 ulong 不可靠） |
+| ⑤ 行 UI | `LobbyFriendListUI` + `FriendRowUI` | 克隆场景里那份 **inactive** 的 `RowTemplate`；头像走 `SteamAvatarManager` + `PlayerProfilePanel.CircleCrop` |
+
+### 7.2 「他玩过本游戏」的三条运行时证据（无 Key 时）
+
+1. `GetFriendGamePlayed()` → `m_gameID.AppID() == 本机 AppID`：**他此刻正在玩本游戏**。
+2. `GetFriendCoplayGame()` / `GetFriendCoplayTime()`：**我俩一起玩过本游戏**。
+3. 本地名单 `local-seen`：我们见过他（如匹配到对手时 `FriendListService.RecordMetOpponent(steamId, name)`）。
+
+> **客户端 SDK 没有「他是否拥有本游戏」这一个查询**（只有 Web API `IPlayerService/GetOwnedGames` 有）。所以「他自己买了自己玩、但从没和你同局过」这种人，必须等第 ④ 条 Key。
+
+### 7.3 拿到 Web API Key 之后怎么接（改造位）
+
+改造位就一个字段：`FriendEvidence.OwnedLookup`（`Assets/_Game/Scripts/UI/Lobby/FriendFilters.cs`，键 = SteamID64，值 = 是否拥有本游戏）。装上一个 `Func<ulong,bool>` 即生效 —— `SteamFriendAndPlayedFilter` 与 UI 都不用改。
+
+前置三件事：
+
+1. **正式 AppID**：现在 `steam_appid.txt` 还是 `480`（Spacewar 测试号），查出来的「拥有」在 Steam 眼里是 Spacewar；
+2. 好友的**游戏详情对公众可见**，否则查不到，只能落回上面三条；
+3. 结果**本地缓存**（Web API 有配额，一天刷一次足够）。
+
+### 7.4 已知边界（2026-09-27 实测）
+
+- Editor 里 `AppID = 480`、互为 Steam 好友 10 人，但三条证据全 0 → 名单**空是正常的**（界面上显示「暂无好友」）。
+- 名单容器 `List` 现在**没有 ScrollRect**（高 900，约 10 行），超了要加滚动。
+- 「用异界号加好友」的**输入界面还没做**（`FriendStore.AddManual` / `PlayerId.ResolveSteamId` 已就绪）。
+- 好友行现在**只有悬停变金**（`Button` 零监听，用来吃掉点击防冒泡）；点击打开对方资料页没做。

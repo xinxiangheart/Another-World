@@ -1138,6 +1138,74 @@ public static class LobbyUIBuilder
         empty.color = new Color32(142, 162, 180, 170);            // 钢 #8EA2B4 · 67%
         empty.raycastTarget = false;
 
+        // ── 名单：容器 + 行模板（2026-09-27：好友表接实际数据）────────────────────────
+        // 数据链：SteamFriendSource（互为 Steam 好友 + 正在玩 / 一起玩过）→ FriendFilterChain
+        //         → FriendListService（并上手动加的游戏内好友、排序、20 秒重扫）→ 本 List 克隆行。
+        // 改造位：拿到 Steam Web API Key 后只要装 FriendEvidence.OwnedLookup（GetOwnedGames），
+        //         「拥有即加」自动生效 —— 这里和 UI 都不用动。
+        RectTransform list = NewRect(body, "List", AnchorTL, PivotTL,
+                                     new Vector2(28f, -124f), new Vector2(FriendsPanelW - 56f, 900f));
+
+        // 行模板：挂在 List 下、**存成 inactive**（运行时克隆 + Bind，真名单里一行一个）
+        const float RowH = 84f;
+        float rowW = FriendsPanelW - 56f;
+        var rowRT = NewRect(list, "RowTemplate", AnchorTL, PivotTL, Vector2.zero, new Vector2(rowW, RowH));
+        var row = rowRT.gameObject.AddComponent<FriendRowUI>();
+
+        // 整行一块悬停底（常态 α=0 → 悬停淡金）：走内置 Button 的 ColorTint，不写代码
+        var rowBg = rowRT.gameObject.AddComponent<Image>();
+        rowBg.color = new Color32(200, 164, 74, 0);
+        rowBg.raycastTarget = true;
+        var rowBtn = rowRT.gameObject.AddComponent<Button>();
+        rowBtn.transition = Selectable.Transition.ColorTint;
+        rowBtn.targetGraphic = rowBg;
+        rowBtn.navigation = NoNav(rowBtn.navigation);
+        var rowColors = rowBtn.colors;
+        rowColors.normalColor = new Color32(200, 164, 74, 0);
+        rowColors.highlightedColor = new Color32(200, 164, 74, 20);
+        rowColors.pressedColor = new Color32(200, 164, 74, 40);
+        rowColors.selectedColor = new Color32(200, 164, 74, 0);
+        rowColors.disabledColor = new Color32(200, 164, 74, 0);
+        rowColors.fadeDuration = 0.06f;
+        rowBtn.colors = rowColors;
+
+        // 头环 + 井里头像：井的口径 = LobbyAvatarRing.png 264 里井半径 102（直径 204）→ 72 上 55.6 → 取 56
+        RawImage rowRing = NewRaw(rowRT, "Avatar_Ring", UiDir + "LobbyAvatarRing.png",
+                                 AnchorTL, PivotTL, new Vector2(0f, -6f), new Vector2(72f, 72f));
+        rowRing.raycastTarget = false;
+        var avatarRT = NewRect(rowRT, "Avatar_Image", AnchorTL, PivotTL, new Vector2(8f, -14f), new Vector2(56f, 56f));
+        var rowAvatar = avatarRT.gameObject.AddComponent<RawImage>();
+        rowAvatar.texture = null;                       // 运行时填：先灰盘，Steam 头像到货自己换
+        rowAvatar.raycastTarget = false;
+        avatarRT.SetSiblingIndex(rowRing.transform.GetSiblingIndex() + 1);
+
+        TextMeshProUGUI rowName = NewLabel(rowRT, "Text_Name", "名字",
+                                          new Vector2(88f, -14f), new Vector2(rowW - 96f, 40f), 26f);
+        rowName.alignment = TextAlignmentOptions.Left;
+        rowName.color = Cream;
+        TextMeshProUGUI rowStatus = NewLabel(rowRT, "Text_Status", "在线",
+                                            new Vector2(88f, -50f), new Vector2(rowW - 96f, 30f), 20f);
+        rowStatus.alignment = TextAlignmentOptions.Left;
+        rowStatus.color = new Color32(142, 162, 180, 225);   // 钢 #8EA2B4（运行时按状态改色）
+
+        var rowLine = NewRect(rowRT, "Line_Row", AnchorTL, PivotTL,
+                              new Vector2(0f, -83f), new Vector2(rowW, 1f)).gameObject.AddComponent<Image>();
+        rowLine.color = new Color32(200, 164, 74, 90);       // 比面板那条分隔线更淡
+        rowLine.raycastTarget = false;
+
+        row.avatarImage = rowAvatar;
+        row.nameText = rowName;
+        row.statusText = rowStatus;
+        rowRT.gameObject.SetActive(false);                   // 模板自己藏着，只给克隆用
+
+        var listUI = list.gameObject.AddComponent<LobbyFriendListUI>();
+        listUI.rowTemplate = row;
+        listUI.emptyText = empty;                            // 空表时那句「暂无好友」
+
+        // 服务挂在大厅 Canvas 上（本菜单会反复重建 Panel_Friends，服务别跟着一起没）
+        if (canvas.gameObject.GetComponent<FriendListService>() == null)
+            canvas.gameObject.AddComponent<FriendListService>();
+
         // ── 接到好友图标（左上头像板下沿那颗）：点击不再弹占位窗，改成开 / 关这个侧边栏 ──
         Transform friend = FindDeep(hud, "Icon_Friend");
         if (friend == null) Debug.LogWarning("[LobbyUI] HUD 层里找不到 Icon_Friend —— 侧边栏没有入口");

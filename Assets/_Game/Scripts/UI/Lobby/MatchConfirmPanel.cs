@@ -179,6 +179,9 @@ public class MatchConfirmPanel : MonoBehaviour
         EnsurePreloader();
         if (Preloader.Instance != null) Preloader.Instance.StartPreload();
         Debug.Log("[MatchConfirm] 双方已确认 → 金色 3 秒倒计时 + 开始预加载战斗素材");
+        // 记下「我们遇到过这个玩家」（local-seen 证据，2026-09-27）：以后他只要是我的 Steam 好友，
+        // 就会出现在好友侧边栏里 —— 用户规则「互为 Steam 好友 + 双方都玩过本游戏 → 默认就加」。
+        FriendListService.RecordMetOpponent(LobbyConfig.RemoteSteamID, null);
     }
 
     // ===================== 超时 / 对方拒绝 =====================
