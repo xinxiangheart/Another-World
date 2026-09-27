@@ -24,7 +24,11 @@ using TMPro;
  ///              ├─ Entry_Room                            ← 大框左格（格内左上 0,0，板身 324x130）
  ///              └─ Entry_More                            ← 大框右格（格内左上 342,0，板身 324x130；与左格同形体、同倾角，两条上沿平行）
 ///         └─ Popup_Placeholder                        ← 占位弹窗（**存成 inactive**）：Dim 遮罩（点一下关）/ Panel / Text_Title / Text_Hint / Btn_Close
-/// 摆位与贴图为主；**唯一的逻辑**是那四张「压墙」图标：悬停换贴图（LobbyIconHover）、点击弹占位弹窗（LobbyPopup）。
+///                                                        **建好就提到 Canvas 下并排到最后** —— 见下面「接入实际功能」那段
+/// 逻辑分两处：四个「压墙」图标 悬停换贴图（LobbyIconHover）；八块入口板 悬停文字变金 + 点击弹占位弹窗（LobbyPlateHover）。
+/// 左上头像是真数据（SteamDataManager → PlayerProfilePanel），右上齿轮开全局设置面板（LobbySettingsButton → SettingsPanel）。
+/// 2026-09-27「接入实际功能」写在这份脚本末尾：菜单「大厅：接入实际功能」是补丁式的（不重建），
+/// BuildLobbyUi / BuildCornerRow 里也各有一份同样的调用 —— 重跑整套构建不会丢接线。
 /// 场景里已有的入口按钮一律不动；重复执行会先删掉 LobbyUI_v1 再重建（接线在脚本里，重跑不会丢）。
 /// 生成后位置 / 尺寸 / 倾角直接在 Scene 或 Inspector 里拖。
 /// </summary>
@@ -55,6 +59,7 @@ public static class LobbyUIBuilder
     static readonly Vector2 CellRoom = new Vector2(0f, 0f);
     static readonly Vector2 CellMore = new Vector2(342f, 0f);
     static readonly Color Cream = new Color32(240, 232, 210, 236);      // mockup 文字色 #F0E8D2 α0.93
+    static readonly Color GoldBright = new Color32(228, 203, 132, 255); // 本套亮金 #E4CB84（入口板悬停文字色）
 
     static TMP_FontAsset _font;
 
@@ -120,22 +125,35 @@ public static class LobbyUIBuilder
 
         // ── 右半：四块入口板（板心锚屏幕右上角；名字是子物体，跟着板一起倾斜）──
         // ── 右半：入口板（上排两块板心锚屏幕右上角；下排两块挂在那块透明大框下）──
-        NewEntry(rootRT, "Entry_Battle", "LobbyEntryPlate_Battle.png", "战斗", AnchorTR, new Vector2(-453.5f, -350f), new Vector2(666f, 145f), 44f, 1.6f);
-        NewEntry(rootRT, "Entry_Cards", "LobbyEntryPlate_Cards.png", "卡牌总览", AnchorTR, new Vector2(-480f, -540f), new Vector2(661f, 149f), 46f, 0f);
+        RawImage entryBattle = NewEntry(rootRT, "Entry_Battle", "LobbyEntryPlate_Battle.png", "战斗", AnchorTR, new Vector2(-453.5f, -350f), new Vector2(666f, 145f), 44f, 1.6f);
+        RawImage entryCards = NewEntry(rootRT, "Entry_Cards", "LobbyEntryPlate_Cards.png", "卡牌总览", AnchorTR, new Vector2(-480f, -540f), new Vector2(661f, 149f), 46f, 0f);
 
         // 下排：房间 / 其它 是**一个透明大框的两个格子** —— 大框本身不画，只把两块的位置钉在格子左上角。
         // 这样整排一起拖就改 BoxPos，两块各自的倾角仍是自己的 Rotation Z。
         RectTransform bottomRow = NewRect(rootRT, "Entry_BottomRow", AnchorTR, PivotTL, BoxPos, BoxSize);
-        NewEntry(bottomRow, "Entry_Room", "LobbyEntryPlate_Room.png", "房间", AnchorTL, CellCenter(CellRoom, new Vector2(324f, 130f)), new Vector2(324f, 130f), 30f, -1.5f);
-        NewEntry(bottomRow, "Entry_More", "LobbyEntryPlate_More.png", "其它", AnchorTL, CellCenter(CellMore, new Vector2(324f, 130f)), new Vector2(324f, 130f), 30f, -1.5f);
+        RawImage entryRoom = NewEntry(bottomRow, "Entry_Room", "LobbyEntryPlate_Room.png", "房间", AnchorTL, CellCenter(CellRoom, new Vector2(324f, 130f)), new Vector2(324f, 130f), 30f, -1.5f);
+        RawImage entryMore = NewEntry(bottomRow, "Entry_More", "LobbyEntryPlate_More.png", "其它", AnchorTL, CellCenter(CellMore, new Vector2(324f, 130f)), new Vector2(324f, 130f), 30f, -1.5f);
 
         // ── 悬停 / 点击（2026-09-26）：四个「压墙」图标挂悬停组件，点开同一个占位弹窗 ──
         LobbyPopup popup = NewPlaceholderPopup(rootRT, new Vector2(900f, 520f));
+        // 弹窗提到 Canvas 下、并排到最后 —— CornerRow_v1 是 Canvas 的最后一个子物体，
+        // 弹窗留在 LobbyUI_v1 里会被它盖住（Dim 遮罩盖不住右下角那一条）。
+        popup.transform.SetParent(canvas.transform, false);
+        popup.transform.SetAsLastSibling();
         WireIconHover(iconFriend, "Icon_LobbyFriend.png", "Icon_LobbyFriendHover.png", popup, "好友");
         WireIconHover(iconShop, "Icon_LobbyShop.png", "Icon_LobbyShopHover.png", popup, "商城");
         WireIconHover(iconEvent, "Icon_LobbyEvent.png", "Icon_LobbyEventHover.png", popup, "活动");
         WireIconHover(iconTutorial, "Icon_LobbyTutorial.png", "Icon_LobbyTutorialHover.png", popup, "教程");
         WireIconHover(iconMail, "Icon_LobbyMail.png", "Icon_LobbyMailHover.png", popup, "邮件");
+
+        // ── 接入实际功能（2026-09-27）：入口板 悬停变金 + 点击占位；左上 Steam 资料；右上齿轮接设置 ──
+        WirePlateHover(entryBattle, popup, "战斗");
+        WirePlateHover(entryCards, popup, "卡牌总览");
+        WirePlateHover(entryRoom, popup, "房间");
+        WirePlateHover(entryMore, popup, "其它");
+        WireProfile(profile.rectTransform);
+        WireSettingsGear(band.rectTransform);
+
         Selection.activeGameObject = root;
         EditorSceneManager.MarkSceneDirty(root.scene);
         Debug.Log("[LobbyUI] 已在 Canvas 下生成 " + RootName + "（占位）：位置 / 尺寸在 Scene 里拖；四张「压墙」图标已接悬停 + 点击弹占位弹窗，倾角改 Entry_* 的 Rotation Z；下排整排位置改 Entry_BottomRow（透明大框，只限位）；形体（斜切 / 远端收缩）改 LobbyUIv1.ps1 的 $ENTRY_SHAPE 后重新出图再跑本菜单；悬停 / 弹窗改本脚本的 WireIconHover / NewPlaceholderPopup。");
@@ -185,6 +203,8 @@ public static class LobbyUIBuilder
         GameObject previous = GameObject.Find(CornerRootName);
         if (previous != null) Undo.DestroyObjectImmediate(previous);
 
+        var popup = Object.FindObjectOfType<LobbyPopup>(true);
+
         // 容器只用于限位，自己什么都不画（用法同 Entry_BottomRow）
         float rowW = CornerBodyW * CornerKinds.Length;
         RectTransform rowRT = NewRect(parent, CornerRootName, new Vector2(1f, 0f), new Vector2(1f, 0f),
@@ -198,8 +218,9 @@ public static class LobbyUIBuilder
             string kind = CornerKinds[i];
             string cap = char.ToUpper(kind[0]) + kind.Substring(1);
             var center = new Vector2(-(CornerBodyW * 0.5f + CornerBodyW * i), CornerBodyH * 0.5f);
-            NewEntry(rowRT, "Entry_" + cap, "LobbyCornerPlate_" + cap + ".png", CornerLabels[i],
+            RawImage corner = NewEntry(rowRT, "Entry_" + cap, "LobbyCornerPlate_" + cap + ".png", CornerLabels[i],
                      new Vector2(1f, 0f), center, new Vector2(CornerBodyW, CornerBodyH), CornerFontSize, 0f);
+            WirePlateHover(corner, popup, CornerLabels[i]);
         }
 
         Selection.activeGameObject = rowRT.gameObject;
@@ -336,7 +357,7 @@ public static class LobbyUIBuilder
     /// 端头斜切与远端收缩已烤进贴图，贴图因此比板身大一圈：外框尺寸**直接读贴图像的像素尺寸 ÷ 3**
     /// （出图脚本是唯一版式口径，这里不再自己算几何）。板身在外框里居中，所以 centerPos 依旧按板心给。
     /// 文字口径与 mockup 的 Get-EntryLabelOffset 一致 —— 距板身左沿 58px、字顶落在板心上方 0.87×字号。</summary>
-    static void NewEntry(Transform parent, string name, string texture, string label, Vector2 anchor, Vector2 centerPos, Vector2 body, float fontSize, float tilt)
+    static RawImage NewEntry(Transform parent, string name, string texture, string label, Vector2 anchor, Vector2 centerPos, Vector2 body, float fontSize, float tilt)
     {
         Texture2D tex = AssetDatabase.LoadAssetAtPath<Texture2D>(UiDir + texture);
         if (tex == null) Debug.LogWarning($"[LobbyUI] 找不到贴图：{UiDir + texture}");
@@ -346,6 +367,7 @@ public static class LobbyUIBuilder
         image.texture = tex;
         rt.localRotation = Quaternion.Euler(0f, 0f, tilt);
         NewLabel(rt, "Label", label, EntryLabelPos(body, frame, fontSize), new Vector2(body.x - 90f, fontSize * 1.6f), fontSize);
+        return image;
     }
 
     /// <summary>板心在**大框**里的位置：大框原点 = 左上角、格子坐标 y 向下，这里翻成 anchoredPosition 的 y 向上。</summary>
@@ -468,6 +490,145 @@ public static class LobbyUIBuilder
         rt.anchoredPosition = Vector2.zero;
         text.alignment = TextAlignmentOptions.Center;
         return text;
+    }
+
+    // ── 接入实际功能（2026-09-27）────────────────────────────────────────────────
+    // 用户：左上角头像和名称要实际显示 Steam 头像与昵称；这些方块文字鼠标悬停变金、点击打开占位图；
+    //       右上角设置打开就是设置页面。
+    //   ① 八块入口板（上排两块 + 透明大框两格 + 右下角四块）挂 LobbyPlateHover —— 悬停文字变金（#E4CB84）、
+    //      点击开同一个占位弹窗。板自己的 RawImage 开 raycastTarget，板上 Label 关掉（指针落在字上冒泡到板）。
+    //   ② 左上 Plate_Profile 挂 PlayerProfilePanel：金圆框的「井」上盖一块 68x68 的头像 RawImage（Avatar_Image），
+    //      圆形裁切走 PlayerProfilePanel.circularCrop。井的口径来自 LobbyAvatarRing.png
+    //      （贴图 264 里半径 102 → 屏幕 88 上 34 → 直径 68）—— 头像位置按**框自己的尺寸现算**，框挪了头像跟着挪。
+    //   ③ 右上 Icon_Gear 挂 LobbySettingsButton —— 运行时补 Button 接 SettingsPanel.Toggle（旧那个 inactive 的
+    //      名字叫 Setting 的按钮 SettingsLauncher 扫不到，所以不靠它）。
+    // 补丁式：只动上面这几处，**不重建 LobbyUI_v1 / CornerRow_v1**，手调的位置不会被冲掉。
+
+    [MenuItem("Tools/异界/大厅：接入实际功能（Steam 资料 / 悬停变金 / 点击占位 / 设置）")]
+    public static void WireFunctionalLobby()
+    {
+        GameObject ui = GameObject.Find(RootName);
+        if (ui == null) { Debug.LogError("[LobbyUI] 场景里没有 " + RootName + " —— 先跑「生成大厅 UI v1（占位）」"); return; }
+
+        var popup = Object.FindObjectOfType<LobbyPopup>(true);
+        if (popup == null) Debug.LogWarning("[LobbyUI] 场景里找不到 LobbyPopup —— 点击先不接弹窗");
+        else
+        {
+            // 弹窗必须在 Canvas 的最后一个子物体上（CornerRow_v1 是最后一个），否则右下角那一条会盖在弹窗上
+            popup.transform.SetParent(ui.transform.parent, false);
+            popup.transform.SetAsLastSibling();
+        }
+
+        int wired = 0;
+        wired += WirePlate(ui.transform, "Entry_Battle", "战斗", popup);
+        wired += WirePlate(ui.transform, "Entry_Cards", "卡牌总览", popup);
+        wired += WirePlate(ui.transform, "Entry_BottomRow/Entry_Room", "房间", popup);
+        wired += WirePlate(ui.transform, "Entry_BottomRow/Entry_More", "其它", popup);
+        wired += WirePlate(ui.transform, CornerRootName + "/Entry_Season", "赛季", popup);
+        wired += WirePlate(ui.transform, CornerRootName + "/Entry_Notice", "公告", popup);
+        wired += WirePlate(ui.transform, CornerRootName + "/Entry_Collection", "藏品", popup);
+        wired += WirePlate(ui.transform, CornerRootName + "/Entry_Achievement", "成就", popup);
+
+        Transform profile = ui.transform.Find("Plate_Profile");
+        if (profile != null) WireProfile(profile);
+        else Debug.LogWarning("[LobbyUI] 找不到 Plate_Profile —— 头像 / 昵称没接");
+
+        Transform band = ui.transform.Find("Plate_TopBand");
+        if (band != null) WireSettingsGear(band);
+        else Debug.LogWarning("[LobbyUI] 找不到 Plate_TopBand —— 齿轮没接");
+
+        EditorSceneManager.MarkSceneDirty(ui.scene);
+        Debug.Log($"[LobbyUI] 已接入实际功能：{wired} 块入口板「悬停变金 + 点击占位」；左上接 Steam 头像 / 昵称；右上齿轮接设置面板。");
+    }
+
+    /// <summary>按场景路径取一块入口板，接「悬停文字变金 + 点击占位弹窗」。返回 1 = 接上了。</summary>
+    static int WirePlate(Transform root, string path, string title, LobbyPopup popup)
+    {
+        Transform t = root.Find(path);
+        if (t == null) { Debug.LogWarning("[LobbyUI] 找不到入口板：" + RootName + "/" + path); return 0; }
+
+        var plate = t.GetComponent<RawImage>();
+        if (plate == null) { Debug.LogWarning("[LobbyUI] " + path + " 上没有 RawImage"); return 0; }
+
+        WirePlateHover(plate, popup, title);
+        return 1;
+    }
+
+    /// <summary>入口板悬停 / 点击：只改文字色（板贴图不换，形体不动），点击弹占位窗。</summary>
+    static void WirePlateHover(RawImage plate, LobbyPopup popup, string title)
+    {
+        if (plate == null) return;
+        plate.raycastTarget = true;
+
+        var label = plate.GetComponentInChildren<TextMeshProUGUI>(true);
+        if (label != null) label.raycastTarget = false;   // 指针落在字上也要冒泡到板这一层
+
+        var hover = plate.GetComponent<LobbyPlateHover>();
+        if (hover == null) hover = plate.gameObject.AddComponent<LobbyPlateHover>();
+        hover.label = label;
+        hover.popup = popup;
+        hover.title = title;
+        hover.hoverColor = GoldBright;
+    }
+
+    /// <summary>左上衬托板：金圆框的「井」上盖一块圆形裁切的头像 + 把名字接到 Steam 昵称。</summary>
+    static void WireProfile(Transform profile)
+    {
+        Transform ring = profile.Find("Avatar_Ring");
+        if (ring == null) { Debug.LogWarning("[LobbyUI] 找不到 Avatar_Ring —— 头像没接"); return; }
+
+        // 井的口径：LobbyAvatarRing.png 264 里井半径 102 → 屏幕 88 上 34 → 直径 68
+        const float WellDia = 68f;
+        var ringRT = ring as RectTransform;
+        Vector2 ringPos = ringRT.anchoredPosition;     // 锚 / 轴都是左上角
+        Vector2 ringSize = ringRT.sizeDelta;
+        var pos = new Vector2(ringPos.x + (ringSize.x - WellDia) * 0.5f,
+                              ringPos.y - (ringSize.y - WellDia) * 0.5f);
+
+        RawImage avatar;
+        Transform found = profile.Find("Avatar_Image");
+        if (found != null)
+        {
+            avatar = found.GetComponent<RawImage>();
+            if (avatar == null) avatar = found.gameObject.AddComponent<RawImage>();
+        }
+        else
+        {
+            RectTransform rt = NewRect(profile, "Avatar_Image", AnchorTL, PivotTL, pos, new Vector2(WellDia, WellDia));
+            avatar = rt.gameObject.AddComponent<RawImage>();
+        }
+        avatar.rectTransform.anchoredPosition = pos;
+        avatar.rectTransform.sizeDelta = new Vector2(WellDia, WellDia);
+        avatar.raycastTarget = false;   // 头像不吃点击，指针走到底下的衬托板 / 金框
+        avatar.rectTransform.SetSiblingIndex(Mathf.Min(ring.GetSiblingIndex() + 1, profile.childCount - 1));
+
+        var view = profile.GetComponent<PlayerProfilePanel>();
+        if (view == null) view = profile.gameObject.AddComponent<PlayerProfilePanel>();
+        view.avatarImage = avatar;
+        view.circularCrop = true;
+
+        Transform nameT = profile.Find("Text_PlayerName");
+        if (nameT != null)
+        {
+            view.nameText = nameT.GetComponent<TMP_Text>();
+            var nameUI = nameT.GetComponent<TextMeshProUGUI>();
+            if (nameUI != null) nameUI.overflowMode = TextOverflowModes.Ellipsis;   // Steam 名可能很长
+        }
+    }
+
+    /// <summary>右上齿轮：点击开全局设置面板（LobbySettingsButton 运行时补 Button 接 SettingsPanel.Toggle）。</summary>
+    static void WireSettingsGear(Transform band)
+    {
+        Transform gear = band.Find("Icon_Gear");
+        if (gear == null) { Debug.LogWarning("[LobbyUI] 找不到 Icon_Gear —— 设置入口没接"); return; }
+
+        var raw = gear.GetComponent<RawImage>();
+        if (raw != null) raw.raycastTarget = true;
+
+        if (gear.GetComponent<LobbySettingsButton>() == null)
+            gear.gameObject.AddComponent<LobbySettingsButton>();
+        else
+            Debug.Log("[LobbyUI] Icon_Gear 已经有 LobbySettingsButton，跳过");
     }
 
 }
