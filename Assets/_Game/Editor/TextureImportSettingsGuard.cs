@@ -47,11 +47,26 @@ namespace AnotherWorld.EditorTools
         /// 吸成 1024x512，连 RectTransform 一起算成了 341x171；这条就是那次补的。
         /// **注意**：lobby-ui-v1 里**旧**那批仍是 ToNearest（1034x445 -> 1024x512，纵向拉伸约 15%），
         /// 那是等用户点头的历史账，**不要**顺手扩到这里来。</summary>
+        /// <summary>整套 UI 件：出图脚本按「屏幕 px x 3」出、场景按「贴图 / 3」摆 —— 必须原样 1:1，禁止 Unity 缩放。
+        /// 2026-09-27 加 battle-mode-v1：卡 900x1260 是 RawImage 的贴图，被默认的 ToNearest 吸成 512x1024，
+        /// 3:4.2 的画面被压成 1:2 再拉回 300x420 的卡框 —— 卡面会横向拉宽。</summary>
+        static readonly string[] NoNpotScaleFolders = { "/Art/Sprites/Generated/battle-mode-v1/" };
+
         public static bool NeedsNoNpotScale(string path)
         {
             string p = path.Replace('\\', '/');
+            foreach (string f in NoNpotScaleFolders) if (p.Contains(f)) return true;
             if (!p.Contains("/Art/Sprites/Generated/lobby-ui-v1/")) return false;
             return Path.GetFileName(p).StartsWith("LobbyCornerPlate_");
+        }
+
+        /// <summary>带硬 alpha 边（圆角 / 挖空）的 UI 件：导入要做 alpha 扩散，否则缩小后边缘发黑。</summary>
+        public static bool NeedsAlphaIsTransparency(string path)
+        {
+            string p = path.Replace('\\', '/');
+            foreach (string f in NoNpotScaleFolders) if (p.Contains(f)) return true;
+            if (p.Contains("/Art/Sprites/Generated/lobby-ui-v1/") && Path.GetFileName(p).StartsWith("LobbyCornerPlate_")) return true;
+            return false;
         }
 
         void OnPreprocessTexture()
@@ -87,6 +102,7 @@ namespace AnotherWorld.EditorTools
             if (imp.anisoLevel != AnisoLevel) return true;
             if (path.Contains(CardFolderToken) && !imp.mipMapsPreserveCoverage) return true;
             if (NeedsNoNpotScale(path) && imp.npotScale != TextureImporterNPOTScale.None) return true;
+            if (NeedsAlphaIsTransparency(path) && !imp.alphaIsTransparency) return true;
             return false;
         }
 
@@ -109,6 +125,7 @@ namespace AnotherWorld.EditorTools
             }
 
             if (NeedsNoNpotScale(path)) imp.npotScale = TextureImporterNPOTScale.None;
+            if (NeedsAlphaIsTransparency(path)) imp.alphaIsTransparency = true;
         }
 
         [MenuItem("Tools/设置/贴图导入设置体检 & 修复")]

@@ -3233,6 +3233,13 @@ MonoBehaviour:
   buttonImage: {fileID: 520853226}
   hoverScale: 1.2
   smoothSpeed: 10
+  goldDimColor: {r: 0.784, g: 0.588, b: 0.176, a: 1}
+  goldLitColor: {r: 1, g: 0.925, b: 0.588, a: 1}
+  noChanceColor: {r: 0.451, g: 0.451, b: 0.478, a: 1}
+  goldShineCycle: 0.9
+  popUpTime: 0.09
+  popDownTime: 0.16
+  popScale: 1.5
 --- !u!225 &520853229
 CanvasGroup:
   m_ObjectHideFlags: 0
@@ -5385,7 +5392,7 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 69.85
+  m_fontSize: 70.4
   m_fontSizeBase: 108
   m_fontWeight: 400
   m_enableAutoSizing: 1
@@ -8720,7 +8727,7 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 62.15
+  m_fontSize: 62.6
   m_fontSizeBase: 72
   m_fontWeight: 400
   m_enableAutoSizing: 1
@@ -10124,7 +10131,7 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 62.15
+  m_fontSize: 62.6
   m_fontSizeBase: 72
   m_fontWeight: 400
   m_enableAutoSizing: 1
@@ -13248,7 +13255,7 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 62.15
+  m_fontSize: 62.6
   m_fontSizeBase: 72
   m_fontWeight: 400
   m_enableAutoSizing: 1
