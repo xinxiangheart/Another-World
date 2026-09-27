@@ -9,8 +9,10 @@ using TMPro;
 ///   ① 提示语在**下面**（ID 那行在右边）；② 悬停是**变金**（ID 那行只微亮一档，用户当时点名不要换色相）；
 ///   ③ 号是**本面板自己生成**的。
 ///
-/// 号现在在本机生成（6 位，字母表剔掉 0 O 1 I 这些容易看错的），**不是真房间号** ——
-/// 真正的号要等建房（Steam 大厅）接进来，那时调 <see cref="SetCode"/> 换掉即可，显示 / 复制 / 提示三件事不用改。
+/// 2026-09-27「接入」：号先由本面板现生成一个占位（6 位，字母表剔掉 0 O 1 I 这些容易看错的），
+/// 房间面板一打开就由 <see cref="LobbyRoomSession"/> 去 Steam 建房，建好后用**真号**（发布到大厅数据
+/// <c>room_code</c> 的那一串）调 <see cref="SetCode"/> 覆盖掉；Steam 未登录 / 未连接时改走
+/// <see cref="SetUnavailable"/>（整行进灰、不给复制）。显示 / 复制 / 提示三件事不变。
 /// 每次面板打开换一个新号：面板是 SetActive(false)/(true) 开关的，所以生成放在 OnEnable（不是 Awake）。</remarks>
 public class LobbyRoomCodeTag : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler, IPointerClickHandler
 {
@@ -23,6 +25,9 @@ public class LobbyRoomCodeTag : MonoBehaviour, IPointerEnterHandler, IPointerExi
     [Header("常态 / 悬停色（悬停变金）")]
     public Color normalColor = new Color32(240, 232, 210, 236);   // 奶油 #F0E8D2
     public Color hoverColor  = new Color32(228, 203, 132, 255);   // 本套亮金 #E4CB84
+
+    [Header("Steam 未登录 / 未连接时的灰态（这行换成一句话，且不给复制）")]
+    public Color unavailableColor = new Color32(110, 119, 131, 255);   // 禁用灰 #6E7783
 
     [Header("复制提示：下面那句")]
     public TextMeshProUGUI toastText;
@@ -37,6 +42,9 @@ public class LobbyRoomCodeTag : MonoBehaviour, IPointerEnterHandler, IPointerExi
     const string Alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     const int CodeLen = 6;
 
+    bool  _explicit;              // 有人（LobbyRoomSession）显式给过号 / 灰态 → 面板重开不再重新生成
+    bool  _locked;                // Steam 未连接 → 灰态：不复制、不悬停变金
+    string _lockedText;
     bool  _hovering;
     float _toastStart = -1f;      // < 0 = 提示不在显示
 
@@ -56,7 +64,8 @@ public class LobbyRoomCodeTag : MonoBehaviour, IPointerEnterHandler, IPointerExi
 
     void OnEnable()
     {
-        if (regenerateOnEnable || string.IsNullOrEmpty(code)) code = NewCode();
+        // 显式给过号（真房间号 / 灰态）就不重新生成 —— 否则面板每次打开都会把真号顶掉（2026-09-27 实测踩到）
+        if (!_explicit && (regenerateOnEnable || string.IsNullOrEmpty(code))) code = NewCode();
         _toastStart = -1f;
         if (toastText != null) toastText.gameObject.SetActive(false);
         Apply();
@@ -67,16 +76,34 @@ public class LobbyRoomCodeTag : MonoBehaviour, IPointerEnterHandler, IPointerExi
         RefreshToast();
     }
 
-    /// <summary>换号（真房间号接进来时调它）。</summary>
+    /// <summary>换号 —— <see cref="LobbyRoomSession"/> 建房成功后拿 Steam 大厅里的真号调它。</summary>
     public void SetCode(string newCode)
     {
+        _explicit = true;
+        _locked = false;
         code = newCode;
+        Apply();
+    }
+
+    /// <summary>Steam 未登录 / 未连接：这行进灰态（<see cref="LobbyRoomSession"/> 判定为假时调）。</summary>
+    public void SetUnavailable(string msg = "Steam 未登录 / 未连接")
+    {
+        _explicit = true;
+        _locked = true;
+        _lockedText = msg;
+        code = "";
         Apply();
     }
 
     void Apply()
     {
         if (label == null) return;
+        if (_locked)
+        {
+            label.text = string.IsNullOrEmpty(_lockedText) ? "Steam 未登录 / 未连接" : _lockedText;
+            label.color = unavailableColor;
+            return;
+        }
         label.text = prefix + code;
         label.color = _hovering ? hoverColor : normalColor;
     }
@@ -92,19 +119,21 @@ public class LobbyRoomCodeTag : MonoBehaviour, IPointerEnterHandler, IPointerExi
 
     public void OnPointerEnter(PointerEventData eventData)
     {
+        if (_locked) return;
         _hovering = true;
         if (label != null) label.color = hoverColor;
     }
 
     public void OnPointerExit(PointerEventData eventData)
     {
+        if (_locked) return;
         _hovering = false;
         if (label != null) label.color = normalColor;
     }
 
     public void OnPointerClick(PointerEventData eventData)
     {
-        if (string.IsNullOrEmpty(code)) return;
+        if (_locked || string.IsNullOrEmpty(code)) return;
 
         GUIUtility.systemCopyBuffer = code;      // 复制纯号（不带前缀），粘到哪都能直接报给对面
         _toastStart = Time.unscaledTime;

@@ -82,6 +82,12 @@ public class LobbySubPanel : MonoBehaviour
         gameObject.SetActive(true);
         // 同一层里后开的压在上面 —— HUD 层是 Canvas 的最后一个子物体，这里抬不出这一层，动不到 HUD
         transform.SetAsLastSibling();
+
+        // 通知同物体上的面板「我是被用户打开的」—— 房间面板靠这条去建房（2026-09-27）。
+        // 不能挂在 OnEnable 上：面板在场景里存成 active（方便编辑），运行时第一帧就被 closeOnStart 关掉，
+        // OnEnable 会在没点过房间的情况下先跑一遍。
+        var hook = GetComponent<ILobbySubPanelOpen>();
+        if (hook != null) hook.OnSubPanelOpened();
     }
 
     /// <summary>无参版本：给 Button 的持久监听用（UnityEvent 绑不了带默认值的方法）。</summary>
@@ -99,4 +105,11 @@ public class LobbySubPanel : MonoBehaviour
         if (IsOpen) Close();
         else Open(null);
     }
+}
+
+/// <summary>子全屏弹窗被**用户打开**时的回调（<see cref="LobbySubPanel.Open"/> 里调）。</summary>
+/// <remarks>2026-09-27：给房间面板用 —— 建房（Steam 大厅）必须发生在真正打开的那一刻，不能挂在 OnEnable 上。</remarks>
+public interface ILobbySubPanelOpen
+{
+    void OnSubPanelOpened();
 }

@@ -849,6 +849,15 @@ public static class LobbyUIBuilder
     const float  RoomStartH    = 64f;
     const float  RoomStartFont = 42f;
 
+    // ── 「加入房间」（2026-09-27 用户：「在叉ui左边做一个大小一样的加入房间的简单ui，button」）──
+    //    紧挨通用关闭叉的左边、同尺寸 60x60 —— 位置正好压在「教程」那一格上（面板开着时那几个
+    //    无底衬 HUD 图标本来就藏起来了，见 BuildSubPanel 的 hideOnOpen），所以重叠不影响观感。
+    const string RoomJoinName  = "Btn_JoinRoom";
+    const float  RoomJoinX     = SubPanelCloseX - SubPanelCloseSize - 16f;   // -244：叉的左沿（-228）再让 16
+    const float  RoomJoinY     = SubPanelCloseY;                            // 与叉同一条水平线（-66）
+    const string RoomJoinIcon  = "Icon_LobbyJoin.png";
+    const string RoomJoinHover = "Icon_LobbyJoinHover.png";
+
     const string RoomToastName = "Text_LobbyToast";
     const float  RoomToastY    = -150f;   // 屏幕中央上方（压到 -240 会正好叠在房主那行的名字上）
     const float  RoomToastW    = 1200f;
@@ -883,7 +892,8 @@ public static class LobbyUIBuilder
     /// 「好友」图标不再临时藏掉** —— 用户 2026-09-27：「现在做房间，也是类似的全屏，不过左上角的
     /// 好友不再隐藏，并且能在这个界面打开好友侧边栏」。所以 hideOnOpen 走排除版：只藏 商城 / 活动 /
     /// 教程 / 邮件，好友留在屏幕上，点它照旧开左侧好友侧边栏（LobbyFriendPanel）。
-    /// 面板内容**直接就是建房界面**（点房间不再需要二次点击）—— 两个玩家槽 + 右上角那行可复制的房间号。
+    /// 面板内容**直接就是建房界面**（点房间不再需要二次点击）—— 两个玩家槽 + 右上角那行可复制的房间号
+    /// + 关闭叉左边那个「加入房间」图标（2026-09-27）。
     [MenuItem("Tools/异界/大厅：生成「房间」子全屏弹窗（创建房间）")]
     public static void BuildRoomSubPanelMenu()
     {
@@ -905,14 +915,15 @@ public static class LobbyUIBuilder
         // 贴图与 BattleModeCardsBuilder.BuildRoomCard 都留着备用，只是这里不再挂。
         BuildRoomPlayers(panel);
         BuildRoomCode(panel);
-        BuildRoomRuntime(panel, hud.gameObject);   // 状态机 + 踢出 / 开始游戏 / 叉三条点击 + 顶中提示
+        BuildRoomJoinButton(panel);                // 右上角：关闭叉左边的「加入房间」图标
+        BuildRoomRuntime(panel, hud.gameObject);   // 状态机（含 Steam 接入）+ 三条点击 + 顶中提示
         Transform closeBtn = panel.transform.Find("Btn_Close");
         if (closeBtn != null) closeBtn.SetAsLastSibling();   // 叉子始终压在内容之上
         WireEntryToPanel(canvas, "Entry_Room", panel, "房间");
         Selection.activeGameObject = panel;
         EditorSceneManager.MarkSceneDirty(canvas.gameObject.scene);
         Debug.Log("[LobbyUI] 已生成 Panel_Room（全屏子弹窗）：壳同 Panel_Battle（CommonBack_A_clean + 通用关闭叉），" +
-                  "内容 = 建房界面本身（房主 / 加入玩家两个槽 + 右上角可复制的房间号），不再挂模式卡；Entry_Room（房间）已接到它；" +
+                  "内容 = 建房界面本身（房主 / 加入玩家两个槽 + 右上角可复制的房间号 + 叉左边的「加入房间」图标），不再挂模式卡；Entry_Room（房间）已接到它；" +
                   "hideOnOpen 排除了 Icon_Friend —— 好友图标在本面板开着时**常驻**，点它开 / 关左侧好友侧边栏。");
     }
 
@@ -1031,6 +1042,32 @@ public static class LobbyUIBuilder
         tag.toastSlide = 12f;
         return rt.gameObject;
     }
+    /// <summary>房间面板右上角的「加入房间」：紧挨关闭叉左边、同尺寸 60x60（用户 2026-09-27）。</summary>
+    /// <remarks>跟商城 / 活动 / 教程那三个「压墙」图标一样：**不挂 Button** —— 悬停换贴图 + 点击弹占位弹窗
+    /// 都走 <see cref="LobbyIconHover"/>（图标自己的 RawImage 就是 raycast 目标）。
+    /// 图标 Icon_LobbyJoin.png（Tools/cardframe/LobbyIconJoinV1.ps1 出，与教程 / 叉同族：门框 + 进入箭头）。
+    /// 位置（RoomJoinX = 叉左沿再让 16）正好压在「教程」那一格上 —— 房间面板开着时教程本来就是藏起来的。</remarks>
+    static GameObject BuildRoomJoinButton(GameObject panel)
+    {
+        Transform old = panel.transform.Find(RoomJoinName);
+        if (old != null) Undo.DestroyObjectImmediate(old.gameObject);
+
+        RawImage join = NewRaw(panel.transform, RoomJoinName, UiDir + RoomJoinIcon, AnchorTR, PivotTL,
+                               new Vector2(RoomJoinX, RoomJoinY), new Vector2(SubPanelCloseSize, SubPanelCloseSize));
+        Undo.RegisterCreatedObjectUndo(join.gameObject, "建 " + RoomJoinName);
+
+        var hover = join.gameObject.AddComponent<LobbyIconHover>();
+        hover.icon = join;
+        hover.normalTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(UiDir + RoomJoinIcon);
+        hover.hoverTexture  = AssetDatabase.LoadAssetAtPath<Texture2D>(UiDir + RoomJoinHover);
+        hover.popup = Object.FindObjectOfType<LobbyPopup>(true);   // Popup_Placeholder（场景里是 inactive）
+        hover.title = "加入房间";
+        hover.hint  = "输入 6 位房间号加入好友的房（输入框下一步接）";
+        if (hover.hoverTexture == null) Debug.LogWarning("[LobbyUI] 找不到 " + UiDir + RoomJoinHover + " ——「加入房间」没有悬停态");
+        if (hover.popup == null) Debug.LogWarning("[LobbyUI] 场景里没有 LobbyPopup（Popup_Placeholder）——「加入房间」点了没反应");
+        return join.gameObject;
+    }
+
     /// <summary>「房间」面板的运行时状态机 + 三条点击的接点 + 屏幕中央上方那行提示。</summary>
     /// <remarks>三条点击（踢出 / 开始游戏 / 右上角的叉）都在这里接：目标方法是 <see cref="LobbyRoomPanel"/> 上的，
     /// 而那个组件是这里现加的 —— 不能像别的件那样在构造时顺手接。
@@ -1041,6 +1078,14 @@ public static class LobbyUIBuilder
         var room = panel.GetComponent<LobbyRoomPanel>();
         if (room == null) room = panel.AddComponent<LobbyRoomPanel>();
         room.shell = panel.GetComponent<LobbySubPanel>();
+
+        // Steam 接入（2026-09-27）：状态机挂在同一个物体上；右上角那行房间号也连上 ——
+        // 建房成功后 LobbyRoomSession 用大厅里的真号回填它（ApplyRealCode）。
+        var session = panel.GetComponent<LobbyRoomSession>();
+        if (session == null) session = panel.AddComponent<LobbyRoomSession>();
+        room.session = session;
+        Transform codeRow = panel.transform.Find(RoomCodeName);
+        room.codeTag = codeRow != null ? codeRow.GetComponent<LobbyRoomCodeTag>() : null;
 
         Transform players = panel.transform.Find(RoomPlayersName);
         Transform host = players != null ? players.Find("Slot_Host") : null;

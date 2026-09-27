@@ -19,10 +19,15 @@ using TMPro;
 ///   • <see cref="OnHostLeft"/>   —— 客人视角：房主走了 → 自己接房主（头像 / 名字本就占着房主槽）+ 「房主已离开，你已成为房主」。
 /// 真接进来时，把 <see cref="OnKickClicked"/> / <see cref="OnCloseClicked"/> 里那两句 Debug.Log 换成给对端的通知即可。
 ///
+/// **Steam 接入（2026-09-27）**：面板第一次打开时 <see cref="LobbyRoomSession.BeginHosting"/> 去 Steam 建房 ——
+/// 号先查重（先查后建：RequestLobbyList 不允许在已处于大厅时调用）再发布到大厅数据 <c>room_code</c>，
+/// 建好后用真号覆盖右上角那个占位号；Steam 未登录 / 建不了房 → 房间号进灰态且开始游戏点不动。
+/// 客人槽由大厅成员数据 <c>player_data</c> 填（名字 + 头像 + SteamID），人走了弹「玩家xxxx离开」。
+///
 /// 房主槽永远挂 <see cref="PlayerProfilePanel"/>（本机 Steam 头像 + 名字）—— 建房的人就是房主，所以「客人接房主」这条
 /// 不用搬图像：把客人提升成房主时，房主槽显示的本来就是他自己。
 /// </remarks>
-public class LobbyRoomPanel : MonoBehaviour
+public class LobbyRoomPanel : MonoBehaviour, ILobbySubPanelOpen
 {
     public static LobbyRoomPanel Instance { get; private set; }
 
@@ -44,6 +49,10 @@ public class LobbyRoomPanel : MonoBehaviour
     public GameObject startGroup;
     public Button startButton;
 
+    [Header("Steam 接入（2026-09-27）：真房间号 + 大厅状态机 —— 面板一打开就建房")]
+    public LobbyRoomCodeTag codeTag;
+    public LobbyRoomSession session;
+
     [Header("收尾：确认弹窗 / 双方确认后的战斗加载界面")]
     public MatchConfirmPanel confirmPanel;
     public BattleLoadingScreen battleLoading;
@@ -58,6 +67,31 @@ public class LobbyRoomPanel : MonoBehaviour
     public Color guestEmptyColor = new Color32(142, 162, 180, 205);   // 钢 #8EA2B4
 
     bool _established;      // 房间已经开着了（关面板不清状态 —— 用户：「只是关闭信息都在」）
+    bool _steamReady = true;   // Steam 未登录 / 建不了房 → false：房间号进灰态 + 开始游戏点不动
+
+    /// <summary>Steam 接入件（场景里挂在同一个物体上；没连就自己找一次）。</summary>
+    public LobbyRoomSession Session
+    {
+        get
+        {
+            if (session == null) session = GetComponent<LobbyRoomSession>();
+            return session;
+        }
+    }
+
+    /// <summary>右上角那行房间号（没在 Inspector 里连就按名字找一次）。</summary>
+    public LobbyRoomCodeTag CodeTag
+    {
+        get
+        {
+            if (codeTag == null)
+            {
+                Transform t = transform.Find("Text_RoomCode");
+                if (t != null) codeTag = t.GetComponent<LobbyRoomCodeTag>();
+            }
+            return codeTag;
+        }
+    }
     bool _isHost;
     bool _hasGuest;
     string _guestName;
@@ -86,8 +120,17 @@ public class LobbyRoomPanel : MonoBehaviour
             _guestName = null;
             _guestAvatar = null;
             _guestSteamID = 0;
+            _steamReady = true;
         }
         Refresh();
+    }
+
+    /// <summary>被用户打开（<see cref="LobbySubPanel.Open"/> 那条）→ 建房 / 回填真号。</summary>
+    /// <remarks>不放 OnEnable：面板在场景里存成 active（编辑方便），运行时第一帧就被 closeOnStart 关掉 ——
+    /// 挂 OnEnable 会在玩家没点过「房间」的时候就开一间 Steam 大厅。</remarks>
+    public void OnSubPanelOpened()
+    {
+        if (Session != null) Session.BeginHosting(this);
     }
 
     void OnDestroy() { if (Instance == this) Instance = null; }
@@ -140,7 +183,8 @@ public class LobbyRoomPanel : MonoBehaviour
         if (!_isHost || !_hasGuest) return;
         string who = _guestName;
         // 联机接进来后：这里给被踢的那位发一条 kicked（对面收 Kicked() 就自己走人）。
-        Debug.Log("[LobbyRoom] 房主把「" + who + "」踢出房间（联机侧待接：发 kicked）");
+        if (Session != null) Session.PublishKick();      // 给大厅打 kicked=1（客人端读到就自己走）
+        Debug.Log("[LobbyRoom] 房主把「" + who + "」踢出房间");
         ClearGuest();
         Toast("玩家" + who + "离开");
     }
@@ -169,6 +213,7 @@ public class LobbyRoomPanel : MonoBehaviour
                 // 联机接进来后：这里给房主发一条 guest_left（对面收 OnGuestLeft() 弹「玩家xxxx离开」）。
                 Debug.Log("[LobbyRoom] 客人离开房间（联机侧待接：发 guest_left）");
             }
+            if (_isHost && Session != null) Session.StopHosting();   // 房主走 = 房间解散（真大厅也 LeaveLobby）
             ResetRoom();
         }
         if (shell != null) shell.Close();
@@ -188,6 +233,7 @@ public class LobbyRoomPanel : MonoBehaviour
     public void OnBothConfirmed()
     {
         Debug.Log("[LobbyRoom] 双方已确认 → 进战斗加载界面");
+        if (Session != null) Session.PublishStart();     // 发 start=1 + host_sid（客人侧按旧壳那条进 Game）
         if (battleLoading != null) battleLoading.Open();
     }
 
@@ -223,7 +269,27 @@ public class LobbyRoomPanel : MonoBehaviour
         if (kickGroup != null) kickGroup.SetActive(_hasGuest && _isHost);     // 踢出：房主视角 + 房里有人
         if (startGroup != null) startGroup.SetActive(_hasGuest);              // 开始游戏：房里有人就出现（客人也看得见）
         // 客人那条只是「灰 + 点不动」—— 颜色由 Button 的 ColorTint 出（normal 奶油 / disabled 灰）。
-        if (startButton != null) startButton.interactable = _hasGuest && _isHost;
+        if (startButton != null) startButton.interactable = _hasGuest && _isHost && _steamReady;
+    }
+
+    /// <summary>建房成功：把 Steam 大厅里那串**真号**回填到右上角（显示 / 复制 / 提示都不变）。</summary>
+    public void ApplyRealCode(string code)
+    {
+        _steamReady = true;
+        if (CodeTag != null) CodeTag.SetCode(code);
+        Refresh();
+    }
+
+    /// <summary>Steam 未登录 / 未连接 / 建房失败：房间号那行进灰态，开始游戏也点不动（沿用匹配 / 排位那条规矩）。</summary>
+    public void ApplySteamOffline(string msg = null)
+    {
+        _steamReady = false;
+        if (CodeTag != null)
+        {
+            if (string.IsNullOrEmpty(msg)) CodeTag.SetUnavailable();
+            else CodeTag.SetUnavailable(msg);
+        }
+        Refresh();
     }
 
     void ResetRoom()

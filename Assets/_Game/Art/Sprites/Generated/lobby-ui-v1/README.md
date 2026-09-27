@@ -72,6 +72,8 @@
 | `Icon_LobbyShopHover.png` | 256×256 | 60×60 | 商城 · **悬停态** |
 | `Icon_LobbyEventHover.png` | 256×256 | 60×60 | 活动 · **悬停态** |
 | `Icon_LobbyTutorialHover.png` | 256×256 | 60×60 | 教程 · **悬停态** |
+| `Icon_LobbyJoin.png` | 256×256 | 60×60 | **加入房间**（**金线石印族**：门框 + 一支进入的箭头 + 菱形门把手）· 房间面板关闭叉左边 · 无底色（二十一次修正） |
+| `Icon_LobbyJoinHover.png` | 256×256 | 60×60 | 加入房间 · **悬停态**（石面提亮 + 金线 GOLD→GOLD_L） |
 
 > `LobbyFriendPlate.png`（好友按钮底）已于 2026-09-26 **删除** —— 好友不带底板。
 
@@ -622,3 +624,43 @@ LobbyUI_v1
 - `stage31_room_hover.txt` + `stage31_shots/70…71`：常态 / 悬停对照 —— 悬停换 `…Hover` 贴图 + 字色转金。
 - `stage32_room_align.txt` + `stage32_shots/80_room_align_guest.png`：**对齐修正**（`RoomStartX 812 → 820`）——
   开始游戏子背景左沿 − 名字列左沿 = **0.0 px**、− 环右沿 = 15.5 px（= 20×0.7759）、踢出右沿 − 环左沿 = −15.5 px；竖直中线 527.6 = 两条环中线中点 527.6。
+
+## 二十一次修正（2026-09-27）：房间面板「加入房间」图标 + 真房间号（Steam 大厅）
+
+**用户原话**：「接入，另外在叉ui左边做一个大小一样的加入房间的简单ui，button，位置和教程位置重叠即可」。
+
+**贴图**（`Tools/cardframe/LobbyIconJoinV1.ps1`，产物进本目录 + 上面那张表）
+
+- 与「金线石印族」（好友 / 商城 / 礼盒 / 合起的书 / 信封 / 叉）同一套配方：深蓝黑平底竖渐变（`$BAR_T → $BAR_B`）+ 外墨边 9 + 等比内缩金线 6 + 一处金饰（菱形铆钉）；
+  常态 / 悬停只差色调（`Set-IconTone`），形体尺寸一致 ⇒ **切图不跳位**。
+- 形体 = **门框（内缩金线 + 菱形门把手）+ 一支指向门内的金箭头**；箭头线宽 = 金细线 ×1.5 = 9 贴图 px，当这一族里「主元素」那一档（叉的 X 用的是 ×2）。
+- 256×256 贴图 → 屏幕 **60×60**（与教程 / 叉同尺寸）；1 贴图 px ≈ 0.234 屏 px。
+- 预览：`Tools/cardframe/preview/lobby-icon-join.png`（与教程 / 叉并排，1:1 + 3 倍）。
+
+**场景侧**（`Assets/_Game/Editor/LobbyUIBuilder.cs`）
+
+- 新件 `BuildRoomJoinButton(panel)` → `Panel_Room/Btn_JoinRoom`：锚右上 / 轴左上，`RoomJoinX = SubPanelCloseX - SubPanelCloseSize - 16 = -244`、`RoomJoinY = SubPanelCloseY = -66`、60×60。
+- 实测：加入房间右沿 − 叉左沿 = **12.4 px** = 16 × 0.776 ✓（设计上就是紧挨着同尺寸那一个）；与 `Icon_Tutorial` **x / y 都重叠**（1300..1346 对 1289..1335）—— 用户要的就是这个，
+  房间面板开着时教程本来就被 `hideOnOpen` 藏起来了。
+- **不挂 Button**：悬停换贴图 + 点击弹占位弹窗都走 `LobbyIconHover`（与商城 / 活动 / 教程同款）；点击弹 `Popup_Placeholder`，标题「加入房间」。
+
+**运行时**（新件 `Assets/_Game/Scripts/UI/Lobby/LobbyRoomSession.cs`）
+
+- 建房时机 = **面板被用户打开**：`LobbySubPanel.Open` → `ILobbySubPanelOpen.OnSubPanelOpened` → `BeginHosting`。
+  ⚠ **不能挂 OnEnable** —— 面板在场景里存成 active（方便编辑），运行时第一帧就被 `closeOnStart` 关掉，挂 OnEnable 会在玩家没点过「房间」时就先开一间大厅。
+- 号：6 位、字母表同 `LobbyRoomCodeTag`（**36 个字符 = 22 亿种**；旧壳是 6 位纯数字 = 90 万种）。**先查重再建房** —— `RequestLobbyList` 不允许在「已处于某个大厅」时调用，
+  所以顺序是：按 `room_code` 过滤请求列表 → 没人用 → 才 `CreateLobby` → `SetLobbyData(lobby, "room_code", 号)`；查重没回调 3.5 s 超时兜底（宁可极小概率撞号，也不能让号一直不出现）。
+- 大厅 key 全同旧壳：`game=anotherworld_room` / `room_code` / `host_data` / `player_data` / `start` / `host_sid` / `kicked` —— 旧壳的客人端和新面板**能互通**。
+- 客人槽：房主每 0.5 s `RequestLobbyData` + 读非自己的成员 `player_data` → 名字 / 头像（`SteamAvatarManager`）/ SteamID → `SetGuest`；人走了 → `OnGuestLeft`（提示「玩家xxxx离开」）。
+- 三个信号：踢出 → `kicked=1`（用完清 0）；双方确认 → `start=1` + `host_sid` + 填 `LobbyConfig`（旧壳进 Game 那套）；房主关面板 → `LeaveLobby` + 号作废。
+- **Steam 未登录 / 未连接**（`SteamManager.Initialized && SteamUser.BLoggedOn()` 为假）或建房失败 → `ApplySteamOffline()`：房间号那行换成灰字 `#6E7783` + 开始游戏 `interactable = false`（沿用匹配 / 排位那条规矩）。
+- `LobbyRoomCodeTag` 加 `_explicit`：被显式给过号 / 灰态之后，面板重开**不再自己生成占位号**（实测踩到过：真号被重开时的占位号顶掉）。
+- 客人那侧的面板还没做；接缝是 `LobbyRoomSession.JoinByCode(code, done)`（搜 / 进的写法与旧壳 `JoinRoomPanel` 完全一致）。
+
+**自证**（`stage34_room_join.txt` + `stage34_shots/90..92`；执行器跑完已删）
+
+- **90**：屏幕那行读作「房间号：**AUP733**」，从 Steam 大厅数据读回 `room_code = AUP733` / `game = anotherworld_room` / lobby `109775243057510319` —— **两边一致**，
+  即屏幕上这串就是别人能用来搜到的那个号（Steam 在线 `Initialized=True BLoggedOn=True`）；加入房间图标在叉左边、与教程重叠。
+- **91**：点「加入房间」→ 占位弹窗（标题「加入房间」+ 一行提示）。
+- **92**：`ApplySteamOffline()` 后那行 = 「Steam 未登录 / 未连接」，颜色 `RGBA(0.43,0.47,0.51,1.00)` = `#6E7783`；开始游戏 `interactable = False`。
+- 顺带实测：测试里那个「假客人」（只调 `SetGuest`、不是真大厅成员）被真实大厅轮询清掉并弹了「玩家星野测试离开」—— 客人槽现在完全由大厅成员驱动。
