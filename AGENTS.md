@@ -1308,7 +1308,7 @@ python Tools/imagegen/purge_key.py <src.png> <dst.png> 45 pink     # 按色相
 - 量化（Lobby 实测）：图集按 36pt 烘焙，Lobby 主力字号 24pt（23 处）。**文字在屏上占几个设备像素 = 设计字号 × 画布倍率**，而画布倍率 = 屏幕高 / (1080 / 界面缩放) —— 编辑器 Game view 只有 992×558 时倍率是 **0.52**，24pt 正文落到 **12px**，笔画被抗锯齿吃掉 —— 这才是「字体发糊」的真因（**不是** mip，也**不是** filterMode）。实测过程见下面「五、清晰度（像素预算）」。
 - **「把图集点号从 36 降到 24」这条 2026-09-17 作废**（当时是按「缩小比靠近 1」推的，方向错了）：图集点号定的是 **SDF 距离场的细节上限**，采样点号应 ≈ 文字可能出现的**最大**像素高；往下调只会让大字号先坏。当前 1080 基准 + 图集 36 正好对齐 2560×1600 原生全屏（24pt × 1.48 = 35.6px ≈ 36）—— **不要动**。真要重烘图集，必须保持 GUID 不变，否则预制体引用会断。
 - 另：`TMP Settings.asset` 的 `m_fallbackFontAssets` 已补上 `NotoSerifCJKsc-Regular SDF`（此前是空数组，缺字会直接掉到没有中文的 LiberationSans）—— 这条与 mipmap 无关，保留有效。
-- **新增 UI 文案前先查缺字**：字体图集是按 `Assets/_Game/Fonts/GameCharacters.txt`（4275 字）**静态**烘焙的，**不在这个集合里的字会渲染成空白 / 豆腐块**。已知缺 `×`(U+00D7)、`÷`、`²`、`≥`、`∝`、`→` —— 分辨率文案因此统一写 ASCII `x`（`1920x1080`），关闭按钮写 `X`。加新文案前把字往 `GameCharacters.txt` 里补并重烘。
+- **新增 UI 文案前先查缺字**：字体图集是按 `Assets/_Game/Fonts/GameCharacters.txt`（4275 字）**静态**烘焙的，**不在这个集合里的字会渲染成空白 / 豆腐块**。已知缺 `×`(U+00D7)、`÷`、`²`、`≥`、`∝`、`→` —— 分辨率文案因此统一写 ASCII `x`（`1920x1080`），关闭按钮写 `X`。加新文案前把字往 `GameCharacters.txt` 里补并重烘。**2026-09-27 起：固定文案照这条走，但玩家自定内容（Steam 昵称 / 异界号）不再受字表限制** —— `NotoSerifCJKsc-{Black,Bold} SDF.asset` 各挂了一份**动态** fallback（`NotoSerifCJKsc-{Black,Bold} Dynamic SDF.asset`，`m_AtlasPopulationMode: 1`、1024²、多图集已开），字表外的字现场栅格化（实测「岚」「龘靐齉爩」）。**做动态字体 / 重烘之前，必须先确认源 `.otf` 的导入器是 `forceTextureCase: -2`（Dynamic）**：`-1`（Unicode）时 Font 资产里没有原始字体数据，`FontEngine.LoadFontFace(Font, 36)` 一律回 `Invalid_File`、`TMP_FontAsset.CreateFontAsset` 只会回 null（`SaveAndReimport` / `ForceUpdate` 都治不好），改成 `-2` 后立刻好 —— 2026-09-27 踩过，细节见 `Docs/Steam联机最小可复刻方案.md` §7.5。
 
 ### 四、设置面板（2026-09-17 新增）
 

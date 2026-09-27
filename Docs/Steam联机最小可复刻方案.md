@@ -495,6 +495,8 @@ ReturnToLobby(reason):
 
 - Editor 里 `AppID = 480`、互为 Steam 好友 10 人，但三条证据全 0 → 名单**空是正常的**（界面上显示「暂无好友」）。
 - 名单**已带滚动**：`Body/List` 是 `ScrollRect`（竖滚 + `Clamped`，无滚动条），`Viewport` 用 `RectMask2D` 硬裁，`Content` 高度 = 行数 × 84 —— 细节见 `Assets/_Game/Art/Sprites/Generated/lobby-ui-v1/README.md` 的「滚动的名单」。
-- ⚠ **昵称是玩家自定的 Unicode，而现在字体是静态图集 + 没有 fallback**：`Assets/_Game/Fonts/NotoSerifCJKsc-Bold SDF.asset`（`m_AtlasPopulationMode: 0`、`m_FallbackFontAssetTable: []`），没烤进图集的字会渲染成豆腐块 —— 2026-09-27 实测「岚」就出不来（`GameCharacters.txt` 是烤图集的字表）。要显示任意昵称，得把图集改 Dynamic 或挂一份 fallback 字体资源，代价是构建里要带上 `NotoSerifCJKsc-Bold.otf`（约 25 MB）。
+- ✅ **昵称生僻字已修（2026-09-27）**：原来两份 SDF 都是**静态图集 + fallback 链为空**（`m_AtlasPopulationMode: 0`、`m_FallbackFontAssetTable: []`），`GameCharacters.txt` 字表外的字（实测「岚」）会渲染成豆腐块。现在 `NotoSerifCJKsc-{Black,Bold} SDF.asset` 各自挂了一份**动态** fallback —— `NotoSerifCJKsc-{Black,Bold} Dynamic SDF.asset`（`m_AtlasPopulationMode: 1`、1024²、`m_IsMultiAtlasTexturesEnabled: 1`、`m_ClearDynamicDataOnBuild: 1`），缺字时 TMP 现场栅格化。实测昵称「岚山雾隐」「龘靐齉爩」里字表外的字由动态那份渲染（`TMP_CharacterInfo.fontAsset` 逐字可查），常用字仍走静态那份。
+- ⚠ **做动态字体之前，必须先把源字体的导入器改成 Dynamic**（这条最坑）：两份 `.otf` 的 `TrueTypeFontImporter` 原来是 `forceTextureCase: -1`（`FontTextureCase.Unicode`）—— Font 资产里存的是烤好的字面、不是原始字体数据，`FontEngine.LoadFontFace(Font, 36)` 于是**一律回 `Invalid_File`**，`TMP_FontAsset.CreateFontAsset` 只会回 null（`SaveAndReimport()` / `ImportAsset(ForceUpdate)` 都治不好；只有**新路径的默认导入**能装）。改成 `forceTextureCase: -2`（Dynamic）后立刻 `Success`。GUID 不变 ⇒ 静态 SDF 的 `m_SourceFontFileGUID` 引用不受影响。导入器属性名在 SerializedObject 里叫 `m_ForceTextureCase`。
+- ⚠ **代价**：动态字体的源字体（`m_SourceFontFile`）进构建 —— Black + Bold 两份 `.otf` 合计约 50 MB；`m_ClearDynamicDataOnBuild: 1` 让构建里的动态图集是空的，生僻字到运行时才栅格化。两份动态资源的 `.asset` 里各带一张 1024² 图集（约 2 MB），是验证时烤进去的字。
 - 「用异界号加好友」的**输入界面还没做**（`FriendStore.AddManual` / `PlayerId.ResolveSteamId` 已就绪）。
 - 好友行现在**只有悬停变金**（`Button` 零监听，用来吃掉点击防冒泡）；点击打开对方资料页没做。
