@@ -93,6 +93,7 @@ public class MatchConfirmPanel : MonoBehaviour
     /// <summary>弹窗（找到对手时由 QuickMatchPanel 调）。两边默认「未确认」→ 都压黑。</summary>
     public void Open()
     {
+        SteamPresence.Matching();   // 已找到对手、在等双方确认 —— 仍算「匹配中」（金）
         var sd = SteamDataManager.Instance;
 
         // 己方：Steam 头像 + 昵称（未就绪给灰圆盘占位，不留黑洞）
@@ -125,6 +126,7 @@ public class MatchConfirmPanel : MonoBehaviour
     /// <summary>关窗（进游戏 / 取消 / 拒绝之后都走这里）。</summary>
     public void Hide()
     {
+        SteamPresence.Idle();       // 关掉确认弹窗 → 回「在线」（真进战斗时由 BattleLoadingScreen 改「对局中」）
         _st = State.Idle;
         if (window != null) window.SetActive(false);
     }

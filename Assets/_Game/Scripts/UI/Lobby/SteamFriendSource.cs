@@ -7,8 +7,8 @@ using UnityEngine;
 ///
 /// ⚠️ 客户端 SDK **没有**「好友是否拥有本游戏」的接口（好友的库 / 成就一律读不到），
 /// 所以「拥有」这条路只能靠 Web API —— 改造位见 <see cref="FriendEvidence.OwnedLookup"/>。
-/// 本类只答三个问题：他此刻在玩什么（GetFriendGamePlayed）、我俩一起玩过什么（GetFriendCoplayGame）、
-/// 他在不在线（GetFriendPersonaState）。
+/// 本类只答四个问题：他此刻在玩什么（GetFriendGamePlayed）、我俩一起玩过什么（GetFriendCoplayGame）、
+/// 他在不在线（GetFriendPersonaState）、他自己写的是什么状态（GetFriendRichPresence → 见 <see cref="SteamPresence"/>）。
 ///
 /// Steam 没初始化（非 Steam 启动 / Direct IP / 回调分发器没起来）时返回空表，不抛异常。
 /// </summary>
@@ -51,19 +51,11 @@ public static class SteamFriendSource
             // ① 他此刻正在玩什么
             FriendGameInfo_t info;
             bool playing = SteamFriends.GetFriendGamePlayed(id, out info);
-            if (playing)
+            bool playingOurGame = playing && appId != 0u && info.m_gameID.AppID().m_AppId == appId;
+            if (playingOurGame)
             {
-                uint playingApp = info.m_gameID.AppID().m_AppId;
-                if (appId != 0u && playingApp == appId)
-                {
-                    e.playedOurGame = true;
-                    e.evidence = "steam-playing";
-                    e.Presence = FriendPresence.PlayingOurGame;
-                }
-                else
-                {
-                    e.Presence = FriendPresence.PlayingOther;
-                }
+                e.playedOurGame = true;
+                e.evidence = "steam-playing";
             }
 
             // ② Steam 记的「我俩一起玩过本游戏」
@@ -78,13 +70,17 @@ public static class SteamFriendSource
                 }
             }
 
-            // 在线状态（没在玩游戏时才用得上）
-            if (e.Presence == FriendPresence.Offline)
-            {
-                e.Presence = SteamFriends.GetFriendPersonaState(id) == EPersonaState.k_EPersonaStateOffline
-                    ? FriendPresence.Offline
-                    : FriendPresence.Online;
-            }
+            // ③ 状态（用户 2026-09-27 定：只有 在线 / 匹配中 / 对局中 / 离线 这四种）
+            //    离线 → 灰；正在玩本游戏 → 问他自己写的那条 rich presence（matching = 匹配中，
+            //    其余包括没写 = 对局中）；剩下的（在线但没在玩本游戏）→ 在线（绿）。
+            if (SteamFriends.GetFriendPersonaState(id) == EPersonaState.k_EPersonaStateOffline)
+                e.Presence = FriendPresence.Offline;
+            else if (playingOurGame)
+                e.Presence = SteamPresence.ReadFriend(id) == SteamPresence.StatusMatching
+                    ? FriendPresence.Matching
+                    : FriendPresence.InGame;
+            else
+                e.Presence = FriendPresence.Online;
 
             list.Add(e);
         }

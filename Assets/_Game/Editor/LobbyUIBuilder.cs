@@ -1146,10 +1146,40 @@ public static class LobbyUIBuilder
         RectTransform list = NewRect(body, "List", AnchorTL, PivotTL,
                                      new Vector2(28f, -124f), new Vector2(FriendsPanelW - 56f, 900f));
 
-        // 行模板：挂在 List 下、**存成 inactive**（运行时克隆 + Bind，真名单里一行一个）
+        // ── 滚动（2026-09-27 用户：「加滚动」）──────────────────────────────────────────
+        // List 自己 = ScrollRect（只竖滚 + Clamped 不回弹），子 Viewport 用 RectMask2D 硬裁 +
+        // 一张 α=0 的 Image（吃得到拖拽 —— Unity 不看 α），行都挂在 Viewport/Content 下。
+        // Content 的高度由 LobbyFriendListUI 按行数改 —— 它就是 ScrollRect 的可滚范围。
+        var scroll = list.gameObject.AddComponent<ScrollRect>();
+        scroll.horizontal = false;
+        scroll.vertical = true;
+        scroll.movementType = ScrollRect.MovementType.Clamped;
+        scroll.inertia = true;
+        scroll.decelerationRate = 0.12f;
+        scroll.scrollSensitivity = 40f;        // 滚轮灵敏度（默认 1 太肉）
+
+        RectTransform viewport = NewRect(list, "Viewport", AnchorTL, PivotTL, Vector2.zero, Vector2.zero);
+        viewport.anchorMin = Vector2.zero;
+        viewport.anchorMax = Vector2.one;
+        viewport.offsetMin = Vector2.zero;
+        viewport.offsetMax = Vector2.zero;
+        viewport.gameObject.AddComponent<RectMask2D>();
+        var viewportImage = viewport.gameObject.AddComponent<Image>();
+        viewportImage.color = new Color(0f, 0f, 0f, 0f);
+        viewportImage.raycastTarget = true;
+        scroll.viewport = viewport;
+
+        RectTransform content = NewRect(viewport, "Content", AnchorTL, PivotTL, Vector2.zero, Vector2.zero);
+        content.anchorMin = new Vector2(0f, 1f);
+        content.anchorMax = new Vector2(1f, 1f);
+        content.pivot = new Vector2(0.5f, 1f);
+        content.sizeDelta = new Vector2(0f, 0f);           // 高度运行时按行数改
+        scroll.content = content;
+
+        // 行模板：挂在 Content 下、**存成 inactive**（运行时克隆 + Bind，真名单里一行一个）
         const float RowH = 84f;
         float rowW = FriendsPanelW - 56f;
-        var rowRT = NewRect(list, "RowTemplate", AnchorTL, PivotTL, Vector2.zero, new Vector2(rowW, RowH));
+        var rowRT = NewRect(content, "RowTemplate", AnchorTL, PivotTL, Vector2.zero, new Vector2(rowW, RowH));
         var row = rowRT.gameObject.AddComponent<FriendRowUI>();
 
         // 整行一块悬停底（常态 α=0 → 悬停淡金）：走内置 Button 的 ColorTint，不写代码
@@ -1198,9 +1228,11 @@ public static class LobbyUIBuilder
         row.statusText = rowStatus;
         rowRT.gameObject.SetActive(false);                   // 模板自己藏着，只给克隆用
 
-        var listUI = list.gameObject.AddComponent<LobbyFriendListUI>();
+        // 名单 UI 挂在 Content 上（它就是「行的容器」）：高度按行数改 = ScrollRect 的可滚范围
+        var listUI = content.gameObject.AddComponent<LobbyFriendListUI>();
         listUI.rowTemplate = row;
         listUI.emptyText = empty;                            // 空表时那句「暂无好友」
+        listUI.scrollRect = scroll;
 
         // 服务挂在大厅 Canvas 上（本菜单会反复重建 Panel_Friends，服务别跟着一起没）
         if (canvas.gameObject.GetComponent<FriendListService>() == null)

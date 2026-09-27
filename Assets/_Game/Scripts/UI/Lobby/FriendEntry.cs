@@ -1,14 +1,14 @@
 using System;
 using UnityEngine;
 
-/// <summary>好友在列表里的状态（决定那行小字 + 颜色，也决定排序）。</summary>
+/// <summary>好友在列表里的状态（决定那行小字 + 颜色，也决定排序）。
+/// 2026-09-27 用户定：只这四种 —— 在线（绿）/ 匹配中（金）/ 对局中（金）/ 离线（灰）。</summary>
 public enum FriendPresence
 {
-    Offline = 0,        // 离线 / 未知
-    Online = 1,         // 在线（没在玩游戏）
-    PlayingOther = 2,   // 正在玩别的游戏
-    PlayingOurGame = 3, // 正在玩本游戏（排最前）
-    InGameOnly = 4,     // 只有异界号、没有 Steam 身份的「游戏内好友」
+    Offline = 0,    // 离线（灰）
+    Online = 1,     // 在线（绿）—— 没在匹配、也没在对局
+    Matching = 2,   // 匹配中（金）—— 在搜索 / 等对方确认
+    InGame = 3,     // 对局中（金，比「匹配中」再亮一档）
 }
 
 /// <summary>
@@ -43,33 +43,32 @@ public class FriendEntry
         set { presence = (int)value; }
     }
 
-    /// <summary>列表里那行小字。</summary>
+    /// <summary>列表里那行小字（用户 2026-09-27 定的四种）。</summary>
     public string StatusLabel
     {
         get
         {
             switch (Presence)
             {
-                case FriendPresence.PlayingOurGame: return "正在玩本游戏";
-                case FriendPresence.PlayingOther:   return "游戏中";
-                case FriendPresence.Online:         return "在线";
-                case FriendPresence.InGameOnly:     return "游戏内好友";
-                default:                            return "离线";
+                case FriendPresence.InGame:   return "对局中";
+                case FriendPresence.Matching: return "匹配中";
+                case FriendPresence.Online:   return "在线";
+                default:                      return "离线";
             }
         }
     }
 
-    /// <summary>状态色：正在玩本游戏 = 金，其余 = 钢（离线更暗）—— 本套金 #C8A44A / 钢 #8EA2B4。</summary>
+    /// <summary>状态色：对局中 = 亮金 #E4CB84，匹配中 = 金 #C8A44A，在线 = 绿 #74B08A，离线 = 钢灰 #8EA2B4（更暗）。</summary>
     public Color StatusColor
     {
         get
         {
             switch (Presence)
             {
-                case FriendPresence.PlayingOurGame: return new Color32(200, 164, 74, 255);
-                case FriendPresence.Online:         return new Color32(142, 162, 180, 225);
-                case FriendPresence.PlayingOther:   return new Color32(142, 162, 180, 185);
-                default:                            return new Color32(142, 162, 180, 125);
+                case FriendPresence.InGame:   return new Color32(228, 203, 132, 255);
+                case FriendPresence.Matching: return new Color32(200, 164, 74, 235);
+                case FriendPresence.Online:   return new Color32(116, 176, 138, 255);
+                default:                      return new Color32(142, 162, 180, 140);
             }
         }
     }
@@ -84,18 +83,17 @@ public class FriendEntry
         }
     }
 
-    /// <summary>排序权重：正在玩本游戏 → 在线 → 游戏中 → 游戏内好友 → 离线。</summary>
+    /// <summary>排序权重：对局中 → 匹配中 → 在线 → 离线。</summary>
     public int SortWeight
     {
         get
         {
             switch (Presence)
             {
-                case FriendPresence.PlayingOurGame: return 0;
-                case FriendPresence.Online:         return 1;
-                case FriendPresence.PlayingOther:   return 2;
-                case FriendPresence.InGameOnly:     return 3;
-                default:                            return 4;
+                case FriendPresence.InGame:   return 0;
+                case FriendPresence.Matching: return 1;
+                case FriendPresence.Online:   return 2;
+                default:                      return 3;
             }
         }
     }

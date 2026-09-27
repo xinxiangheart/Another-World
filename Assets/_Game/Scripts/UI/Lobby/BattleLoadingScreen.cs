@@ -173,6 +173,7 @@ public class BattleLoadingScreen : MonoBehaviour
         SetProgress(0f);
         if (window != null) window.SetActive(true);
         // 场景异步加载在 Hold 期间就跑起来（不激活）—— 等要滑出时它已装好，滑开直接就是战斗场景
+        SteamPresence.InGame();   // 进战斗 → 好友列表里那行「对局中」（金）
         if (!DebugSkipSceneLoad && Preloader.Instance != null) Preloader.Instance.BeginSceneLoad();
     }
 

@@ -113,7 +113,8 @@ public class FriendListService : MonoBehaviour
             e.manual = true;
             e.playedOurGame = s.playedOurGame;
             e.lastSeenUnix = s.lastSeenUnix;
-            e.Presence = FriendPresence.InGameOnly;
+            // 只有异界号、没有 Steam 身份的手动好友 —— 我们看不见他的状态，四态里按「离线」算
+            e.Presence = FriendPresence.Offline;
             if (sid != 0UL) taken.Add(sid);
             result.Add(e);
         }

@@ -470,9 +470,31 @@ ReturnToLobby(reason):
 2. 好友的**游戏详情对公众可见**，否则查不到，只能落回上面三条；
 3. 结果**本地缓存**（Web API 有配额，一天刷一次足够）。
 
-### 7.4 已知边界（2026-09-27 实测）
+### 7.4 状态：只有四种，颜色定了（2026-09-27 用户）
+
+| 状态 | 什么时候 | 颜色 |
+|---|---|---|
+| **对局中** | 在跑本游戏，且他自己写的 `status` 不是 `matching` | 亮金 `#E4CB84` |
+| **匹配中** | 在跑本游戏，且 `status == "matching"` | 金 `#C8A44A` |
+| **在线** | 在线，但没在跑本游戏 | 绿 `#74B08A` |
+| **离线** | `GetFriendPersonaState == k_EPersonaStateOffline` | 钢灰 `#8EA2B4`（α 更暗） |
+
+排序权重同序（对局中 → 匹配中 → 在线 → 离线）。**没有第五种**：只有异界号、没有 Steam 身份的手动好友也算「离线」（我们看不见他的状态）。
+
+**读**：`SteamFriendSource.Collect()` ③ —— `SteamFriends.GetFriendRichPresence(id, "status")`。
+**写**：`SteamPresence`（`Assets/_Game/Scripts/UI/Lobby/SteamPresence.cs`，键固定 `status`，三档 `""` / `"matching"` / `"ingame"`），调用点四处：
+
+- `MatchWaitPanel.Show()` / `Hide()` —— 开 / 收搜索小窗 = 匹配中 / 回在线；
+- `MatchConfirmPanel.Open()` / `Hide()` —— 15 秒确认那段仍算匹配中；
+- `BattleLoadingScreen` 开加载界面（`BeginSceneLoad()` 之前）= 对局中；
+- `LobbyManager.Start()` = 回大厅，清掉。
+
+全部走 `SteamManager.Initialized` 预检 + `try/catch`，**非 Steam 启动时静默空跑**，不影响离线模式。
+
+### 7.5 已知边界（2026-09-27 实测）
 
 - Editor 里 `AppID = 480`、互为 Steam 好友 10 人，但三条证据全 0 → 名单**空是正常的**（界面上显示「暂无好友」）。
-- 名单容器 `List` 现在**没有 ScrollRect**（高 900，约 10 行），超了要加滚动。
+- 名单**已带滚动**：`Body/List` 是 `ScrollRect`（竖滚 + `Clamped`，无滚动条），`Viewport` 用 `RectMask2D` 硬裁，`Content` 高度 = 行数 × 84 —— 细节见 `Assets/_Game/Art/Sprites/Generated/lobby-ui-v1/README.md` 的「滚动的名单」。
+- ⚠ **昵称是玩家自定的 Unicode，而现在字体是静态图集 + 没有 fallback**：`Assets/_Game/Fonts/NotoSerifCJKsc-Bold SDF.asset`（`m_AtlasPopulationMode: 0`、`m_FallbackFontAssetTable: []`），没烤进图集的字会渲染成豆腐块 —— 2026-09-27 实测「岚」就出不来（`GameCharacters.txt` 是烤图集的字表）。要显示任意昵称，得把图集改 Dynamic 或挂一份 fallback 字体资源，代价是构建里要带上 `NotoSerifCJKsc-Bold.otf`（约 25 MB）。
 - 「用异界号加好友」的**输入界面还没做**（`FriendStore.AddManual` / `PlayerId.ResolveSteamId` 已就绪）。
 - 好友行现在**只有悬停变金**（`Button` 零监听，用来吃掉点击防冒泡）；点击打开对方资料页没做。

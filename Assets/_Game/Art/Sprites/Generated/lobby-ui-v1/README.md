@@ -498,3 +498,6 @@ LobbyUI_v1
 - **场景侧**由 `Assets/_Game/Editor/LobbyUIBuilder.cs` 的菜单 **`Tools/异界/大厅：生成好友侧边栏（点击好友从左侧滑出）`** 建：`Canvas/Layer_Sub_v1/Panel_Friends`（根铺满全屏 + 全透明 Image + `Button`→`Close()`；子 `Body` 是那块满高板 + 一个**不带监听**的 `Button` 只吃点击），运行时由 `LobbyFriendPanel`（`Assets/_Game/Scripts/UI/Lobby/`）滑入 / 滑出（`slideTime` 0.18s）。
 - ⚠ **别用自定义的第二个 MonoBehaviour 去接点击**：同一个 `.cs` 里除文件名那个类，Unity 都序列化不了（2026-09-27 实测在场景里存成 missing script）。用内置 `Button`。
 - 面板里的 `Text_Title`「好友」**不摆在面板左上角**，而是紧挨好友图标右边（用户 2026-09-27「左上角的好友字改为这个地方，ui图标右边一点」）—— 图标在 `Plate_Profile` 局部 `(160,-57)`、`46×46`，所以标题 `x` 从 `160+46+16=222` 起、竖向对齐图标中线。
+- **滚动的名单**（2026-09-27 用户：「加滚动」）：`Body/List` 是 `ScrollRect`（只竖滚、`Clamped` 不回弹、`scrollSensitivity 40`），**它自己没有贴图**；子 `Viewport` 挂 `RectMask2D` + 一张 α=0 的 `Image`（吃得到拖拽 —— Unity 不看 α），行都挂在 `Viewport/Content` 下，行模板 `RowTemplate` 也在 `Content` 里存成 inactive。
+  `Content` 的高度 = 行数 × 84（`RowH`），由 `LobbyFriendListUI.Rebuild()` 改 —— **那就是可滚范围**；所以**没有**做滚动条，超出部分靠 `RectMask2D` 硬裁。
+  ⚠ 回顶不能只写 `ScrollRect.verticalNormalizedPosition = 1`：它拿**上一帧缓存**的 content 边界换算，刚改完高度时会停在半个位置（实测 14 行停在 0.37）—— `LobbyFriendListUI.ScrollToTop()` 里是「先设归一化位置，再把 content 的 `anchoredPosition.y` 直接写 0」。

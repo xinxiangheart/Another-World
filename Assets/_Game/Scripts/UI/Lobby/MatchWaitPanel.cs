@@ -95,6 +95,7 @@ public class MatchWaitPanel : MonoBehaviour
     /// <summary>显示小窗，计时从 0 起。</summary>
     public void Show()
     {
+        SteamPresence.Matching();   // 搜索中 → 好友列表里那行「匹配中」（金）
         _t = 0f; _found = false; _warn = false; _running = true;
         _y = searchingY;
         if (stateRect != null) stateRect.anchoredPosition = new Vector2(stateRect.anchoredPosition.x, _y);
@@ -106,6 +107,7 @@ public class MatchWaitPanel : MonoBehaviour
 
     public void Hide()
     {
+        SteamPresence.Idle();       // 不在搜索了 → 好友看到「在线」（绿）
         _running = false;
         if (window != null) window.SetActive(false);
     }

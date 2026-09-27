@@ -62,6 +62,7 @@ public class LobbyManager : MonoBehaviour
 
     void Start()
     {
+        SteamPresence.Idle();   // 回到大厅 = 既不在匹配也不在对局 → 好友看到「在线」（绿）
         // 面板互斥：打开一个匹配/房间面板时，关闭其他面板并释放其 Steam 回调，
         // 防止残留的 LobbyMatchList_t 回调收到别的面板的 RequestLobbyList 结果而错误处理。
         if (quickMatchButton != null) quickMatchButton.onClick.AddListener(() =>
