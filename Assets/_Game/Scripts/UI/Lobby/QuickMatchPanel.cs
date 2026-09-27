@@ -496,12 +496,13 @@ public class QuickMatchPanel : MonoBehaviour
         {
             if (confirmPanel != null)
             {
-                // 确认弹窗路径：对方拒绝 = 本局取消（给一行提示，弹窗自己收掉两键）。
-                // 与超时一致 —— **不自动重开匹配**，由玩家再点一次「匹配」。
-                SetStatus("对方已拒绝，本局取消");
+                // 确认弹窗路径（用户 2026-09-27）：对方拒绝 = 自己这边对方压红 + 短暂停留，
+                // 停留结束后弹窗自己调 OnReMatchAfterDecline() **自动重排**。
+                // 这里先把本局退干净（退房 + 复位），重排那一步交给弹窗的停留收尾。
+                SetStatus("对方已拒绝，重新匹配…");
                 confirmPanel.OpponentDeclined();
                 SetReject(); LeaveLobby(); ResetState();
-                Debug.Log("[QM] 对方拒绝确认 → 本局取消（不自动重匹配）");
+                Debug.Log("[QM] 对方拒绝确认 → 退房，等弹窗停留结束后自动重排");
                 return;
             }
             SetStatus("对方已拒绝\n重新匹配..."); LeaveLobby(); ResetState(); StartSearch(); return;
@@ -539,6 +540,17 @@ public class QuickMatchPanel : MonoBehaviour
     }
 
     // ============ Buttons ============
+
+    /// <summary>对方拒绝、弹窗停留结束后由 MatchConfirmPanel 回调 —— **自动重排**
+    /// （用户 2026-09-27：「自己拒绝的不会重排，对方拒绝的自己会再次进入匹配池子」）。</summary>
+    public void OnReMatchAfterDecline()
+    {
+        Debug.Log("[QM] 对方拒绝 → 自动重新匹配");
+        if (IsMatching) { Debug.Log("[QM] 已在匹配中，忽略重排"); return; }
+        if (confirmPanel != null) confirmPanel.Hide();
+        if (compactWait != null && !compactWait.IsOpen) compactWait.Show();
+        StartSearch();
+    }
 
     /// <summary>确认弹窗 15 秒到、双方没都确认 —— 用户：「倒计时结束若双方有一个不确认就默认取消」。
     /// 写拒绝标记 + 退房 + 复位，**不自动重开匹配**（玩家再点一次「匹配」）。</summary>

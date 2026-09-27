@@ -14,6 +14,10 @@ using TMPro;
 /// 乘 <see cref="frameLocked"/>（钢灰 #6E7783）就是用户要的「灰边框」；确认后乘回纯白即恢复原色。
 /// 头像图同乘一层灰（同战斗里卡牌压黑的手感）。
 ///
+/// 2026-09-27 二次修（用户）：① 自己确认 = 收掉两个键、**不留任何字**，中央倒计时继续走；
+/// ② 对方拒绝 = 对方那一侧压红 + 中央倒计时**停表并变红**（不显示「对方已拒绝」文字），短暂停留后自动重排；
+/// ③ 超时/取消 = 直接关窗，不给提示。
+///
 /// 计时归本组件自己管（<see cref="acceptSeconds"/> / <see cref="goSeconds"/>），因为它要同时驱动
 /// 中央那行数字的颜色与两键的显隐；超时 / 对方拒绝 / 己方拒绝的 Steam 收尾仍归 <see cref="QuickMatchPanel"/>
 /// （大厅匹配状态机在那里），通过 <see cref="owner"/> 回调过去。
@@ -57,18 +61,23 @@ public class MatchConfirmPanel : MonoBehaviour
     public Color avatarNormal = new Color32(255, 255, 255, 255);
     public Color timerNormal = new Color32(255, 255, 255, 255);   // 15 秒：白字（用户点名）
     public Color timerGold = new Color32(200, 164, 74, 255);      // 3 秒：金字 #C8A44A
-    public Color timerWarn = new Color32(206, 151, 156, 255);     // 提示 #CE979C（本套生命亮档，不另起颜色）
+    public Color timerWarn = new Color32(206, 151, 156, 255);     // 对方拒绝：倒计时停表变红用 #CE979C（生命亮档，不另起颜色）
+    [Tooltip("对方拒绝时对方那一侧压红 —— 框用生命的 #B64848，头像乘一层红。")]
+    public Color frameDeclined = new Color32(182, 72, 72, 255);   // 生命 #B64848
+    public Color avatarDeclined = new Color32(255, 115, 115, 255); // 乘色压红（同压黑的机制，只换颜色）
 
     [Header("时长")]
     public float acceptSeconds = 15f;
     public float goSeconds = 3f;
-    [Tooltip("「未确认，已取消」这类提示停留多久再关窗。")]
+    [Tooltip("对方拒绝时「停表 + 变红」停留多久再关窗（停留结束后自动重排）。")]
     public float noticeSeconds = 1.6f;
+
 
     enum State { Idle, Accept, Go, Notice }
     State _st = State.Idle;
     float _t;
     bool _localOk, _oppOk, _goStarted;
+    bool _reMatchPending;   // 对方拒绝 → 停留结束后自动重排（自己拒绝不置这个）
 
     public bool IsOpen { get { return window != null && window.activeSelf; } }
     public float GoSeconds { get { return goSeconds; } }
@@ -98,7 +107,7 @@ public class MatchConfirmPanel : MonoBehaviour
         ApplyAvatar(opponentAvatar, owner != null ? owner.opponentTexture as Texture2D : null);
 
         // 双方默认未确认
-        _localOk = false; _oppOk = false; _goStarted = false;
+        _localOk = false; _oppOk = false; _goStarted = false; _reMatchPending = false;
         SetSideAccepted(true, false);
         SetSideAccepted(false, false);
 
@@ -129,8 +138,10 @@ public class MatchConfirmPanel : MonoBehaviour
         _localOk = true;
         SetSideAccepted(true, true);
         if (confirmButton != null) confirmButton.SetInteractable(false);   // 防重复点击
+        // 用户 2026-09-27：「自己确认也会隐藏确认和拒绝 button」→ 两个键整组收掉；
+        // 同日二次修：「等待对方确认也不显示字」→ 不留任何字，只留中央那行 15 秒倒计时继续走（它决定超时取消）。
+        if (confirmGroup != null) confirmGroup.SetActive(false);
         if (owner != null) owner.OnAccept();                              // 写 host_ok / guest_ok，转 WaitingOpponent
-        else TryGo();
         TryGo();
     }
 
@@ -138,6 +149,8 @@ public class MatchConfirmPanel : MonoBehaviour
     public void OnDeclineClicked()
     {
         if (_st != State.Accept && _st != State.Go) return;
+        Debug.Log("[MatchConfirm] 己方点「拒绝」→ 本局取消（自己拒绝**不重排**）");
+        _reMatchPending = false;
         if (owner != null) owner.OnDecline();
         else Hide();
     }
@@ -180,19 +193,33 @@ public class MatchConfirmPanel : MonoBehaviour
         if (owner != null) owner.OnConfirmTimeout();
     }
 
-    /// <summary>对方拒了 —— 关掉两键并给一行提示。</summary>
+    /// <summary>对方拒了（用户 2026-09-27）：自己这边**对方那一侧压红**，短暂停留后自动关窗并**重排**。
+    /// 「自己拒绝的不会重排，对方拒绝的自己会再次进入匹配池子」—— 自己拒绝走 OnDeclineClicked，不经过这里。</summary>
     public void OpponentDeclined()
     {
         if (!IsOpen) return;
-        Notice("对方已拒绝");
+        _reMatchPending = true;
+        SetSideDeclined(false);        // 只有对方那一侧压红
+        NoticeStopRed();               // 中央倒计时停表 + 变红（用户：不显示「对方已拒绝」几个字）
     }
 
-    void Notice(string msg)
+    /// <summary>对方那一侧的框 + 头像压红（同压黑的乘色机制，只换颜色）。</summary>
+    void SetSideDeclined(bool isLocal)
+    {
+        var frame = isLocal ? localFrame : opponentFrame;
+        var avatar = isLocal ? localAvatar : opponentAvatar;
+        if (frame != null) frame.color = frameDeclined;
+        if (avatar != null) avatar.color = avatarDeclined;
+    }
+
+    /// <summary>对方拒绝（用户 2026-09-27）：「不显示『对方已拒绝』，而是倒计时停止并变红以示对方拒绝」。
+    /// 数字停在当前值、颜色换成红，短暂停留后由 Update 收尾（关窗 + 自动重排）。</summary>
+    void NoticeStopRed()
     {
         _st = State.Notice;
         _t = Mathf.Max(0.4f, noticeSeconds);
         if (confirmGroup != null) confirmGroup.SetActive(false);
-        if (timerText != null) { timerText.color = timerWarn; timerText.text = msg; }
+        if (timerText != null) timerText.color = timerWarn;   // 停表 + 变红；文字仍是那个数字，不换文案
     }
 
     // ===================== 计时 =====================
@@ -216,7 +243,15 @@ public class MatchConfirmPanel : MonoBehaviour
 
             case State.Notice:
                 _t -= Time.unscaledDeltaTime;
-                if (_t <= 0f) Hide();
+                if (_t <= 0f)
+                {
+                    Hide();
+                    if (_reMatchPending)
+                    {
+                        _reMatchPending = false;
+                        if (owner != null) owner.OnReMatchAfterDecline();   // 对方拒绝 → 自己再次进匹配池子
+                    }
+                }
                 break;
         }
     }

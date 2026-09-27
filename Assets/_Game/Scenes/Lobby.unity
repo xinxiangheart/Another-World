@@ -21815,6 +21815,8 @@ MonoBehaviour:
   timerNormal: {r: 1, g: 1, b: 1, a: 1}
   timerGold: {r: 0.78431374, g: 0.6431373, b: 0.2901961, a: 1}
   timerWarn: {r: 0.80784315, g: 0.5921569, b: 0.6117647, a: 1}
+  frameDeclined: {r: 0.7137255, g: 0.28235295, b: 0.28235295, a: 1}
+  avatarDeclined: {r: 1, g: 0.4509804, b: 0.4509804, a: 1}
   acceptSeconds: 15
   goSeconds: 3
   noticeSeconds: 1.6
