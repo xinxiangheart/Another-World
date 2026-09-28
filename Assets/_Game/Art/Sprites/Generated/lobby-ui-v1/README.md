@@ -1603,3 +1603,54 @@ stage47 唯一一条失败就是它：`npotScale=ToNearest` / `alphaIsTransparen
 - **没验到的一条（要两台机子）**：`confirm_host_ok` / `confirm_guest_ok` 真的在两个 Steam 客户端之间来回 ——
   本轮把「写哪一格 / 读哪一格」两侧对齐（房主写大厅数据、客人写成员数据，读法一一对应）并用纯函数盖住了判读，
   但跨机那一跳仍需真人双开验一次。
+
+---
+
+## 三十八次修正（2026-09-28）：好友表头那颗「+」只有底边能点 —— 衬托底图在吃点击
+
+**来由**：用户「优化ui检测，好友ui只有鼠标在ui底部时才允许点击」。
+
+### ① 病灶（实测，不是推测）
+
+- `Plate_Profile`（左上头像衬托板，467×96，`Layer_Hud_v1`）的 RawImage **`m_RaycastTarget: 1`**，
+  而 **Unity 的命中不看 alpha**（`alphaHitTestMinimumThreshold` 默认 0）⇒ 整块矩形都在吃点击。
+- 好友详情入口那颗「+」`Icon_FriendPlus`（44×44，挂 `Panel_Friends/Body`，属 `Layer_Sub_v1`）中心落在
+  板矩形 `0..467 × 0..96` 里 ⇒ **只有探出板下沿的那 6px 能点** —— 与用户原话逐字吻合。
+- 同族第二处：`Plate_TopBand`（右上横栏，538×95，同样 raycast=1）把下层子弹窗右上角那几个
+  「叉 / 加入房间」的**上面 29px** 吃掉。
+- 同族第三处（体检时才浮出来）：两个货币的**图标 + 数字**共 4 件也是 raycast=1 的**纯显示**件，
+  把「卡牌总览 / 游戏介绍」面板的「返回 / 叉」按在下面（`CloseBtn` / `ReturnButton`）。
+
+### ② 改法（6 个 flag，最小面）
+
+- `Assets/_Game/Scenes/Lobby.unity`：6 处 `m_RaycastTarget: 1` → `0`（2 块衬托底图 + 4 件货币装饰）。
+  **「好友」人影 `Icon_Friend` 是板的子物体、画在板上面，一直是好的 —— 不要动它。**
+- 同处写回 `LobbyUIBuilder.cs`（`profile.raycastTarget = false;` / `band.raycastTarget = false;` + 货币那 4 件），
+  否则重跑生成器会被覆盖回去。
+- 子弹窗那几个「叉」被 HUD **图标**（邮件 / 教程 / 活动）压着这件事**不用改**：`LobbySubPanel.hideOnOpen`
+  开窗时会把它们整套藏掉 —— 四个面板都点名了 `Icon_Mail`，体检已逐面板核对。
+
+### ③ 新工具 `Assets/_Game/Editor/LobbyHitAudit.cs`（菜单 `Tools/异界/大厅 UI 命中体检`）
+
+- 口径：真 Graphic 列表 + 层级次序 + 矩形包含 + `raycastTarget` + `RectMask2D` 裁切；每个点击件取 5 个采样点
+  （中心 + 四向内缩 40%）报「被谁盖住」，并把所属 `LobbySubPanel.hideOnOpen / hideHudOnOpen` 会藏掉的遮挡物判为无害。
+- **别拿 `GraphicRaycaster.Raycast` 做编辑器体检**：它内部有 `graphic.depth == -1 ⇒ 跳过` 与 `canvasRenderer.cull`
+  两条 —— 编辑器里画布没重绘时**整屏打空**（本轮 Stage76 / Stage78 两版探针就这么全空手而归，还差点把
+  「没信号」当成「已修好」）。要真命中，得先让画布重绘。
+- 只算**常驻 HUD**（`Layer_Hud_v1` 里不叫 `Panel_*` / `Popup_*` 的那几块）当遮挡物：面板在场景里都存成
+  **active**（`closeOnStart` 那套约定），全量口径下 95 个点击件里 94 个「被盖」全是编辑器态噪声。
+
+### ④ 自证
+
+| 跑 | 文件 | 结果 |
+|---|---|---|
+| 改**前** | `stage78c_hit_before.txt` | 95 个点击件 94 个被盖；`Icon_FriendPlus` 那一族被 `/Plate_Profile` 压着 |
+| 改**后** | `stage79_hit_after.txt` / `stage80_hit_after2.txt` | **95 个点击件，0 个被盖**；`Icon_FriendPlus = OK 5/5`；自检块 `Plate_Profile / Plate_TopBand rayTarget=False`（改前 True） |
+
+（证据目录 `C:\Users\22589\.codex\visualizations\2026\09\26\01a0dccd-afda-7a23-a849-e45d1e52da00\`；执行器跑完自删。）
+
+### ⑤ 两个坐标 / 文本坑（记下来免得重踩）
+
+- `Lobby.unity` 是 **CRLF**（不是 LF）—— 正则少写一个 `\r?` 就会「一个文档都找不到」。
+- Overlay 画布 `GetWorldCorners` 给的是「屏幕像素、**y 从下往上**」；而体检模型只要 `rect.Contains` 就够了，
+  别绕屏幕坐标那一道（绕了就得跟 `canvas.pixelRect` 翻 y，翻错就整屏打空）。

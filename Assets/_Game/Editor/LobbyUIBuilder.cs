@@ -108,12 +108,16 @@ public static class LobbyUIBuilder
 
         // ── 左上：头像衬托板（圆框 = 头像位，右侧 = 名字位，好友图标挂下沿）──
         RawImage profile = NewRaw(hudLayer, "Plate_Profile", UiDir + "LobbyProfilePlate.png", AnchorTL, PivotTL, Vector2.zero, new Vector2(467f, 96f));
+        // 纯衬托底图：Unity 的命中**不看 alpha**，整块矩形都会吃点击（2026-09-28 实测：不关它会压掉
+        // 下层好友侧边栏表头那颗「+」Icon_FriendPlus —— 44x44 只有探出板下沿的 6px 能点）。
+        profile.raycastTarget = false;
         NewRaw(profile.rectTransform, "Avatar_Ring", UiDir + "LobbyAvatarRing.png", AnchorTL, PivotTL, new Vector2(36f, -2f), new Vector2(88f, 88f));
         NewLabel(profile.rectTransform, "Text_PlayerName", "名字", new Vector2(184f, -12f), new Vector2(240f, 44f), 26f);
         RawImage iconFriend = NewRaw(profile.rectTransform, "Icon_Friend", UiDir + "Icon_LobbyFriend.png", AnchorTL, PivotTL, new Vector2(160f, -57f), new Vector2(46f, 46f));
 
         // ── 右上：横栏 + 两个货币 + 齿轮；栏下商城 / 活动 / 教程（无底板），整簇锚屏幕右上角 ──
         RawImage band = NewRaw(hudLayer, "Plate_TopBand", UiDir + "LobbyBandRight.png", AnchorTR, PivotTL, new Vector2(-538f, 0f), new Vector2(538f, 95f));
+        band.raycastTarget = false;   // 同上：横栏也是衬托底图，开着会吃掉下层那几个叉上面约 29px
         NewRaw(band.rectTransform, "Icon_Coin", UiDir + "Icon_LobbyCoin.png", AnchorTL, PivotTL, new Vector2(110f, -16f), new Vector2(48f, 48f));
         NewLabel(band.rectTransform, "Text_Coin", "1,280", new Vector2(164f, -24f), new Vector2(150f, 46f), 28f);
         NewRaw(band.rectTransform, "Icon_Ticket", UiDir + "Icon_LobbyTicket.png", AnchorTL, PivotTL, new Vector2(300f, -16f), new Vector2(48f, 48f));
@@ -126,6 +130,19 @@ public static class LobbyUIBuilder
         RawImage iconEvent = NewRaw(band.rectTransform, "Icon_Event", UiDir + "Icon_LobbyEvent.png", AnchorTL, PivotTL, new Vector2(190f, -66f), new Vector2(60f, 60f));
         RawImage iconTutorial = NewRaw(band.rectTransform, "Icon_Tutorial", UiDir + "Icon_LobbyTutorial.png", AnchorTL, PivotTL, new Vector2(280f, -66f), new Vector2(60f, 60f));
         RawImage iconMail = NewRaw(band.rectTransform, "Icon_Mail", UiDir + "Icon_LobbyMail.png", AnchorTL, PivotTL, new Vector2(370f, -66f), new Vector2(60f, 60f));
+
+        // 两个货币（图标 + 数字）是**纯显示**：4 件一律关掉 raycastTarget —— NewRaw / NewLabel 默认开着（Unity 组件默认值），
+        // 开着就会把下层子弹窗右上角那几个「叉 / 返回」按到只剩一条边（2026-09-28 命中体检实测：CloseBtn / ReturnButton）。
+        foreach (string cn in new[] { "Icon_Coin", "Icon_Ticket" })
+        {
+            Transform ct = band.rectTransform.Find(cn);
+            if (ct != null) { var ci = ct.GetComponent<RawImage>(); if (ci != null) ci.raycastTarget = false; }
+        }
+        foreach (string tn in new[] { "Text_Coin", "Text_Ticket" })
+        {
+            Transform tt = band.rectTransform.Find(tn);
+            if (tt != null) { var tmp = tt.GetComponent<TMPro.TextMeshProUGUI>(); if (tmp != null) tmp.raycastTarget = false; }
+        }
 
         // ── 右半：四块入口板（板心锚屏幕右上角；名字是子物体，跟着板一起倾斜）──
         // ── 右半：入口板（上排两块板心锚屏幕右上角；下排两块挂在那块透明大框下）──

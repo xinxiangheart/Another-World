@@ -10,6 +10,7 @@
 - **还没做的（后续计划）** -> `Docs/后续计划.md`（等一份共享存储的两件 / 拿到 key 就能做的 / 没验过的）
 - **外部技能（装在 `~/.codex/skills`，不在仓库）** -> `Docs/生图技能清单.md` —— 生图 / 设计类第三方技能台账（装了什么、管什么、怎么卸）
 - **外部参考件（在桌面，不在仓库）** -> 见下面「参考件索引」—— `图片参考.docx`（背景 / 视角 / 细节）与 `脸部参考.docx`（脸）
+- **Unity 编辑器怎么启动**（沙箱 shell 会缺 `ALLUSERSPROFILE`）-> 见本文「编辑器启动口径」+ `Tools/LaunchUnity.ps1`
 - 引用本文件时**按标题搜，不要按行号** —— 它一直在增补，行号会漂。
 
 ## 参考件索引（外部参考件，放在桌面，不在仓库里）
@@ -43,6 +44,31 @@ Windows 包发布走 GitHub Release：改 `Assets/_Game/Scenes/Welcome.unity` �
 → push `main` → `auto-release.yml` 自动打 tag、Unity batch 构建、上传 zip。
 一键入口 `Tools/Release.ps1 -Version X.Y.Z`；完整规格、触发链与排错见 `Docs/发版流程.md`。
 发版前先确认 self-hosted runner（`C:\actions-runner`）在跑 —— 它不在时任务会一直排队且 GitHub 不报错。
+
+## 编辑器启动口径（2026-09-27 定，改「怎么拉起 Unity」前必读）
+
+**一句话：从 Codex 的 shell 里拉起 Unity，一律走 `Tools/LaunchUnity.ps1`；别直接 Start-Process Unity.exe。**
+
+**为什么**：沙箱化的 shell 环境块里缺一批机器级变量（`ALLUSERSPROFILE` / `PUBLIC` / `CommonProgramFiles` / `COMPUTERNAME` …；对照 explorer.exe 的环境块实测确认它那边是全的）。UPM 服务端（Node 写的）里有这么一行 —— `node_modules/@upm/core/lib/private/configuration/upm-config.js`：
+
+```
+function getGlobalConfigRoot(){ ... path.join(process.env.ALLUSERSPROFILE, "Unity/config") ... }
+```
+
+变量缺失 -> Node 抛 `The "path" argument must be of type string. Received undefined` -> 每个 UPM 请求 500 -> 控制台满屏：
+
+```
+[Package Manager] The "path" argument must be of type string. Received undefined
+[Package Manager Window] Error fetching package list.
+```
+
+`upm.log` 里对应的是 `config:project:get-registries --> 500`（正常会话是 `--> 200`）。**这不是工程坏了** —— 从资源管理器 / Unity Hub 启动没有这个问题（用户自己的启动一贯正常，本坑只在 agent 从沙箱 shell 拉起时出现）。
+
+`Tools/LaunchUnity.ps1` 做三件事：① 已经有编辑器在跑就**不重复拉**；② 补齐缺失的机器级变量（**Process 作用域**，只影响本次拉起的进程树，不落盘、不改系统设置）；③ 拉起后打印自检位置。
+
+**第二条（同一族，别再踩）**：UPM server 是「每个编辑器一个、**父编辑器一死就自杀**」—— `upm.log` 会留下 `Shutting down UnityPackageManager.exe: parent process [<PID>] is no longer running.`。所以**杀「多余的 Unity 进程」会把还在跑的那台的包管理器一起带走**（症状一样，但 `Editor.log` 里连 `UpmClient::Connect` 都没有）。换编辑器要**先正常关旧的**，再拉新的。
+
+**怎么验（改完必跑）**：`%LOCALAPPDATA%\Unity\Editor\upm.log` 无 `--> 500`；`Editor.log` 里有 `[Package Manager] UpmClient::Connect` 且**没有** `path" argument must be of type string`。
 
 ## 界面 / 场景美术方向（2026-09-25 定，出 UI / 场景贴图前必读）
 
