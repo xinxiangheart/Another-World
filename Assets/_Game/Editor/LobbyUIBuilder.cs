@@ -805,6 +805,230 @@ public static class LobbyUIBuilder
         Selection.activeGameObject = panel;
         EditorSceneManager.MarkSceneDirty(canvas.gameObject.scene);
     }
+    // ═════════════════════════════════════════════════════════════════════════
+    // 卡牌总览（2026-09-28）—— 左边一栏级联筛选 + 右边卡牌网格 + 右下角 n/总数
+    // ═════════════════════════════════════════════════════════════════════════
+    // 用户原话：「做卡牌总览，点击进入一个类似于作战的全屏，左边一栏（宽度大概为好友宽度的 3/4），右边是
+    //   比较大的卡牌预览，大概一排 4-5 个（具体看效果）……右下角显示数量/卡牌总数」。
+    //
+    // 几何（屏幕 px · 1920x1080）—— 运行时的 LobbyCardCollectionPanel 照抄同一组数：
+    //   · 面板挂在 Layer_Sub_v1（HUD 层是 Canvas 最后一个子物体，永远画在上面 ⇒ 左上 / 右上常驻）。
+    //   · 内容不用 BuildSubPanel 给的 Body_Content（它是「子全屏弹窗留内容」的通用框，上下内缩很多），
+    //     而是在面板根上照好友详情那套「两条金线 + 左右两块」自己定边 —— 口径与 Fd* 一致：
+    //       横金线 y = SubPanelTop + 24 = 152（在通用关闭叉 66..126 下面）；竖金线 x = SubPanelPadX + LcRailW = 413。
+    //   · 左栏 = 64 .. 413（宽 349 = 好友侧边栏 465 x 3/4，取整）；右栏 = 413 .. 1856。
+    //   · 右栏再内缩 LcViewInset = 32（不贴金线）后才是滚动视口。
+    //   · ⚠ StretchRect(父, 名, offsetMin, offsetMax) 的 offsetMax 是**距右沿 / 距上沿**，
+    //     一律写负数；写成正数会把这件推到父级之外（2026-09-28 二改修的三处）。
+    const string  LcPanelName   = "Panel_Cards";
+    const string  LcLineTopName = "Line_CardsTop";
+    const string  LcLineLeftName= "Line_CardsLeft";
+    const string  LcRailName    = "Rail_Filter";
+    const string  LcViewportName= "Body_Cards";
+    const string  LcCounterName = "Text_CardCount";
+
+    const float LcPadBottom = 64f;                                     // = SubPanelPadX
+    const float LcLineTopY  = SubPanelTop + 24f;                       // 152
+    const float LcRailW     = 349f;                                    // 465 x 3/4 取整
+    const float LcLineLeftX = SubPanelPadX + LcRailW;                  // 413
+    const float LcChipW     = 108f;
+    const float LcChipH     = 52f;
+    const float LcChipGap   = 12f;                                     // 3 x 108 + 2 x 12 = 348 <= 349
+    const float LcChipRow   = 60f;                                     // 行距（52 高 + 8）
+    const float LcChipFont  = 20f;                                     // 只作记录：**实际字号在 LobbyCardCollectionPanel**（3 字 20 / 4 字 16）
+    const float LcLv0Y      = 20f;                                     // 第 0 栏上沿（面板根左上角往下）
+    const float LcLv1Y      = 96f;                                     // 第 1 栏上沿（召唤物 / 法术 —— 常驻）
+    const float LcLv2Y      = 176f;                                    // 第 2 栏上沿（子集：英雄..特殊 / 普通..反制）
+    const float LcLv3Y      = 256f;                                    // 第 3 栏上沿（费数 / 特性）—— 子集不再和第 1 栏挤同一栏
+    const float LcViewInset = 32f;                                     // 视口距右栏左右沿
+    const float LcViewGapTop= 48f;                                     // 视口上沿距横金线（152 -> 200）
+    const float LcViewBottom= 92f;                                     // 视口下沿（给右下角那行 n/总数 + 间隔）
+    // ── 右栏卡牌网格（2026-09-28 三改：照旧卡牌总览 CardCollectionPanel 的取值）────────
+    //    用户「一排最多4-5张，参考之前的卡牌总览怎么实现的」→ 5 张一排 / cardScale 2 / 间距 25 /
+    //    卡面 = 预制体自然尺寸 83.33 x 146.33（不是 64x84：那个尺寸会把卡框压扁）。
+    //    块宽 = 5 x 83 x 2.5 + 4 x 25 x 2.5 = 1292，在 1378 的视口里居中（左右各 43）。
+    //    这里只给「运行时重建之前的占位尺寸」，真正的摆位在 LobbyCardCollectionPanel.RebuildCards。
+    const int   LcColumns   = 5;
+    const float LcCellW     = 270f;                                    // (83 + 25) x 2.5
+    const float LcCellH     = 427.5f;                                  // (146 + 25) x 2.5
+    const float LcGridW     = 1378f;                                   // = 视口宽（内容容器铺满视口，卡片在其中居中）
+    const float LcCounterFont = 26f;
+    const float LcCounterRx  = 40f;                                    // 计数行右沿距屏幕右沿
+    const float LcCounterRy  = 40f;                                    // 计数行下沿距屏幕下沿
+
+    static readonly Color LcLineColor = new Color32(200, 164, 74, 90); // 金细线（与好友详情那两条同α档）
+
+    [MenuItem("Tools/异界/大厅：生成卡牌总览子全屏弹窗（左栏级联筛选 + 右卡牌网格）")]
+    public static void BuildCardsSubPanelMenu()
+    {
+        Canvas canvas = Object.FindObjectOfType<Canvas>();
+        if (canvas == null) { Debug.LogError("[LobbyUI] 当前场景没有 Canvas —— 请先打开 Assets/_Game/Scenes/Lobby.unity"); return; }
+
+        Transform sub, hud;
+        EnsureUiLayers(canvas, out sub, out hud);
+        GameObject panel = BuildSubPanel(sub, hud.gameObject, LcPanelName, "卡牌总览", true, false);
+        BuildCardsContent(panel);
+
+        // ⚠ 重建会把旧的 LobbySubPanel 组件销毁 —— 入口板上那条 subPanel 引用会被序列化成 null，
+        //   点击就退回占位弹窗。所以重建后必须由**本菜单自己**把引用接回去（同 BuildBattleSubPanelMenu）。
+        WireEntryToPanel(canvas, "Entry_Cards", panel, "卡牌总览");
+        Selection.activeGameObject = panel;
+        EditorSceneManager.MarkSceneDirty(canvas.gameObject.scene);
+        Debug.Log("[LobbyUI] 已生成 " + LcPanelName + "（卡牌总览）：通用背景 + 通用关闭叉 + 左栏 " + LcRailW +
+                  " 宽级联筛选（LobbyChip_Filter 三态）+ 竖金线 + 右栏卡牌网格（一排 " + LcColumns + " 个）+ 右下角 n/总数；" +
+                  "骨架由本菜单建，筛选 / 过滤 / 生成卡牌归 LobbyCardCollectionPanel（随面板一起是 active 的，运行时由入口板 Open）。");
+    }
+
+    /// <summary>卡牌总览的内容骨架：两条金线 + 左栏（四个筛选容器）+ 右栏（滚动视口 + 卡牌容器 + 计数）。</summary>
+    /// <remarks>幂等：先把旧的四个件收掉再建（重跑本菜单不叠）。骨架建好后把引用填进
+    /// <see cref="LobbyCardCollectionPanel"/>；筛选格与卡牌本体是运行时按选择现建的。</remarks>
+    static void BuildCardsContent(GameObject panel)
+    {
+        if (panel == null) return;
+        Transform bg = panel.transform.Find("Bg");
+        int at = bg != null ? bg.GetSiblingIndex() + 1 : 0;
+
+        string[] olds = { LcLineTopName, LcLineLeftName, LcRailName, LcViewportName, LcCounterName };
+        for (int i = 0; i < olds.Length; i++)
+        {
+            Transform o = panel.transform.Find(olds[i]);
+            if (o != null) Undo.DestroyObjectImmediate(o.gameObject);
+        }
+
+        // ① 横金线：从「左栏左沿」一路到屏幕右沿内缩 —— 只跨右栏（左栏上面是第 0 栏「全部」）
+        //    锚上沿（y 钉死、x 拉伸），否则纯色方块会被沿拉伸轴拉成一整块金色大板（见 StretchRect 的坑）。
+        // ⚠ 锚必须是**满跨**（anchorMin.x = 0 / anchorMax.x = 1），左端用 offsetMin.x 往里收；
+        //   把 anchorMin.x 直接写成 413/1919 那种「半跨锚」会让 offset 语义变成相对锚片（实测横线被拉到 61 万 px，
+        //   Stage83 抓到）。好友详情那条 Line_DividerTop 就是满跨锚 + offsetMin.x = FdPadX，照抄它。
+        var lineTop = StretchRect(panel.transform, LcLineTopName, new Vector2(0f, 1f), new Vector2(1f, 1f),
+                                  new Vector2(LcLineLeftX, -LcLineTopY),
+                                  new Vector2(-SubPanelPadX, -LcLineTopY + 2f)).gameObject.AddComponent<Image>();
+        lineTop.color = LcLineColor;
+        lineTop.raycastTarget = false;
+        lineTop.transform.SetSiblingIndex(at);
+
+        // ② 竖金线：从横金线一路到下沿（把左栏与右栏分开）
+        // ⚠ offsetMax 的那两个数是「距右沿 / 距上沿」，**必须是负的**：竖线原来写 +LcLineTopY，
+        //   于是线顶跑到面板上沿之上 152（用户那张图里线一直伸进顶栏），LcLineTopY 处反倒没有端点。
+        var lineLeft = StretchRect(panel.transform, LcLineLeftName, new Vector2(0f, 0f), new Vector2(0f, 1f),
+                                   new Vector2(LcLineLeftX, LcPadBottom),
+                                   new Vector2(LcLineLeftX + 2f, -LcLineTopY)).gameObject.AddComponent<Image>();
+        lineLeft.color = LcLineColor;
+        lineLeft.raycastTarget = false;
+        lineLeft.transform.SetSiblingIndex(at + 1);
+
+        // ③ 左栏：四个容器，竖着排（第 0 栏 = 全部 / 第 1 栏 = 召唤物·法术 / 第 2 栏 = 类别 / 第 3 栏 = 费数·特性）
+        // ⚠ 用「钉左沿」的锚（anchorMin.x = anchorMax.x = 0），offsetMax.x 才是「距左沿」；
+        //   满跨锚下 offsetMax.x 会被读成「距右沿」、offsetMax.y 为正则栏顶跑到面板之上（筛选格压顶栏）。
+        RectTransform rail = StretchRect(panel.transform, LcRailName,
+                                         new Vector2(0f, 0f), new Vector2(0f, 1f),
+                                         new Vector2(SubPanelPadX, LcPadBottom),
+                                         new Vector2(SubPanelPadX + LcRailW, -LcLineTopY));
+        rail.SetSiblingIndex(at + 2);
+        RectTransform lv0 = NewRect(rail, "Chips_Lv0", AnchorTL, PivotTL, new Vector2(0f, -LcLv0Y), new Vector2(LcRailW, LcChipH));
+        RectTransform lv1 = NewRect(rail, "Chips_Lv1", AnchorTL, PivotTL, new Vector2(0f, -LcLv1Y), new Vector2(LcRailW, LcChipH));
+        RectTransform lv2 = NewRect(rail, "Chips_Lv2", AnchorTL, PivotTL, new Vector2(0f, -LcLv2Y), new Vector2(LcRailW, LcChipH));         // 一格（3 个一行）
+        RectTransform lv3 = NewRect(rail, "Chips_Lv3", AnchorTL, PivotTL, new Vector2(0f, -LcLv3Y), new Vector2(LcRailW, LcChipH * 5f));   // 5 行：主动退场那栏是第 4 行
+
+        // ④ 右栏：滚动视口（RectMask2D 裁剪 + 隐藏式纵向滚动条）
+        // ⚠ 上沿 = -(LcLineTopY + LcViewGapTop) = -200（横金线 152 再往下 48）。
+        //   原来写的是 +（LcLineTopY - LcViewGapTop）= +104 ⇒ 视口顶跑到画布上沿之上 104，
+        //   于是第一行卡被画在画布外、遮罩也裁不到顶部（用户那张图最上面那行就是这么来的）。
+        RectTransform body = StretchRect(panel.transform, LcViewportName,
+                                         new Vector2(LcLineLeftX + LcViewInset, LcViewBottom),
+                                         new Vector2(-SubPanelPadX - LcViewInset, -(LcLineTopY + LcViewGapTop)));
+        body.SetSiblingIndex(at + 3);
+        body.gameObject.AddComponent<RectMask2D>();
+        // 右栏「整框可拖」：视口自己不是 Graphic、不参与射线，所以鼠标按在**卡片之间的空隙 / 卡片区以外的空白**
+        // 时命中的是面板底图（Bg），事件从 Bg 往上冒泡到面板 —— 那条链上没有 ScrollRect ⇒ 拖不动。
+        // 补一张**全透明**的 Image 当拖动面即可：射线不看 alpha（只有 alphaHitTestMinimumThreshold 才看），
+        // 它挂在视口上、画在自己的子物体之下 ⇒ 卡片照旧优先命中，空白处由它接手、冒泡到同一个 ScrollRect。
+        var dragSurface = body.gameObject.AddComponent<Image>();
+        dragSurface.color = new Color(0f, 0f, 0f, 0f);
+        dragSurface.raycastTarget = true;
+
+        var scroll = body.gameObject.AddComponent<ScrollRect>();
+        scroll.horizontal = false;
+        scroll.vertical = true;
+        scroll.movementType = ScrollRect.MovementType.Clamped;
+        scroll.scrollSensitivity = 40f;
+
+        RectTransform content = NewRect(body, "Grid_Cards", new Vector2(0f, 1f), new Vector2(0f, 1f),
+                                        Vector2.zero, new Vector2(LcGridW, LcCellH));
+        scroll.viewport = body;
+        scroll.content = content;
+
+        Scrollbar bar = BuildCardsScrollbar(body, at + 4);
+        scroll.verticalScrollbar = bar;
+        scroll.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.Permanent;
+        scroll.verticalScrollbarSpacing = 0f;
+
+        // ⑤ 右下角计数行：n / 卡牌总数（锚右下，位置写死 —— 与视口下沿同一条水平线附近）
+        TextMeshProUGUI counter = NewLabel(panel.transform, LcCounterName, "0 / 0",
+                                           Vector2.zero, new Vector2(260f, 36f), LcCounterFont);
+        RectTransform crt = counter.rectTransform;
+        crt.anchorMin = crt.anchorMax = new Vector2(1f, 0f);
+        crt.pivot = new Vector2(1f, 0f);
+        crt.anchoredPosition = new Vector2(-LcCounterRx, LcCounterRy);
+        counter.alignment = TextAlignmentOptions.BottomRight;
+        counter.color = new Color32(228, 203, 132, 236);   // 本套亮金
+        counter.raycastTarget = false;
+        counter.transform.SetSiblingIndex(at + 5);
+
+        // ⑥ 接线
+        var comp = panel.GetComponent<LobbyCardCollectionPanel>();
+        if (comp == null) comp = panel.AddComponent<LobbyCardCollectionPanel>();
+        comp.railRoot = rail;
+        comp.chipLv0 = lv0;
+        comp.chipLv1 = lv1;
+        comp.chipLv2 = lv2;
+        comp.chipLv3 = lv3;
+        comp.cardScroll = scroll;
+        comp.gridRoot = content;
+        comp.counterText = counter;
+        comp.font = _font != null ? _font : AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontPath);
+        EditorUtility.SetDirty(comp);
+    }
+
+    /// <summary>右侧那条细金滚动条（轨道 + 手柄），与整套同源：平底 + 一条金细线，不做倒角。</summary>
+    static Scrollbar BuildCardsScrollbar(RectTransform viewport, int sibling)
+    {
+        Transform old = viewport.Find("Scroll_Cards");
+        if (old != null) Undo.DestroyObjectImmediate(old.gameObject);
+
+        RectTransform root = NewRect(viewport, "Scroll_Cards", new Vector2(1f, 0f), new Vector2(1f, 1f),
+                                     new Vector2(10f, 0f), new Vector2(6f, 0f));
+        root.anchorMin = new Vector2(1f, 0f);
+        root.anchorMax = new Vector2(1f, 1f);
+        root.offsetMin = new Vector2(-10f, 0f);
+        root.offsetMax = new Vector2(-4f, 0f);
+        root.SetSiblingIndex(sibling);
+
+        var track = root.gameObject.AddComponent<Image>();
+        track.color = new Color32(6, 9, 14, 150);          // 墨，半透明
+        track.raycastTarget = true;
+
+        RectTransform sliding = NewRect(root, "SlidingArea", PivotC, PivotC, Vector2.zero, Vector2.zero);
+        sliding.anchorMin = Vector2.zero;
+        sliding.anchorMax = Vector2.one;
+        sliding.offsetMin = Vector2.zero;
+        sliding.offsetMax = Vector2.zero;
+
+        RectTransform handle = NewRect(sliding, "Handle", PivotC, PivotC, Vector2.zero, Vector2.zero);
+        handle.anchorMin = Vector2.zero;
+        handle.anchorMax = Vector2.one;
+        handle.offsetMin = Vector2.zero;
+        handle.offsetMax = Vector2.zero;
+        var handleImg = handle.gameObject.AddComponent<Image>();
+        handleImg.color = new Color32(200, 164, 74, 170);  // 金
+
+        var sb = root.gameObject.AddComponent<Scrollbar>();
+        sb.direction = Scrollbar.Direction.BottomToTop;
+        sb.targetGraphic = handleImg;
+        sb.handleRect = handle;
+        return sb;
+    }
+
     // ── 左下角常驻玩家 ID（2026-09-27 用户：「左下角会常态以小字显示自己id」）────────────
     const string IdTagName = "Text_PlayerId";
     const float  IdTagX = 64f;        // 距左边框
