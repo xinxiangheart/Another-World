@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
@@ -50,6 +51,12 @@ public class LobbyCardCollectionPanel : MonoBehaviour, ILobbySubPanelOpen
     const float CardScale     = 2.5f;     // 一排 5 张铺满视口宽（旧卡牌总览是 2，那样左右会空掉 174）
     const float CardGapX      = 25f;      // 旧面板 hSpacing（卡片单位，随 CardScale 一起放大）
     const float CardGapY      = 25f;      // 旧面板 vSpacing
+    // ── 分帧铺卡（2026-09-28「令点开卡牌总览不卡顿」）────────────────────
+    // 实测（Stage101 · 编辑态 Play · 卡面已预热）：整开一次 655 ms，其中**只 Instantiate 186 个就占 313 ms**
+    // （1.68 ms/张；InitFromTemplate 1 ms、显示刷新 72 ms）—— 「点开」那一下的冻结基本是 Instantiate，
+    // 不是读图，所以光靠过场预加载解决不了。改成：先同步铺满一屏，剩下的每帧按时间预算接着铺。
+    const int   InstantCards          = 15;   // 同步先铺几张（一屏 = 15 张，点开就有东西看）
+    const int   CardsPerFrameBudgetMs = 8;    // 之后每帧最多花几毫秒铺卡
     const float PaneW         = 1378f;    // 视口宽（= 1919 − 445 − 96，与生成器 Lc* 同口径）；运行时优先读真实值
 
     const string FilterChipTex      = "Assets/_Game/Art/Sprites/Generated/lobby-ui-v1/LobbyChip_Filter.png";
@@ -81,7 +88,9 @@ public class LobbyCardCollectionPanel : MonoBehaviour, ILobbySubPanelOpen
     readonly List<Chip> _chips = new List<Chip>();
     Texture2D _texN, _texH, _texO;
     bool _built;
-    int _shown;                     // 当前右侧真正生成的张数（= 计数行的分子）
+    int _shown;                     // 当前筛选下应有多少张（= 计数行的分子）
+    int _buildGen;                  // 铺卡换代号：筛选一变就 +1，旧协程见到自己不是当前代就退场
+    Coroutine _fillCo;              // 正在分帧铺卡的那条协程
 
     class Chip
     {
@@ -437,60 +446,99 @@ public class LobbyCardCollectionPanel : MonoBehaviour, ILobbySubPanelOpen
         float blockW = GridColumns * CardSizeW * CardScale + (GridColumns - 1) * CardGapX * CardScale;   // 1287.5
         float gridPadX = Mathf.Max(0f, (paneW - blockW) * 0.5f);                                          // 45
 
-        int shown = 0;
+        // 先把过滤结果摊出来（不 Instantiate，只挑模板）—— 张数要提前知道
+        var want = new List<CardData>();
         for (int i = 0; i < _all.Count; i++)
         {
             CardData d = _all[i];
-            if (!Pass(d)) continue;
-
-            GameObject prefab = d.cardType == CardType.Spell ? d.spell2DPrefab : d.card2DPrefab;
-            if (prefab == null) continue;
-
-            GameObject go = Instantiate(prefab, gridRoot);
-            go.name = "CardPreview_" + d.templateID;
-
-            // 预览用：把战斗用的拖拽 / 悬停 / 旧显示脚本剥掉，只留 CardDisplay2DNew 画卡面
-            var cv = go.GetComponent<CardView>(); if (cv != null) cv.enabled = false;
-            var drag = go.GetComponent<CardDrag>(); if (drag != null) drag.enabled = false;
-            var hv = go.GetComponent<CardHover>(); if (hv != null) hv.enabled = false;
-            var inst = go.GetComponent<CardInstance>();
-            if (inst == null) inst = go.AddComponent<CardInstance>();
-            inst.InitFromTemplate(d, 0);
-
-            // 优先用新的显示脚本；老预制体（只有基类 CardDisplay2D）才退到那条老路。
-            // ⚠ 别写成 GetComponent<CardDisplay2D>() != null 就 Destroy —— 新脚本继承自它，
-            //   那条会把新脚本自己删掉（GetComponent 会连派生类一起命中）。
-            var dispNew = go.GetComponent<CardDisplay2DNew>();
-            if (dispNew != null) dispNew.RefreshWithInstance(inst);
-            else { var dispOld = go.GetComponent<CardDisplay2D>(); if (dispOld != null) dispOld.RefreshWithInstance(inst); }
-
-            RectTransform rt = go.GetComponent<RectTransform>();
-            rt.anchorMin = rt.anchorMax = new Vector2(0f, 1f);
-            rt.pivot = new Vector2(0.5f, 0.5f);
-            rt.sizeDelta = new Vector2(CardSizeW, CardSizeH);   // 83 x 146：预制体自然尺寸，别改（改了=压扁卡框）
-            rt.localScale = Vector3.one * CardScale;
-
-            int row = shown / GridColumns, col = shown % GridColumns;
-            rt.anchoredPosition = new Vector2(gridPadX + col * cellW + cellW * 0.5f,
-                                              -(row * cellH + cellH * 0.5f));
-
-            _cards.Add(go);
-            shown++;
+            if (d == null || !Pass(d)) continue;
+            if ((d.cardType == CardType.Spell ? d.spell2DPrefab : d.card2DPrefab) == null) continue;
+            want.Add(d);
         }
 
-        int rows = Mathf.Max(1, Mathf.CeilToInt((float)shown / GridColumns));
-        float contentH = rows * cellH;
+        // 容器高度**先按最终张数撑好**：滚动条 / 滑块位置当场就是对的，后面铺卡时不会边走边跳。
+        int rows = Mathf.Max(1, Mathf.CeilToInt((float)want.Count / GridColumns));
         gridRoot.anchorMin = new Vector2(0f, 1f);
         gridRoot.anchorMax = new Vector2(0f, 1f);
         gridRoot.pivot = new Vector2(0f, 1f);
-        gridRoot.sizeDelta = new Vector2(paneW, contentH);
+        gridRoot.sizeDelta = new Vector2(paneW, rows * cellH);
 
-        _shown = shown;
-        if (counterText != null) counterText.text = shown + " / " + _all.Count;
+        _shown = want.Count;                                    // = 计数行的分子（不是「已经铺了几张」，是这一屏该有几张）
+        if (counterText != null) counterText.text = want.Count + " / " + _all.Count;
 
-        // 重建完回顶部。⚠ 必须放在这里（不是只放 Refresh）：点筛选格走的是 PickSub / PickTag -> RebuildCards，
+        // 回顶部。⚠ 必须放在这里（不是只放 Refresh）：点筛选格走的是 PickSub / PickTag -> RebuildCards，
         // 不经过 Refresh —— 内容一变小，ScrollRect 保持像素偏移，视口就停在半张卡上（用户最早那张图就是这样）。
         if (cardScroll != null) cardScroll.verticalNormalizedPosition = 1f;
+
+        // 换代：筛选一变，上一条铺卡协程自己退场（否则新旧两条会一起往同一个容器里塞）
+        _buildGen++;
+        if (_fillCo != null) { StopCoroutine(_fillCo); _fillCo = null; }
+
+        int head = Mathf.Min(InstantCards, want.Count);
+        for (int i = 0; i < head; i++) PlaceCard(want[i], i, cellW, cellH, gridPadX);
+        if (head >= want.Count) return;
+
+        // 编辑态（没有 Update 循环）没有协程可跑，直接同步铺完；Play 里才分帧
+        if (Application.isPlaying && isActiveAndEnabled)
+            _fillCo = StartCoroutine(FillCards(want, head, cellW, cellH, gridPadX));
+        else
+            for (int i = head; i < want.Count; i++) PlaceCard(want[i], i, cellW, cellH, gridPadX);
+    }
+
+    /// <summary>分帧把剩下的卡铺完。<paramref name="from"/> 起是还没铺的序号；每帧最多花 <see cref="CardsPerFrameBudgetMs"/> 毫秒。</summary>
+    IEnumerator FillCards(List<CardData> want, int from, float cellW, float cellH, float gridPadX)
+    {
+        int gen = _buildGen;
+        int i = from;
+        while (i < want.Count)
+        {
+            if (gen != _buildGen) yield break;                  // 换代了：让位给新的那条
+            float t0 = Time.realtimeSinceStartup;
+            while (i < want.Count && (Time.realtimeSinceStartup - t0) * 1000f < CardsPerFrameBudgetMs)
+            {
+                PlaceCard(want[i], i, cellW, cellH, gridPadX);
+                i++;
+            }
+            yield return null;
+        }
+        _fillCo = null;
+    }
+
+    /// <summary>铺一张预览卡（Instantiate + 剥战斗件 + 初始化 + 摆位）。<paramref name="index"/> 是**过滤后**的序号，决定行列。</summary>
+    void PlaceCard(CardData d, int index, float cellW, float cellH, float gridPadX)
+    {
+        GameObject prefab = d.cardType == CardType.Spell ? d.spell2DPrefab : d.card2DPrefab;
+        if (prefab == null) return;
+
+        GameObject go = Instantiate(prefab, gridRoot);
+        go.name = "CardPreview_" + d.templateID;
+
+        // 预览用：把战斗用的拖拽 / 悬停 / 旧显示脚本剥掉，只留 CardDisplay2DNew 画卡面
+        var cv = go.GetComponent<CardView>(); if (cv != null) cv.enabled = false;
+        var drag = go.GetComponent<CardDrag>(); if (drag != null) drag.enabled = false;
+        var hv = go.GetComponent<CardHover>(); if (hv != null) hv.enabled = false;
+        var inst = go.GetComponent<CardInstance>();
+        if (inst == null) inst = go.AddComponent<CardInstance>();
+        inst.InitFromTemplate(d, 0);
+
+        // 优先用新的显示脚本；老预制体（只有基类 CardDisplay2D）才退到那条老路。
+        // ⚠ 别写成 GetComponent<CardDisplay2D>() != null 就 Destroy —— 新脚本继承自它，
+        //   那条会把新脚本自己删掉（GetComponent 会连派生类一起命中）。
+        var dispNew = go.GetComponent<CardDisplay2DNew>();
+        if (dispNew != null) dispNew.RefreshWithInstance(inst);
+        else { var dispOld = go.GetComponent<CardDisplay2D>(); if (dispOld != null) dispOld.RefreshWithInstance(inst); }
+
+        RectTransform rt = go.GetComponent<RectTransform>();
+        rt.anchorMin = rt.anchorMax = new Vector2(0f, 1f);
+        rt.pivot = new Vector2(0.5f, 0.5f);
+        rt.sizeDelta = new Vector2(CardSizeW, CardSizeH);   // 83 x 146：预制体自然尺寸，别改（改了=压扁卡框）
+        rt.localScale = Vector3.one * CardScale;
+
+        int row = index / GridColumns, col = index % GridColumns;
+        rt.anchoredPosition = new Vector2(gridPadX + col * cellW + cellW * 0.5f,
+                                          -(row * cellH + cellH * 0.5f));
+
+        _cards.Add(go);
     }
 
     // ═══════════════════════════════════════════════════════════════════════

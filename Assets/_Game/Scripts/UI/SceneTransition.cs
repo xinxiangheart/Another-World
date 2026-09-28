@@ -33,24 +33,22 @@ public class SceneTransition : MonoBehaviour
     // 不带则是单个资源（Resources.LoadAsync）。一个条目占一帧，条目之间可以超时喊停。
     static readonly Dictionary<string, string[]> SceneResources = new Dictionary<string, string[]>
     {
-        // Lobby：卡牌总览一打开就会 Instantiate 全部 ~250 张卡、每张现读自己的卡面，
-        //        外加 CardCollectionPanel.Awake 里那一次同步的 Resources.LoadAll<CardData>。
+        // Lobby：卡牌模板（一进场就会被 CardDatabase / CardCollectionPanel.Awake 同步读一遍）。
+        // ⚠ 卡面 / 卡框 / 图标那**最重的一坨**不在这里 —— 在 CardFacePreload（整目录读 + **静态持有**）。
+        //   「谁持有」是关键：本层渐入完就 Destroy，由它持有的话引用一断、切场景那次 UnloadUnusedAssets
+        //   就把刚读进来的卡面全收走了（2026-09-28 预加载卡面时定的口径）。
         { "Lobby", new[]
             {
-                "CardData/",                // 179 张卡牌模板（Lobby 一进场就会被同步读一遍）
-                "ChosenOneData/",           // 7 张神选者模板
-                "Cards/Back And Front/",    // 卡框 + 卡背（小，必用）
-                "Cards/PrefixArtBG/",       // 前缀底图（小，必用）
-                "Cards/Summon/Hero/1/",     // ↓ 卡面，最重的一坨
-                "Cards/Summon/Hero/3/",
-                "Cards/Summon/Hero/5/",
-                "Cards/Summon/ChosenOne/",
-                "Cards/Summon/Special/",
+                "CardData/",                // 186 张卡牌模板
+                "ChosenOneData/",           // 神选者模板
             }
         },
     };
 
-    const float PreloadTimeout = 6f;    // 预加载最多占这么久，超时就先进场景，剩下的交回场景按需加载
+    const float PreloadTimeout = 6f;        // 上面那张表最多占这么久，超时就先进场景，剩下的交回场景按需加载
+    // 卡面那一坨（CardFacePreload：~194MB / 136 张卡面 + 卡框 + 图标）单独给预算。
+    // ⚠ 单位是「秒」，不是「项」—— 它比表里那些重一个量级；超时也是**接着下次过场再读**，不会读坏。
+    const float CardFaceTimeout = 12f;
     // ──────────────────────────────────────────────────────────────────────
 
     static SceneTransition _instance;
@@ -61,6 +59,7 @@ public class SceneTransition : MonoBehaviour
 
     // 预加载出来的资源要一直拎着：场景激活时 Unity 会跑一次 UnloadUnusedAssets，
     // 没人引用的资源会被当场收走，等于白读。
+    // ⚠ 只够撐过本层自己的命 —— 本层渐入完就 Destroy，之后谁还得活着就得**自己持有**（卡面走 CardFacePreload 的静态表）。
     readonly List<Object> _preloaded = new List<Object>();
     bool _preloadDone;
 
@@ -252,6 +251,15 @@ public class SceneTransition : MonoBehaviour
                 Debug.LogWarning($"[SceneTransition] {sceneName} 预加载超时（完成 {steps}/{entries.Length} 项），其余交回场景按需加载");
                 break;
             }
+        }
+
+        // 卡面那一坨（最重的）另起一道：整目录读 + 静态持有，见 CardFacePreload 的类注释。
+        if (CardFacePreload.WantedFor(sceneName) && !CardFacePreload.IsDone)
+        {
+            float t1 = Time.realtimeSinceStartup;
+            yield return CardFacePreload.Run(t1 + CardFaceTimeout);
+            Debug.Log($"[SceneTransition] {sceneName} 卡面预加载用了 {Time.realtimeSinceStartup - t1:F2}s" +
+                      (CardFacePreload.LastRunTimedOut ? "（超时收尾）" : "（读完）"));
         }
 
         _preloadDone = true;
