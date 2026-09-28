@@ -91,6 +91,9 @@ public class LobbyCardCollectionPanel : MonoBehaviour, ILobbySubPanelOpen
     int _shown;                     // 当前筛选下应有多少张（= 计数行的分子）
     int _buildGen;                  // 铺卡换代号：筛选一变就 +1，旧协程见到自己不是当前代就退场
     Coroutine _fillCo;              // 正在分帧铺卡的那条协程
+    LobbyCardsIntro _intro;         // 打开面板时「前两栏 + 右侧前两排浮上来」的入场（Play 才建，见 PlayCardsIntro）
+    readonly HashSet<int> _shownChips = new HashSet<int>();                  // 上一次重建后已在屏上的格子（判「新显示」用）
+    readonly List<RectTransform> _freshChips = new List<RectTransform>();    // 本次重建里新出现的格子
 
     class Chip
     {
@@ -118,7 +121,9 @@ public class LobbyCardCollectionPanel : MonoBehaviour, ILobbySubPanelOpen
         LoadAllCards();
     }
 
-    public void OnSubPanelOpened() { EnsureBuilt(); }
+    // ⚠ 入场必须排在 EnsureBuilt 之后：筛选格是运行时建的，先摆位再动它们才有基准位置
+    //   （启动时 OnEnable 那次重建发生在面板还关着的时候，不播 —— 播了也看不见）。
+    public void OnSubPanelOpened() { EnsureBuilt(); PlayCardsIntro(); }
 
     /// <summary>骨架里的引用是生成器填的；编辑器重跑生成器后、或者引用被清空时，这里兜一次。
     /// 只要容器对得上就刷 —— 不刷的话右侧会一直是空的（Stage85 实测：Refresh 跑在引用回填之前 = 0 张）。</summary>
@@ -186,6 +191,85 @@ public class LobbyCardCollectionPanel : MonoBehaviour, ILobbySubPanelOpen
         Refresh();
     }
 
+    /// <summary>打开面板的入场：左栏**前两栏**一格一组、右侧卡牌**前两排**一排一组，各自上浮 + 淡入；
+    /// 第 2 / 3 栏、第三排起的卡、金线与计数行都不动。</summary>
+    /// <remarks>2026-09-28 用户：「优化动态进入效果…只限进入界面时展示在玩家视角里的（大概只是前两栏），
+    /// 其它的不会有这个动画」→ 追加「右侧卡牌也应做」→ 再修：「不是透明，是类似于左侧栏的滑入，并且第一排和
+    /// 第二排不是同时滑入，第一比第二快一点点，后面排就不需要做了」→ 再修：「不再像之前那样 0.32 秒全透明」
+    /// （中间那版把右侧排在左栏之后起手、整块淡入，右侧要空 0.32 s —— 作废）。
+    /// 入场组件**不进场景**（重跑 LobbyUIBuilder 会把用户手调过的版式冲掉），运行时现建一个挂在本物体上。</remarks>
+    void PlayCardsIntro()
+    {
+        if (!Application.isPlaying) return;      // 编辑态没有 Update，跑一半会把格子留在半透明位置
+
+        var groups = new List<LobbyCardsIntro.Group>();
+
+        // ① 左栏前两栏：一格一组（逐格错开，跟开始界面一样）。
+        // ⚠ 从 _chips 取、不遍历容器：Play 里 ClearSpawnedChips 清掉的那批旧格子在开面板那一帧还没销毁，
+        //   容器 childCount 会是两倍，序号就错开了。
+        int chipN = 0;
+        for (int i = 0; i < _chips.Count; i++)
+        {
+            Chip c = _chips[i];
+            if (c.level > 1 || c.view == null) continue;
+            var rt = c.view.transform as RectTransform;
+            if (rt == null) continue;
+            groups.Add(new LobbyCardsIntro.Group(IntroAt + IntroChipStep * chipN, new List<RectTransform> { rt }));
+            chipN++;
+        }
+
+        // ② 右侧卡牌：一排一组，只做**前两排**；第一排**和左栏第一个格子同时起手**（不再排在左栏后面 ——
+        //    用户「不再像之前那样 0.32 秒全透明」），第二排比第一排晚一点点。
+        //    第三排起不进场：视口高 788、第二排下沿才到 823，第三排整个在视口外，做了也看不见。
+        //    ⚠ 取的是 _cards 前 10 个（RebuildCards 先同步铺 15 张，所以它们一定在），
+        //      不是遍历 Grid_Cards —— Play 里销毁到帧末才生效，容器里还压着上一批同名的卡。
+        groups.Add(new LobbyCardsIntro.Group(IntroAt, GridRow(0)));
+        groups.Add(new LobbyCardsIntro.Group(IntroAt + IntroRowStep, GridRow(1)));
+        groups.RemoveAll(gr => gr.items == null || gr.items.Count == 0);
+        if (groups.Count == 0) return;
+
+        Intro().PlayGroups(groups);
+    }
+
+    /// <summary>切父级（全部 / 召唤物 / 法术）时子集与费数那两栏会整批换成新格子 —— 只让**新出现的**滑出来。</summary>
+    /// <remarks>2026-09-28 用户：「左侧栏每次新显示的也应是滑出来的」。已经在屏上的（全部 / 召唤物 / 法术，
+    /// 以及同父级下没变的子集）不重播；点「子集 / 费数」那条路根本不重建格子（只刷选中态），所以不用管。</remarks>
+    void PlayFreshChipsIntro()
+    {
+        if (!Application.isPlaying) return;      // 编辑态没有 Update，跑一半会把格子留在半透明位置
+        if (_freshChips.Count == 0) return;
+
+        // 一格一组、顺位向下（_freshChips 就是建格顺序：先第 2 栏、再第 3 栏）—— 像一排排滑下来。
+        var groups = new List<LobbyCardsIntro.Group>(_freshChips.Count);
+        for (int i = 0; i < _freshChips.Count; i++)
+            groups.Add(new LobbyCardsIntro.Group(IntroAt + IntroFreshStep * i,
+                                                 new List<RectTransform> { _freshChips[i] }));
+        Intro().PlayGroups(groups);
+    }
+
+    /// <summary>入场组件：**不进场景**（重跑 LobbyUIBuilder 会把用户手调过的版式冲掉），Play 里现建一个。</summary>
+    LobbyCardsIntro Intro()
+    {
+        if (_intro == null) _intro = GetComponent<LobbyCardsIntro>();
+        if (_intro == null) _intro = gameObject.AddComponent<LobbyCardsIntro>();
+        return _intro;
+    }
+
+    /// <summary>卡牌网格里第 <paramref name="row"/> 排的卡（一排 <see cref="GridColumns"/> 张，按 _cards 的铺卡顺序）。</summary>
+    List<RectTransform> GridRow(int row)
+    {
+        var list = new List<RectTransform>();
+        int from = row * GridColumns;
+        int to = Mathf.Min(from + GridColumns, _cards.Count);
+        for (int i = from; i < to; i++)
+        {
+            if (_cards[i] == null) continue;
+            var rt = _cards[i].transform as RectTransform;
+            if (rt != null) list.Add(rt);
+        }
+        return list;
+    }
+
     // ═══════════════════════════════════════════════════════════════════════
     // 筛选格
     // ═══════════════════════════════════════════════════════════════════════
@@ -224,6 +308,9 @@ public class LobbyCardCollectionPanel : MonoBehaviour, ILobbySubPanelOpen
     void RebuildChips()
     {
         EnsureData();
+        // 点筛选格会把前两栏的格子整个重建：先把还在动的入场停掉并还原，
+        // 否则新格子会继承旧动画的中间态（半透明 / 偏下）。
+        if (_intro != null) _intro.Stop();
         ClearChips();
 
         // 第 0 栏：全部（永远在）
@@ -251,6 +338,34 @@ public class LobbyCardCollectionPanel : MonoBehaviour, ILobbySubPanelOpen
             for (int i = 0; i < SpellTags.Length; i++) { int k = i; AddChip(chipLv3, 3, k, SpellTags[k], () => PickTag(k)); }
 
         RefreshChipStates();
+        CollectFreshChips();
+    }
+
+    /// <summary>把「这一次重建里新出现」的格子收进 <see cref="_freshChips"/>（上一次就在屏上的不算）。</summary>
+    /// <remarks>身份 = 父级 x 层级 x 序号：第 3 栏的 0费 / 1费 在召唤物与法术下**同号**，不带父级会把换过去的
+    /// 那几张误判成「没变」而硬跳出来。前两栏（全部 / 召唤物 / 法术）是常驻的，一律不算新。</remarks>
+    void CollectFreshChips()
+    {
+        _freshChips.Clear();
+        var now = new HashSet<int>();
+        for (int i = 0; i < _chips.Count; i++)
+        {
+            Chip c = _chips[i];
+            int key = ChipKey(c);
+            now.Add(key);
+            if (c.level < 2 || c.view == null) continue;
+            if (_shownChips.Contains(key)) continue;
+            var rt = c.view.transform as RectTransform;
+            if (rt != null) _freshChips.Add(rt);
+        }
+        _shownChips.Clear();
+        foreach (int k in now) _shownChips.Add(k);
+    }
+
+    int ChipKey(Chip c)
+    {
+        int rootTag = _root == Root.Summon ? 1 : _root == Root.Spell ? 2 : 0;
+        return rootTag * 10000 + c.level * 100 + c.index;
     }
 
     void ClearChips() { ClearSpawnedChips(); }
@@ -343,6 +458,7 @@ public class LobbyCardCollectionPanel : MonoBehaviour, ILobbySubPanelOpen
         _subSel.Clear();
         _tagSel.Clear();
         Refresh();
+        PlayFreshChipsIntro();   // 子集 / 费数那两栏换了一批 => 新的那批滑出来
     }
 
     void PickSub(int idx)
@@ -436,6 +552,9 @@ public class LobbyCardCollectionPanel : MonoBehaviour, ILobbySubPanelOpen
     {
         EnsureData();
         if (gridRoot == null) return;
+        // 点筛选格 / 切根级会把这批卡整个重建：先把还在动的入场停掉并还原（前两排的卡和左栏的格子都算），
+        // 否则新铺的卡会继承旧动画的中间态。
+        if (_intro != null) _intro.Stop();
         ClearSpawnedCards();
 
         float paneW = PaneW;
@@ -555,6 +674,14 @@ public class LobbyCardCollectionPanel : MonoBehaviour, ILobbySubPanelOpen
     const float LcChipRow = 60f;
     const float LcChipFont = 20f;        // 3 字（召唤物 / 神选者 / 主动…）=> 60，仍在内金线里侧留余量
     const float LcChipFontLong = 16f;    // 4 字（主动退场）=> 64
+
+    // 入场时间轴（秒 · 从点开面板那一刻算）—— 节奏由面板排，动作由 LobbyCardsIntro 放：
+    //   左栏前两栏：一格一组，相邻 +IntroChipStep
+    //   右侧卡牌：一排一组，第一排与「全部」同刻起手，第二排 +IntroRowStep
+    const float IntroAt       = 0.05f;
+    const float IntroChipStep = 0.075f;
+    const float IntroRowStep  = 0.09f;
+    const float IntroFreshStep = 0.045f;  // 切父级后新出现的那批：一格一组往下顺延（14 格 ≈ 0.63 s 起完）
 
     static RectTransform NewRect(Transform parent, string name, Vector2 anchor, Vector2 pivot, Vector2 pos, Vector2 size)
     {
