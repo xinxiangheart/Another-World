@@ -161,6 +161,10 @@ public class LobbyCardDetailPanel : MonoBehaviour
         var dragSurface = vp.gameObject.AddComponent<Image>();   // 拖空白也能滚（同卡牌网格那条做法）
         dragSurface.color = new Color(0f, 0f, 0f, 0f);
         dragSurface.raycastTarget = true;
+        // ⚠ 这一层铺满整条右栏，把底下幕上的「点空白关详情」全挡了 ⇒ 给它配一件：
+        //   **拖 = 滚（ScrollRect 自己的），单击且落点不在底板上 = 关详情**（见 LobbyColumnClick）。
+        var colClick = vp.gameObject.AddComponent<LobbyColumnClick>();
+        colClick.panel = this;
         _scroll.horizontal = false;
         _scroll.vertical = true;
         _scroll.movementType = ScrollRect.MovementType.Clamped;
@@ -357,7 +361,28 @@ public class LobbyCardDetailPanel : MonoBehaviour
             val[i].rectTransform.sizeDelta = new Vector2(Mathf.Max(24f, w - valX - CellPadR), CellH);
             x += w + ColGapX;
         }
+        // ⚠ 栏容器自己收成**这一栏格子的实际总宽**（不是 ColW）—— 2026-09-29：
+        //   容器的矩形同时充当「点空白关详情」判据里的**底板占地**（见 PointOverAnyRow）。
+        //   留成 856 的话，文本一短，右边那一大片空白也会被算成底板 ⇒ 点它不关。
+        row.sizeDelta = new Vector2(Mathf.Max(0f, x - ColGapX), CellH);
         return y + CellH + RowGap;
+    }
+
+    /// <summary>某个屏幕点有没有压在**本轮右栏的底板**上（一栏 = 一个矩形）。</summary>
+    /// <remarks>2026-09-29 用户：「右侧空白区域点击取消的范围应和文字背景占地对应」。判据就是栏容器的矩形：
+    /// 属性栏的容器宽已被收成**这一栏格子的实际总宽**（见 <see cref="AddRow"/>），特性栏本来就是贴着文字的宽
+    /// （见 <see cref="AddTraitRow"/>）⇒ 容器矩形 = 底板占地。
+    /// 画布是 Screen Space - Overlay ⇒ 相机传 null。⚠ 别改成按 <c>content.childCount</c> 取件
+    /// （<c>ClearRows()</c> 用 Destroy、帧末才生效，那一帧里旧的还挂着）——用本轮的 <c>_introRows</c>。</remarks>
+    public bool PointOverAnyRow(Vector2 screenPoint)
+    {
+        for (int i = 0; i < _introRows.Count; i++)
+        {
+            RectTransform rt = _introRows[i];
+            if (rt == null || !rt.gameObject.activeInHierarchy) continue;
+            if (RectTransformUtility.RectangleContainsScreenPoint(rt, screenPoint, null)) return true;
+        }
+        return false;
     }
 
     /// <summary>一条特性一栏：**底板贴着文字长度**（单行放得下就紧贴文字，放不下按 <see cref="TraitMaxW"/> 折行

@@ -2035,7 +2035,8 @@ stage47 唯一一条失败就是它：`npotScale=ToNearest` / `alphaIsTransparen
 | `LobbyCardPreview.cs` | 建一张「预览卡」：`Instantiate` 卡面预制体 → 剥 `CardView`/`CardDrag`/`CardHover` → `InitFromTemplate` → 画一次卡面。总览网格与详情左半区**走同一条路**（原来那段写在 `LobbyCardCollectionPanel.PlaceCard` 里） |
 | `LobbyCardTile.cs` | 挂在总览每张卡上：悬停 `2.5 → 2.62` + 上浮 7 px（`Mathf.Exp` 缓动，静下来自己 `enabled=false`）；点击开详情。**不实现任何 Drag 接口** ⇒ 与 `ScrollRect` 不打架 |
 | `LobbyCardDetailPanel.cs` | 详情本体（几何见下）。`Play` 才现建，不进场景（重跑生成器不会冲掉版式） |
-| `Art/Shaders/UIBlurScrim.shader` | `Shader "AnotherWorld/UIScrimBlur"`：`GrabPass { "_AwScrimGrab" }` → 5×5 盒式模糊 → `lerp` 压暗。**拿不到着色器就退成一块深色半透明**（`new Color(0.027f, 0.043f, 0.070f, 0.80f)`） |
+| `LobbyColumnClick.cs` | 挂在大厅「卡牌详情」右栏那层透明拖拽面上（2026-09-29 加，见 ⑦）：拖 = 滚、**单击且落点不在底板上 = 关详情** |
+| `Art/Shaders/UIBlurScrim.shader` | `Shader "AnotherWorld/UIScrimBlur"`：`GrabPass { "_AwScrimGrab" }` → **9×9 高斯**模糊 → `lerp` 压暗（2026-09-29 由等权盒式改成高斯，见下 ⑤）。**拿不到着色器就退成一块深色半透明**（`new Color(0.027f, 0.043f, 0.070f, 0.80f)`） |
 
 #### ① GrabPass 抓什么（别改成「给整屏拍照」）
 
@@ -2077,3 +2078,121 @@ stage47 唯一一条失败就是它：`npotScale=ToNearest` / `alphaIsTransparen
 | `_MainTex` | 挂 `Application.logMessageReceived` 数含 `_MainTex` / `texture property` 的日志：开一次详情、跑够 2.5 s 帧数 ⇒ **整段 Play 0 条**（`stage120_maintex.txt`）✅ |
 
 图：`stage118_shots/a_long.png`（`01525` 115 字 4 行）/ `b_normal.png`（`01101` 两条单行）。
+
+#### ⑤ 幕为什么必须是**高斯**、不能是等权盒式（2026-09-29）
+
+用户：「总览点击具体卡牌后背景是高斯模糊，**现在的类马赛克看着不舒服**」。
+
+**旧写法**：`5×5` 等权盒式 —— `_Sample = 2` ⇒ 每轴采 `{−2,−1,0,1,2}` 共 5 个点，再乘 `_Blur = 5`（屏幕 texel）⇒ tap 落在 `×10 / ×5 / 0` px，**权重全是 1/25**。
+
+**病灶是「平顶核 + 疏间距」两件一起**：权重方方正正 ⇒ 模糊出来是一个方块轮廓；5 px 的 tap 间距又跟画面细节打拍子 ⇒ 叠出一层**交叉网格**。
+放大复看（`stage120_shots/a_detail.png` vs `stage121_shots/a_detail.png`，同一块 260×200 放大 3 倍）最明显的地方是卡片边框 —— 盒式那张把一条边糊成**五条平行重影线**，高斯那张是一条干净的软边。
+
+**现写法**（`UIBlurScrim.shader`）：核固定 `9×9` 高斯，`sigma = 2.2 tap`（`1/(2σ²) = 0.10331`）；`x/y` 是循环常量 ⇒ `exp()` 被编译器折成常数，`[unroll]` 展开成 81 次采样。
+`_Sample` 属性**已删**（C# 侧本来就没 `SetFloat("_Sample", …)`，全库 `rg _Sample` 只有着色器自己）。
+`_Blur` **改了语义**：从「模糊半径(屏幕 px)」改成 **「相邻两次采样之间隔几个屏幕 texel」**，默认 `2.5` ⇒ 实际 `sigma ≈ 2.5 × 2.2 = 5.5` 屏幕 px、核半径 ±10 px。
+
+**强度扫描（`stage122_blur.txt`，同一块区域放大 2 倍）**：`2.5` 干净 / `3.2` 起边框外出现**极淡的同心环纹** / `4.0` 环纹明显（`z_cmp_blur_sweep.png`）。
+即：**继续把 `_Blur` 往上加，只会把「方块感」换成「环纹」** —— 核只有 81 个采样点，间距一拉就是欠采样。所以 **默认停在 2.5**。
+真要更糊，正确做法不是加 `_Blur`，而是换**线性采样高斯核**（3×3 共 9 tap，偏移落在两个 texel 正中、借双线性各白拿一次平均）或加宽核——**那是换核，不是调参**。
+
+#### ⑥ 入场动画（2026-09-29）
+
+用户：「点击出现有动画，**左边是向上滑动显示**，**右边的每一栏都是向右滑动出现**，注意，**从上到下依次滑动**，**每一栏整体是同时滑动的**，例如 id，名称，类别这三个一栏里的小块是一起滑动的」。
+
+- **动作复用** `LobbyCardsIntro`（总览那条已有的入场），只给它加了一个方向：`Group` 多一个 `dir`（默认 `(0,-1)` = 从下方浮上来；右栏传 `(-1,0)` = 从左边起手 ⇒ 看上去向右滑出来）。位置公式相应改成 `basePos + dir * rise * (1-e)`。
+- **时间轴在 `LobbyCardDetailPanel.PlayIntro()`**（`Open()` 末尾调）：卡面 1 组（`dir` 默认，向上）、**右栏一栏 1 组**，`at = 0.02 + 0.055 × i` ⇒ 从左到右顺位往下错开；`rise 26` / `dur 0.30`。
+- **「一栏整体一起动」靠动容器**：`AddRow` / `AddTraitRow` 建的是 `Row` / `Trait` 容器，**格子挂在它下面** ⇒ 挪容器就是一栏一起挪。`Render()` 里把每栏的容器收进 `_introRows`（**不能按 `content.childCount` 取**：`ClearRows()` 用的是 `Destroy`，帧末才生效，那一帧里旧的还挂着）。
+- **关掉再开**：面板 `SetActive(false)` 会走 `LobbyCardsIntro.OnDisable` → `Stop()` 把件精确还原；`PlayGroups` 自己也先 `Stop()` 一次。所以不会留半透明残影。
+- 实测（`stage121_intro.txt`，`01117` 8 栏）：栏 `alpha 0.00 → 1.00`；逐帧表里栏 0 第 2 帧起手、栏 1 第 4 帧起手（依序）；栏 0 的**首格相对栏容器的位移全程 `(0.000, 0.000)`** ⇒ 栏内确实同步；卡面最终位置 = 静止位，向上 26 px 那段走完。
+
+#### ⑦ 「点空白关详情」的范围 = 底板（文字背景）的占地（2026-09-29）
+
+用户：「右侧空白区域点击取消的范围应和文字背景占地对应，**现在右边若文本较少点击右边下方空白不会退出详情**」。
+
+**病灶**：右栏为了「拖空白也能滚」，在 `ScrollRect` 的视图口上铺了一张**铺满整条右栏**（856×788）的透明 `Image`（`raycastTarget = true`）。
+它在幕之上 ⇒ 那一整片压根**到不了**底下幕上的 `Button`。文本一短，右边 / 下面空着一大块，点了没反应。
+
+**修法两处**
+
+1. **栏容器收成「这一栏格子的实际总宽」**（`AddRow` 末尾 `row.sizeDelta = (x − ColGapX, CellH)`；特性栏本来就是贴着文字的宽）。
+   原来一律 856 —— 容器矩形同时要当「底板占地」的判据，留成 856 就等于把右边那片空白也算成底板。实测 `01102`（0 特性）四栏 = **616.1 / 582.0 / 384.0 / 60.0**。
+2. **那张透明面从「只吸拖拽」变成「拖 = 滚，点 = 判落点」**：新件 `LobbyColumnClick`（挂在视图口上）实现 `IPointerClickHandler` ——
+   落点在任一栏容器的矩形里 ⇒ 什么也不做；不在 ⇒ `LobbyCardDetailPanel.Close()`。
+   判据是 `RectTransformUtility.RectangleContainsScreenPoint(row, point, null)`（Overlay 画布 ⇒ 相机传 null），件取本轮的 `_introRows`。
+
+**拖拽没被牺牲**：拖动越过阈值时 `PointerInputModule.ProcessDrag` 会 `eligibleForClick = false` —— 条件是 `pointerPress != pointerDrag`，
+而 `ScrollRect` **不实现 `IPointerDownHandler`**（实测打出 `False`）⇒ 这两个必然不等。与卡牌总览里 `LobbyCardTile` 依赖的是同一个机制。
+
+**实测（`stage123_columnclick.txt`，`01102`，走真 `RaycastAll` + 真 `ExecuteEvents`）**
+
+| 落点 | 屏幕坐标 | 事件路由 | 详情还开着 | 要 |
+|---|---|---|---|---|
+| A 第 0 栏底板上 | (839, 651) | 顶件 `Info` → 点击件 `Info` | **True** | True ✅ |
+| B 底板右沿再往右 40 px | (1282, 651) | 同上 | **False** | False ✅ |
+| C 最后一栏下面 50 px | (791, 385) | 同上 | **False** | False ✅ |
+| D 特性底板（`Trait`）上 | (782, 460) | 同上 | **True** | True ✅ |
+| E 叉 | (1369, 756) | 点击件 `Btn_Close` | **False** | False ✅ |
+
+（视图口右沿屏幕 x = 1424，而最宽一栏只到 1241 ⇒ 那 ~180 px 原来是死区，现在能关。）
+
+#### ⑧ 大厅入口板三栏的入场（2026-09-29）
+
+用户：「加动态：进入 lobby 场景中时，右边中间那三栏也会从右边滑动进场（最下面两个格子算一栏）」→
+中途一改「不需要完全从屏幕外滑入」、二改回「算了仍是从屏幕外滑入，不过**加快滑动速度**，并且做**非恒定速度**，基础速度快，**即将到达终点时变慢**」。
+
+**三栏** = `Entry_Battle` / `Entry_Cards` / `Entry_BottomRow`（下排 `Entry_Room` / `Entry_More` 共用 `Entry_BottomRow` 这个透明大框 ⇒ 天然算一栏）。
+
+| 件 | 管什么 |
+|---|---|
+| `Assets/_Game/Scripts/UI/Lobby/LobbyEntryIntro.cs`（**新**） | 入场本体；场景里**不用预放节点** —— `AfterSceneLoad` 按名字找 `Entry_Battle`，找到就挂到它父节点 `LobbyUI_v1` 上（同 `LobbyBgMotes` 光点、卡片详情面板的口径） |
+| `LobbyBgParallax.Layer.extra`（**新字段**）+ `FindLayer(RectTransform)` | 入场偏移走这里**叠加**在视差之上 |
+
+**为什么偏移不能直接写 rect**：那三块同时是 `LobbyBgParallax` 的层（反向陀螺仪 depth −0.30），那个组件**每帧都把 `anchoredPosition` 整个写掉**（`_base + 视差 + extra`）。一个 rect 只能有一个写的人 —— 直接写 rect 的话下一帧就被盖回去，入场完全看不见。找不到对应层时才退回直接写 rect。
+
+**动作口径（全项目同源，同 `LobbyCardsIntro` / 开始界面 `SceneIntro`）**：单帧增量封顶 `Mathf.Min(Time.unscaledDeltaTime, 0.05f)`；
+起手位 = 静止位 **+ slide（往右）**，随时间滑回 0；三栏依次错开 `step`；跑完自己 `enabled = false`（本件不接任何 EventSystem 事件，停用安全）。
+
+**参数（都在文件常量区，一行就能改）**
+
+| 参数 | 值 | 说明 |
+|---|---|---|
+| `slide` | **0 = 自动** | 自动档 = **容器宽 + `margin`**；1920 参考宽度下 = **1980px** |
+| `margin` | 60 | 在屏幕右沿外多留的余量（视差最大只有 ≈7px，统统包得住） |
+| `dur` | **0.45s** | 单栏时长（首版 0.45 → 中间收到 0.34 → 定稿 0.45，因为距离从 881 变成 1980） |
+| `step` | 0.09 | 上下三栏的起手间隔 |
+| `startAt` | 0.10 | 进场先等多久 |
+| `fallback` | 2200 | 定标拿不到容器宽度时的兜底（保证在屏外） |
+
+**缓动 `1-(1-t)^4`**（用户要的「基础速度快、即将到达终点时变慢」就是这个）：一半路程只花**头 15.9%** 的时间；
+93.75% 路程花一半时间 ⇒ **最后 6.25% 路程用掉另一半时间**（尾巴明显刹车）。
+
+**两条真坑（都是 2026-09-29 实测踩到的，别再踩）**
+
+1. **自动距离不能在 `Awake` 里算** —— 那一刻 Canvas / RectTransform 的 `rect` 还没建立，实测拿到 **0 宽**。
+   现在：`Awake` 先套 `fallback`（保证在屏外），**第一帧 `Update` 再定标**；定标发生在 `startAt` 之前 ⇒ 三栏都还没开始动，改了也看不出来。
+2. **也不能去量「最左那一栏的世界角点」**（第一版就是这么写的）：`GetWorldCorners` 读的是**上一帧算好的变换矩阵**，
+   和当帧刚改的 `anchoredPosition` 不是一个时间点 —— 两次实测都算出 **881**（= 上一版的偏移，栏根本**没出屏**）。
+   改成**只读容器宽**：「往右推整整一屏」对任何水平方向本来落在容器里的栏，左沿 + 容器宽 ≥ 容器右沿**恒成立** ⇒ 必然出右界，一个几何参数都不用猜。
+
+**自证（`stage129_entryslide.txt` · 编辑态 Play · 场景 = Lobby · 1475×830）**
+
+| 项 | 实测 | 要 |
+|---|---|---|
+| ① 真启动那一次的起手偏移 | **1979.3 / 1979.3 / 1979.3**（容器宽 1920 + 60） | 三栏一样、=自动档 ✅ |
+| ① 落地帧号 | 230 / 290 / 350 | 依次递增 = 错峰 ✅ |
+| ② 重放起手偏移 | **1980.0 / 1980.0 / 1980.0** | 三栏同距 ✅ |
+| ② 走掉 50% 路程 | 花 **16%** 单栏时长 | 理论 15.9%（匀速是 50%）✅ |
+| ② 走掉 93.75% | 花 **50%** 单栏时长 | 理论 50% = 尾巴刹车 ✅ |
+| ② 前半/后半 每帧平均位移 | **51.8px** vs **10.0px** | 后半明显更慢 ✅ |
+| ② 到位后 x | −454.4 / −480.9 / −787.4 | = 静止位（一模一样）✅ |
+| ② 到位后 `extra` | 0.00 / 0.00 / 0.00 | 都归零 ✅ |
+| ② 下排两格自己被挪过没有 | False | 它们跟着大框走 ✅ |
+| ② 跑完自己停用 | True | ✅ |
+
+截图：`%USERPROFILE%\.codex\visualizations\2026\09\26\01a0dccd-afda-7a23-a849-e45d1e52da00\stage129_shots\`
+（`real` = 真启动第一眼（还在屏外）、`s1/s2/s3` = `dur` 临时拉到 2.6s 的半路三帧、`home` = 到位）；拼图 `stage129_entry_slide_sheet.png`。
+
+**修改过程三改的来由**：首版固定 `slide = 220`（「不需要完全从屏幕外滑入」）
+→ 改成自动档时因为上面两个坑算出 881（看上去像又变回「滑一小段」）
+→ 定稿只读容器宽的 1980，并把 `dur` 从 0.34 又拉回 0.45（距离翻了一倍多，不拉回就是一道闪）。

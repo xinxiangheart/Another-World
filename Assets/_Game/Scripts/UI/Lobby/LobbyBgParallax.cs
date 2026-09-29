@@ -37,6 +37,12 @@ public class LobbyBgParallax : MonoBehaviour
 
         [Tooltip("位移倍率：正 = 跟鼠标同向，负 = 反向（陀螺仪）")]
         [Range(-2f, 2f)] public float depth = 0.25f;
+
+        /// <summary>叠加在视差**之上**的额外偏移（px，加在 anchoredPosition 上）。由 <c>LobbyEntryIntro</c>
+        /// 每帧写，用来做「入口板从右边滑进来」的入场。
+        /// **为什么要过这一道**：本组件每帧都把 <c>anchoredPosition</c> 整个写掉（base + 视差），
+        /// 谁要是直接去动那几个 rect，下一帧就被这里盖回去 —— 入场会完全看不见。</summary>
+        [System.NonSerialized] public Vector2 extra;
     }
 
     [Tooltip("depth = 1 的层最大位移（画布尺寸的比例）。开始界面那套光幕是 0.030，大厅 2026-09-26 十次定收到 0.012 —— 用户「幅度更低，只能看到动一点点即可」")]
@@ -66,8 +72,30 @@ public class LobbyBgParallax : MonoBehaviour
         if (!_ready || _base == null) return;
         for (int i = 0; i < layers.Count; i++)
             if (layers[i] != null && layers[i].rect != null)
+            {
                 layers[i].rect.anchoredPosition = _base[i];
+                layers[i].extra = Vector2.zero;      // 入场偏移也一并清掉
+            }
         _look = Vector2.zero;
+    }
+
+    /// <summary>按 rect（退一步按 resolveName）找那一层；找不到返回 null。
+    /// 给「入场」这类要**叠加**偏移的东西用 —— 别自己去改 rect，见 <see cref="Layer.extra"/>。</summary>
+    public Layer FindLayer(RectTransform rt)
+    {
+        if (rt == null || layers == null) return null;
+        for (int i = 0; i < layers.Count; i++)
+        {
+            Layer L = layers[i];
+            if (L == null) continue;
+            if (L.rect == rt) return L;
+            if (L.rect == null && !string.IsNullOrEmpty(L.resolveName) && L.resolveName == rt.name)
+            {
+                L.rect = rt;                       // 顺手把漏掉的引用补上
+                return L;
+            }
+        }
+        return null;
     }
 
     /// <summary>rect 为空的层，按 resolveName 在场景里找回自己（UI 节点被重建之后用）。</summary>
@@ -103,7 +131,7 @@ public class LobbyBgParallax : MonoBehaviour
             if (L == null || L.rect == null) continue;
             L.rect.anchoredPosition = _base[i] + new Vector2(
                 _look.x * parallaxMax * L.depth * size.x,
-                _look.y * parallaxMax * L.depth * size.y);
+                _look.y * parallaxMax * L.depth * size.y) + L.extra;   // extra = 入场偏移（默认 0）
         }
     }
 }
