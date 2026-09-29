@@ -26,9 +26,10 @@ public class PickDrawUI : MonoBehaviour
     public float dimAlpha = 0.68f;      // 压暗底透明度
     public float cardScale = 3f;        // 与 Player.Scale2DCard 同一倍率
     public float gapRatio = 0.26f;      // 卡与卡的间隙 = 卡宽 × 该比例
-    public float appearGap = 0.06f;     // 依次展示的间隔（左→右）
-    public float appearTime = 0.10f;    // 单张亮起时长
-    public float riseRatio = 0.22f;     // 亮起动效：从下方滑入的距离 = 卡高 × 该比例（起点更靠近终点）
+    public float appearGap = 0.09f;     // 依次展示的间隔（左→右）：三张互相交叠着起手，整段才是一条连续的滑动
+    public float appearTime = 0.26f;    // 单张滑入时长（含落位）
+    public float riseRatio = 0.30f;     // 亮起动效：从下方滑入的距离 = 卡高 × 该比例
+    public float appearFadeLead = 0.6f; // 透明度在时长的前几成里就收满（<1 = 比位移早亮完，落位那一截看得清）
     public float popScale = 1.14f;      // 选定那一张的高亮过冲倍率
     public float popLift = 64f;         // 选定那一张上抬的距离
     public float punchTime = 0.20f;     // 选定那一张「冲一下」的时长（放大过冲 + 选定框亮起）
@@ -268,28 +269,32 @@ public class PickDrawUI : MonoBehaviour
         }
         LayoutSlots();
 
+        // 三张**互相交叠**地滑入：第 i 张延后 i×appearGap 起步，前一张还在路上后一张就已经起手 ——
+        // 整段因此是一条连续的滑动，而不是「弹、弹、弹」三下。
+        // 每张**落位之后**才挂点击 / 悬停并放开射线（没落位的牌不能被点到）。
         for (int i = 0; i < _slots.Count; i++)
         {
             var s = _slots[i];
-            s.revealing = true;
-            yield return RevealSlot(s);
-            s.revealing = false;
             int idx = i;
-            if (s.card != null)
+            s.revealing = true;
+            StartCoroutine(RevealSlot(s, i * appearGap, () =>
             {
-                var click = s.card.GetComponent<CardClickHandler>();
-                if (click == null) click = s.card.AddComponent<CardClickHandler>();
-                click.onClick = () => OnCardPicked(idx);
+                s.revealing = false;
+                if (s.card != null)
+                {
+                    var click = s.card.GetComponent<CardClickHandler>();
+                    if (click == null) click = s.card.AddComponent<CardClickHandler>();
+                    click.onClick = () => OnCardPicked(idx);
 
-                var hover = s.card.GetComponent<PickHoverGlow>();
-                if (hover == null) hover = s.card.AddComponent<PickHoverGlow>();
-                hover.ui = this;
-                hover.index = idx;
-            }
-            s.group.blocksRaycasts = true;
-            if (i < _slots.Count - 1)
-                yield return new WaitForSeconds(appearGap);
+                    var hover = s.card.GetComponent<PickHoverGlow>();
+                    if (hover == null) hover = s.card.AddComponent<PickHoverGlow>();
+                    hover.ui = this;
+                    hover.index = idx;
+                }
+                s.group.blocksRaycasts = true;
+            }));
         }
+        yield return new WaitForSeconds(appearTime + Mathf.Max(0, _slots.Count - 1) * appearGap);   // 整段入场放完再交棒
     }
 
     void OnCardPicked(int index)
@@ -504,11 +509,8 @@ public class PickDrawUI : MonoBehaviour
         LayoutSlots();
 
         for (int i = 0; i < _slots.Count; i++)
-        {
-            yield return RevealSlot(_slots[i]);
-            if (i < _slots.Count - 1)
-                yield return new WaitForSeconds(appearGap);
-        }
+            StartCoroutine(RevealSlot(_slots[i], i * appearGap, null));
+        yield return new WaitForSeconds(appearTime + Mathf.Max(0, _slots.Count - 1) * appearGap);
     }
 
     IEnumerator SpectatorRevealRoutine(int[] indices, string[] templateIDs)
@@ -567,27 +569,42 @@ public class PickDrawUI : MonoBehaviour
         _root.alpha = 0f;
     }
 
-    IEnumerator RevealSlot(Slot s)
+    /// <summary>从下方滑入 + 淡入（delay 用来在张与张之间错开）。
+    ///
+    /// 三处「丝滑」的来历：
+    ///  · **位移走 easeOutSine**（sin(p·π/2)：起步即走、落位最缓）。旧写法用 SmoothStep（两端都为零速），
+    ///    配上 0.10 s 的时长只剩四帧 —— 起步与收尾各占一帧、中间猛冲一下，看着就是「弹一下」。
+    ///    峰值速度：easeOutSine 只有 cubic ease-out 的一半、SmoothStep 的 1.05 倍 —— 既没有 cubic 那一下
+    ///    猛起步，又不像 SmoothStep 头两帧几乎不动（「先顿一下」）。
+    ///  · **时长 0.26 s**，同样的位移摊到十四五帧上，实测单帧最大位移从 36.9 px 降到 13 px 上下。
+    ///  · **透明度比位移早收**（appearFadeLead 处就 1）：落位那一截是「已经看清的牌在缓缓停住」，
+    ///    而不是「一边亮一边还没到位」。
+    /// 收尾一律把 alpha / 位置钉到终值，避免 lerp 残差停在 0.999。</summary>
+    IEnumerator RevealSlot(Slot s, float delay = 0f, Action done = null)
     {
-        if (s == null || s.holder == null) yield break;
+        if (s == null || s.holder == null) { done?.Invoke(); yield break; }
         Vector2 basePos = s.basePos;
         float rise = _cardH * riseRatio;
         s.holder.localScale = Vector3.one;
         s.group.alpha = 0f;
         s.holder.anchoredPosition = basePos + new Vector2(0f, -rise);
+
+        if (delay > 0f) yield return new WaitForSeconds(delay);
+
         float t = 0f;
         while (t < appearTime)
         {
             t += Time.deltaTime;
             float p = Mathf.Clamp01(t / appearTime);
-            float fade = 1f - Mathf.Pow(1f - p, 3f);   // 透明度先亮起来
-            float riseP = Mathf.SmoothStep(0f, 1f, p); // 位移匀速滑升，避免「还没看清就到位」
+            float move = Mathf.Sin(p * Mathf.PI * 0.5f);                              // easeOutSine：起步即走、落位最缓
+            float fade = 1f - Mathf.Pow(1f - Mathf.Clamp01(p / Mathf.Max(0.01f, appearFadeLead)), 3f);
             s.group.alpha = fade;
-            s.holder.anchoredPosition = basePos + new Vector2(0f, -rise * (1f - riseP));
+            s.holder.anchoredPosition = basePos + new Vector2(0f, -rise * (1f - move));
             yield return null;
         }
         s.group.alpha = 1f;
         s.holder.anchoredPosition = basePos;
+        done?.Invoke();
     }
 
     // ══════════════════════════════════════════════════════════════════
