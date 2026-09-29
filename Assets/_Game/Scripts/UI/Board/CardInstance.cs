@@ -6,6 +6,11 @@ public class CardInstance : MonoBehaviour
     public string instanceID;
     public string templateID;
 
+    /// <summary>构建本实例的模板（<see cref="InitFromTemplate"/> 时记下）。
+    /// Lobby 场景里没有 CardDatabase（模板只挂在 Game.unity），特性文本靠它兜底 ——
+    /// 见 <see cref="GetVisibleTraitEntries"/>；Game 里 CardDatabase 在，取到的还是同一个模板。</summary>
+    [System.NonSerialized] public CardData sourceTemplate;
+
     public int currentCost;
     public int currentAttack;
     public int baseAttack;
@@ -377,6 +382,7 @@ public class CardInstance : MonoBehaviour
     public void InitFromTemplate(CardData template, int copyIndex, string overrideInstanceID = null)
     {
         templateID = template.templateID;
+        sourceTemplate = template;
         // 优先使用预生成的唯一 instanceID（CardZoneManager 生成），其次旧格式
         instanceID = overrideInstanceID ?? (templateID + (copyIndex + 1).ToString("D2"));
 
@@ -872,7 +878,10 @@ public class CardInstance : MonoBehaviour
     public List<TraitEntry> GetVisibleTraitEntries()
     {
         var result = new List<TraitEntry>();
+        // Lobby 场景没有 CardDatabase —— 用 InitFromTemplate 记下的模板兜底，否则大厅（卡牌总览 / 卡牌详情）
+        // 读不到任何固有特性（CardDisplay2DNew.FindTemplate 走的是同一条思路，只是那条靠 Resources 扫）。
         CardData template = CardDatabase.Instance != null ? CardDatabase.Instance.GetTemplate(templateID) : null;
+        if (template == null) template = sourceTemplate;
 
         // 固有特性（结构化 traitEntries，加载时自动迁移）——01117 迁移前用旧特殊处理
         if (templateID != "01117" && template != null)

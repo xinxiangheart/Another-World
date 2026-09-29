@@ -30,7 +30,6 @@ public class CardDisplay2D : MonoBehaviour
             Debug.LogWarning("RefreshWithInstance: inst Ϊ null");
             return;
         }
-        Debug.Log($"RefreshWithInstance: templateID={instance.templateID}, atk={instance.currentAttack}, hp={instance.currentHealth}, cost={instance.currentCost}");
         Refresh();
     }
     public virtual void Refresh()

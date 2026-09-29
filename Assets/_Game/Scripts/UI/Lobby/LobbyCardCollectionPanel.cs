@@ -92,6 +92,7 @@ public class LobbyCardCollectionPanel : MonoBehaviour, ILobbySubPanelOpen
     int _buildGen;                  // 铺卡换代号：筛选一变就 +1，旧协程见到自己不是当前代就退场
     Coroutine _fillCo;              // 正在分帧铺卡的那条协程
     LobbyCardsIntro _intro;         // 打开面板时「前两栏 + 右侧前两排浮上来」的入场（Play 才建，见 PlayCardsIntro）
+    LobbyCardDetailPanel _detail;   // 点一张卡 → 类全屏卡牌详情（同样 Play 才建，见 OpenDetail）
     readonly HashSet<int> _shownChips = new HashSet<int>();                  // 上一次重建后已在屏上的格子（判「新显示」用）
     readonly List<RectTransform> _freshChips = new List<RectTransform>();    // 本次重建里新出现的格子
 
@@ -123,7 +124,12 @@ public class LobbyCardCollectionPanel : MonoBehaviour, ILobbySubPanelOpen
 
     // ⚠ 入场必须排在 EnsureBuilt 之后：筛选格是运行时建的，先摆位再动它们才有基准位置
     //   （启动时 OnEnable 那次重建发生在面板还关着的时候，不播 —— 播了也看不见）。
-    public void OnSubPanelOpened() { EnsureBuilt(); PlayCardsIntro(); }
+    public void OnSubPanelOpened()
+    {
+        if (_detail != null) _detail.Close();   // 上次关面板时它只是跟着父级一起 inactive，状态还在 —— 开面板先收掉
+        EnsureBuilt();
+        PlayCardsIntro();
+    }
 
     /// <summary>骨架里的引用是生成器填的；编辑器重跑生成器后、或者引用被清空时，这里兜一次。
     /// 只要容器对得上就刷 —— 不刷的话右侧会一直是空的（Stage85 实测：Refresh 跑在引用回填之前 = 0 张）。</summary>
@@ -131,6 +137,13 @@ public class LobbyCardCollectionPanel : MonoBehaviour, ILobbySubPanelOpen
     {
         if (!Application.isPlaying) return;
         if (!_built && gridRoot != null && chipLv0 != null) EnsureBuilt();
+    }
+
+    void OnDisable()
+    {
+        // 面板被关掉：详情是子物体会跟着 inactive，但「开着」这个状态还在 —— 显式收掉，
+        // 顺便把那张 Instantiate 出来的放大卡面销毁，不留垃圾。
+        if (_detail != null) _detail.Close();
     }
 
     /// <summary>把**上一次运行时生出来**的件清干净（幂等前提）。
@@ -623,41 +636,35 @@ public class LobbyCardCollectionPanel : MonoBehaviour, ILobbySubPanelOpen
         _fillCo = null;
     }
 
-    /// <summary>铺一张预览卡（Instantiate + 剥战斗件 + 初始化 + 摆位）。<paramref name="index"/> 是**过滤后**的序号，决定行列。</summary>
+    /// <summary>铺一张预览卡（建卡 + 摆位 + 挂悬停 / 点击）。<paramref name="index"/> 是**过滤后**的序号，决定行列。</summary>
     void PlaceCard(CardData d, int index, float cellW, float cellH, float gridPadX)
     {
-        GameObject prefab = d.cardType == CardType.Spell ? d.spell2DPrefab : d.card2DPrefab;
-        if (prefab == null) return;
-
-        GameObject go = Instantiate(prefab, gridRoot);
+        // 建卡那段与「卡牌详情」左半区那张放大卡同源（LobbyCardPreview.Create）
+        GameObject go = LobbyCardPreview.Create(d, gridRoot, CardScale);
+        if (go == null) return;
         go.name = "CardPreview_" + d.templateID;
 
-        // 预览用：把战斗用的拖拽 / 悬停 / 旧显示脚本剥掉，只留 CardDisplay2DNew 画卡面
-        var cv = go.GetComponent<CardView>(); if (cv != null) cv.enabled = false;
-        var drag = go.GetComponent<CardDrag>(); if (drag != null) drag.enabled = false;
-        var hv = go.GetComponent<CardHover>(); if (hv != null) hv.enabled = false;
-        var inst = go.GetComponent<CardInstance>();
-        if (inst == null) inst = go.AddComponent<CardInstance>();
-        inst.InitFromTemplate(d, 0);
-
-        // 优先用新的显示脚本；老预制体（只有基类 CardDisplay2D）才退到那条老路。
-        // ⚠ 别写成 GetComponent<CardDisplay2D>() != null 就 Destroy —— 新脚本继承自它，
-        //   那条会把新脚本自己删掉（GetComponent 会连派生类一起命中）。
-        var dispNew = go.GetComponent<CardDisplay2DNew>();
-        if (dispNew != null) dispNew.RefreshWithInstance(inst);
-        else { var dispOld = go.GetComponent<CardDisplay2D>(); if (dispOld != null) dispOld.RefreshWithInstance(inst); }
-
         RectTransform rt = go.GetComponent<RectTransform>();
-        rt.anchorMin = rt.anchorMax = new Vector2(0f, 1f);
-        rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.sizeDelta = new Vector2(CardSizeW, CardSizeH);   // 83 x 146：预制体自然尺寸，别改（改了=压扁卡框）
-        rt.localScale = Vector3.one * CardScale;
-
         int row = index / GridColumns, col = index % GridColumns;
         rt.anchoredPosition = new Vector2(gridPadX + col * cellW + cellW * 0.5f,
                                           -(row * cellH + cellH * 0.5f));
 
+        // 悬停把卡抬起来一点、点击开详情。⚠ 必须在摆好位之后 Init：它拿当前位置当「静止态」。
+        var tile = go.AddComponent<LobbyCardTile>();
+        CardData captured = d;
+        tile.Init(CardScale, () => OpenDetail(captured));
+
         _cards.Add(go);
+    }
+
+    /// <summary>点一张卡：开这张卡的详情。详情面板 Play 才现建（不进场景 —— 重跑生成器会把版式冲掉）。</summary>
+    void OpenDetail(CardData d)
+    {
+        if (!Application.isPlaying) return;      // 编辑态没有 EventSystem，走不到这儿；保险
+        if (d == null) return;
+        EnsureData();
+        if (_detail == null) _detail = LobbyCardDetailPanel.Create(transform, font);
+        _detail.Open(d);
     }
 
     // ═══════════════════════════════════════════════════════════════════════

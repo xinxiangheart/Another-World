@@ -17,7 +17,9 @@ using UnityEngine;
 ///   · 缓动 <c>Ease(t) = 1 - (1-t)^3</c> —— 起步快、收尾慢；
 ///   · 单帧增量封顶 <c>Mathf.Min(Time.unscaledDeltaTime, 0.05f)</c> —— 编辑器进 Play 的头几帧很慢，
 ///     不封顶的话整段会在看得见之前一帧跑完；
-///   · 位置 = <c>basePos - (0, rise * (1 - e))</c>，透明度 = <c>原始 alpha x e</c>。
+///   · 位置 = <c>basePos + dir * rise * (1 - e)</c>，透明度 = <c>原始 alpha x e</c>
+///     （<c>dir</c> 由 <see cref="Group.dir"/> 定：默认 <c>(0, -1)</c> = 从下方浮上来；
+///      2026-09-29 大厅「卡牌详情」右栏传 <c>(-1, 0)</c> = 从左边起手，看上去是**向右**滑出来）。
 ///
 /// **动的是「格子 / 卡」本身，不是容器**：容器（Chips_Lv0 / Chips_Lv1 / Grid_Cards）的位置是生成器与
 /// ScrollRect 定的，挪容器会把整栏 / 整块一起带走（Grid_Cards 的位置还归 ScrollRect 写）。
@@ -30,17 +32,21 @@ using UnityEngine;
 public class LobbyCardsIntro : MonoBehaviour
 {
     [Header("动作参数（秒 / 屏幕 px）")]
-    [Tooltip("每一件从下方浮上来的距离")]
+    [Tooltip("每一件从静止位起手的距离（朝哪个方向看 Group.dir）")]
     public float rise = 24f;
     [Tooltip("单件上浮时长")]
     public float dur = 0.34f;
 
-    /// <summary>一组入场件：<c>items</c> 里所有件在 <c>at</c> 秒（从 <see cref="Play"/> 那一刻算）**同时**起手。</summary>
+    /// <summary>一组入场件：<c>items</c> 里所有件在 <c>at</c> 秒（从 <see cref="PlayGroups"/> 那一刻算）**同时**起手。</summary>
     public struct Group
     {
         public List<RectTransform> items;
         public float at;
-        public Group(float at, List<RectTransform> items) { this.at = at; this.items = items; }
+        /// <summary>起手方向（单位向量，再乘 <see cref="rise"/>）。默认 <c>(0,-1)</c> = 从下方浮上来。</summary>
+        public Vector2 dir;
+        public Group(float at, List<RectTransform> items) : this(at, items, new Vector2(0f, -1f)) { }
+        public Group(float at, List<RectTransform> items, Vector2 dir)
+        { this.at = at; this.items = items; this.dir = dir; }
     }
 
     class Item
@@ -50,6 +56,7 @@ public class LobbyCardsIntro : MonoBehaviour
         public Vector2 basePos;
         public float baseAlpha;             // 接管前它自己的 alpha（卡预制体带的那个 CanvasGroup 多半是 1）
         public bool baseBlocksRaycasts;     // 同上：收工按原值还原，不写死 true
+        public Vector2 dir;                 // 起手方向（乘 rise）
         public float t0;                    // 这一件的起手时刻
     }
 
@@ -87,14 +94,15 @@ public class LobbyCardsIntro : MonoBehaviour
                     basePos = rt.anchoredPosition,
                     baseAlpha = cg.alpha,
                     baseBlocksRaycasts = cg.blocksRaycasts,
+                    dir = groups[g].dir,
                     t0 = at,
                 };
 
-                // 起手压成「下方 + 全透明」。⚠ 同时关掉射线：不然浮上来的那 0.3 秒里，
+                // 起手压成「沿 dir 偏出去 + 全透明」。⚠ 同时关掉射线：不然滑进来的那 0.3 秒里，
                 // 一格看不见的筛选格 / 一张看不见的卡压在鼠标下面，一点就切了筛选 / 起了拖拽。
                 cg.alpha = 0f;
                 cg.blocksRaycasts = false;
-                rt.anchoredPosition = new Vector2(it.basePos.x, it.basePos.y - rise);
+                rt.anchoredPosition = it.basePos + it.dir * rise;
 
                 _items.Add(it);
             }
@@ -129,7 +137,7 @@ public class LobbyCardsIntro : MonoBehaviour
             float p = Mathf.Clamp01((_t - it.t0) / Mathf.Max(0.0001f, dur));
             float e = Ease(p);
             it.cg.alpha = it.baseAlpha * e;
-            it.rt.anchoredPosition = new Vector2(it.basePos.x, it.basePos.y - rise * (1f - e));
+            it.rt.anchoredPosition = it.basePos + it.dir * (rise * (1f - e));
             it.cg.blocksRaycasts = it.baseBlocksRaycasts && e >= 0.9f;   // 快到位了才恢复可点
             if (p < 1f) all = false;
         }

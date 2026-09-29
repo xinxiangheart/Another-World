@@ -2020,3 +2020,60 @@ stage47 唯一一条失败就是它：`npotScale=ToNearest` / `alphaIsTransparen
 - **数字成对出现是帧粒度**：编辑器里帧间距 ≈ 50–70 ms，`IntroFreshStep = 45 ms` 常落在同一帧
   （英雄 / 神选者 同为 155）—— 实机上不是一回事，别拿它当稳定性问题。
 - 图：`stage115_slide_strip.png`（+150 / +300 / +450 / +620 ms 四帧：下面几排一排一排浮出来）。
+
+### ⑫ 第九次改（2026-09-28）：卡牌总览 → 点一张卡 → 「卡牌详情」
+
+**用户原话**：「做卡牌详情点击展示，为卡牌总览的卡牌做一个类全屏（背景是透明的模糊幕即可），为卡牌做悬停和点击变化，
+点击后屏幕左半区放放大后的卡牌卡面，右边参考 Game 场景里的详情面板，不过是每个属性都有自己的背景……
+点击右上角的叉或者点击空白退出这个详情」；
+补话：「不需要完全同规格和填满整个右边，可以留出空隙，同时特性背景大小类似于 game 场景悬停 3d 卡牌 tag 一样是和特性长度适配的」。
+
+**四个新件**（三个在 `Assets/_Game/Scripts/UI/Lobby/`，加一个着色器）
+
+| 件 | 管什么 |
+|---|---|
+| `LobbyCardPreview.cs` | 建一张「预览卡」：`Instantiate` 卡面预制体 → 剥 `CardView`/`CardDrag`/`CardHover` → `InitFromTemplate` → 画一次卡面。总览网格与详情左半区**走同一条路**（原来那段写在 `LobbyCardCollectionPanel.PlaceCard` 里） |
+| `LobbyCardTile.cs` | 挂在总览每张卡上：悬停 `2.5 → 2.62` + 上浮 7 px（`Mathf.Exp` 缓动，静下来自己 `enabled=false`）；点击开详情。**不实现任何 Drag 接口** ⇒ 与 `ScrollRect` 不打架 |
+| `LobbyCardDetailPanel.cs` | 详情本体（几何见下）。`Play` 才现建，不进场景（重跑生成器不会冲掉版式） |
+| `Art/Shaders/UIBlurScrim.shader` | `Shader "AnotherWorld/UIScrimBlur"`：`GrabPass { "_AwScrimGrab" }` → 5×5 盒式模糊 → `lerp` 压暗。**拿不到着色器就退成一块深色半透明**（`new Color(0.027f, 0.043f, 0.070f, 0.80f)`） |
+
+#### ① GrabPass 抓什么（别改成「给整屏拍照」）
+
+详情铺满 `Panel_Cards`（`Layer_Sub_v1`），HUD 层（头像板 / 右上横栏 / 齿轮）**排在它之后** ⇒ GrabPass 只抓到「卡牌网格那一屏」，
+抓不到 HUD —— 这正是要的：**头像板与顶栏不被糊**，仍画在详情之上。若改成截图当幕，会把 HUD 一起糊进幕里。
+
+#### ② 三处**真 bug**（都不是审美，是实实在在会坏事）
+
+| 症状 | 根因 | 修法 |
+|---|---|---|
+| 属性格渲染成**纯白块**（截图实测 `(255,255,255)`，而贴图中心是 `#151D29`） | `LobbyPanelPlate.png.meta` 是 `textureType: 8`(Sprite) + **`spriteMode: 0`(None)** ⇒ **不生成 Sprite 子资产**，`Image.sprite` 拿到 null，`Image` 就画一块白 | meta 改 `spriteMode: 1`（Single）。border 48 / `spritePixelsToUnits: 300` 保持 ⇒ 圆角 = 48/(300/100) = **16 屏幕 px** |
+| 特性栏全是「无」（186 张里只有 `01117` 有字） | **Lobby 场景里没有 `CardDatabase`**（模板只挂在 `Game.unity`，实测全场景搜 guid 只有 Game.unity 命中）⇒ `CardInstance.GetVisibleTraitEntries()` 取不到模板。`CardDisplay2DNew` 早有资源级兜底（`FindTemplate`），**`CardInstance` 没有** | `CardInstance` 加 `[System.NonSerialized] public CardData sourceTemplate`（`InitFromTemplate` 时记下），`GetVisibleTraitEntries` 里**只在 `CardDatabase` 取不到时**兜它。Game 里 `CardDatabase` 在 ⇒ 行为一字不变 |
+| 控制台每帧刷 `Material 'AnotherWorld/UIScrimBlur' with Shader '...' doesn't have a texture property '_MainTex'`（栈是 `ScrollRect.LateUpdate`） | 自定义 UI 着色器没声明 `_MainTex` —— UI 的 `CanvasRenderer` 把图集 / 白图绑在**这个名字**上，`Image` / `ScrollRect` 每帧都要读它 | 着色器加 `_MainTex ("Sprite Texture", 2D) = "white" {}` 并**真的采一下**（`c * i.color * tex2D(_MainTex, i.uv)`；没 sprite 时它就是 1×1 白图 ⇒ 视觉不变）|
+
+修后：**122 / 186** 张有特性文本（原来是 1 张）。
+
+#### ③ 右栏几何（屏幕 px · 1920×1080 参考；Canvas 是 Overlay + ScaleWithScreenSize ⇒ 世界坐标即屏幕坐标）
+
+- 卡面：中心 `(486, 556)`、`FaceScale 4.2` ⇒ 视觉 **349×614**（左半区正中）。
+- 右栏：`ColL 1000 / ColT 200 / ColW 856 / ColH 788`。
+- 属性栏：`CellH 66` / `RowGap 14` / `SecGap 22`（属性段与特性段之间多留的那一点）/ `ColGapX 12`；
+  **每格的宽按自己的内容算** `Clamp(valX + 值宽 + 16, CellMinW 186, CellMaxW 432)`，左起依次摆开 —— **不拉满 856**。
+  同一栏里属性名左对齐、值的起点由该栏最宽的属性名决定。
+- 特性栏：**底板贴着文字**，口径与 Game 的 `HoverTagLabel` 一致 —— 先量单行自然宽（`GetPreferredValues(text, ∞, ∞)`，先禁折行），
+  超过 `TraitMaxW 760`（内容宽 = 760 − 2×18 = 724）就开折行、按 724 量高度；底板 = 内容 + `TraitPadX/Y 18/15`，高度下限 `TraitHMin 66`。
+- 关闭：叉（`Icon_Close` + 悬停换贴图，锚右上 `(-168, -66)` / 60×60，与卡牌总览那个叉逐数一致）**与幕**各挂一个 `Button`。
+  ⚠ **关闭处理器只能挂在幕这个子物体上，不能挂根** —— 右栏的格是从根冒泡上来的，挂根上「点属性栏就把详情关了」。
+
+#### ④ 自证（编辑态 Play · 场景 = Lobby）
+
+| 项 | 实测（`stage116_carddetail.txt` / `stage117_detail_fix.txt` / `stage118_detail_width.txt`） |
+|---|---|
+| 悬停 | `scale 2.5 → 2.618`、`y Δ6.9`（目标 7）；移开后**精确回** `2.5 / y −213.8` ✅ |
+| 特性文本 | 122/186 张有字；`01101` 2 条、`01525` 1 条 115 字 ✅ |
+| 特性底板贴字 | `01101` → **w413.3 / w227.1**（单行）；`01525`(115 字) → **w760 h156.5**，4 行 ✅ |
+| 右栏不拉满 | 属性栏格宽合计 **594.1 / 558 / 372**（拉满该 856）✅ |
+| 关闭路径 | 点属性格 → 还开着；点卡面 → 还开着；**点空白 → 关**；点叉 → 关 ✅ |
+| 层级 | 详情 `sibling 8/8`（`SetAsLastSibling`），父 = `Panel_Cards`，HUD 仍在其上 ✅ |
+| `_MainTex` | 挂 `Application.logMessageReceived` 数含 `_MainTex` / `texture property` 的日志：开一次详情、跑够 2.5 s 帧数 ⇒ **整段 Play 0 条**（`stage120_maintex.txt`）✅ |
+
+图：`stage118_shots/a_long.png`（`01525` 115 字 4 行）/ `b_normal.png`（`01101` 两条单行）。
