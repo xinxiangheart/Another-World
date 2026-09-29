@@ -2446,3 +2446,113 @@ if (_disabled && SteamReady()) RefreshGate();   // 中途连上 Steam 就自己�
   代码里 `BattleModeCardButton.cs:125` 已经留注：等排位流程落地时，要在这儿一并判它自己的 `IsBusy`。
 - 不动 git；本轮改完 `Assets/_Game/Editor/Stage*.cs` 归零，`aw_check.ps1` 空（无 CS 错误）。
 
+## 四十三次修正（2026-09-29）：**Game 场景的卡牌详情面板** —— 从「一个文本框」换成大厅那种版式
+
+**用户原话**：「将 Game 场景里的详情面板从之前的一个文本框变为和 lobby 场景里的卡牌点击后的详情类似」，外加四条硬性要求：
+① 卡牌更靠左、文字即背景更靠右，**不遮挡主场景的 12 个格子**；② **不对背景做任何模糊**；③ 出现速度大大加快、几乎瞬间；④ 触发**沿用 Game 原机制**（悬停 2D 手牌 / 在 3D 模型上停留一会）。
+
+**只改一个文件**：`Assets/_Game/Scripts/UI/Panels/Test1Panel.cs`（整文件重写，649 行）。
+三个公开入口 `Show(CardInstance)` / `Hide()` / `RefreshIfOpen()` 的签名**一字未改** ⇒ 六个调用点全都不用动：
+`CardHover`（2D 手牌悬停）、`Card3DHover`（3D 停留 / 右键）、`CardDisplayPanel`、`BoardSlot`、`BoardSyncManager`、`CardCollectionPanel`（大厅动态造件）。
+
+### ① 版式（照 `LobbyCardDetailPanel.cs`，只改几何）
+
+| 件 | 大厅那份 | Game 这份 | 为什么 |
+|---|---|---|---|
+| 放大卡面 | `FaceCx 486` / `FaceCy 556` / `FaceScale 4.2` | **`FaceCx 236` / `FaceCy 406` / `FaceScale 3.36`**（= 大厅那份 × 0.8，见 ⑤） | 贴左上角；上沿 160 与右栏上沿同一条线 |
+| 右栏 | `ColL 1000` / `ColW 856` | **`ColL 1332` / `ColW 524`**（右沿 1856，距屏幕右边 64，与大厅同口径） | 「文字即背景更靠右」；左沿再右移 36 是离十二格更远 |
+| 模糊幕 | `UIBlurScrim.shader`（GrabPass + 9×9 高斯） | **没有这件东西**：`ScrimAlpha = 0`，连平底压暗都不铺；即使调大也只是纯色压暗 | 要求 ② |
+| 入场动画 | `LobbyCardsIntro` 0.30 s + 逐栏错开 0.055 s | **`IntroDur 0.16 s`**（淡入 0.09 s、右栏错开 0.04 s、滑入 20、卡面缩放 0.92 -> 1，全程 `unscaledDeltaTime`，见 ⑤） | 要求 ③「几乎瞬间，但仍应有部分动画」 |
+| 数据来源 | 模板 | **实时 `CardInstance`**（受伤 / 减费 / 增益 / 赋予特性 / 状态 / 附着物 / 01534 计数），与旧文本框同口径 | 不能退回模板值 |
+
+### ② 改在哪（行号按本轮落盘）
+
+| 位置 | 管什么 |
+|---|---|
+| `Test1Panel.cs:47-53` | 几何常量 `FaceScale / FaceCx / FaceCy / ColL / ColT / ColW / ColH` —— **微调只动这里** |
+| `Test1Panel.cs:75` | `ScrimAlpha = 0`（「不模糊」的总闸） |
+| `Test1Panel.cs:149` | `Build()`：旧件退场（关掉场景里那个金边 `Image`、把 `DetailPanel` 的旧子件 `SetActive(false)`）+ 把 root 铺满整屏 |
+| `Test1Panel.cs:206` | `Render()`：取实时实例逐栏铺；**末尾**统一 `raycastTarget = false` |
+| `Test1Panel.cs:282` / `:344` | `AddRow()` 每格自己的底板；`AddTraitRow()` 底板贴文字、超 500 折行 |
+| `Test1Panel.cs:385` / `:431` | 卡面：`Instantiate` 卡面预制体 → 关 `CardView / CardDrag / CardHover` → `CopyFrom` + `RefreshWithInstance` |
+
+底板一律是**纯色 `Image`（无 sprite、无材质）**，色取 `#151D29 / a235`（与大厅底板中心同色）；面板全件 `raycastTarget = false`（悬停提示不拦射线，目标选择时鼠标要能穿到下面的格子）。
+
+### ③ 自证（`stage206_gamedetail.txt` + 4 张截图 · 编辑态 Play · 场景 = Game · 窗口 1475x830）
+
+| 量什么 | 实测 |
+|---|---|
+| 画布口径 | `CardCanvas` / `ScreenSpaceCamera` / `worldCamera = Main Camera` / `scaleFactor 0.7682`（1920x1080 参考分辨率） |
+| 放大卡面占地 | `x 125.0-475.0  y 248.7-863.3`（350×615，`localScale 4.2`） |
+| 右栏占地 | `x 1332.0-1856.0  y 160.0-952.0`（524×792） |
+| 十二格占地（3D 卡投影） | `x 640.3-1279.7  y 124.6-953.3`；逐格 12 项，**12/12 都是「压卡面=否 压右栏=否」** |
+| **余量** | 卡面右沿 475 ↔ 十二格左沿 640.3：**让开 298.7**；十二格右沿 1279.7 ↔ 右栏左沿 1332.0：**让开 52.3** |
+| 要求 ② | 面板下 79 / 85 / 87 件 `Graphic`，用到的 shader 只有 `UI/Default` 与 `TextMeshPro/Distance Field`；**名字带 blur / scrim / grab 的 0 件**；全场景 240 / 283 件活动 Graphic 里带 blur / scrim 的 **0 件**；没有 `Scrim` 件 |
+| 不拦射线 | `raycastTarget = true` 的 **0 件** |
+| 要求 ③ `Show()` 计时 | 首次（建面板 + 建卡面 + 铺栏）**26.14 ms**；同模板第二次（只刷数值）**8.06 ms**；换法术（换卡面 + 重铺栏）**6.07 ms** |
+| 要求 ④ · 2D 手牌 | 走真实入口 `CardHover.OnPointerEnter` → 面板 `active = True`；`OnPointerExit` → 已隐藏 `True` |
+| 要求 ④ · 3D 停留 | 走真实入口 `Card3DHover.UpdateDetailPanel`：停留达 `hoverDetailDelay` → 面板 `active = True`（实测是自己格子上的 03504）；鼠标离开 → 已隐藏 `True` |
+
+截图：`stage206_summon.png`（01504 模板原值）、`stage206_spell.png`（法术 02001）、`stage206_hover2d.png`、`stage206_hover3d.png`
+—— 都在 `%USERPROFILE%\.codex\visualizations\2026\09\29\01a0eca7-47c2-7cd1-b314-6c49f693c71c\`；执行器 `Stage*.cs` 跑完自删。
+
+### ④ 排错记录（五条，都是这次踩的）
+
+- **`ScreenSpaceCamera` 画布上的 `GetWorldCorners` 给的是世界坐标**，必须再过一遍 `canvas.worldCamera.WorldToScreenPoint`
+  —— 第一版漏了这步，量出来全是个位数。
+- **`Destroy` 延迟到帧末**：`Render()` 先 `ClearRows()` 再铺新栏，所以「刚 `Show()` 完就枚举 `Info` 的子件」会把**上一轮待销毁的栏**一起数进去 ⇒ 报告里凭空多出一套栏。
+  **结论：讲栏数、讲 `Graphic` 件数要在下一帧量。**
+- **`raycastTarget = false` 要放在 `Render()` 的最后扫**：卡面预制体自带的件、以及**重画时才生成**的状态 / 前缀小图标都是后出现的；
+  扫早了实测漏 21 / 32 件（最初只放在 `Start()`，卡面那一批全漏）。
+- **`ScreenCapture.CaptureScreenshot` 是帧末截的**：同一个 Tick 里「先截图、再改状态」拍到的已经是改完的样子 —— 首版两张截图就是这么废掉的。
+  **截图必须单独占一个 Tick，改状态挪到下一个。**
+- **已知、本轮没动**：`对方择牌` 的 `PickDrawUI`（`Assets/_Game/Scripts/UI/PickDraw/PickDrawUI.cs`，自己声明「永远压在最上层」）在屏幕右侧铺它自己的三张卡，
+  位置与新的右栏重叠。面板画在它上面，文字仍可读，但它会从**逐栏底板的空隙**里透出来。要去掉，给右栏加一块整列底板即可（会与大厅那份「只贴文字」的观感不同，所以留着等用户定）。
+  同一个原因，最右那一列（`slot 0/3/6/9`，画布 x 1168.7-1279.7）的 3D 卡悬停时按 `Card3DHover` 放大 1.05×（右沿 → 约 1287），仍进不了右栏（左沿 1332）。
+
+- 不动 git；`aw_check.ps1` 空（无 CS 错误）；`Assets/_Game/Editor/Stage*.cs` 归零。
+
+
+### ⑤ 后续修正（同日 · 用户三条追加）：卡面缩到 0.8 倍、挪到左上、加一次收势动画
+
+**用户原话**：「左边显示的卡牌大小整体缩小至 0.8 倍，同时显示虽说快速但仍应有部分动画」+「左侧卡牌缩小后更靠近左上」。只动上面那张表里的三行，别的没碰。
+
+| 项 | 前 | 后 | 常量 |
+|---|---|---|---|
+| 卡面大小 | `FaceScale 4.2`（350×615） | **`3.36`**（= 大厅那份 × 0.8；280×491.7） | `Test1Panel.cs:48` |
+| 卡面中心 x | `300`（左沿 125） | **`236`**（左沿 **96**，贴屏幕左沿内侧 96） | `:50` |
+| 卡面中心 y | `556`（上沿 248.7） | **`406`**（上沿 **160**，与右栏上沿 `ColT` 同一条线） | `:51` |
+| 入场动画 | 无（`Show()` 里一步到位） | **`IntroDur 0.16 s`** 的一次收势 | `:60-64` |
+
+**动画口径（在要求 ③「几乎瞬间」与「仍应有部分动画」之间取的那条线）**
+
+- 总时长 **0.16 s**；整体 `CanvasGroup.alpha` 在 **0.09 s** 内就满不透明（后 0.07 s 只走位移/缩放，已经看不出「在放」）。
+- 卡面从左、右栏从右各移进 `IntroSlide 20`（画布单位）；卡面另带 `IntroScale 0.92 -> 1`。
+- 右栏比卡面晚 `IntroDelayC 0.04 s` 起手；缓动 = `1-(1-t)^3`（`EaseOut()`）。
+- 全程 `Time.unscaledDeltaTime` —— `Time.timeScale` 被暂停或加速都不影响这段。
+- **只在「关 -> 开」那一拍播**（`Show()` 里 `wasOpen` 判定）；开着再 `Show()`（板面同步重画）只刷数值、不重播；`Hide()` 直接把 `_introT` 置满、取消进行中的动画（关就干脆关，不留残影）。
+
+**自证（`stage207_gamedetail.txt` + 4 张截图 · 编辑态 Play · 场景 = Game · 窗口 1489x838）**
+
+| 量什么 | 实测 |
+|---|---|
+| 画布口径 | `CardCanvas` / `ScreenSpaceCamera` / `worldCamera = Main Camera` / `scaleFactor 0.7755` |
+| 卡面实体占地 | `x 96.0-376.0  y 160.2-651.8`（280×492，`localScale 3.36`） |
+| 右栏占地 | `x 1332.0-1856.0  y 160.0-952.0`（524×792）—— 与上一轮一字不动 |
+| 十二格占地（3D 卡投影） | `x 640.3-1279.7  y 124.6-953.3`；**12/12 都是「压卡面=否 压右栏=否」** |
+| **余量** | 卡面右沿 376 ↔ 十二格左沿 640.3：**让开 264.3**；十二格右沿 1279.7 ↔ 右栏左沿 1332.0：**让开 52.3** |
+| 入场采样（从 `Show()` 返回那一刻起） | `+0.00s` alpha **0** / scale **0.92** / 卡面 x **216**（=236-20）/ 右栏 x **1352**（=1332+20）→ `+0.04s` alpha **0.804** / scale 0.9869 / x 232.72 → `+0.10s` alpha **1** / scale 0.9989 / x 235.72 → `+0.20s` alpha 1 / scale 1 / **x 236**、右栏 **1332**（终态精确，无 0.9999 残差） |
+| 不重播 | 开着再 `Show()` 一次：alpha 1 / scale 1 / x 236 / 右栏 x 1332（`wasOpen` 生效） |
+| 要求 ② | 面板下 79 / 87 件 `Graphic`，shader 只有 `UI/Default` 与 `TextMeshPro/Distance Field`；**名字带 blur / scrim / grab 的 0 件**；全场景 230 / 248 件活动 Graphic 里 **0 件**；没有 `Scrim` 件 |
+| 不拦射线 | `raycastTarget = true` 的 **0 件** |
+| 要求 ④ · 2D 手牌 | 走真实入口 `CardHover.OnPointerEnter` -> 面板 `active = True`；`OnPointerExit` -> 已隐藏 `True` |
+| 要求 ④ · 3D 停留 | 走真实入口 `Card3DHover`：停留达 `hoverDetailDelay` -> 面板 `active = True`；鼠标离开 -> 已隐藏 `True` |
+
+截图：`stage207_summon.png`（01504 召唤物）、`stage207_spell.png`（法术 02001）、`stage207_hover2d.png`、`stage207_hover3d.png`
+—— 都在 `%USERPROFILE%\.codex\visualizations\2026\09\29\01a0eca7-47c2-7cd1-b314-6c49f693c71c\`。
+
+**这一轮新踩的一个坑（写下来免得再被骗一次）**
+
+- **重跑同一个执行器，必须先换 `SessionState` 的 key 前缀。** 上一轮跑完会把 `Phase` 留在 `99`（终态）；`.cs` 重新落盘、编译、静态构造器注册之后，`Tick` **照样先读这个值**，`if (p == 99) return;` 直接短路 —— **报告不生成、控制台不报错、Editor.log 里连一行都没有**。这次就是被它骗过去的：删了旧报告、`Ctrl+R`、等了三分钟没动静。把前缀从 `AnotherWorld.Stage207.` 换成 `AnotherWorld.Stage207d.` 之后立刻就跑起来了。
+
+- 不动 git；`aw_check.ps1` 空（无 CS 错误）；`Assets/_Game/Editor/Stage*.cs` 归零。
