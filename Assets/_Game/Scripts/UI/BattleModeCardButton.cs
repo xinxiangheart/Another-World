@@ -49,6 +49,10 @@ public class BattleModeCardButton : MonoBehaviour, IPointerEnterHandler, IPointe
     public static System.Func<bool> steamGateOverride;
 
     bool _disabled;
+    float _gateTimer;                          // 置灰判定的轮询节拍
+
+    /// <summary>置灰判定多久重判一次（秒）。0.5s 就够 —— 这是给人看的显隐，不是逻辑门。</summary>
+    const float GatePollSeconds = 0.5f;
 
     /// <summary>这张卡要不要 Steam 连接（匹配 / 排位 / 房间要；离线模式不要 —— 它本来就是给没连 Steam 的人用的）。</summary>
     public bool RequiresSteam { get { return kind != Kind.Offline; } }
@@ -73,7 +77,14 @@ public class BattleModeCardButton : MonoBehaviour, IPointerEnterHandler, IPointe
 
     void Update()
     {
-        if (_disabled && SteamReady()) RefreshGate();   // 中途连上 Steam 就自己恢复（只在置灰时轮询）
+        // 2026-09-29 复查补：原来只轮询「置灰 → 恢复」那一侧。Steam 中途掉线（断网 / 加速器掉）时卡片会
+        // 一直白着、看着还能点 —— 而用户的验收是「未连接 Steam 时字体变灰且点不动」。改成两个方向都判，0.5s 一拍。
+        _gateTimer += Time.unscaledDeltaTime;
+        if (_gateTimer < GatePollSeconds) return;
+        _gateTimer = 0f;
+        // 没变化就别动它 —— 免得把悬停时那层金色打回常态
+        if (_disabled == (RequiresSteam && !SteamReady())) return;
+        RefreshGate();
     }
 
     /// <summary>按 Steam 连接状态切「可用 / 置灰」。未连接 = 灰字 + 点不动（悬停也不变金）。</summary>
@@ -90,6 +101,8 @@ public class BattleModeCardButton : MonoBehaviour, IPointerEnterHandler, IPointe
 
     public void OnPointerClick(PointerEventData eventData)
     {
+        // 复查补：点这一刻再问一次 Steam。置灰是 0.5s 一拍刷出来的，别让那半秒的窗口漏过去。
+        if (!_disabled && RequiresSteam && !SteamReady()) RefreshGate();
         if (_disabled)
         {
             Debug.Log("[BattleModeCard] 未连接 Steam —— 「" + kind + "」置灰不可点");

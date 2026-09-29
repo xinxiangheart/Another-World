@@ -52,6 +52,10 @@ public class QuickMatchPanel : MonoBehaviour
     float _retryTimer, _bgSearchTimer;
     float _foundHold;      // 「已找到对手！」的停留节拍（秒）；确认弹窗路径下 = 金色 3 秒倒计时的节拍
     bool _goLatched;       // 双方确认后只触发一次 BeginGo()
+    // 2026-09-29（「偶现匹配到自己」修）：Steam 的 LobbyCreated / LobbyEnter 是**全局回调** ——
+    // 房间面板（LobbyRoomSession）、自动连接建的房也会打到这件上。只有我们自己发起的那一次
+    // CreateLobby 才算「我建的房」；这个标志在发起时立起、回调里消掉。
+    bool _pendingCreate;
     Callback<LobbyMatchList_t> _listCB, _bgListCB;
     Callback<LobbyCreated_t> _createdCB;
     Callback<LobbyEnter_t> _enterCB;
@@ -155,17 +159,30 @@ public class QuickMatchPanel : MonoBehaviour
             // 显式世界范围——默认(k_ELobbyDistanceFilterDefault)只返回同数据中心的大厅，
             // 双方连不同数据中心时互相搜不到
             SteamMatchmaking.AddRequestLobbyListDistanceFilter(ELobbyDistanceFilter.k_ELobbyDistanceFilterWorldwide);
-            SteamMatchmaking.AddRequestLobbyListResultCountFilter(1);
+            // 2026-09-29：多要几个 —— 第 0 个可能是我自己那间，跳过它还能拿别人的
+            SteamMatchmaking.AddRequestLobbyListResultCountFilter(3);
             SteamMatchmaking.RequestLobbyList();
         }
         // 超时且没加入别人大厅 → 自建
         if (_state != State.Searching || _joining || _lobbyID.m_SteamID != 0) yield break;
         _iAmHost = true;
+        _pendingCreate = true;      // 只有这一次 CreateLobby 的 LobbyCreated 才算「我建的」
         SetStatus("匹配中...");
         SteamMatchmaking.CreateLobby(ELobbyType.k_ELobbyTypePublic, 2);
     }
 
     // ============ Steam Callbacks — the ONLY data refresh path ============
+
+    /// <summary>候选大厅能不能当对手：不是我现在待的那间，且**房主不是我**。</summary>
+    /// <remarks>2026-09-29：自己建的房（上一局没退干净的临时大厅、房间大厅）绝不能当对手 ——
+    /// 读它的 host_data 读出来就是自己。纯判断，不碰 Steam 状态。</remarks>
+    static bool UsableCandidate(CSteamID found, CSteamID myLobby)
+    {
+        if (found.m_SteamID == 0) return false;
+        if (myLobby.m_SteamID != 0 && found.m_SteamID == myLobby.m_SteamID) return false;   // 我自己那间
+        if (SteamMatchmaking.GetLobbyOwner(found) == SteamUser.GetSteamID()) return false;  // 房主是我
+        return true;
+    }
 
     void RegisterCallbacks()
     {
@@ -184,20 +201,35 @@ public class QuickMatchPanel : MonoBehaviour
         if (_iAmHost) return;
         if (_state != State.Searching || cb.m_nLobbiesMatching == 0) return;
         // 找到大厅 → 标为正在加入 + 立即停协程 + 重置 Host 标志
+        // 2026-09-29：不能闭着眼睛拿第 0 个 —— 搜出来的可能就是我自己那间（上一局没退干净的临时大厅）。
+        CSteamID pick = CSteamID.Nil;
+        for (int i = 0; i < (int)cb.m_nLobbiesMatching; i++)
+        {
+            CSteamID c = SteamMatchmaking.GetLobbyByIndex(i);
+            if (!UsableCandidate(c, _lobbyID)) { Debug.Log($"[QM] OnLobbyList 候选[{i}] {c.m_SteamID} 是我自己的房 → 跳过"); continue; }
+            pick = c; break;
+        }
+        if (pick.m_SteamID == 0) { Debug.Log("[QM] OnLobbyList 这一批没有能用的候选 → 继续搜"); return; }
         _joining = true;
         if (_searchCoroutine != null) { StopCoroutine(_searchCoroutine); _searchCoroutine = null; }
         _iAmHost = false;
-        _lobbyID = SteamMatchmaking.GetLobbyByIndex(0);
+        _lobbyID = pick;
         Debug.Log($"[QM] OnLobbyList: 找到大厅 {_lobbyID}，正在加入...");
         SteamMatchmaking.JoinLobby(_lobbyID);
     }
 
     void OnLobbyCreated(LobbyCreated_t cb)
     {
-        Debug.Log($"[QM-Host] LobbyCreated result={cb.m_eResult}, state={_state}, iAmHost={_iAmHost}");
-        // 如果已经加入别人大厅（_iAmHost 被 OnLobbyList 重置），销毁自己建的这个废弃大厅
-        if (!_iAmHost) { SteamMatchmaking.LeaveLobby(new CSteamID(cb.m_ulSteamIDLobby)); return; }
-        if (_state != State.Searching) return;
+        // ★ 2026-09-29：先看这间到底是不是我们自己发起的。
+        // 原来的行为是 `if (!_iAmHost) { LeaveLobby(cb); return; }` —— 于是「匹配中」时房间一建房，
+        // 匹配就把**房间自己的大厅**给退了（房间号还挂在屏幕上、人已经不在大厅里）。
+        bool mine = _pendingCreate; _pendingCreate = false;
+        Debug.Log($"[QM-Host] LobbyCreated result={cb.m_eResult}, state={_state}, iAmHost={_iAmHost}, mine={mine}");
+        if (!mine)
+        {
+            Debug.Log("[QM-Host] 这间不是我建的（房间 / 自动连接建的）→ 忽略，一根手指都不碰它");
+            return;
+        }
         // 创建失败（典型 k_EResultNoConnection = 本机连不上 Steam 后端）——明确报错并复位，
         // 绝不无限"匹配中"。用户修复网络后重新打开面板即可重试。
         if (cb.m_eResult != EResult.k_EResultOK)
@@ -208,6 +240,12 @@ public class QuickMatchPanel : MonoBehaviour
             LeaveLobby();   // 清理回调 + _lobbyID
             ResetState();
             SetStatus($"创建大厅失败（{cb.m_eResult}）\n请检查网络/加速器后重试");
+            return;
+        }
+        // 建成了但已经用不上（搜到别人并加入了 / 已退出匹配）→ 自己这间是废的，退掉
+        if (!_iAmHost || _state != State.Searching)
+        {
+            SteamMatchmaking.LeaveLobby(new CSteamID(cb.m_ulSteamIDLobby));
             return;
         }
         _lobbyID = new CSteamID(cb.m_ulSteamIDLobby);
@@ -221,6 +259,17 @@ public class QuickMatchPanel : MonoBehaviour
     void OnLobbyEnter(LobbyEnter_t cb)
     {
         Debug.Log($"[QM] OnLobbyEnter lobbyID={cb.m_ulSteamIDLobby}, state={_state}, iAmHost={_iAmHost}");
+        // ★ 2026-09-29（「偶现匹配到自己」的真凶手）：LobbyEnter 也是全局回调 ——
+        // 房间面板 CreateLobby（进自己的大厅）、自动连接建的房，都会打到这里。原先只挡 _state，
+        // 于是「匹配中」时房间一建房，匹配就把**房间的大厅**当成自己搜到的对手：
+        // 把它当 _lobbyID、读它的 host_data（房间写的也是这个 key，值就是我自己）⇒ 弹窗里「匹配到自己」。
+        // 现在只认**我正在等的那一间**：前台 / 后台搜索在 JoinLobby 之前、
+        // OnLobbyCreated 里都已经把 _lobbyID 定死了。
+        if (_lobbyID.m_SteamID == 0 || cb.m_ulSteamIDLobby != _lobbyID.m_SteamID)
+        {
+            Debug.Log($"[QM] OnLobbyEnter 不是我在等的大厅（我在等 {_lobbyID.m_SteamID}）→ 忽略");
+            return;
+        }
         if (_state != State.Searching) return;
         _lobbyID = new CSteamID(cb.m_ulSteamIDLobby);
         _joining = false;
@@ -315,6 +364,13 @@ public class QuickMatchPanel : MonoBehaviour
         }
         else
         {
+            // ★ 兜底：我以客人身份在这间大厅里，房主却是我自己 ⇒ 这不是对手。
+            // （真出过的那一条：房间写的 host_data 就是本机 JSON，被当成对手读了进来）。
+            if (SteamMatchmaking.GetLobbyOwner(_lobbyID) == SteamUser.GetSteamID())
+            {
+                Debug.LogWarning("[QM] 这间大厅的房主是我自己（我以客人身份在里面）→ 不当对手，忽略");
+                return;
+            }
             oppJson = SteamMatchmaking.GetLobbyData(_lobbyID, "host_data");
         }
 
@@ -322,6 +378,12 @@ public class QuickMatchPanel : MonoBehaviour
         if (string.IsNullOrEmpty(oppJson)) return;
         var opp = JsonUtility.FromJson<QMPD>(oppJson);
         if (opp == null || string.IsNullOrEmpty(opp.playerName)) return;
+        // ★ 兜底：对面那格解析出来就是我自己的 SteamID ⇒ 绝不当对手（宁可继续等）
+        if (opp.steamID != 0 && opp.steamID == SteamUser.GetSteamID().m_SteamID)
+        {
+            Debug.LogWarning($"[QM] 对面那格是我自己（steamID={opp.steamID}）→ 忽略，继续等真实对手");
+            return;
+        }
         // 捕获对手 SteamID（Host 用于加载对方头像；Client 时 opp.steamID=HostSteamID，等效）
         if (opp.steamID != 0) LobbyConfig.RemoteSteamID = opp.steamID;
         // 对手战绩（加载界面要展示）—— 放在下面那个 Found 早退之前，重复刷新也保持最新
@@ -444,7 +506,7 @@ public class QuickMatchPanel : MonoBehaviour
             int fMembers = SteamMatchmaking.GetNumLobbyMembers(found);
             string fHostData = SteamMatchmaking.GetLobbyData(found, "host_data") ?? "";
             Debug.Log($"[QM-Bg] 大厅[{i}] id={found.m_SteamID} game={fGame} members={fMembers} host_data={(string.IsNullOrEmpty(fHostData)?"empty":"SET")} isSelf={found == _lobbyID}");
-            if (found == _lobbyID) continue; // 忽略自己的大厅
+            if (!UsableCandidate(found, _lobbyID)) { Debug.Log($"[QM-Bg] 候选 {found.m_SteamID} 是我自己的房 → 跳过"); continue; }
 
             // 检查对方是否一个人在等（未满员、未开始）
             int foundMembers = SteamMatchmaking.GetNumLobbyMembers(found);

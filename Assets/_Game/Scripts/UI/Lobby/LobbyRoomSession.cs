@@ -41,6 +41,7 @@ public class LobbyRoomSession : MonoBehaviour
     float    _poll;
     bool     _kickedPublished;
     bool     _oppDeclineSeen;               // 房间确认弹窗：对面那格的「拒绝」只处理一次
+    bool     _pendingCreate;                // 只认我们自己发起的那一次 CreateLobby（LobbyCreated 是全局回调）
 
     // ── 客人侧（「加入房间」侧边栏，2026-09-27）──────────────────────────────
     bool     _suspended;                    // 搜号期间把自己的大厅让出去了（号还留着）
@@ -67,6 +68,7 @@ public class LobbyRoomSession : MonoBehaviour
     void DisposeCallbacks()
     {
         _created?.Dispose(); _created = null;
+        _pendingCreate = false;      // 回调已经拆了，这个标志不能留着去误认别人的房
         _list?.Dispose();    _list = null;
         _find?.Dispose();    _find = null;
         _enter?.Dispose();   _enter = null;
@@ -140,11 +142,21 @@ public class LobbyRoomSession : MonoBehaviour
     {
         _created?.Dispose();
         _created = Callback<LobbyCreated_t>.Create(OnLobbyCreated);
+        _pendingCreate = true;       // 只有这一次算「我建的房」
         SteamMatchmaking.CreateLobby(ELobbyType.k_ELobbyTypePublic, 2);
     }
 
     void OnLobbyCreated(LobbyCreated_t cb)
     {
+        // ★ 2026-09-29：LobbyCreated / LobbyEnter 都是**全局回调** —— 匹配（QuickMatchPanel）建的临时大厅也会打到这里。
+        // 原来不分来源，会把别人的大厅当成自己的房间：往上面写 game=anotherworld_room / room_code / host_data，
+        // 并把房间号显示成它 —— 两边都不能用。现在只认自己发起的那一次。
+        bool mine = _pendingCreate; _pendingCreate = false;
+        if (!mine)
+        {
+            Debug.Log("[房间] 这间不是我们建的（匹配 / 自动连接建的）→ 忽略");
+            return;
+        }
         if (cb.m_eResult != EResult.k_EResultOK)
         {
             Debug.LogError("[RoomSession] 建房失败 result=" + cb.m_eResult);
@@ -480,9 +492,17 @@ public class LobbyRoomSession : MonoBehaviour
         if (!SteamOnline()) { done?.Invoke(false, "Steam 未登录 / 未连接"); return false; }
         if (lobby.m_SteamID == 0) { done?.Invoke(false, "没找到这个房间号"); return false; }
 
+        CSteamID want = lobby;      // 只认「我要进的那一间」
         _enter?.Dispose();
         _enter = Callback<LobbyEnter_t>.Create(cb =>
         {
+            // 2026-09-29：LobbyEnter 同样是全局回调 —— 匹配 / 自动连接建房时的
+            // 「进入自己的大厅」也会打到这里，被当成「我已经进了别人的房」。
+            if (cb.m_ulSteamIDLobby != want.m_SteamID)
+            {
+                Debug.Log("[房间] 这个 LobbyEnter 不是我要进的那间（" + cb.m_ulSteamIDLobby + " != " + want.m_SteamID + "）→ 忽略");
+                return;
+            }
             if (cb.m_EChatRoomEnterResponse != (uint)EChatRoomEnterResponse.k_EChatRoomEnterResponseSuccess)
             {
                 Debug.LogWarning("[RoomSession] 进大厅失败 response=" + cb.m_EChatRoomEnterResponse);

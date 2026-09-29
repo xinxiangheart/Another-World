@@ -2307,3 +2307,142 @@ stage47 唯一一条失败就是它：`npotScale=ToNearest` / `alphaIsTransparen
   不是“每帧读一次 Steam”（`RequestLobbyData` 官方口径是最快 1s 一次）。两个驱动方不会叠：它自己在跑时 `Update`，它被关掉时弹窗 —— 同一时刻只有一个在推那个计时器。
 - 同族病灶（本次**不改**，先记下）：房间壳关着时 `kicked` / `start` 这两条也一样读不到 ——
   现在因为 `PollTick()` 整体被接手，它们也一并活了。
+
+---
+
+## 四十一次修正（2026-09-29）：**偶现匹配到自己** —— 全局回调被认成了「搜到的对手」
+
+**来由**：用户「偶现匹配匹配到自己的情况」。
+
+### ① 病灶：`LobbyCreated_t` / `LobbyEnter_t` 是**全局**回调，两个组件都不看「这间是不是我发起的」
+
+现场（`%LOCALAPPDATA%\Unity\Editor\Editor.log`，本机名 = 心响）：
+
+```
+[RoomSession] 房间已建：号=BWFYKT lobby=109775243305016486
+[QM] OnLobbyEnter lobbyID=109775243305016486, state=Searching, iAmHost=False
+[QM-Guest] ★ 进入大厅 lobbyID=109775243305016486，写SetLobbyMemberData
+[QM-Guest] RefreshOpponent jsonEmpty=False state=Searching
+[QM] ★★★ 已找到对手: 心响 steamID=76561199883589360 matches=103 ★★★
+```
+
+最后那行的 `steamID` 就是**本机自己**的（`76561199883589360`）——「对手」是自己。
+
+链条：Steam 的 `LobbyCreated_t` / `LobbyEnter_t` 是**全局**的 —— 谁建房（房间面板 `LobbyRoomSession.CreateLobby`、自动连接）
+都会打到每一个注册了回调的组件上。匹配面板原来只挡一句 `if (_state != State.Searching) return;`，
+于是「匹配中」时**房间一建房**：`LobbyEnter` 进来 → 把**房间那间大厅**当成 `_lobbyID` → 读它的 `host_data`
+（房间写的正好也是这把钥匙，值 = 本机 JSON）→ 弹窗里就出现了自己。
+
+同源还有两处：
+
+- `QuickMatchPanel.OnLobbyCreated` 原来 `if (!_iAmHost) { LeaveLobby(cb); return; }` ⇒ 匹配中时房间一建房，
+  匹配把**房间的大厅**给退了（房间号还挂在屏幕上、人已经不在大厅里）。
+- `LobbyRoomSession.OnLobbyCreated` / 它 `JoinFound` 里的 `LobbyEnter` 回调同样不分来源 ⇒ 匹配建的临时大厅会被
+  改写成「我的房间」（往上写 `game=anotherworld_room` / `room_code` / `host_data`，并把房间号显示成它）。
+
+### ② 改在哪（2 个文件，5 处）
+
+| # | 文件 | 改了什么 |
+|---|---|---|
+| 1 | `QuickMatchPanel.cs` | 新增 `_pendingCreate` —— 只有**我们自己发起**的那一次 `CreateLobby` 才算「我建的」（`SearchRoutine` 立起、`OnLobbyCreated` 消掉）。 |
+| 2 | `QuickMatchPanel.cs` | `OnLobbyCreated` 先过来源门：**不是自己建的 → 直接 `return`，一根手指都不碰**（撤掉原来那记 `LeaveLobby`，它退的正是房间的大厅）；是自己建的、但已经用不上 → 退掉这一间。 |
+| 3 | `QuickMatchPanel.cs` | `OnLobbyEnter` 第一道门 = **只认我正在等的那一间**（`_lobbyID == 0` 或 `cb.m_ulSteamIDLobby != _lobbyID` → 忽略）。这就是「匹配到自己」的正门。 |
+| 4 | `QuickMatchPanel.cs` | 新增纯函数 `UsableCandidate(found, myLobby)` ＝「不是我那间，且房主不是我」；`OnLobbyList` / `OnBgLobbyList` 都改用它挑候选（前台搜索的结果数 `1 → 3`，第 0 个可能就是我自己那间）；`RefreshOpponent` 加两道兜底（客人侧房主是我自己 / 对面那格 `steamID` 是我）。 |
+| 5 | `LobbyRoomSession.cs` | 同款来源门 `_pendingCreate`；`JoinFound` 的 `LobbyEnter` 回调加「只认我要进的那一间」。 |
+
+### ③ 自证（`stage135_selfmatch.txt` + `stage136_leaveprobe.txt` · 编辑态 Play · 场景 = Lobby · 单客户端 + 真 Steam 大厅当「房间的大厅」/「别人的房」）
+
+| 组 | 量到什么 | 实测 | 要 |
+|---|---|---|---|
+| ①②③④ 纯判断 `UsableCandidate` | 空候选 / 正是我在等的那一间 / 房主是我自己（房间、没退干净的临时大厅）/ 真别人的房（我没进过的那间） | `False` / `False` / `False` / **`True`** | ✅ 4/4 |
+| ⑤⑥ 真凶 | 摆成「匹配中、还没进任何大厅」，喂 `OnLobbyEnter(房间的大厅)` | `_lobbyID` **0 → 0**；`_state` **Searching → Searching** | ✅ |
+| ⑦⑧ 对照 | 同一个回调，但先把 `_lobbyID` 定死成那一间 | `_joining` true → **false**（真放行）；`_state` 仍 Searching（房主是我自己 → 兜底拦下） | ✅ |
+| ⑨⑩ | `_pendingCreate=false` 调 `OnLobbyCreated(房间的大厅)` | `_lobbyID` 仍 **0**；那间大厅的 `game` 仍 **``**（没被写） | ✅ |
+| ⑪ 反向 | `_pendingCreate=true` + `_state=Searching` 调同一个回调 | `_lobbyID` **认领了它**；`game` 被写成 **`anotherworld_quick`** | ✅ |
+| ⑫⑬ | 房间会话（`LobbyRoomSession`，`_pendingCreate=false`）调同一个回调 | `_lobby` 仍 **0**；`game` 仍 `anotherworld_quick`、没有 `room_code` | ✅ |
+| ⑭ | `_pendingCreate=true` 但 `_state=Idle`（这间已经用不上了） | 那间大厅 **从服务端大厅列表里消失**（**2.51s**） | ✅ |
+| 判据·上 / 下（`stage136`） | 标定「退没退掉」这个判据本身 | 刚建的大厅 **2.55s** 后能被服务端列表搜到；`LeaveLobby` 后 **2.64s** 从列表消失 | ✅ |
+
+**读这张表**：⑤⑥ 与 ⑦⑧ 是同一次 `OnLobbyEnter`、同一个现场，**只差 `_lobbyID` 有没有被定死** ——
+定死了就真进去（`_joining` 落回 false），没定死就一步都不动。
+⑨⑩ 与 ⑪ 是同一个 `OnLobbyCreated` 的**正反两面**：`_pendingCreate=false` 时什么都不碰，`=true` 时真认领、真写数据 ——
+合起来排除「这个方法怎么调都不动」。⑭ 是用户那条「房间号还挂着、人已经不在大厅里」的反面：该退的时候真退掉了（服务端列表为证）。
+总计 **19 项检查全绿**（`stage135` 15 项，其中 1 项是第一版判据的假红；`stage136` 4 项把那一项判据补正）。
+
+### ④ 排错记录
+
+- **第一版判据量到的是假红**：最初拿本地那三个读法（`GetNumLobbyMembers` / `GetLobbyOwner` / `SetLobbyData` 的返回值）
+  去判「有没有离开这间大厅」，结果**在编辑器里永远读不出「已离开」** —— 连一条不经任何回调的纯 `SteamMatchmaking.LeaveLobby`
+  都量成「没退」，连着三条 FAIL 全是判据自己的毛病。换成 **Steam 服务端口径**（拿一个只属于探针的 `game` 键去搜大厅列表）
+  立刻通了。**教训：Steam 的本地读法带缓存，判「进 / 出大厅」必须用服务端能看见的那一面。**
+- 服务端大厅列表有**索引延迟**：刚建完立刻搜（0.6s）是 0 命中，要等 ~2.5s。探针里所有搜索都改成
+  「每 2 秒重搜一次、最多 22 秒」才稳；改之前 `stage135` 那条「离开前先看得见」就是这么假红的。
+- `SessionState` 在**同一次编辑器会话**里跨域重载保留：换执行器必须换 key 前缀（本次 `Stage135` → `Stage135V3` →
+  `Stage135V4` → `Stage136`），否则新脚本会读到上一版残留的 `Phase = 99` 而一步都不跑。
+- 不动 git（不 commit / 不建分支）；本轮改完 `Assets/_Game/Editor/Stage*.cs` 归零，`aw_check.ps1` 空（无 CS 错误）。
+
+
+---
+
+## 四十二次修正（2026-09-29）：复查 ——「匹配 / 排位 不重入」+「未连接 Steam 置灰」
+
+**来由**：用户「复查」（承上一条：修完「匹配到自己」之后，回头验 2026-09-27 那两条验收）。
+
+**结论**：两条验收都在，但**查出一个真 bug**（Steam 掉线那一侧没人轮询）+ 一处「点那一刻不设防」。
+
+### ① 「匹配中」的定义，与不重入的两层
+
+`QuickMatchPanel.IsMatching`：只要 `_joining`、或 `_lobbyID != 0`、或 `_state ∈ {Searching, Found, WaitingOpponent}` 就算「正在进行」；
+只有 `Idle + 没有 joining + 没有大厅` 才是「不在匹配」。16 组合真值表全对（`stage137` 的 ①）。
+
+| 层 | 位置 | 做什么 |
+|---|---|---|
+| 1 | `Assets/_Game/Scripts/UI/BattleModeCardButton.cs:126` | `qm.IsMatching` → 只把子弹窗收掉 + `SurfaceWait()` 把还在跑的小窗抬到眼前（**计时不重置**），不进流程 |
+| 2 | `Assets/_Game/Scripts/UI/Lobby/QuickMatchPanel.cs:81` | `IsMatching` → `SurfaceWait()` 后 `return`，不走 `ResetState()` / `StartSearch()` |
+
+第二层是兜底：`LobbyManager.cs:73` 那个旧的隐藏入口直接调 `Open()`、绕过了卡片层，但过不了这一层。
+
+挂 `Kind` 的口径（`BattleModeCardButton.cs:58`）：`RequiresSteam = kind != Kind.Offline` —— 匹配 / 排位 / 房间都要 Steam，
+**离线模式不受限**（它本来就是给没连 Steam 的人用的）。
+
+### ② 查出来的真 bug：置灰只轮询了「灰 → 亮」那一侧
+
+改前 `Update()` 只有一句：
+
+```csharp
+if (_disabled && SteamReady()) RefreshGate();   // 中途连上 Steam 就自己恢复（只在置灰时轮询）
+```
+
+方向是单向的 —— `OnEnable` 判一次，之后**只在已经置灰时**才轮询恢复。于是：面板在连上 Steam 时打开 ⇒ `_disabled = false`；
+之后 Steam 掉线（断网 / 加速器掉）⇒ **没有任何人去看** —— 卡片一直白着、悬停还给金、点下去也不拦。
+用户的验收是「未连接 Steam 时匹配和排位字体变灰且无法点击」，这一半是漏的。（点击虽然最后会被 `StartSearch()` 里那句
+`if (!SteamUser.BLoggedOn())` 兜住、弹「Steam 未登录/未连接」，但「看着能点」本身就是错的。）
+
+改后（`BattleModeCardButton.cs:78`）：两个方向都判、**0.5s 一拍**（常量 `GatePollSeconds`），没变化就不动它（免得把悬停那层金色打回去）。
+另外在 `OnPointerClick` 第一行（`BattleModeCardButton.cs:105`）再问一次 Steam —— 把「置灰刷新」和「点击放行」之间那半秒的窗口关掉，
+并且顺手把界面刷成灰，让看到的现象和拦下的动作一致。
+
+### ③ 自证（`stage137_modecard.txt` · 编辑态 Play · 场景 = Lobby · 用 `steamGateOverride` 顶掉真 Steam 状态）
+
+| 组 | 量到什么 | 实测 |
+|---|---|---|
+| ① | `IsMatching` 真值表 | **16 / 16** 组合全对 |
+| ②③ | 匹配中调 `Open()` / 不在匹配中调 `Open()`（判据 = `_countdown`） | `7.5 → 7.5`（被挡）/ `7.5 → 15`（真起流程） |
+| ④⑤⑥⑦ | 匹配中点「匹配」卡 | `_countdown` 仍 7.5、`_state` 仍 Searching；子弹窗 True→False；等待小窗被抬起 |
+| ⑧ | 对照：不在匹配中点同一张卡 | `_countdown → 15`（真进流程） |
+| ⑨⑩⑪⑫⑭ | 置灰（gate=false） | 匹配 / 排位 `IsDisabled=True`、字色 `(142,162,180)`；悬停仍 `(142,162,180)`（不给金）；点击不进匹配、不弹排位占位窗；**离线模式 `IsDisabled=False`、字色 `(240,232,210)` 不受限** |
+| ⑮⑯⑰ | 恢复（gate=true） | 字色回 `(240,232,210)`；悬停 `(228,203,132)` 金；移开回常态色 |
+| ⑱⑲ | **本次补的那条** | 掉线 0.9s 后 `IsDisabled` False → **True**（字色变灰）；再连上 0.9s 后 → **False** |
+| ⑳㉑ | **本次补的那条** | 界面还没刷出来时点下去：`_countdown` 仍 7.5（没进流程），并且当场刷成 `IsDisabled=True` |
+
+**21 项全绿。** 本场景只有 匹配 / 排位 / 离线 三张卡，没有房间卡 —— 所以「房间也置灰」只由代码口径 `RequiresSteam` 保证，没有实测。
+
+### ④ 排错记录
+
+- **第一版 ⑱ 是假红**：探针在第 3 节那两次点击里，被 `panel.Close()` 把子弹窗关了 ⇒ 卡片的 `Update` 根本没在跑，
+  自然量到「掉线也不变灰」。补上「先把子弹窗开回来 + 当场断言 `activeInHierarchy`」以后 `⑱` 立刻 PASS。
+  **教训与「四十次修正」同款：先证明「那段代码真的在跑」，再拿它的输出下结论。**
+- **排位目前没有「进行中」这个态**（点了只弹占位窗），所以「排位中再次点击排位不重入」现在是**空真**。
+  代码里 `BattleModeCardButton.cs:125` 已经留注：等排位流程落地时，要在这儿一并判它自己的 `IsBusy`。
+- 不动 git；本轮改完 `Assets/_Game/Editor/Stage*.cs` 归零，`aw_check.ps1` 空（无 CS 错误）。
+
