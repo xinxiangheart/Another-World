@@ -2556,3 +2556,136 @@ if (_disabled && SteamReady()) RefreshGate();   // 中途连上 Steam 就自己�
 - **重跑同一个执行器，必须先换 `SessionState` 的 key 前缀。** 上一轮跑完会把 `Phase` 留在 `99`（终态）；`.cs` 重新落盘、编译、静态构造器注册之后，`Tick` **照样先读这个值**，`if (p == 99) return;` 直接短路 —— **报告不生成、控制台不报错、Editor.log 里连一行都没有**。这次就是被它骗过去的：删了旧报告、`Ctrl+R`、等了三分钟没动静。把前缀从 `AnotherWorld.Stage207.` 换成 `AnotherWorld.Stage207d.` 之后立刻就跑起来了。
 
 - 不动 git；`aw_check.ps1` 空（无 CS 错误）；`Assets/_Game/Editor/Stage*.cs` 归零。
+
+## 四十四次修正（2026-09-29）：Game 场景手牌显示 —— 常态缩到对方回合尺寸 / 悬停按缩小尺寸放大 / 弧形随张数变缓 / 只露上面 3/4
+
+**用户原话（四条，按给的顺序）**：① 「将常态手牌状态变为和非己方回合大小一样」；② 「悬停放大将按照其缩小大小放大（最开始是这样后来调为和正常悬停放大一样现在改回去）」；③ 「手牌数量将会随着增加，整个手牌构成的『弧形』将会随着弧度变缓」；④ 「只露出上半 3/4 区域即可」。
+
+**只改三个文件**：`Assets/_Game/Scripts/UI/Hand/HandManager.cs`、`Assets/_Game/Scripts/UI/Board/CardView.cs`、`Assets/_Game/Scenes/Game.unity`（两个 HandManager 的序列化值，约 `:6146` 与 `:9147`）。`HandManager` 的调用入口与 `SetGroupDim` 的签名**一字未改** ⇒ 所有调用点都不用动。
+
+### ① 常态尺寸 = 对方回合尺寸（`dimScale` 删除 → `restScale`）
+
+| 位置 | 前 | 后 |
+|---|---|---|
+| `HandManager` 字段 | `public float dimScale = 0.7f`（只压暗时用） | **`public float restScale = 0.7f`**（常态尺寸倍率） |
+| `HandManager.RefreshLayout` | `float lay = _handDimmed ? dimScale : 1f;` | **`float lay = restScale;`** |
+| `HandManager.GetInsertIndex` | 同上三目 | **`float lay = restScale;`** |
+| `CardView` 字段 | `float _dimScale = 1f` | **`float _sizeScale = 1f`** |
+| `CardView.SetGroupDim` 首句 | `_dimScale = dim ? scale : 1f;` | **`_sizeScale = scale > 0f ? scale : 1f;`**（不分 dim 都写进去 —— 旧写法会把常态尺寸丢掉） |
+
+间距 / 最大宽 / 弧半径都随 `lay` 一起缩 ⇒ 常态与压暗态现在是**同一套版**，压暗只多一份下移 `dimOffsetY` + 去饱和。压暗的视觉分工没变（`CardDim.mat`）。
+
+### ② 悬停放大从缩小后的尺寸起算（并顺手修了一个真 bug）
+
+- `CardView.DesiredScale()`：`originalScale * (DimOn ? _dimScale : 1f) * (_hovered ? HOVER_SCALE : 1f)` → **`originalScale * _sizeScale * (_hovered ? HOVER_SCALE : 1f)`**。悬停不再吃 `DimOn`，所以放大基准恒为**常态尺寸 × 1.15**。
+- `FlyInFromDeck` 里两处 `originalScale * _dimScale` 同步改成 `_sizeScale`；`SetGroupDim` 的注释一并改口径（「悬停还原大小」这句作废，改成「尺寸不还原，只回高度 / 回原色」）。
+- **顺手修的真 bug**：`HandManager.AnimateCardDraw` 的「快速连抽直落」那条路径只设位置 / alpha、**不播飞入动画**，于是新牌永远停在预制体的满尺寸（`Scale2DCard` 的 3.0）上 —— 一次抽 5 张以上时，第 2 张起全是满尺寸，整手尺寸不齐。补法：新增 `CardView.SnapToRestScale()`（`rectTransform.localScale = DesiredScale()`，飞行中直接 return），在该路径 `SetAlpha(1f)` 之后调一次。
+
+### ③ 弧形随张数变缓
+
+`HandManager` 新增 `[Header("弧形随张数变缓")]` 三个字段：`arcFlatStartCount 5` / `arcFlatEndCount 20` / `arcFlatMin 0.3`。
+
+```
+float arcFlat = Mathf.Lerp(1f, arcFlatMin, Mathf.InverseLerp(arcFlatStartCount, arcFlatEndCount, count));
+```
+
+`arcFlat` **同乘两处**：纵向弧高（`arcY`）与卡面转角（`angle`）—— 只压一处会变成「直排但斜卡」或「弯排但平卡」。5 张以下保持原样（`arcFlat = 1`）。
+
+### ④ 常态只露上面 3/4
+
+新增 `public float visibleHeightRatio = 0.75f` + `public const float CardHeightPerWidth = 146.33f / 83.33f`（`Card00_New_2D` 根 rect 的高宽比，用来把「露出几分之几」折成画布单位）：
+
+```
+float cardH = cardW * CardHeightPerWidth;                                   // 卡面实际高度
+float sinkY = cardH * (Mathf.Clamp01(visibleHeightRatio) - 0.5f) - handBaseY; // 把卡面底边压到屏幕外
+target = new Vector3(x, arcY + sinkY, 0);
+```
+
+即：卡面高一半处落在 `HandArea` 的休息高度上时，露出 `visibleHeightRatio`。`handBaseY = _rectTransform.anchoredPosition.y`。**注意 sink 只加在常态位**，`dimOffsetY` 是再叠一份下移（对方回合因此从「露出 3/4」进一步沉到 22%）。
+
+### 自证（`stage208b_handfan.txt` + `stage208e_sink.txt` + 5 张截图 · 编辑态 Play · 场景 = Game · 真实入口）
+
+口径：`CardCanvas` / `ScreenSpaceCamera` / `worldCamera = Main Camera` / `scaleFactor 0.7755`（窗口 1489×838）；`HandArea anchoredPosition = (0, -330.3)`；`cardWidth 250 × restScale 0.7 = 175 × 307.3` 画布单位；期望常态 `localScale.x = 3 × 0.7 = 2.1000`、悬停 `= 2.4150`（旧写法会给 3.4500）。
+
+| 量什么 | 实测 |
+|---|---|
+| 3 张 | 首末 x `±162.11`，转角 `±4.82°`，弧高 `∓6.75`，全手 scale **2.1000** |
+| 8 张（走真实入口 `Player.AddCardToHand` 一次加 5 张） | 首末 x `±416.50`，转角 `±10.66°`，弧高 `−14.92`，**8/8 全是 2.1000**（修 `SnapToRestScale` 之前，第 4 张起是 3.000 —— 就是这条抓出的 bug） |
+| 14 张 | 转角 `±7.19°`，弧高 `−10.07` |
+| 20 张（满手） | 转角 `±3.72°`，弧高 `−5.21`（不乘 `arcFlat` 会是 `±12.4°` / `−17.4`）⇒ **弧形确实随张数变缓** |
+| 悬停（走真实入口 `CardView.OnPointerEnter`） | `localScale.x = 2.4150`（= 常态 2.1000 × 1.15；旧写法 3.4500）；离开回 **2.1000** |
+| A/B 回合（`TurnManager.currentPhase` 直接置值，走 `HandManager.Update → ReconcileHandDimState`） | **A 我方回合**：`_handDimmed=False`、y 偏移 **0.00**、scale **2.1000**、`_dimAmount 0.000`；**B 对方回合**：y 偏移 **−160.00**、`_dimAmount 0.750`、**scale 与 A 完全同值 2.1000** ⇒ 尺寸与回合无关这点已被证伪（要求 ① 达成） |
+| 压暗态下悬停 | `localScale.x = 2.4150`（与常态悬停同值）、y 回高度、`_dimAmount 0` ⇒ 压暗不改尺寸 |
+| 露出比例（要求 ④） | 我方回合 3 张：屏幕 y `−70.1 ~ 178.8`（屏高 838）⇒ 露出 **71.8% / 75.0% / 71.8%**（中间那张是基准卡，两侧因弧高 −6.75 略低）；对方回合同 3 张：屏 y `−194.2 ~ 54.7` ⇒ 露出 **22.0% / 22.9% / 22.0%** |
+| 与主场景十二格不冲突 | `IsPlayArea` = `screenPos.y > Screen.height * 0.6f`（= y > 502.8 px），而手牌顶沿只有 178.8 px ⇒ 完全不进入主场景区域 |
+
+截图：`stage208e_hand_myturn.png`（我方回合 · 只露上面 3/4）、`stage208e_hand_enemyturn.png`（对方回合 · 只剩一截露头）、`stage208b_hand_20.png`（满手 20 张 · 弧已压平）、`stage208b_hand_rest.png`、`stage208b_hand_back.png` —— 都在 `%USERPROFILE%\.codex\visualizations\2026\09\29\01a0eca7-47c2-7cd1-b314-6c49f693c71c\`。
+
+### 这一轮新踩的两个坑
+
+- **重跑同一个执行器，必须先换 `SessionState` 的 key 前缀。**（与「四十三次修正」同一个坑，本轮又中一次）跑完会把 `Phase` 留在 `99`；`.cs` 重新落盘、编译、静态构造器重新注册之后，`Tick` 照样先读这个值，`if (p == 99) return;` 直接短路 —— 报告不生成、控制台不报错、`Editor.log` 里一行都没有。把前缀从 `AnotherWorld.Stage208.` 换成 `AnotherWorld.Stage208b.` 才跑起来。
+- **`ScreenCapture.CaptureScreenshot` 是帧末截的，而 `EditorApplication.update` 比帧快。** 在 `EditorApplication.update` 里调完截图 API 紧接着改状态（切回合 / 加牌），截到的会是**改完之后**的画面。得给截图单独占一个 Tick，并且后面再留约 0.45 s（一轮 Tick 可能对应零帧）。
+
+## 四十五次修正（2026-09-29）：Game 手牌 —— 接近满手时占宽拉到「生命值右边 ~ 抽牌左边」，且满手仍留弧度
+
+**用户原话**：「手牌接近满时应该占的左右空间比现在宽一些，大概到生命值的右边一点，和抽牌的左边一点」＋「即使逼近上限，仍会有一定弧度」。
+
+**来由**：上一轮（四十四）把手牌常态尺寸压到 `restScale 0.7` 之后，满手的实际占宽从 **1117 px 掉到 797 px** —— 卡片小了，但屏幕没变，于是满手缩在中间一坨。这一轮只动**两个 HandManager 实例的序列化值**（`maxWidth` / `maxOverlapRatio` / `arcFlatMin`），**代码一行没改**。
+
+### ① 先量清楚两侧的边界（1489×838，画布 1920 宽 ⇒ 1 画布单位 = 0.7755 px）
+
+| 界 | 件 | 屏幕 x | 画布 x |
+|---|---|---|---|
+| 左 | `OrbH`（左下生命盘） | **23.3 – 209.4** | −930.0 ~ **−690.0** |
+| 左 | `Health`（❤ 数字） | 46.2 – 219.9 | −900.4 ~ −676.4 |
+| 右 | **抽牌堆**（3D · 10 张 `CardModel` 叠） | **1200.0 – 1291.7**（y 342.5–514.9） | 586.9 ~ 705.1 |
+| 右 | `DrawCardButton`（抽牌按钮列） | **1302.9** – 1442.5（y 46.5–139.6） | 720.0 ~ 900.0 |
+| 右 | `ToggleHandButton` / `EndTurnButton` | 1302.9 – 1442.5（y 387.8–480.8 / 318.0–364.5） | 720.0 ~ 900.0 |
+| 右 | `OrbE`（能量盘） | 1314.5 – 1430.8（y 159.0–275.3） | 735.0 ~ 885.0 |
+
+手牌带的高度只有 **y −68 ~ 179 px**；抽牌堆在 **y 342.5** 起 —— 两侧下界里最紧的一条是**抽牌堆的左沿 1200**，其余（按钮列 1302.9 / 能量盘 1314.5）都更靠外。
+
+### ② 改哪三个值（两个 HandManager 实例都改，`Game.unity:6138/6140/6150` 与 `:9143/9145/9155`）
+
+| 字段 | 前 | 后 | 为什么 |
+|---|---|---|---|
+| `maxWidth` | 1440 | **1800** | 满手占宽的上限 = `maxWidth × restScale` = 1260 画布单位（977 px）⇒ 左沿落到画布 −630（屏幕 256）、右沿 +630（屏幕 1233） |
+| `maxOverlapRatio` | 0.7 | **0.65** | **光改 maxWidth 不够**：`maxOverlapRatio 0.7` 时 20 张的**自然**占宽只有 1172.5 < 1260 ⇒ 永远压不到上限，占宽停在 1173（屏幕 290–1199，左边还差 80 px）。放宽重叠比之后，**≈11 张起才真正压到上限**，满手才是满宽 |
+| `arcFlatMin` | 0.3 | **0.6** | 用户追加「即使逼近上限，仍会有一定弧度」。0.3 时满手外卡只转 ±3.88°、弧高 5.14 ⇒ 看着像一排直卡 |
+
+`maxWidth` 的对照表（`RefreshLayout` 公式抄一遍算出来的，改前实测）：
+
+```
+maxWidth 1440 → 18 张 1008u（左 354 / 右 1135 px，压） 20 张 1008u
+maxWidth 1680 → 18 张 1176u（左 288 / 右 1201 px，压） 20 张 1173u（松）
+maxWidth 1800 → 18 张 1260u（左 256 / 右 1233 px，压） 20 张 1173u（松，所以还要动 overlap）
+```
+
+`arcFlatMin` 候选（20 张 · 运行时逐个设值实拍，`stage209c_arc_*.png`）：
+
+| arcFlatMin | 0.30 | 0.45 | **0.60** | 0.75 | 0.90 |
+|---|---|---|---|---|---|
+| 外卡转角 | 3.88° | 5.81° | **7.75°** | 9.69° | 11.63° |
+| 弧高（画布单位） | 5.14 | 7.71 | **10.28** | 12.85 | 15.42 |
+
+取 **0.6**：满手一眼看得出是扇形，又还是「被压平过」的样子；且 5→20 张仍然在变缓（`arcFlat` 1.0 → 0.6，外卡转角 11 张时 10.33° → 满手 7.75°）。
+
+### ③ 自证（`stage209d_final.txt` + 3 张截图 · 编辑态 Play · 场景 = Game · 1489×838）
+
+| 量什么 | 改前（stage209 实测） | 改后（stage209d 实测） |
+|---|---|---|
+| 20 张 · 实测占地 | 屏幕 x **346.1 – 1142.9**（796.9 px） | 屏幕 x **240.5 – 1248.5**（**1008.0 px**，+27%） |
+| 20 张 · 画布 | −513.8 ~ 513.8（1027.6） | −649.9 ~ 649.9（1299.8） |
+| 20 张 · 外卡转角 / 弧高 | ±3.72° / 5.21（旧 maxWidth 下 nX 0.826） | **±7.75° / 10.28** |
+| 左沿 ↔ 生命值盘右沿（209.4） | 136.7 px 空档 | **31.1 px**（「生命值的右边一点」） |
+| 右沿 ↔ 抽牌按钮列左沿（1302.9） | 160.0 px 空档 | **54.4 px** |
+| 右沿 ↔ 抽牌堆左沿（1200） | −57.1（还没到） | +48.5（越过 48.5 px，但**竖直方向差 163.6 px**：手牌顶沿 178.9 ↔ 牌堆下沿 342.5 ⇒ 不相交） |
+| 3 张 · 占宽 | 406.7 px | 404.4 px（**小牌数基本不动**） |
+| 对方回合（压暗） | — | 占宽 / 转角 / 弧高**与己方回合完全同值**（压暗只改 y 与颜色） |
+
+截图：`stage209d_hand_20.png`（满手 20 张）、`stage209d_hand_3.png`、`stage209d_hand_20_dim.png`；候选弧度的五连拍 `stage209c_arc_030/045/060/075/090.png` —— 都在 `%USERPROFILE%\.codex\visualizations\2026\09\29\01a0eca7-47c2-7cd1-b314-6c49f693c71c\`。
+
+### ④ 这轮踩到的两个新坑
+
+- **量「两侧边界」不能只扫 Graphic。** 第一版执行器（stage209b）用「画布下所有 `Graphic` ∩ 手牌高度带」来自动定边界，结果左边取到了 `SelfStatOrbs` 的**满屏 rect**（它是个 stretch 全屏的容器，1489 px）、右边取到了一个八竿子打不着的 `HealthIcon`（910.8 px）—— 报出来的「可用宽度 −578 px」纯属胡扯。正解：**左看 `OrbH`（生命盘）的右沿、右看 `CardModel` 叠出来的抽牌堆左沿**；而**抽牌堆是 3D 视件**（10 个 `CardModel` 渲染器，屏幕 1200.0–1291.7），`Graphic` 里根本扫不到 —— 要按 `Renderer.bounds` 投影找（见 ③ 里的做法）。
+- **`ScreenCapture.CaptureScreenshot` 出的 PNG 就是游戏画面本身**（1489×838，没有编辑器边框），所以拿它做像素取证时，**坐标和运行时量的屏幕坐标是同一套**（原点左下 = 图高 − 1 − 图内 y）。这一轮靠这条把「生命值盘右沿 200 px / 抽牌堆左沿 1200 px」从用户截图里量了出来，和运行时的 209.4 / 1200.0 对上了。

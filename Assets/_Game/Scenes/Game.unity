@@ -6135,15 +6135,19 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   radius: 1500
   totalArcAngle: 30
-  maxWidth: 1440
+  maxWidth: 1800
   cardWidth: 250
-  maxOverlapRatio: 0.7
+  maxOverlapRatio: 0.65
   hoverOffsetY: 90
   hoverScale: 1.15
   pushRatio: 0.7
   animationSpeed: 45
   hoverSpacingOffset: 12
-  dimScale: 0.7
+  restScale: 0.7
+  visibleHeightRatio: 0.75
+  arcFlatStartCount: 5
+  arcFlatEndCount: 20
+  arcFlatMin: 0.6
   dimOffsetY: -160
   dimStrength: 0.75
 --- !u!1 &1066589404
@@ -9136,15 +9140,19 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   radius: 1500
   totalArcAngle: 30
-  maxWidth: 1440
+  maxWidth: 1800
   cardWidth: 250
-  maxOverlapRatio: 0.7
+  maxOverlapRatio: 0.65
   hoverOffsetY: 90
   hoverScale: 1.15
   pushRatio: 0.7
   animationSpeed: 45
   hoverSpacingOffset: 12
-  dimScale: 0.7
+  restScale: 0.7
+  visibleHeightRatio: 0.75
+  arcFlatStartCount: 5
+  arcFlatEndCount: 20
+  arcFlatMin: 0.6
   dimOffsetY: -160
   dimStrength: 0.75
 --- !u!1 &1662060711

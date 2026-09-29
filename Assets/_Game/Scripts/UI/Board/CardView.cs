@@ -31,16 +31,17 @@ public class CardView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
     public bool IsHovered => _hovered;
 
     /// <summary>压暗是否真的落在这张卡上：**悬停期间一律视作未压暗** —— 鼠标压上来这张卡就脱出压暗
-    /// （还原到原始大小 / 原始高度 / 原色），展示与非压暗态完全一致；鼠标离开后随 _dimOn 淡回压暗态。
-    /// 让位间距由 HandManager 按未缩放值给足（压暗态下悬停卡是满尺寸）。</summary>
+    /// （还原高度 / 原色），展示与非压暗态一致；鼠标离开后随 _dimOn 淡回压暗态。
+    /// **尺寸不在这里还原**：悬停放大一律从常态（已缩小的）尺寸起算，见 DesiredScale。</summary>
     bool DimOn => _dimOn && !_hovered;
     /// <summary>压暗视觉的当前目标强度（悬停中为 0）。</summary>
     float DimTargetAmount => DimOn ? _dimTargetAmount : 0f;
 
     // ── 整手"非己方回合"压暗态（HandManager 统一驱动）─────────────
-    // _dimScale<1 整手缩小；_dimOffsetY<0 整手下移，部分移出视野。
-    // 悬停中的那一张不吃这套（见 DimOn）：鼠标压上来即还原原始大小/高度/原色，移开才回落。
-    float _dimScale = 1f;
+    // _sizeScale = 常态尺寸倍率（= HandManager.restScale）：常态与压暗态**同一尺寸**，压暗只多一份下移 + 去饱和。
+    // _dimOffsetY<0：压暗时整手下移，部分移出视野。
+    // 悬停中的那一张不吃压暗（见 DimOn）：鼠标压上来即回高度/回原色，**尺寸不还原**。
+    float _sizeScale = 1f;
     float _dimOffsetY = 0f;
 
     // ── 压暗视觉：对卡面本身"去饱和 + 压亮度"，不是盖一层灰 ──────────
@@ -116,14 +117,15 @@ public class CardView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
         if (_hovered) p.y += HOVER_RAISE; // 悬停上浮加在（压暗时的）休息位之上
         return p;
     }
-    Vector3 DesiredScale() => originalScale * (DimOn ? _dimScale : 1f) * (_hovered ? HOVER_SCALE : 1f);
+    Vector3 DesiredScale() => originalScale * _sizeScale * (_hovered ? HOVER_SCALE : 1f); // 悬停放大从常态（已缩小）尺寸起算
 
-    /// <summary>整手压暗/还原（HandManager 统一驱动）。dim=true：倍率 scale(<1 缩小)+下移 offsetY+去饱和压暗
-    /// （强度 amount 0-1，卡面与文字一起按它缩放）；false：还原到 1.0×/原位/原色。
-    /// 悬停中的卡不吃这一套（DimOn=false）：鼠标压上来即还原大小/高度/原色，移开才回落。</summary>
+    /// <summary>整手尺寸 + 压暗/还原（HandManager 统一驱动）。scale = **常态尺寸倍率**
+    /// （压暗态与常态同一份，所以不分 dim 与否都写进去）；dim=true 额外多一份下移 offsetY + 去饱和压暗
+    /// （强度 amount 0-1，卡面与文字一起）。
+    /// 悬停中的卡不吃压暗（DimOn=false）：鼠标压上来即回高度/回原色（尺寸不还原）。</summary>
     public void SetGroupDim(bool dim, float scale, float offsetY, float amount = 1f)
     {
-        _dimScale = dim ? scale : 1f;
+        _sizeScale = scale > 0f ? scale : 1f;
         _dimOffsetY = dim ? offsetY : 0f;
         _dimOn = dim;
         _dimTargetAmount = dim ? Mathf.Clamp01(amount) : 0f;
@@ -144,10 +146,19 @@ public class CardView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
             handManager?.MarkBoundsDirty();
             return;
         }
-        if (IsFlying) return; // 飞行中不抢动画，落位后由 FlyIn 以 originalScale*_dimScale 对齐
+        if (IsFlying) return; // 飞行中不抢动画，落位后由 FlyIn 以 originalScale*_sizeScale 对齐
         StopAllCoroutines();
         StartCoroutine(SmoothTo(DesiredPos(), _hovered ? Quaternion.identity : targetRotation, DesiredScale(), 0.2f));
         handManager?.MarkBoundsDirty();
+    }
+
+    /// <summary>把尺寸直接落到常态值（= originalScale × _sizeScale）。
+    /// 抽牌「快速连抽直落」那条路径（HandManager.AnimateCardDraw）不播飞入动画，
+    /// 得由它补这一步：否则新牌会停在预制体的满尺寸上，与整手常态尺寸（restScale）不一致。</summary>
+    public void SnapToRestScale()
+    {
+        if (IsFlying) return;
+        rectTransform.localScale = DesiredScale();
     }
 
     void Update()
@@ -443,8 +454,8 @@ public class CardView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
         float zRot = cfg != null ? cfg.flyZRotation : 8f;
         float scaleMin = cfg != null ? cfg.flyScaleMin : 0.95f;
 
-        Vector3 targetScale = originalScale * _dimScale; // Scale2DCard 已 ×3；含起飞时压暗基数
-        Vector3 FlyScale() => originalScale * _dimScale; // 实时倍率：压暗若在飞行中翻转，落位用最新值，不错拍成"小卡卡住"
+        Vector3 targetScale = originalScale * _sizeScale; // Scale2DCard 已 ×3；含常态缩小的基数
+        Vector3 FlyScale() => originalScale * _sizeScale; // 实时倍率：常态倍率若在飞行中变化，落位用最新值，不错拍成"小卡卡住"
         Quaternion startRotation = Quaternion.Euler(0f, 0f, -zRot);
 
         IsFlying = true;

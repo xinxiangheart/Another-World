@@ -20,8 +20,22 @@ public class HandManager : MonoBehaviour
     [Tooltip("悬停卡牌时相邻卡牌的额外水平让位偏移（0=关闭）")]
     public float hoverSpacingOffset = 24f;
 
+    [Header("手牌常态尺寸")]
+    [Tooltip("常态手牌整体缩放（0.7 = 与对方回合的缩小尺寸一致）。间距 / 最大宽 / 弧半径都按它一起缩 ⇒ 常态与对方回合是同一套版；压暗只多一份下移 + 去饱和。")]
+    public float restScale = 0.7f;
+    [Tooltip("常态只露出卡面高度的几分之几（0.75 = 只露出上面 3/4，下面 1/4 沉到屏幕外）")]
+    public float visibleHeightRatio = 0.75f;
+
+    /// <summary>手牌预制体的高宽比（Card00_New_2D 根 rect = 83.33 × 146.33）。
+    /// 用来把「露出几分之几」折算成下沉多少画布单位。</summary>
+    public const float CardHeightPerWidth = 146.33f / 83.33f;
+
+    [Header("弧形随张数变缓")]
+    [Tooltip("手牌超过这个张数之后，弧形才开始随张数变缓")] public float arcFlatStartCount = 5f;
+    [Tooltip("手牌到这个张数时弧压到 arcFlatMin（按满手算）")] public float arcFlatEndCount = 20f;
+    [Tooltip("最平时的弧度比例（1=不变，0.3=收到三成）：转角与纵向弧高同乘这一个系数")] public float arcFlatMin = 0.3f;
+
     [Header("手牌压暗（对方回合 / 攻击回合提示）")]
-    [Tooltip("对方回合 / 攻击回合且不在选择 / 确认中时，整手缩小倍率")] public float dimScale = 0.7f;
     [Tooltip("压暗时整手向下偏移（局部单位，负=下移，让手牌部分移出视野）")] public float dimOffsetY = -160f;
     [Tooltip("压暗最终强度 0-1（觉得灰过头就往下调：0.6 轻描淡写 / 1.0 全灰）")] public float dimStrength = 0.75f;
     // 压暗的视觉（去饱和 + 压亮度，非"盖灰纸"）由 CardView 负责，参数在 Resources/Cards/Materials/CardDim.mat
@@ -58,14 +72,17 @@ public class HandManager : MonoBehaviour
             RefreshLayout(true);
             MarkBoundsDirty();
         }
-        // 新入卡若正值"手牌压暗"，立即应用同态（缩小/下移/去饱和压暗）。
+        // 新入卡要立刻拿到常态尺寸（restScale）与当前是否压暗（压暗只多一份下移 + 去饱和）。
         // 判据必须用**实时**状态，不能用 _handDimmed 缓存：缓存由 Update 每帧对齐，而"回合开始"类效果
         // （01511 心灵学者退场回手等）是在主协程里紧跟 currentPhase = MyTurn 之后**同步**执行的 ——
         // 那一帧 Update 早已跑完，缓存还是上一阶段（对方回合 / 攻击回合）的旧值 true，
         // 刚回到手牌的牌就会被按"该压暗"处理，己方回合也灰着回来。
         // （对方回合回来时灰是对的 —— 那时整手确实该灰，实时判定同样会给 true。）
-        if (cv != null && ShouldDimHand())
-            cv.SetGroupDim(true, dimScale, dimOffsetY, dimStrength);
+        if (cv != null)
+        {
+            bool dimNow = ShouldDimHand();
+            cv.SetGroupDim(dimNow, restScale, dimNow ? dimOffsetY : 0f, dimStrength);
+        }
     }
 
     public void RemoveCard(CardView cv)
@@ -209,14 +226,27 @@ public class HandManager : MonoBehaviour
 
         int hovIdx = GetHoveredIndex();
 
-        // 压暗态(dimScale<1)：整手卡面已缩小，间距/让位/弧线须按同一倍率缩放，避免"小卡大间距"。
-        float lay = _handDimmed ? dimScale : 1f;
+        // 常态尺寸 = restScale（要求：常态手牌与「对方回合缩小」同一尺寸）⇒ 间距 / 最大宽 / 弧半径全按它缩，
+        // 常态与压暗态因此是同一套版，压暗只多一份下移 + 去饱和。
+        float lay = restScale;
         float cardW = cardWidth * lay;
         float maxW = maxWidth * lay;
-        // 悬停让位一律给足**未缩放**间距：压暗态下悬停的那张会脱出压暗（还原到原始大小 ×HOVER_SCALE），
-        // 按 dimScale 缩过的让位量不够，放大的卡会压住邻卡。
+        // 悬停让位按**未缩放**量给足：放大的那张是 restScale × HOVER_SCALE（不是复原到满尺寸），
+        // 让位量比照缩过的间距给宽一点，免得放大卡压住邻卡。
         float hovSpace = hoverSpacingOffset;
         float arcRadius = radius * lay;
+        // 牌越多、弧越平：到 arcFlatStartCount 张之前不变，到 arcFlatEndCount 张收到 arcFlatMin。
+        // 转角与纵向弧高同乘这一个系数 —— 两轴一起收，弧鼓起来的样子才会同步变缓。
+        float arcFlat = Mathf.Lerp(1f, arcFlatMin, Mathf.InverseLerp(arcFlatStartCount, arcFlatEndCount, count));
+
+        // 常态只露出上面 visibleHeightRatio：把下面那截沉到屏幕外。
+        // 卡面实际高度 = 卡宽（cardWidth × lay）× 预制体高宽比；
+        // 手牌区中心离屏幕底的高度 = anchoredPosition.y（anchor 在父级下沿、pivot 居中）。
+        // 要露出 ratio，卡面下沿就得沉到屏幕下 cardH×(1-ratio)
+        // ⇒ 中心 = cardH/2 - cardH×(1-ratio) = cardH×(ratio-0.5)（相对屏幕底的画布单位）。
+        float cardH = cardW * CardHeightPerWidth;
+        float handBaseY = _rectTransform != null ? _rectTransform.anchoredPosition.y : 0f;
+        float sinkY = cardH * (Mathf.Clamp01(visibleHeightRatio) - 0.5f) - handBaseY;
 
         float overlap = Mathf.Lerp(0f, maxOverlapRatio, (float)(count - 1) / 19f);
         float step = cardW * (1f - overlap);
@@ -247,9 +277,9 @@ public class HandManager : MonoBehaviour
             }
 
             float normalizedX = x / (maxW / 2f);
-            float arcY = -Mathf.Abs(normalizedX) * arcRadius * 0.02f;
-            Vector3 target = new Vector3(x, arcY, 0);
-            float angle = -normalizedX * totalArcAngle * 0.5f;
+            float arcY = -Mathf.Abs(normalizedX) * arcRadius * 0.02f * arcFlat;
+            Vector3 target = new Vector3(x, arcY + sinkY, 0);
+            float angle = -normalizedX * totalArcAngle * 0.5f * arcFlat;
             Quaternion targetRot = Quaternion.Euler(0, 0, angle);
 
             cv.targetPos = target;
@@ -284,7 +314,7 @@ public class HandManager : MonoBehaviour
 
     int GetInsertIndex(float localX)
     {
-        float lay = _handDimmed ? dimScale : 1f; // 压暗态插入阈值随卡面缩放
+        float lay = restScale; // 插入阈值随常态尺寸缩放
         for (int i = 0; i < handCards.Count; i++)
             if (handCards[i] != draggingCard && localX < handCards[i].targetPos.x + (cardWidth * lay) / 2f)
                 return i;
@@ -1026,14 +1056,14 @@ public class HandManager : MonoBehaviour
     void ApplyHandDimToAll(bool dim)
     {
         if (handCards == null) return;
-        // 先按新 dim 重算整手间距/位置（RefreshLayout 读到 _handDimmed 会按 dimScale 缩放水平排布），
-        // 再对每张卡做缩放 + 下移 + 压暗淡入，确保缩小时间距同步收紧。
+        // 先重算一次整手排布（RefreshLayout 按 restScale 排 —— 常态与压暗态同尺寸），
+        // 再对每张卡做下移 + 压暗淡入。
         RefreshLayout(false);
         for (int i = 0; i < handCards.Count; i++)
         {
             var cv = handCards[i];
             if (cv == null) continue;
-            cv.SetGroupDim(dim, dim ? dimScale : 1f, dim ? dimOffsetY : 0f, dimStrength);
+            cv.SetGroupDim(dim, restScale, dim ? dimOffsetY : 0f, dimStrength);
         }
         MarkBoundsDirty();
     }
@@ -1176,6 +1206,7 @@ public class HandManager : MonoBehaviour
                 cv.rectTransform.localPosition = cv.targetPos;
                 cv.rectTransform.localRotation = cv.targetRotation;
                 cv.SetAlpha(1f);
+                cv.SnapToRestScale(); // 这条路径不播飞入动画，尺寸得自己补（否则停在预制体满尺寸上）
                 // 每张牌都触发一次抽牌音效（即使动画未播完，音效不能被吞掉）
                 AudioManager.Instance?.Play(SoundEffectType.DrawCard);
             }
