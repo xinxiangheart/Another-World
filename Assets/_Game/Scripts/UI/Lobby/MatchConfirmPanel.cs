@@ -276,8 +276,22 @@ public class MatchConfirmPanel : MonoBehaviour
 
     // ===================== 计时 =====================
 
+    /// <summary>房间那条路：把「读对面那格」的活从房间会话手里接过来跑。</summary>
+    /// <remarks>2026-09-29 用户报「即使对方点了确认，在自己视角里对方仍是待确认状态」：房间壳
+    /// <c>LobbySubPanel</c> 和 <c>LobbyRoomSession</c> 挂在同一个物体上，而进本弹窗前一定先 <c>shell.Close()</c>
+    /// ⇒ 会话那个物体 SetActive(false)、它的 Update 不再跑 ⇒ 对面那格的确认永远读不回来（这边一直压着黑，最后两边各自 15 秒超时）。
+    /// 本弹窗自己常驻 active（开 / 关的只是 <c>window</c> 那一层），所以由它每帧替会话跑一拍。</remarks>
+    void DriveRoomConfirmPoll()
+    {
+        if (roomSource == null) return;
+        if (window == null || !window.activeSelf) return;
+        roomSource.PollDetached();
+    }
+
     void Update()
     {
+        DriveRoomConfirmPoll();     // 房间那条路的读对面那格（靠前：不能被下面的 IsOpen 提前 return 掉）
+
         if (!IsOpen) return;
 
         switch (_st)

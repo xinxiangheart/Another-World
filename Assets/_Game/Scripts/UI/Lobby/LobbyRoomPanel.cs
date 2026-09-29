@@ -304,6 +304,10 @@ public class LobbyRoomPanel : MonoBehaviour, ILobbySubPanelOpen
     /// <summary>确认弹窗里自己点了「拒绝」/ 15 秒超时（房间那条路）→ 把自己那格写「拒绝」，对面读到就一起回房间。</summary>
     public void NotifyLocalDeclined() { if (Session != null) Session.PublishConfirmAccept(false); }
 
+    /// <summary>确认弹窗每帧替房间会话跑一拍 —— 房间壳（<c>LobbySubPanel</c>）关了之后
+    /// <c>LobbyRoomSession.Update</c> 不再跑（两者同一个物体），对面那格的确认就读不回来（见 <see cref="LobbyRoomSession.PollDetached"/> 的注释）。</summary>
+    public void PollDetached() { if (Session != null) Session.PollDetached(); }
+
     // ===================== 三个按钮 =====================
 
     /// <summary>踢出（只在房主视角 + 房里有人时出现）。</summary>

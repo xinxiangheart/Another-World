@@ -177,6 +177,24 @@ public class LobbyRoomSession : MonoBehaviour
             CreateLobby();
         }
 
+        PollTick();
+    }
+
+    /// <summary>房间壳关着时替这一拍接着跑（确认弹窗调它）。</summary>
+    /// <remarks>2026-09-29 用户报「即使对方点了确认，在自己视角里对方仍是待确认状态」的根因：
+    /// 房主点「开始游戏」/ 客人读到 <c>confirm=1</c> 都会先 <c>LobbySubPanel.Close()</c>，而那个壳和本组件挂在
+    /// <b>同一个物体</b>上 ⇒ 整个物体 SetActive(false) ⇒ 下面那个 <see cref="Update"/> 不再跑
+    /// ⇒ 对面那格（<c>confirm_host_ok</c> / <c>confirm_guest_ok</c>）永远读不回来，两边各自 15 秒超时。
+    /// 现在由确认弹窗（它自己常驻 active）每帧调这个接手。</remarks>
+    public void PollDetached()
+    {
+        if (isActiveAndEnabled) return;     // 自己那份 Update 还在跑就别抢（免得一拍跑两次）
+        PollTick();
+    }
+
+    /// <summary>一拍：房主读客人那格 + 客人读房主那几条，两边都在这儿。</summary>
+    void PollTick()
+    {
         if (_hosting && _lobby.m_SteamID != 0)
         {
             _poll += Time.deltaTime;

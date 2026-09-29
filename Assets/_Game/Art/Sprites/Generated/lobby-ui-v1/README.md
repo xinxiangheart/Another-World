@@ -1603,6 +1603,7 @@ stage47 唯一一条失败就是它：`npotScale=ToNearest` / `alphaIsTransparen
 - **没验到的一条（要两台机子）**：`confirm_host_ok` / `confirm_guest_ok` 真的在两个 Steam 客户端之间来回 ——
   本轮把「写哪一格 / 读哪一格」两侧对齐（房主写大厅数据、客人写成员数据，读法一一对应）并用纯函数盖住了判读，
   但跨机那一跳仍需真人双开验一次。
+   → **2026-09-29 补：本机那一跳已经真跑过了**（用一间真 Steam 大厅当对面，写进去再读回来），见「四十次修正」。
 
 ---
 
@@ -2248,3 +2249,61 @@ stage47 唯一一条失败就是它：`npotScale=ToNearest` / `alphaIsTransparen
 | 重放：到位后 x / extra / 下排两格 / 自停用 | = 静止位 / 0 / False / True | ✅ |
 
 截图 `stage131_shots`（`b_released` = 过场刚结束那一帧：**屏幕全亮、三栏还没进来**）；拼图 `stage131_entry_gate_sheet.png`。
+
+---
+
+## 四十次修正（2026-09-29）：房间确认弹窗——**对面那格的确认从来没读回来过**
+
+**来由**：用户「修复房间开始后无法正确获取对方是否确认的 bug，即即使对方点了确认在自己视角里对方仍是待确认状态，参考匹配是怎么处理的」。
+
+### ① 病灶：“读那一拍”的人被自己关掉了
+
+「读对面那格」这件事原本只在 `LobbyRoomSession.Update()` 里做（0.5s 一拍：房主读成员数据 `confirm_guest_ok`，
+客人读大厅数据 `confirm_host_ok`）。而房间那三件**挂在同一个物体** `Panel_Room` 上：
+`LobbyRoomPanel` + `LobbySubPanel`（称 `shell`）+ `LobbyRoomSession`（`LobbyUIBuilder.BuildRoomRuntime` 里 `panel.AddComponent`）。
+而进确认弹窗前一定要先 `shell.Close()`（房主 `OnStartGameClicked` / 客人 `OnRemoteConfirm` 都是），
+`Close()` 就是 `gameObject.SetActive(false)` ⇒ **整个物体停了 ⇒ 它的 `Update` 不再跑 ⇒ 对面那格永远读不回来**：
+两边都一直压着黑，最后各自 15 秒超时、一起回房间。
+这也是为什么「参考匹配」不够：匹配那条路的轮询在 `QuickMatchPanel.Update`（**它自己常驻 active**），
+而房间这条轮询在一个**马上就要被关掉的物体**上。
+
+### ② 改在哪（3 个文件，都是最小面）
+
+| # | 文件 | 改了什么 |
+|---|---|---|
+| 1 | `LobbyRoomSession.cs` | `Update` 里那一拍抽成 `PollTick()`；新增 `PollDetached()`（**自己还在跑就 `return`**，免得一拍跑两次） |
+| 2 | `LobbyRoomPanel.cs` | 新增转发 `PollDetached()` |
+| 3 | `MatchConfirmPanel.cs` | `Update` 第一行（在 `if (!IsOpen) return;` **之前**）调 `roomSource.PollDetached()` |
+
+选确认弹窗当驱动方：它自己常驻 active（开 / 关的只是子物体 `window`），而且**只有它在这个时候需要这份数据**，
+不需要另起一个常驻驱动物体。混线路经不动（`confirm` / `confirm_host_ok` / `confirm_guest_ok` / `start` 四个 key全同）。
+
+### ③ 自证（`stage134_roomconfirm.txt` · 编辑态 Play · 场景 = Lobby · 单客户端 + 一间真 Steam 大厅充当对面）
+
+| 步 | 量到什么 | 实测 | 要 |
+|---|---|---|---|
+| A | 三件同物体；shell.Close() 之后 | 同物体 = True；物体 activeSelf = False，`isActiveAndEnabled` = **False** | ✅ |
+| B | 三值门 `ConfirmDecision` | `"1"`→1，`"2"`→2，`""`→0 | ✅ |
+| C | 真大厅里那格 | `confirm_host_ok = "1"` | ✅ |
+| D① | 房主侧，壳关着**没人接手** | 1.6s 内 `_poll` 归零 **0** 次 | = 修前的病灶 ✅ |
+| D② | 房主侧，壳关着+弹窗开着 | 1.6s 内 `_poll` 归零 **3** 次（= 0.5s 一拍照旧） | ✅ |
+| E③ | 客人侧，**没人接手** | 1.6s 内 `_guestT` 归零 **0** 次，`_oppOk` = False，对面框色 `(110,119,131)` = 压黑 | ✅ |
+| E④ | 客人侧，弹窗接手 | `_guestT` 归零 **3** 次，`_oppOk` = **True**，对面框色 **`(255,255,255)` = 已解压黑** | ✅ |
+| F | 写对面那半（客人） | 点确认→成员数据 `confirm_guest_ok = "1"`；点拒绝→`"2"` | ✅ |
+| G | 写对面那半（房主） | 点确认→大厅数据 `confirm_host_ok = "1"`；点拒绝→`"2"` | ✅ |
+
+**读这张表**：①与③就是用户那个 bug 的样子（读那一拍根本没跑，一步都没动）；
+②与④是同一段代码、同一个 1.6s 窗口，**只差弹窗有没有接手**：接了手就真的把 Steam 里那格的 `"1"` 读回来了，
+对面那侧从压黑 `(110,119,131)` 变回白 `(255,255,255)`。
+① / ②（房主与客人）和 F / G（读与写）合起来 = 这条路上的四个方向全部真跑过一遍。
+
+### ④ 排错记录
+
+- **第一版探针量到的是假绿**：只把会话提前摆成「客人」（28 个字段里少了 `_room`）。而 `PollRoomConfirm` 第一行就是
+  `if (cp == null || !cp.IsOpen || _room == null || cp.roomSource != _room) return;` ⇒ 轮询确实跑了（`_guestT` 在推），但**读那一句被门挡住**。
+  真流程里 `_room` 由「点房间」那一跳的 `OnSubPanelOpened() -> BeginHosting(this)` 写上，探针里补了这一步才量到真结果。
+  **教训：“计时器在推”≠“那句读真的跑了”。**
+- 读那一拍的**节奏不变**：`PollDetached()` 走的就是 `PollTick()` 本体（还是 `PollStep = 0.5f` 一拍），
+  不是“每帧读一次 Steam”（`RequestLobbyData` 官方口径是最快 1s 一次）。两个驱动方不会叠：它自己在跑时 `Update`，它被关掉时弹窗 —— 同一时刻只有一个在推那个计时器。
+- 同族病灶（本次**不改**，先记下）：房间壳关着时 `kicked` / `start` 这两条也一样读不到 ——
+  现在因为 `PollTick()` 整体被接手，它们也一并活了。
