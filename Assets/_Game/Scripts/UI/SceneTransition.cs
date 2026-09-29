@@ -54,6 +54,11 @@ public class SceneTransition : MonoBehaviour
     static SceneTransition _instance;
     static bool _busy;
 
+    /// <summary>黑幕还在（扫屏 / 全黑 / 渐入都算）。给「等过场收完再演」的东西看（大厅入口板的入场就看这个）——
+    /// 本层在渐入结束后 <c>Destroy</c> 自己，<c>OnDestroy</c> 里把 <c>_busy</c> 落回 false，
+    /// 所以它变 false 的那一刻正好是「切场景结束、屏幕已经全亮」。</summary>
+    public static bool IsRunning { get { return _busy; } }
+
     RectTransform _canvasRect;
     CanvasGroup _group;
 

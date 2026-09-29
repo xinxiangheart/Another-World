@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 /// <summary>大厅入口板的入场：进 Lobby 场景时，右边那三栏**从屏幕右边外面滑进来**
 /// （`Entry_Battle` / `Entry_Cards` / `Entry_BottomRow` —— 最下面两个格子共用那个透明大框，天然算一栏）。</summary>
@@ -25,16 +26,25 @@ using UnityEngine;
 ///   · 单帧增量封顶 <c>Mathf.Min(Time.unscaledDeltaTime, 0.05f)</c> —— 编辑器进 Play 头几帧很慢，不封顶会「看不见就播完」；
 ///   · 起手位 = 静止位 **+ slide（往右）**，随时间滑回 0；三栏起手依次错开 <see cref="step"/>。
 ///
+/// **⚠ 必须等过场黑幕收完再开始**（2026-09-29 用户：「开始界面切换界面结束进入后这几个矩形已经到达位置了，
+/// 应开始界面结束时开始播放动态」）。开始界面→大厅走的是 <see cref="SceneTransition"/>：
+/// 新场景**在全黑里就被激活**，之后还有 <c>PostLoadWait 0.12s + FadeInTime 0.90s</c> 的渐入 ——
+/// 入场要是在 <c>Awake</c> 开始计时，等屏幕亮起来时三栏早已经在位上了（实测就是这个现象）。
+/// 所以本件**先把三栏压在屏外等着**，直到 <see cref="SceneTransition.IsRunning"/> 变 false
+/// （= 渐入完、屏幕全亮）才 <c>_t = 0</c> 开始计时。没有过场（比如编辑器直接 Play 大厅）就当场开始。
+///
 /// **⚠ 别直接写 rect**：那三块同时是 <see cref="LobbyBgParallax"/> 的层（反向陀螺仪 depth −0.30），
 /// 那个组件**每帧都会把 anchoredPosition 整个写掉**。所以本件走 <see cref="LobbyBgParallax.Layer.extra"/>
 /// （视差之上再叠一份偏移）—— 一个 rect 只有一个写的人。找不到对应层时才退回直接写 rect。
 /// ※ 走 extra 这条路时，**rect 的值要等视差下一次 Update 才刷出来** —— 自证时别在同一帧读。
 ///
-/// **自动挂载**：场景里不用预放节点（同 <c>LobbyBgMotes</c> 的光点、卡牌详情面板都是运行时生成）。
-/// <c>AfterSceneLoad</c> 时按名字找 `Entry_Battle`，找到就挂到它父节点（`LobbyUI_v1`）上；
+/// **自动挂载**：场景里不用预放节点（同 <c>LobbyBgMotes</c> 的光点、卡片详情面板都是运行时生成）。
+/// 按名字找 `Entry_Battle`（不依赖场景文件名），找到就挂到它父节点（`LobbyUI_v1`）上；
 /// 找不到 = 不是大厅场景，什么都不做。挂载发生在**本帧渲染之前** ⇒ 不会先闪一帧静止位再跳走。
 ///
-/// 跑完自己 <c>enabled = false</c>（本件不接任何 EventSystem 事件，停用是安全的）。
+/// **⚠ `AfterSceneLoad` 只在「本次启动的第一个场景」之后跑一次**（2026-09-29 实测：真的从开始界面切进大厅时，
+/// 这个回调**根本没再跑** ⇒ 入口板压根没挂上，三栏就那么躺在原位一动不动 ——
+/// 用户看到的「已经到达位置了」就是它）。所以这里同时**订阅 `SceneManager.sceneLoaded`**，之后每次切场景都过一遍。
 /// </remarks>
 [DisallowMultipleComponent]
 public class LobbyEntryIntro : MonoBehaviour
@@ -53,8 +63,12 @@ public class LobbyEntryIntro : MonoBehaviour
     public float dur = 0.45f;
     [Tooltip("相邻两栏的起手间隔（秒），从上到下依次")]
     public float step = 0.09f;
-    [Tooltip("场景刚出来先等多久（秒）")]
-    public float startAt = 0.10f;
+    [Tooltip("场景刚出来先等多久（秒；从「过场黑幕收完」那一刻算起）—— 用户 2026-09-29 定：0.03")]
+    public float startAt = 0.01f;
+    [Tooltip("等过场（SceneTransition）黑幕收完再开始——开始界面切进来时不得已经跑完")]
+    public bool waitForTransition = true;
+    [Tooltip("最多等过场多久（秒）—— 黑幕那边万一出盆子，别让三栏永远停在屏外")]
+    public float curtainMaxWait = 8f;
 
     class Row
     {
@@ -70,6 +84,8 @@ public class LobbyEntryIntro : MonoBehaviour
     float _t;
     bool _run;
     bool _calibrated;                          // 自动档是否已按真实几何定标
+    bool _released;                            // 过场放行了没（没有过场就当场放行）
+    float _heldT;                              // 已经在屏外等了多久
 
     void Awake()
     {
@@ -97,6 +113,8 @@ public class LobbyEntryIntro : MonoBehaviour
         if (_rows.Count == 0) return;
         _calibrated = slide > 0f;                  // 自动档：下一帧 Update 里按真实几何定标
         _slide = slide > 0f ? slide : _autoSlide;  // 自动档先给兜底值，定标成功就被覆盖
+        _released = !waitForTransition || !SceneTransition.IsRunning;   // 没有过场就当场开始
+        _heldT = 0f;
         _t = 0f;
         _run = true;
         enabled = true;
@@ -121,14 +139,24 @@ public class LobbyEntryIntro : MonoBehaviour
     {
         if (!_run) return;
 
-        _t += Mathf.Min(Time.unscaledDeltaTime, 0.05f);
+        float dt = Mathf.Min(Time.unscaledDeltaTime, 0.05f);
 
-        if (!_calibrated)
+        if (!_calibrated)                       // 定标（等过场的时候也要把距离备好）
         {
             float a = ComputeAutoSlide();
             if (a > 0f) { _autoSlide = a; _slide = a; _calibrated = true; }
-            else if (_t > startAt) { _slide = _autoSlide; _calibrated = true; }   // 几何一直没就绪：用兜底值，别再等
+            else if (_heldT + _t > startAt) { _slide = _autoSlide; _calibrated = true; }
         }
+
+        if (!_released)                         // 等过场黑幕收完：三栏压在屏外一动不动，计时不走
+        {
+            _heldT += dt;
+            if (SceneTransition.IsRunning && _heldT < curtainMaxWait) { ApplyAll(_slide); return; }
+            _released = true;
+            _t = 0f;                            // 从「屏幕全亮」这一刻开始计时
+        }
+
+        _t += dt;
 
         bool all = true;
         for (int i = 0; i < _rows.Count; i++)
@@ -152,6 +180,11 @@ public class LobbyEntryIntro : MonoBehaviour
         for (int i = 0; i < _rows.Count; i++) Apply(_rows[i], 0f);
     }
 
+    void ApplyAll(float off)
+    {
+        for (int i = 0; i < _rows.Count; i++) Apply(_rows[i], off);
+    }
+
     static void Apply(Row r, float off)
     {
         Vector2 d = new Vector2(off, 0f);
@@ -168,9 +201,17 @@ public class LobbyEntryIntro : MonoBehaviour
         return 1f - inv2 * inv2;
     }
 
-    /// <summary>大厅场景一加载就把本件挂上（<c>Entry_Battle</c> 是这场景独有的名字）。</summary>
+    /// <summary>按名字找 `Entry_Battle`，找到就把本件挂到它父节点上。
+    /// ① 启动那一下跑一次；② 之后**每次切场景都跑**（见类注释：只靠 <c>AfterSceneLoad</c> 会漏掉大厅）。</summary>
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void AutoInstall()
+    {
+        SceneManager.sceneLoaded -= OnSceneLoaded;        // 先卸再挂，避免重复订阅
+        SceneManager.sceneLoaded += OnSceneLoaded;
+        OnSceneLoaded(SceneManager.GetActiveScene(), LoadSceneMode.Single);   // 启动那个场景手动过一遍
+    }
+
+    static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
         GameObject anchor = GameObject.Find("Entry_Battle");
         if (anchor == null) return;                       // 不是大厅场景
