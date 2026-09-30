@@ -35,6 +35,10 @@ public class HandManager : MonoBehaviour
     [Tooltip("手牌到这个张数时弧压到 arcFlatMin（按满手算）")] public float arcFlatEndCount = 20f;
     [Tooltip("最平时的弧度比例（1=不变，0.3=收到三成）：转角与纵向弧高同乘这一个系数")] public float arcFlatMin = 0.3f;
 
+    [Header("打出区")]
+    [Tooltip("拖到「距屏幕底部几分之几」以上就算进了打出区，1/3 ≈ 0.333。屏幕坐标 y 自下往上量。")]
+    public float playAreaHeightRatio = 1f / 3f;
+
     [Header("手牌压暗（对方回合 / 攻击回合提示）")]
     [Tooltip("压暗时整手向下偏移（局部单位，负=下移，让手牌部分移出视野）")] public float dimOffsetY = -160f;
     [Tooltip("压暗最终强度 0-1（觉得灰过头就往下调：0.6 轻描淡写 / 1.0 全灰）")] public float dimStrength = 0.75f;
@@ -163,9 +167,12 @@ public class HandManager : MonoBehaviour
         MarkBoundsDirty();
     }
 
+    /// <summary>屏幕点是不是落在「打出区」里——阈值 = 屏幕高 × playAreaHeightRatio（自下往上量）。
+    /// 2026-09-29：阈值由 0.6 降到 1/3——手牌本来就压在屏幕下沿，要拖过半屏才认打出，
+    /// 等于把一大截行程花在一个只有手感意义的门槛上。</summary>
     public bool IsPlayArea(Vector2 screenPos)
     {
-        return screenPos.y > Screen.height * 0.6f;
+        return screenPos.y > Screen.height * playAreaHeightRatio;
     }
 
     public void OnDragStart(CardView cv)
@@ -186,7 +193,7 @@ public class HandManager : MonoBehaviour
 
     public void OnDragEnd(Vector2 screenPos)
     {
-        if (screenPos.y > Screen.height * 0.6f)
+        if (IsPlayArea(screenPos))
             RemoveCard(draggingCard);
         else
         {

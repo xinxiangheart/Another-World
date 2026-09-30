@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: 03009
   m_EditorClassIdentifier: 
   templateID: 03009
-  cardName: "\u6253\u5DE5\u4EBA"
+  cardName: "\u60BC\u4EA1\u8005"
   cardType: 0
   copyCount: 1
   addToMainDeck: 0

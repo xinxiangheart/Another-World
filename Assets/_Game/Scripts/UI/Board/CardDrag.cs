@@ -36,6 +36,14 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
     private bool isOutsideHand = false;
     private Canvas tempCanvas;
 
+    // ── 打出区提示（拖进打出区时屏幕四边浮起的绿 / 红光晕）──────────────────────────
+    // 一次拖拽里只判一次「能不能打出」（_gateEvaluated 缓存）：拖拽期间能量 / 回合 / 场上都不会变，
+    // 而 CanPlayNow 里的 HasValidTarget 每次都会 Debug.Log，逐帧判会把控制台刷爆。
+    bool _dragActive;      // OnBeginDrag 正常走完才为 true（抽牌动画期间禁拖那条早退路径不算）
+    bool _gateEvaluated;
+    bool _gateCanPlay;
+    bool _glowShown;
+
     void Awake()
     {
         rectTransform = GetComponent<RectTransform>();
@@ -63,6 +71,9 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
 
         canvasGroup.blocksRaycasts = false;
         isOutsideHand = false;
+        _dragActive = true;
+        _gateEvaluated = false;
+        _glowShown = false;
 
         CardView.IsAnyCardDragging = true;
         SetButtonsInteractable(false);
@@ -95,6 +106,21 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
 
         if (!outside)
             handManager.OnDragUpdate(eventData.position);
+
+        // 打出区提示：进区时判一次能不能打出，绿 / 红光晕浮起；出区就收。
+        if (_dragActive)
+        {
+            if (handManager.IsPlayArea(eventData.position))
+            {
+                if (!_gateEvaluated) { _gateEvaluated = true; _gateCanPlay = CanPlayNow(); }
+                if (!_glowShown) { _glowShown = true; PlayZoneGlow.SetHint(true, _gateCanPlay); }
+            }
+            else if (_glowShown)
+            {
+                _glowShown = false;
+                PlayZoneGlow.ForceHide();
+            }
+        }
     }
 
     public void OnEndDrag(PointerEventData eventData)
@@ -108,6 +134,8 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
     canvasGroup.blocksRaycasts = true;
     handManager.ShowAllCards();
     CardView.IsAnyCardDragging = false;
+    _dragActive = false;
+    if (_glowShown) { _glowShown = false; PlayZoneGlow.ForceHide(); }
 
     if (!handManager.IsPlayArea(eventData.position))
     {
@@ -362,61 +390,10 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
         }
             if (!BoardSlot.isTargetingMode)
             {
-                BoardSlot.extraTargetFilter = null;
-                if (template.effect.Contains("生命值>=4"))
-                {
-                    // 血拼 02110：只能选己方生命值>=4的召唤物。预检必须带上这条过滤，
-                    // 否则"己方有召唤物但都<4血"时会通过预检 → 空放（能量已花、牌已消耗）。
-                    System.Func<BoardSlot, bool> bloodbathFilter = (slot) =>
-                    {
-                        if (slot?.currentCard3D == null) return false;
-                        CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                        return ci != null && ci.currentHealth >= 4;
-                    };
-                    BoardSlot.extraTargetFilter = bloodbathFilter;
-
-                    if (!HasValidTarget((TargetType)template.targetType, bloodbathFilter))
-                    {
-                        Debug.Log("没有合法目标（己方无生命值>=4的召唤物），血拼无法打出");
-                        player.AddEnergy(inst.currentCost);
-                        HandManager.ClearOfflinePlaySide(); // 本牌打不出去 → 撤销守望者登记
-                        SetButtonsInteractable(true);
-                        transform.SetParent(originalParent);
-                        rectTransform.anchoredPosition = Vector2.zero;
-                        transform.localScale = originalScale;
-                        handManager.SetHandAreaRaycast(true);
-                        handManager.RefreshLayout(true);
-                        BoardSlot.extraTargetFilter = null;
-                        return;
-                    }
-                }
-                if (template.effect.Contains("场上任意一召唤物"))
-                {
-                    BoardSlot.extraTargetFilter = (slot) =>
-                    {
-                        return slot?.currentCard3D != null;
-                    };
-                }
-                if (template.effect.Contains("不能对附着物使用"))
-                {
-                    BoardSlot.extraTargetFilter = (slot) =>
-                    {
-                        if (slot?.currentCard3D == null) return false;
-                        CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
-                        return ci != null && !ci.isAttached;
-                    };
-                }
-                // 征服者免疫关卡1：对方法术选目标排除敌方免疫卡(01508)。人类 UI 敌方半场=0-5；叠加既有 per-spell 过滤。
-                var immuneBaseFilter = BoardSlot.extraTargetFilter;
-                BoardSlot.extraTargetFilter = (slot) =>
-                {
-                    if (immuneBaseFilter != null && !immuneBaseFilter(slot)) return false;
-                    CardInstance cc = slot?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
-                    if (cc != null && cc.ImmuneToEnemySpells && slot.slotID < 6) return false;
-                    return true;
-                };
-                // 通用兜底预检：本次法术的全部过滤（含上面叠加的免疫过滤）都要参与，
-                // 过滤后无合法目标 → 退费回手，避免"能打出却无处可选"的空放 / 选择卡死。
+                // 预检：本次法术的全部过滤（per-spell + 征服者免疫）都要参与，过滤后无合法目标
+                // → 退费回手，避免"能打出却无处可选"的空放 / 选择卡死。
+                // 过滤链与「能不能打出」光晕共用同一条（BuildTargetFilter）—— 两处各写一份就会漂。
+                BoardSlot.extraTargetFilter = BuildTargetFilter(template);
                 if (!HasValidTarget((TargetType)template.targetType, BoardSlot.extraTargetFilter))
                 {
                     Debug.Log("没有合法目标（过滤后），法术无法打出");
@@ -881,4 +858,122 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
         }
     }
    
+
+    // ══════════════════════════════════════════════════════════════════
+    // 「现在能不能打出」—— 拖进打出区时绿 / 红光晕的判据
+    // ══════════════════════════════════════════════════════════════════
+
+    /// <summary>本牌此刻能不能打出去。必须与 OnEndDrag 里那几道「会退费回手」的闸门一一对应 ——
+    /// 光晕说绿、松手却回弹，比没有提示更糟。这里按 OnEndDrag 的**先后顺序**复刻，全程只读：
+    /// 不扣能量、不消费折扣标记（商人 / 噬能者）。
+    ///
+    /// 不要逐帧调：HasValidTarget 每次都 Debug.Log，调用方按「一次拖拽判一次」缓存（见 OnDrag）。</summary>
+    public bool CanPlayNow()
+    {
+        CardInstance inst = GetComponent<CardInstance>();
+        CardData template = CardDatabase.Instance?.GetTemplate(inst?.templateID);
+        if (inst == null || template == null) return false;
+
+        // ① 联机：非己方回合打不出去（OnEndDrag 开头那道）
+        if (NetworkClient.isConnected)
+        {
+            TurnManager tm = FindObjectOfType<TurnManager>();
+            if (tm != null && !tm.IsMyTurn()) return false;
+        }
+
+        NetworkPlayer player = NetworkPlayer.Local;
+        if (player == null) return false;
+
+        // ② 能量（折扣口径与 OnEndDrag 一致：商人 / 噬能者各减 1）
+        int cost = inst.currentCost;
+        if (inst.merchantDiscounted && player.IsMerchantOnFieldPublic()) cost = Mathf.Max(0, cost - 1);
+        if (inst.energyReaperDiscounted && player.IsEnergyReaperOnFieldPublic()) cost = Mathf.Max(0, cost - 1);
+        if (player.GetEnergy() < cost) return false;
+
+        // ③ 附着牌：生命 0 且场上没有己方召唤物 → 无处可附
+        if (inst.canAttach && inst.baseHealth == 0 && !HasAllySummonOnBoard()) return false;
+
+        // ④ 阴 / 阳 / 阴阳（01306 / 01307 / 03012）：对方场上有召唤物才成立
+        if (inst.isXValue && (inst.templateID == "01306" || inst.templateID == "01307" || inst.templateID == "03012")
+            && !HasEnemySummonOnBoard()) return false;
+
+        // ⑤ 法术：释放条件 + 合法目标（含每张法术自己的过滤链，与 OnEndDrag 同一条）
+        if (template.cardType == CardType.Spell)
+        {
+            if (!CheckSpellCondition(template)) return false;
+            TargetType tt = (TargetType)template.targetType;
+            if (tt == TargetType.None) return true;
+            if (!HasValidTarget(tt)) return false;
+            if (!BoardSlot.isTargetingMode && !HasValidTarget(tt, BuildTargetFilter(template))) return false;
+        }
+        return true;
+    }
+
+    /// <summary>本张法术的目标过滤链（血拼 02110 的「生命值>=4」、「场上任意一召唤物」、
+    /// 「不能对附着物使用」，最后叠一层征服者免疫 01508）。多条命中时**后者盖前者**，
+    /// 与旧写法（逐次赋值 extraTargetFilter）行为一致。</summary>
+    System.Func<BoardSlot, bool> BuildTargetFilter(CardData template)
+    {
+        System.Func<BoardSlot, bool> filter = null;
+
+        if (template.effect.Contains("生命值>=4"))
+        {
+            // 血拼 02110：只能选己方生命值>=4的召唤物。预检必须带上这条过滤，
+            // 否则"己方有召唤物但都<4血"时会通过预检 → 空放（能量已花、牌已消耗）。
+            filter = slot =>
+            {
+                if (slot?.currentCard3D == null) return false;
+                CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                return ci != null && ci.currentHealth >= 4;
+            };
+        }
+        if (template.effect.Contains("场上任意一召唤物"))
+        {
+            filter = slot => slot?.currentCard3D != null;
+        }
+        if (template.effect.Contains("不能对附着物使用"))
+        {
+            filter = slot =>
+            {
+                if (slot?.currentCard3D == null) return false;
+                CardInstance ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                return ci != null && !ci.isAttached;
+            };
+        }
+
+        // 征服者免疫关卡1：对方法术选目标排除敌方免疫卡(01508)。人类 UI 敌方半场=0-5；叠加既有 per-spell 过滤。
+        var inner = filter;
+        return slot =>
+        {
+            if (inner != null && !inner(slot)) return false;
+            CardInstance cc = slot?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (cc != null && cc.ImmuneToEnemySpells && slot.slotID < 6) return false;
+            return true;
+        };
+    }
+
+    bool HasAllySummonOnBoard()
+    {
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return false;
+        for (int i = 6; i <= 11; i++)
+            if (bm.GetSlot(i)?.currentCard3D != null) return true;
+        return false;
+    }
+
+    bool HasEnemySummonOnBoard()
+    {
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return false;
+        for (int i = 0; i <= 5; i++)
+            if (bm.GetSlot(i)?.currentCard3D != null) return true;
+        return false;
+    }
+
+    /// <summary>卡在拖拽中被销毁（成交后直接 gameObject 没了）时 OnEndDrag 不一定跑得到 → 这里兜底收光晕。</summary>
+    void OnDestroy()
+    {
+        if (_glowShown) { _glowShown = false; PlayZoneGlow.ForceHide(); }
+    }
+
 }

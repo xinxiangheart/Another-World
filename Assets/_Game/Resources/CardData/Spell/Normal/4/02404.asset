@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: 02404
   m_EditorClassIdentifier: 
   templateID: 02404
-  cardName: "\u5929\u9009\u6253\u5DE5\u4EBA"
+  cardName: "\u5F7C\u5CB8\u4E00\u77A5"
   cardType: 1
   copyCount: 1
   addToMainDeck: 1
@@ -45,7 +45,7 @@ MonoBehaviour:
   traitEntries: []
   traitsMigrated: 1
   spellType: 0
-  effect: "1.\u83B7\u5F97\u4E00\u5F20\u6253\u5DE5\u4EBA\uFF08\u795E\u9009\u8005\uFF09"
+  effect: "1.\u83B7\u5F97\u4E00\u5F20\u60BC\u4EA1\u8005\uFF08\u795E\u9009\u8005\uFF09"
   card2DPrefab: {fileID: 0}
   spell2DPrefab: {fileID: 1249189968934597795, guid: df1255eb9b4377e4b8e9490c535e2bfd, type: 3}
   prefab3D: {fileID: 0}
