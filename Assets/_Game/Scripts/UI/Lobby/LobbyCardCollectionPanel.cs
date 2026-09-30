@@ -63,6 +63,9 @@ public class LobbyCardCollectionPanel : MonoBehaviour, ILobbySubPanelOpen
     const string FilterChipHoverTex = "Assets/_Game/Art/Sprites/Generated/lobby-ui-v1/LobbyChip_FilterHover.png";
     const string FilterChipOnTex    = "Assets/_Game/Art/Sprites/Generated/lobby-ui-v1/LobbyChip_FilterOn.png";
 
+    /// <summary>打包后按文件名兜底的那一份（Resources 里那份副本）；编辑器里仍优先走上面的工程路径。</summary>
+    const string ResRoot            = "UI/lobby-ui-v1/";
+
     // ── 枚举口径 ─────────────────────────────────────────────────────────
     enum Root { All, Summon, Spell }
 
@@ -182,6 +185,8 @@ public class LobbyCardCollectionPanel : MonoBehaviour, ILobbySubPanelOpen
 
     static Texture2D LoadTex(string path)
     {
+        var t = Resources.Load<Texture2D>(ResRoot + System.IO.Path.GetFileNameWithoutExtension(path));
+        if (t != null) return t;
 #if UNITY_EDITOR
         return UnityEditor.AssetDatabase.LoadAssetAtPath<Texture2D>(path);
 #else

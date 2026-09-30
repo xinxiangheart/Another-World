@@ -453,14 +453,14 @@ public class SettingsPanel : MonoBehaviour
     }
 
     /// <summary>取一张 UI 贴图（Texture2D 口径，与大厅那套弹窗一致 —— Icon_Close 导入成 Default 而不是 Sprite）。
-    /// 编辑器里直接读工程；打包后回落到 Resources/UI/&lt;名&gt;。</summary>
+    /// 编辑器里直接读工程；打包后回落到 Resources/UI/lobby-ui-v1/&lt;名&gt;。</summary>
     static Texture2D LoadUiTex(string path, string resName)
     {
 #if UNITY_EDITOR
         var t = UnityEditor.AssetDatabase.LoadAssetAtPath<Texture2D>(path);
         if (t != null) return t;
 #endif
-        return Resources.Load<Texture2D>("UI/" + resName);
+        return Resources.Load<Texture2D>("UI/lobby-ui-v1/" + resName);
     }
 
     /// <summary>右上角关闭：能取到 Icon_Close 就用它（RawImage + 悬停换贴图），拿不到退回文字 X。</summary>

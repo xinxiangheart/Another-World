@@ -67,6 +67,9 @@ public class LobbyCardDetailPanel : MonoBehaviour
     const string CloseHoverPath = "Assets/_Game/Art/Sprites/Generated/lobby-ui-v1/Icon_CloseHover.png";
     const string FontPath       = "Fonts & Materials/NotoSerifCJKsc-Bold SDF";
 
+    /// <summary>打包后按文件名兜底的那一份（Resources 里那份副本）；编辑器里仍优先走上面的工程路径。</summary>
+    const string ResRoot        = "UI/lobby-ui-v1/";
+
     [Header("字体（由卡牌总览面板填；为空时自己兜一次）")]
     public TMP_FontAsset font;
 
@@ -521,6 +524,8 @@ public class LobbyCardDetailPanel : MonoBehaviour
 
     static Texture2D LoadTex(string path)
     {
+        var t = Resources.Load<Texture2D>(ResRoot + System.IO.Path.GetFileNameWithoutExtension(path));
+        if (t != null) return t;
 #if UNITY_EDITOR
         return UnityEditor.AssetDatabase.LoadAssetAtPath<Texture2D>(path);
 #else
@@ -530,6 +535,8 @@ public class LobbyCardDetailPanel : MonoBehaviour
 
     static Sprite LoadSprite(string path)
     {
+        var s = Resources.Load<Sprite>(ResRoot + System.IO.Path.GetFileNameWithoutExtension(path));
+        if (s != null) return s;
 #if UNITY_EDITOR
         return UnityEditor.AssetDatabase.LoadAssetAtPath<Sprite>(path);
 #else
