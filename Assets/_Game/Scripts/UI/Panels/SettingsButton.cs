@@ -5,31 +5,26 @@ using Mirror;
 using UnityEngine.SceneManagement;
 
 /// <summary>
-/// Settings button in Game scene:
-/// - Hover scale-up (never blocked by turn actions)
-/// - Click toggles a settings panel with surrender button
-/// - Surrender notifies both players and returns to lobby
+/// Game 场景右上角那颗齿轮：
+/// - 悬停放大（不会被回合动作挡住）
+/// - 点击开关设置面板（由 SettingsLauncher 接线）
+/// - 投降：面板右下角的场景动作调 Surrender()
 /// </summary>
+/// <remarks>2026-09-30：原来它自己打开的那块「设置 / 投降」面板 SettingPanel
+/// 已从 Game 场景删掉，面板相关的字段与 TogglePanel 一并删。</remarks>
 public class SettingsButton : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
 {
-    [Header("Panel")]
-    public GameObject settingsPanel;
-
     [Header("Hover")]
     public float hoverScale = 1.15f;
 
     private Button _button;
     private Vector3 _originalScale;
-    private bool _panelOpen;
     private bool _surrendering;
 
     void Awake()
     {
         _button = GetComponent<Button>();
         _originalScale = transform.localScale;
-        _button.onClick.AddListener(TogglePanel);
-        if (settingsPanel != null)
-            settingsPanel.SetActive(false);
     }
 
     public void OnPointerEnter(PointerEventData eventData)
@@ -40,13 +35,6 @@ public class SettingsButton : MonoBehaviour, IPointerEnterHandler, IPointerExitH
     public void OnPointerExit(PointerEventData eventData)
     {
         transform.localScale = _originalScale;
-    }
-
-    void TogglePanel()
-    {
-        _panelOpen = !_panelOpen;
-        if (settingsPanel != null)
-            settingsPanel.SetActive(_panelOpen);
     }
 
     public void Surrender()
@@ -66,9 +54,6 @@ public class SettingsButton : MonoBehaviour, IPointerEnterHandler, IPointerExitH
             // 离线模式：直接触发GameEndPanel
             GameEndPanel.Instance?.OnPlayerDied(true);
         }
-
-        if (settingsPanel != null) settingsPanel.SetActive(false);
-        _panelOpen = false;
     }
 
     // 对方投降时由 GameEndPanel 统一处理，此方法删除

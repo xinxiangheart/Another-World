@@ -8,11 +8,9 @@ public class SettingsLauncherTag : MonoBehaviour { }
 /// <summary>
 /// 把场景里「已经存在」的设置按钮接到 SettingsPanel —— 不需要改场景文件、不需要手动拖引用。
 ///
-/// 规则
-/// · 名字为 Setting / Settings / 设置 的按钮，且没有 SettingsButton 组件
-///   → 点击直接开关全局设置面板（Lobby 的预留按钮走这条）
-/// · 该按钮上已有 SettingsButton（Game 场景的「设置 / 投降」面板）
-///   → 往它的面板底部注入一个「游戏设置」按钮，两者并存、互不遮挡
+/// 规则（2026-09-30 统一：不管哪个场景，右上角那颗都是**直接开关设置面板**）
+/// · 名字为 Setting / Settings / 设置 的按钮 → 点击直接开关全局设置面板
+/// （Game 场景那颗还挂着 SettingsButton，但它已经只管悬停放大与投降）
 ///
 /// 每次加载场景都会重新扫一遍，因此 Lobby / Game / 以后新增的场景都自动生效。
 /// </summary>
@@ -63,16 +61,7 @@ public static class SettingsLauncher
                 {
                     t.gameObject.AddComponent<SettingsLauncherTag>();
 
-                    var sb = t.GetComponent<SettingsButton>();
-                    if (sb != null)
-                    {
-                        // Game 场景：保留它原本的「投降」面板，在面板里加一条入口
-                        SettingsPanel.AttachButtonTo(sb.settingsPanel);
-                    }
-                    else
-                    {
-                        btn.onClick.AddListener(SettingsPanel.Toggle);
-                    }
+                    btn.onClick.AddListener(SettingsPanel.Toggle);
                 }
             }
         }
