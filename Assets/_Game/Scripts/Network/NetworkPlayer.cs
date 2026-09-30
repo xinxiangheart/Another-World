@@ -62,6 +62,12 @@ public partial class NetworkPlayer : NetworkBehaviour
     [SyncVar(hook = nameof(OnHandCountChanged))]
     public int handCardCount;
 
+    /// <summary>对手「主动花能量抽牌」的计数（点抽牌按钮 / AI TryDraw / 择牌择中）。只用于表现：
+    /// 每 +1，对面客户端就播一次「一张卡背从右侧那摞 3D 牌堆的位置飞进对方手牌」。
+    /// 卡牌效果造成的抽牌（DrawCard / DrawCardWithoutLimit）不走这里，不计数。</summary>
+    [SyncVar(hook = nameof(OnActiveDrawTickChanged))]
+    public int activeDrawTick;
+
     [SyncVar(hook = nameof(OnPlayerNameChanged))]
     public string playerName = "";
 
@@ -395,6 +401,22 @@ public partial class NetworkPlayer : NetworkBehaviour
         Debug.Log($"[NetworkPlayer] Hand count: {oldValue} -> {newValue}, isLocal={isLocalPlayer}");
     }
 
+    /// <summary>对方主动抽牌 → 本端给对方手牌播一次卡背飞入（自己抽的不给自己播）。</summary>
+    void OnActiveDrawTickChanged(int oldValue, int newValue)
+    {
+        if (newValue == oldValue) return;
+        if (this == NetworkPlayer.LocalHalfPlayer) return;
+        OpponentHandRow.NotifyActiveDraw();
+    }
+
+    /// <summary>服务端标记一次「主动抽牌」（表现用，见 activeDrawTick）。
+    /// 只在点抽牌按钮 / AI 主动抽 / 择牌择中这三条路径上调；效果抽牌一律不调。</summary>
+    public void ServerMarkActiveDraw()
+    {
+        if (!NetworkServer.active) return;
+        activeDrawTick++;
+    }
+
     void OnHealthChanged(int oldValue, int newValue)
     {
         Debug.Log($"[NetworkPlayer] Health: {oldValue} -> {newValue}, isLocal={isLocalPlayer}, netId={netId}");
@@ -430,7 +452,7 @@ public partial class NetworkPlayer : NetworkBehaviour
     // ========== Commands ==========
 
     [Command]
-    public void CmdRequestDraw()
+    public void CmdRequestDraw(bool activeDraw)
     {
         Debug.Log($"[NetworkPlayer] CmdRequestDraw from netId={netId}");
         TurnManager tm = FindObjectOfType<TurnManager>();
@@ -462,6 +484,7 @@ public partial class NetworkPlayer : NetworkBehaviour
 
         // Server-side tracking: add a lightweight card so CmdPlayCard can find it
         AddServerSideCard(data, iid);
+        if (activeDraw) ServerMarkActiveDraw();   // 表现：对面播一次卡背飞入
     }
 
     [Command]
@@ -1061,7 +1084,7 @@ public partial class NetworkPlayer : NetworkBehaviour
                 if (d != null) AddServerSideCard(d, d._instanceID);
                 return null;
             }
-            CmdRequestDraw();
+            CmdRequestDraw(false);   // 效果抽牌，不算「主动花能量抽」
             return null;
         }
         handCards.RemoveAll(c => c == null);

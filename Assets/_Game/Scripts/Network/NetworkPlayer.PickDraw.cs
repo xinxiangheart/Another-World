@@ -146,6 +146,7 @@ public partial class NetworkPlayer
         // 择牌依赖服务端牌库；非服务端（纯单机）走原来的随机抽牌，行为不变
         if (NetworkServer.active && ServerTryStartPickDraw()) return true;
         DrawCard();
+        ServerMarkActiveDraw();   // 表现：对面播一次卡背飞入
         return true;
     }
 
@@ -183,6 +184,7 @@ public partial class NetworkPlayer
             if (connectionToClient != null)
                 TargetReceiveCard(connectionToClient, chosen.tid, chosen.iid);
             AddServerSideCard(tpl, chosen.iid);
+            ServerMarkActiveDraw();   // 择牌择中也算「主动花能量抽牌」
         }
 
         // ── 其余 → 明弃：进弃牌堆，但永不洗回牌库 ──

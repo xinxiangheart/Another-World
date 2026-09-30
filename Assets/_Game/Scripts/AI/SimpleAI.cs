@@ -193,6 +193,7 @@ public class SimpleAI : MonoBehaviour
 
         string iid = data._instanceID ?? CardZoneManager.GenerateInstanceID(data.templateID);
         _ai.AddServerSideCard(data, iid);
+        _ai.ServerMarkActiveDraw();   // 表现：玩家侧播一次卡背飞入
         return true;
     }
 

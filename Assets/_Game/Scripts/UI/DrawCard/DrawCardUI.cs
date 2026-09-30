@@ -226,7 +226,7 @@ public class DrawCardUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandl
             remainingDraws--;
             PopDrawCount();
             Debug.Log($"[DrawCardUI] Sending CmdRequestDraw, remaining={remainingDraws}");
-            player.CmdRequestDraw();
+            player.CmdRequestDraw(true);   // 主动抽牌（要有表现）
             return;
         }
 
