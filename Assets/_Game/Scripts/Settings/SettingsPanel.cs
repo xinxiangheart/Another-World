@@ -180,6 +180,13 @@ public class SettingsPanel : MonoBehaviour
         Anchor(title.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f),
                new Vector2(Pad, -100f), new Vector2(-Pad, -36f));
 
+        // 「设置」两个字的右下角：当前版本（小字，钢色）。量出标题实际宽度再往后排，字体换了也不会叠。
+        var ver = NewText("Version", prt, CurrentVersionText(), 24f, ColSub, TextAlignmentOptions.BottomLeft);
+        float titleW = title.GetPreferredValues("设置").x;
+        if (!(titleW > 10f)) titleW = 46f * 2f;              // 兜底：46pt 两个汉字 ≈ 92
+        Anchor(ver.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f),
+               new Vector2(Pad + titleW + 14f, -92f), new Vector2(Pad + titleW + 14f + 260f, -58f));
+
         // 标题下一条金细线（AGENTS.md：平底 + 一条金细线）
         var rule = NewImage("Rule", prt, ColAccentDim);
         rule.raycastTarget = false;
@@ -770,6 +777,19 @@ public class SettingsPanel : MonoBehaviour
         DontDestroyOnLoad(go);
         go.AddComponent<EventSystem>();
         go.AddComponent<StandaloneInputModule>();
+    }
+
+    /// <summary>当前版本号：先读 Resources/version.txt（发版 workflow 会用 tag 覆写它），
+    /// 编辑器里没有这个文件就退回场景里的 UpdateManager，最后退回 Application.version。</summary>
+    static string CurrentVersionText()
+    {
+        var asset = Resources.Load<TextAsset>("version");
+        if (asset != null && !string.IsNullOrWhiteSpace(asset.text)) return asset.text.Trim();
+
+        var um = FindObjectOfType<UpdateManager>();
+        if (um != null && !string.IsNullOrWhiteSpace(um.currentVersion)) return um.currentVersion.Trim();
+
+        return Application.version;
     }
 
     /// <summary>取一个「认中文」的字体：优先用场景里已在用的字体，其次 Resources，最后 TMP 默认。</summary>

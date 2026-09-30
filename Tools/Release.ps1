@@ -25,6 +25,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $sceneRel = 'Assets/_Game/Scenes/Welcome.unity'
+$verRel   = 'Assets/_Game/Resources/version.txt'
 $tag      = "v$Version"
 $asset    = 'Another-World-Windows.zip'
 $ua       = 'Mozilla/5.0'
@@ -91,7 +92,10 @@ try {
 
     # ── 4. 改版本号 -> commit -> push ─────────────────────────
     [IO.File]::WriteAllText($scene, [regex]::Replace($raw, $pat, "  currentVersion: $Version"), (New-Object Text.UTF8Encoding($false)))
-    git add -- $sceneRel
+    # 同步一份运行时读的版本号（Resources/version.txt）——编辑器 / 本地构建也显示得对；
+    # CI 构建会用 tag 再覆写它，两边同源不打架。
+    [IO.File]::WriteAllText((Join-Path $RepoPath $verRel), "$Version`r`n", (New-Object Text.UTF8Encoding($false)))
+    git add -- $sceneRel $verRel
     if ($LASTEXITCODE -ne 0) { Die "git add 失败" }
     git commit -q -m $Version
     if ($LASTEXITCODE -ne 0) { Die "git commit 失败" }
