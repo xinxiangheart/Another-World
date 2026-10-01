@@ -63,5 +63,18 @@
 - `Assets/_Game/Scripts/` —— 战斗 / 回合 / 卡牌 / 特性 / 前缀 / AI / 联网 / UI
 - `Assets/_Game/Resources/CardData/`、`ChosenOneData/` —— 卡牌数据
 - `Assets/_Game/Resources/Cards/` —— 卡牌立绘
-- `Assets/_Game/Introduce/指导文本.txt` —— 完整规则全集
+- [Assets/_Game/Introduce/指导文本.md](Assets/_Game/Introduce/指导文本.md) —— 完整规则全集
+- `Assets/_Game/Introduce/基础召唤物/`、`基础法术/` —— 卡牌数值原表（xlsx）
 - `AGENTS.md` —— 卡牌立绘风格基准与费用档位规范
+
+## 文档
+
+- **[策划案](Docs/策划案.md)** —— 这游戏是什么、各系统为什么这么设计（**先看这个**）
+- [规则全集](Assets/_Game/Introduce/指导文本.md) —— 规则的唯一真源
+- [卡面台账](Docs/卡面台账.md) —— 卡面做到哪了、缺口、待确认项
+- [卡面制作指南](Docs/卡面制作指南.md) —— 新卡面出图 / 抠图 / 落盘 / 验收
+- [后续计划](Docs/后续计划.md) —— 还没做、做不了、待验证的清单
+- [发版流程](Docs/发版流程.md) —— 怎么打包发版
+- [生图技能清单](Docs/生图技能清单.md) —— 装了哪些设计 / 生图技能
+- [Steam 联机最小可复刻方案](Docs/Steam联机最小可复刻方案.md)
+- [AGENTS.md](AGENTS.md) —— 画风基准 / 界面与场景美术方向 / 工程口径
