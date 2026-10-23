@@ -126,3 +126,10 @@ k 的上限是 0.845（再大就贴住金环线了），0.80 是「不溢出且�
 
 预览：`Tools/cardframe/preview/boardgrid-scale-before-after.png`（真实棋盘各层合成，BEFORE/AFTER 并排）、
 `Tools/cardframe/preview/boardgrid-scale-check.png`（叠在实机截图上，验证换算）。
+## L6 追加：金线二次辉光（2026-10-23）
+
+`Board_Glow.png` 现在除了原来的中央径向光，还并进了一层**金色细线的模糊副本**
+（从 Surface / Ornament / Rune 抠金像素，3px + 22px 两档模糊，强度 0.30）。
+原因与口径见 [../board-goldglow-v1/README.md](../board-goldglow-v1/README.md)。
+
+材质、队列、场景节点都没动 —— 只换了 `Board_Glow.png` 这一张图，`.meta` / guid 不变。
