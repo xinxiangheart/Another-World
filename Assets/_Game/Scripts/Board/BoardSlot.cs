@@ -1680,7 +1680,13 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     /// 这里只延迟「手牌显示 / 手牌射线 / 按钮」，避免起飞段被 Overlay 手牌盖住。</summary>
     IEnumerator ShowHandAfterSummon(HandManager hm, Card3DInstance summoning)
     {
-        if (summoning != null) yield return summoning.WaitForSummonAnimation(1.2f);
+        // 只等动画自然结束，不在这里用固定时限强制收尾：编辑器导入 / 编译 / GC
+        // 造成的一次长帧可能超过任何墙钟时限，提前 CompleteSummonAnimation 会把
+        // 飞行段直接掐到落点（表现为召唤动画偶尔消失）。真卡死由 Card3DInstance
+        // 的按帧 watchdog 兜底。这里的帧数上限只防止对象异常时手牌永久隐藏。
+        int guardFrames = 0;
+        while (summoning != null && summoning.IsSummonAnimating && guardFrames++ < 900)
+            yield return null;
         hm?.SetHandAreaRaycast(true);
         hm?.ShowAllCards();
         FindObjectOfType<CardDrag>()?.SetButtonsInteractable(true);

@@ -41,6 +41,7 @@ public class Card3DInstance : MonoBehaviour
     {
         if (_summonAnimating) return;
         _summonAnimating = true;
+        _summonProgressFrame = Time.frameCount;
 
         // 同步抢占根 Transform：不能等协程第一帧再关，否则 Card3DAnimator / 攻击动画
         // 可能在同帧写入 localPosition/localScale，把飞行起点或落点覆盖掉。
@@ -54,13 +55,15 @@ public class Card3DInstance : MonoBehaviour
 
     public bool IsSummonAnimating => _summonAnimating;
 
-    /// <summary>攻击/进场等后续演出等待召唤结束。超时后仍强制收尾，防协程异常卡死。</summary>
-    public IEnumerator WaitForSummonAnimation(float timeout = 2f)
+    /// <summary>攻击/进场等后续演出等待召唤结束。
+    /// forceCompleteOnTimeout=true 时超时强制收尾（给攻击动画让路）；需要完整播完的
+    /// 表现层等待方传 false —— 长帧不应该把飞行段掐掉，真卡死交给按帧 watchdog。</summary>
+    public IEnumerator WaitForSummonAnimation(float timeout = 2f, bool forceCompleteOnTimeout = true)
     {
         float deadline = Time.unscaledTime + Mathf.Max(0.01f, timeout);
         while (_summonAnimating && Time.unscaledTime < deadline)
             yield return null;
-        if (_summonAnimating) CompleteSummonAnimation();
+        if (_summonAnimating && forceCompleteOnTimeout) CompleteSummonAnimation();
     }
 
     /// <summary>立即完成召唤动画（攻击动画开始前调用）：停止协程、复位位置/旋转/缩放、恢复浮动。
@@ -85,22 +88,29 @@ public class Card3DInstance : MonoBehaviour
             floatAnim.ResumeAtCurrentTransform();
         }
         _summonAnimating = false;
-        _summonWatchdog = 0f;
     }
 
     Coroutine _summonRoutine;
     bool _summonAnimating;
     bool _bounceArmed; // 首刷后置 true；供 ElementBounceAllowed（抑制进场/召唤期弹跳）
+    /// <summary>召唤协程连续这么多帧没有推进就判定为卡死。
+    /// 按帧而不是按墙钟：编辑器导入 / 编译 / GC 造成的一次长帧只会让帧号 +1，
+    /// 不会把正常动画误判成卡死；协程真正停止时帧号才会持续累积。</summary>
+    public const int SummonStuckFrameLimit = 180;
     Vector3 _summonBaseScale = Vector3.one;
     Vector3 _summonBasePos;
     Quaternion _summonBaseRot = Quaternion.identity;
-    float _summonWatchdog;
+    int _summonProgressFrame;
+
+    /// <summary>召唤动画的单帧推进上限：长帧最多推进 0.1s，避免整段演出被一帧跳完。</summary>
+    static float SummonDeltaTime => Mathf.Min(Time.unscaledDeltaTime, 0.1f);
 
     void Update()
     {
-        // 兜底：召唤协程若被暂停/打断（timeScale=0、对象临时失活等），
-        // 超时后直接把卡复位到槽位，绝不让它停在半空/屏幕外。
-        if (_summonAnimating && _summonWatchdog > 0f && Time.unscaledTime >= _summonWatchdog)
+        // 兜底：召唤协程若被真正打断（对象失活 / 协程被非法停止），帧号会连续
+        // 180 帧不推进。编辑器导入、编译、GC 之类的一次长帧只让帧号 +1，
+        // 不会再把正常动画误判成卡死、直接跳到落点。
+        if (_summonAnimating && Time.frameCount - _summonProgressFrame >= SummonStuckFrameLimit)
         {
             Debug.LogWarning($"[Summon] watchdog fired {name} pos={transform.position} -> {_summonBasePos}");
             CompleteSummonAnimation();
@@ -145,22 +155,28 @@ public class Card3DInstance : MonoBehaviour
 
     IEnumerator SummonAnimationRoutine(Vector3? fromOverride)
     {
-        Transform target = GetScaleTarget(); // 可见正面容器（UIComponents）；ModelRoot 是卡背
-        if (target == null) yield break;
-
         _summonRoutine = null;
-        _summonWatchdog = Time.unscaledTime + 1.5f;
+        _summonProgressFrame = Time.frameCount;
+
+        // 先记下槽位基准，再做 null 检查：target 缺失时也能安全收尾，不会把卡留在起手点。
+        Vector3 to = transform.position;
+        Quaternion baseRot = transform.rotation;
+        _summonBasePos = to;
+        _summonBaseRot = baseRot;
+        _summonBaseScale = transform.localScale;
+
+        Transform target = GetScaleTarget(); // 可见正面容器（UIComponents）；ModelRoot 是卡背
+        if (target == null)
+        {
+            CompleteSummonAnimation();
+            yield break;
+        }
 
         // 动画期间暂停漂浮 / 悬停：漂浮每帧改 position，会与飞行插值打架
         Card3DAnimator floatAnim = GetComponent<Card3DAnimator>();
         if (floatAnim != null) floatAnim.SuspendForExternalAnimation();
         Card3DHover hover = GetComponent<Card3DHover>();
         if (hover != null) hover.enabled = false;
-
-        Vector3 to = transform.position;
-        Quaternion baseRot = transform.rotation;
-        _summonBasePos = to;
-        _summonBaseRot = baseRot;
 
         Vector3 baseScale = target.localScale;
         _summonBaseScale = baseScale;
@@ -197,7 +213,8 @@ public class Card3DInstance : MonoBehaviour
         const float anticipation = 0.06f;
         while (t < anticipation)
         {
-            t += Time.deltaTime;
+            t += SummonDeltaTime;
+            _summonProgressFrame = Time.frameCount;
             float k = Mathf.Clamp01(t / anticipation);
             float e = 1f - Mathf.Pow(1f - k, 2f);
             transform.position = Vector3.Lerp(from, antPos, e);
@@ -215,7 +232,8 @@ public class Card3DInstance : MonoBehaviour
         t = 0f;
         while (t < flyDur)
         {
-            t += Time.deltaTime;
+            t += SummonDeltaTime;
+            _summonProgressFrame = Time.frameCount;
             float k = Mathf.Clamp01(t / flyDur);
             float e = 1f - Mathf.Pow(1f - k, 3f); // ease-out cubic
 
@@ -229,7 +247,8 @@ public class Card3DInstance : MonoBehaviour
         t = 0f;
         while (t < hangDur)
         {
-            t += Time.deltaTime;
+            t += SummonDeltaTime;
+            _summonProgressFrame = Time.frameCount;
             float k = Mathf.Clamp01(t / hangDur);
             transform.position = apex + Vector3.up * (0.06f * Mathf.Sin(k * Mathf.PI));
             transform.rotation = baseRot;
@@ -240,7 +259,8 @@ public class Card3DInstance : MonoBehaviour
         t = 0f;
         while (t < dropDur)
         {
-            t += Time.deltaTime;
+            t += SummonDeltaTime;
+            _summonProgressFrame = Time.frameCount;
             float k = Mathf.Clamp01(t / dropDur);
             float e = k * k;
             transform.position = Vector3.Lerp(apex, to, e);
@@ -258,15 +278,22 @@ public class Card3DInstance : MonoBehaviour
         CardSummonFX.PlayImpact(fxPos, 1f);
         CardSummonFX.PlaySlotFlash(FindSummonSlot(gameObject, to));
         CameraShake.Impulse(shakeAmp, shakeDur);
-        // 局部停顿 35ms（不碰全局 Time.timeScale，避免影响联机/UI）
-        float stopUntil = Time.time + 0.035f;
-        while (Time.time < stopUntil) yield return null;
+        // 局部停顿 35ms（不碰全局 Time.timeScale，避免影响联机/UI）。
+        // 整段召唤动画用 unscaled 时间，但每帧时长做上限：一次长帧只推进一小段，
+        // 不会让整段演出在一帧里跳完。
+        float stopUntil = Time.unscaledTime + 0.035f;
+        while (Time.unscaledTime < stopUntil)
+        {
+            _summonProgressFrame = Time.frameCount;
+            yield return null;
+        }
 
         // 6) 回弹：阻尼余弦，Y 先压后弹、XZ 先胀后收
         t = 0f;
         while (t < settleDur)
         {
-            t += Time.deltaTime;
+            t += SummonDeltaTime;
+            _summonProgressFrame = Time.frameCount;
             float k = Mathf.Clamp01(t / settleDur);
             float decay = Mathf.Exp(-7f * k);
             float osc = Mathf.Cos(k * Mathf.PI * 3f);
@@ -288,7 +315,6 @@ public class Card3DInstance : MonoBehaviour
             floatAnim.ResumeAtCurrentTransform();
         }
         _summonAnimating = false;
-        _summonWatchdog = 0f;
     }
 
     /// <summary>没有手牌来源时（Token / 效果生成 / 敌方）按槽位推算起手点：
