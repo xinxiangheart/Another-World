@@ -511,7 +511,6 @@ public partial class TurnManager : MonoBehaviour
                         Destroy(slot.currentCard3D);
                         slot.SetCard(null);
                         GameObject model = Instantiate(bigEvil.prefab3D, pos, Quaternion.Euler(0, 180, 0));
-                        Card3DInstance.PlaySummonOn(model); // 召唤动画
                         Card3DInstance c3d = model.GetComponent<Card3DInstance>();
                         if (c3d != null)
                         {
@@ -521,6 +520,7 @@ public partial class TurnManager : MonoBehaviour
                             c3d.cardInstance = newCI;
                             c3d.UpdateValues();
                         }
+                        Card3DInstance.PlaySummonOn(model); // 数据就绪后再播放召唤动画
                         slot.SetCard(model);
                     }
                 }

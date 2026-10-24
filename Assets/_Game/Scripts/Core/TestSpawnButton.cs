@@ -23,7 +23,6 @@ public class TestSpawnButton : MonoBehaviour
         HandManager hm = FindObjectOfType<HandManager>();
         Vector3 pos = hm.GetSlotWorldPosition(slot.slotID);
         GameObject model = Instantiate(data.prefab3D, pos, Quaternion.Euler(0, 180, 0));
-        Card3DInstance.PlaySummonOn(model); // 召唤动画
 
         Card3DInstance inst = model.GetComponent<Card3DInstance>();
         if (inst != null)
@@ -40,6 +39,7 @@ public class TestSpawnButton : MonoBehaviour
             inst.UpdateValues();
         }
 
+        Card3DInstance.PlaySummonOn(model); // 卡面数据就绪后再播放召唤动画
         slot.SetCard(model);
         Debug.Log($"测试召唤物 {data.cardName} 生成在敌方槽位 1");
     }

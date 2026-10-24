@@ -38,7 +38,10 @@ public class Card3DAttackAnimator : MonoBehaviour
         // 旧写法直接 CompleteSummonAnimation() 会把飞入/悬停/砸落整段掐掉，
         // 先手或进场链路一触发就表现为「召唤动画没播」。
         var c3dInst = GetComponent<Card3DInstance>();
-        if (c3dInst != null) yield return c3dInst.WaitForSummonAnimation(2f);
+        // 不传墙钟上限：编辑器编译/导入导致的一次长帧不应该把 0.6s 的飞入/砸落
+        // 直接跳过（蜂王这类先手卡尤其容易在第一回合触发）。真卡死由召唤协程
+        // 自己的「连续 180 帧无推进」watchdog 收尾。
+        if (c3dInst != null) yield return c3dInst.WaitForSummonAnimation();
 
         // 同一卡上一次攻击的返回仍在动画中 → 等待其完成（此时卡在静止位，原点捕获正确）。
         // 超时兜底：前一次返回若被中断导致 _attacking 卡死，强制复位并回到槽位，防卡停攻击位

@@ -39,90 +39,212 @@ public class Card3DInstance : MonoBehaviour
     /// 只影响表现，不改任何逻辑判断。fromWorld 为空时按槽位位置推算己方/敌方锚点。</summary>
     public void PlaySummonAnimation(Vector3? fromWorld = null)
     {
-        if (_summonAnimating) return;
+        if (this == null) return;
+
+        // 同帧两条生成/同步链路重复调用时只算一次；仍在正常推进的演出也不重播。
+        bool startedThisFrame = _summonAnimating && _summonStartFrame == Time.frameCount;
+        bool tickingNormally = _summonAnimating && _summonTickerRegistered
+            && Time.unscaledTime - _summonLastTickTime < 0.35f;
+        if (startedThisFrame || tickingNormally) return;
+
+        // 域重载 / 父节点失活后再次进入：序列化进度仍在，直接接回推进器，
+        // 不从头重播，更不能因为残留的 _summonAnimating 把新演出永久挡掉。
+        if (_summonAnimating && _summonElapsed > 0f)
+        {
+            PrepareVisualForSummon();
+            LockSummonPresentation();
+            SummonAnimationTicker.Register(this);
+            ApplySummonPose();
+            return;
+        }
+
+        PrepareVisualForSummon();
+        Transform scaleTarget = GetScaleTarget();
+        if (scaleTarget == null)
+        {
+            Debug.LogWarning($"[Summon] 缺少卡面容器 {name}");
+            return;
+        }
+
         _summonAnimating = true;
+        _summonImpactTriggered = false;
+        _summonRetireAfterComplete = false;
+        _summonElapsed = 0f;
         _summonProgressFrame = Time.frameCount;
+        _summonStartFrame = Time.frameCount;
+        _summonBasePos = transform.position;
+        _summonBaseRot = transform.rotation;
+        _summonBaseScale = scaleTarget.localScale;
+        _summonTo = transform.position;
+        Camera cam = Camera.main;
+        _summonToCam = cam != null ? -cam.transform.forward : Vector3.back;
+        Vector3 from = fromWorld ?? ComputeSummonOrigin(_summonTo);
+        // 正向：从所属玩家的一侧朝槽位直飞，横向与目标对齐。
+        from.x = _summonTo.x;
+        _summonFrom = from;
 
         // 同步抢占根 Transform：不能等协程第一帧再关，否则 Card3DAnimator / 攻击动画
         // 可能在同帧写入 localPosition/localScale，把飞行起点或落点覆盖掉。
-        Card3DAnimator floatAnim = GetComponent<Card3DAnimator>();
-        if (floatAnim != null) floatAnim.SuspendForExternalAnimation();
-        Card3DHover hover = GetComponent<Card3DHover>();
-        if (hover != null) hover.enabled = false;
-
-        _summonRoutine = StartCoroutine(SummonAnimationRoutine(fromWorld));
+        LockSummonPresentation();
+        ApplySummonPose();
+        // 最后一个动作再注册：上面的 ApplySummonPose 若当场完成（例如容器缺失）不会留下空目标。
+        if (_summonAnimating) SummonAnimationTicker.Register(this);
     }
 
     public bool IsSummonAnimating => _summonAnimating;
 
     /// <summary>攻击/进场等后续演出等待召唤结束。
-    /// forceCompleteOnTimeout=true 时超时强制收尾（给攻击动画让路）；需要完整播完的
-    /// 表现层等待方传 false —— 长帧不应该把飞行段掐掉，真卡死交给按帧 watchdog。</summary>
-    public IEnumerator WaitForSummonAnimation(float timeout = 2f, bool forceCompleteOnTimeout = true)
+    /// 默认连续 3 秒没有任何进度才强制收尾：长帧只会让演出变慢，不会被误判成卡死；
+    /// 真正的异常停滞也不会把攻击、展示层或手牌恢复永久卡住。</summary>
+    public IEnumerator WaitForSummonAnimation(float timeout = 3f, bool forceCompleteOnTimeout = true)
     {
-        float deadline = Time.unscaledTime + Mathf.Max(0.01f, timeout);
-        while (_summonAnimating && Time.unscaledTime < deadline)
+        float stallLimit = timeout > 0f ? timeout : 3f;
+        float lastElapsed = _summonElapsed;
+        float lastProgressTime = Time.unscaledTime;
+
+        while (this != null && _summonAnimating)
+        {
             yield return null;
-        if (_summonAnimating && forceCompleteOnTimeout) CompleteSummonAnimation();
+            if (this == null || !_summonAnimating) break;
+
+            if (_summonElapsed > lastElapsed + 0.0001f)
+            {
+                lastElapsed = _summonElapsed;
+                lastProgressTime = Time.unscaledTime;
+            }
+            else if (Time.unscaledTime - lastProgressTime >= stallLimit)
+            {
+                if (forceCompleteOnTimeout) CompleteSummonAnimation();
+                break;
+            }
+        }
     }
 
-    /// <summary>立即完成召唤动画（攻击动画开始前调用）：停止协程、复位位置/旋转/缩放、恢复浮动。
-    /// 防召唤动画未结束时攻击动画与其交互（缩放/浮动状态冲突）导致位置 bug。</summary>
+    /// <summary>立即完成召唤动画（仅调用方明确需要掐掉演出时使用）：复位位置/旋转/缩放、恢复浮动。</summary>
     public void CompleteSummonAnimation()
     {
-        if (!_summonAnimating) return;
-        if (_summonRoutine != null) StopCoroutine(_summonRoutine);
-        _summonRoutine = null;
+        if (this == null || !_summonAnimating) return;
 
-        Transform target = GetScaleTarget();
-        if (target != null) target.localScale = _summonBaseScale;
-        transform.position = _summonBasePos;
-        transform.rotation = _summonBaseRot;
-
-        Card3DHover hover = GetComponent<Card3DHover>();
-        if (hover != null) hover.enabled = true;
-
-        Card3DAnimator floatAnim = GetComponent<Card3DAnimator>();
-        if (floatAnim != null)
-        {
-            floatAnim.ResumeAtCurrentTransform();
-        }
         _summonAnimating = false;
+        _summonImpactTriggered = false;
+        _summonElapsed = 0f;
+        _summonStartFrame = -1;
+        SummonAnimationTicker.Unregister(this);
+
+        RestoreSummonPresentation(
+            GetScaleTarget(), _summonBasePos, _summonBaseRot, _summonBaseScale,
+            GetComponent<Card3DHover>(), GetComponent<Card3DAnimator>());
+        RetireAfterSummonIfRequested();
     }
 
-    Coroutine _summonRoutine;
-    bool _summonAnimating;
+    /// <summary>同步层收到“移除这个模型”但模型还在飞入时调用：等演出自然结束后再销毁，
+    /// 避免过期 RPC/上报把刚打出的召唤动画直接抹掉。调用方不要再立即 Destroy。</summary>
+    public void RequestDestroyAfterSummon()
+    {
+        if (this == null) return;
+        _summonRetireAfterComplete = true;
+        Card3DHover hover = GetComponent<Card3DHover>();
+        if (hover != null) hover.enabled = false;
+    }
+
+    void RestoreSummonPresentation(
+        Transform target, Vector3 basePos, Quaternion baseRot, Vector3 baseScale,
+        Card3DHover hover, Card3DAnimator floatAnim)
+    {
+        if (target != null) target.localScale = baseScale;
+        transform.position = basePos;
+        transform.rotation = baseRot;
+
+        if (hover != null) hover.enabled = true;
+        if (floatAnim != null)
+            floatAnim.ResumeAtCurrentTransform();
+    }
+
+    // 演出进度必须序列化：域重载会销毁协程与普通运行时字段，只有进度能带过重载。
+    // 推进器登记与“本帧是否已推进”属于运行时状态，故意不序列化；重载后由 OnEnable 重新接回。
+    [SerializeField, HideInInspector] bool _summonAnimating;
+    [SerializeField, HideInInspector] bool _summonImpactTriggered;
+    [SerializeField, HideInInspector] bool _summonRetireAfterComplete;
+    [SerializeField, HideInInspector] float _summonElapsed;
+    [SerializeField, HideInInspector] Vector3 _summonBasePos;
+    [SerializeField, HideInInspector] Vector3 _summonBaseScale = Vector3.one;
+    [SerializeField, HideInInspector] Quaternion _summonBaseRot = Quaternion.identity;
+    [SerializeField, HideInInspector] Vector3 _summonFrom;
+    [SerializeField, HideInInspector] Vector3 _summonTo;
+    [SerializeField, HideInInspector] Vector3 _summonToCam = Vector3.back;
     bool _bounceArmed; // 首刷后置 true；供 ElementBounceAllowed（抑制进场/召唤期弹跳）
-    /// <summary>召唤协程连续这么多帧没有推进就判定为卡死。
-    /// 按帧而不是按墙钟：编辑器导入 / 编译 / GC 造成的一次长帧只会让帧号 +1，
-    /// 不会把正常动画误判成卡死；协程真正停止时帧号才会持续累积。</summary>
-    public const int SummonStuckFrameLimit = 180;
-    Vector3 _summonBaseScale = Vector3.one;
-    Vector3 _summonBasePos;
-    Quaternion _summonBaseRot = Quaternion.identity;
     int _summonProgressFrame;
+    [System.NonSerialized] bool _summonTickerRegistered;
+    [System.NonSerialized] float _summonLastTickTime;
+    [System.NonSerialized] int _summonStartFrame = -1;
+
+    internal void MarkSummonTickerRegistered(bool registered)
+    {
+        _summonTickerRegistered = registered;
+    }
 
     /// <summary>召唤动画的单帧推进上限：长帧最多推进 0.1s，避免整段演出被一帧跳完。</summary>
     static float SummonDeltaTime => Mathf.Min(Time.unscaledDeltaTime, 0.1f);
 
+    void OnEnable()
+    {
+        // 域重载 / SetActive 往返后，序列化进度还在、推进器的静态引用已经没了。
+        // 先重新登记常驻推进器，再套用当前帧姿态；即使父节点稍后才激活也不会停住。
+        if (!Application.isPlaying || !_summonAnimating) return;
+        SummonAnimationTicker.Register(this);
+        LockSummonPresentation();
+        ApplySummonPose();
+    }
+
     void Update()
     {
-        // 兜底：召唤协程若被真正打断（对象失活 / 协程被非法停止），帧号会连续
-        // 180 帧不推进。编辑器导入、编译、GC 之类的一次长帧只让帧号 +1，
-        // 不会再把正常动画误判成卡死、直接跳到落点。
-        if (_summonAnimating && Time.frameCount - _summonProgressFrame >= SummonStuckFrameLimit)
-        {
-            Debug.LogWarning($"[Summon] watchdog fired {name} pos={transform.position} -> {_summonBasePos}");
-            CompleteSummonAnimation();
-        }
+        if (!_summonAnimating) return;
+        if (_summonTickerRegistered) return;
+
+        // 兜底：常驻推进器意外缺失时就地接管。Register 成功后本帧由推进器统一跑，
+        // 避免一次帧里推进两次导致演出加速。
+        SummonAnimationTicker.Register(this);
+        if (!_summonTickerRegistered) TickSummon(SummonDeltaTime);
+    }
+
+    internal void TickSummon(float dt)
+    {
+        if (!_summonAnimating) return;
+
+        _summonLastTickTime = Time.unscaledTime;
+        _summonProgressFrame = Time.frameCount;
+        if (dt <= 0f) return;
+
+        _summonElapsed += Mathf.Min(dt, 0.1f);
+        ApplySummonPose();
+    }
+
+    void OnDestroy()
+    {
+        SummonAnimationTicker.Unregister(this);
     }
 
     /// <summary>生成入口统一调用：实例化后立即触发召唤动画（同步把可见正面容器缩到 0.86，
     /// 避免先以完整尺寸闪现一帧）。fromWorld 可传手牌位置；不传则按槽位推算。</summary>
     public static void PlaySummonOn(GameObject model, Vector3? fromWorld = null)
     {
-        if (model != null)
-            model.GetComponent<Card3DInstance>()?.PlaySummonAnimation(fromWorld);
+        if (model == null) return;
+        if (!model.activeSelf) model.SetActive(true);
+        Card3DInstance inst = model.GetComponent<Card3DInstance>();
+        if (inst == null) return;
+        if (!inst.enabled) inst.enabled = true;
+        inst.PrepareVisualForSummon();
+        inst.PlaySummonAnimation(fromWorld);
+    }
+
+    /// <summary>生成入口在挂好 CardInstance / UpdateValues 后调用：确保正面容器可见，
+    /// 不会在「UIComponents 仍关着」或卡背残留的状态下播放飞入。</summary>
+    public void PrepareVisualForSummon()
+    {
+        CardDisplay3D display = GetComponent<CardDisplay3D>();
+        if (display != null) display.ShowFront();
+        Transform ui = transform.Find("UIComponents");
+        if (ui != null && !ui.gameObject.activeSelf) ui.gameObject.SetActive(true);
     }
 
     /// <summary>附着滑入动画：从下一个附着牌位置滑到自己理论位置（约0.5s，仅表现，不影响附着逻辑/位置结算）。</summary>
@@ -153,168 +275,173 @@ public class Card3DInstance : MonoBehaviour
         if (floatAnim != null) { floatAnim.UpdateBaseLocalPos(); floatAnim.enabled = true; }
     }
 
-    IEnumerator SummonAnimationRoutine(Vector3? fromOverride)
+    void LockSummonPresentation()
     {
-        _summonRoutine = null;
-        _summonProgressFrame = Time.frameCount;
-
-        // 先记下槽位基准，再做 null 检查：target 缺失时也能安全收尾，不会把卡留在起手点。
-        Vector3 to = transform.position;
-        Quaternion baseRot = transform.rotation;
-        _summonBasePos = to;
-        _summonBaseRot = baseRot;
-        _summonBaseScale = transform.localScale;
-
-        Transform target = GetScaleTarget(); // 可见正面容器（UIComponents）；ModelRoot 是卡背
-        if (target == null)
-        {
-            CompleteSummonAnimation();
-            yield break;
-        }
-
-        // 动画期间暂停漂浮 / 悬停：漂浮每帧改 position，会与飞行插值打架
         Card3DAnimator floatAnim = GetComponent<Card3DAnimator>();
         if (floatAnim != null) floatAnim.SuspendForExternalAnimation();
         Card3DHover hover = GetComponent<Card3DHover>();
         if (hover != null) hover.enabled = false;
+        _summonProgressFrame = Time.frameCount;
+    }
 
-        Vector3 baseScale = target.localScale;
-        _summonBaseScale = baseScale;
+    struct SummonCurve
+    {
+        public Vector3 antPos;
+        public Vector3 apex;
+        public Vector3 ctrl;
+        public float anticipation;
+        public float flyDur;
+        public float hangDur;
+        public float dropDur;
+        public float impactHold;
+        public float settleDur;
+        public float squash;
+        public float shakeAmp;
+        public float shakeDur;
 
+        public float ImpactAt => anticipation + flyDur + hangDur + dropDur;
+        public float Total => ImpactAt + impactHold + settleDur;
+    }
+
+    SummonCurve BuildSummonCurve()
+    {
         AnimationConfig cfg = AnimationConfig.Load();
-        float launchDur = cfg != null ? cfg.summonLaunchDuration : 0.22f;
+        SummonCurve c = new SummonCurve
+        {
+            anticipation = 0.06f,
+            flyDur = cfg != null ? Mathf.Max(0.0001f, cfg.summonLaunchDuration) : 0.22f,
+            hangDur = cfg != null ? Mathf.Max(0f, cfg.summonHangDuration) : 0.08f,
+            dropDur = cfg != null ? Mathf.Max(0.0001f, cfg.summonDropDuration) : 0.08f,
+            impactHold = 0.035f,
+            settleDur = cfg != null ? Mathf.Max(0.0001f, cfg.summonSettleDuration) : 0.18f,
+            squash = cfg != null ? cfg.summonSquash : 0.14f,
+            shakeAmp = cfg != null ? cfg.summonShakeStrength : 0.10f,
+            shakeDur = cfg != null ? cfg.summonShakeDuration : 0.12f
+        };
+
+        // 顶点高度与飞行时长按当前起落点解析计算；所有输入都已序列化，域重载后同一条曲线。
         float apexHeight = cfg != null ? cfg.summonApexHeight : 0.9f;
-        float hangDur = cfg != null ? cfg.summonHangDuration : 0.08f;
-        float dropDur = cfg != null ? cfg.summonDropDuration : 0.08f;
-        float settleDur = cfg != null ? cfg.summonSettleDuration : 0.18f;
-        float squash = cfg != null ? cfg.summonSquash : 0.14f;
-        float shakeAmp = cfg != null ? cfg.summonShakeStrength : 0.10f;
-        float shakeDur = cfg != null ? cfg.summonShakeDuration : 0.12f;
-
-        Vector3 toCam = Camera.main != null ? -Camera.main.transform.forward : Vector3.back;
-        // 己方在下、敌方在上（棋盘中心 y≈1）；敌方整套轨迹按此镜像
-        float outward = to.y < 1f ? -1f : 1f;
-
-        Vector3 from = fromOverride ?? ComputeSummonOrigin(to);
-        // 正向：从所属玩家的一侧朝槽位直飞，横向与目标对齐（手牌只借它的高度/深度，不借横向偏位）
-        from.x = to.x;
-        // 0) 起手：略小、后仰，保持水平（正向飞入）
-        transform.position = from;
-        transform.rotation = baseRot * Quaternion.Euler(-14f, 0f, 0f);
-        target.localScale = baseScale * 0.86f;
-
-        // 1) 蓄力 60ms：再往后拉一点，压到 0.84
-        Vector3 pullDir = from - to;
+        float outward = _summonTo.y < 1f ? -1f : 1f;
+        Vector3 pullDir = _summonFrom - _summonTo;
         pullDir.z = 0f;
         if (pullDir.sqrMagnitude < 0.0001f) pullDir = Vector3.up * outward;
-        Vector3 antPos = from + pullDir.normalized * 0.10f;
 
-        float t = 0f;
-        const float anticipation = 0.06f;
-        while (t < anticipation)
+        c.antPos = _summonFrom + pullDir.normalized * 0.10f;
+        c.apex = _summonTo + Vector3.up * apexHeight + _summonToCam * 0.35f;
+        c.ctrl = Vector3.Lerp(c.antPos, c.apex, 0.5f) + _summonToCam * 0.25f;
+        float distance = Vector3.Distance(c.antPos, c.apex);
+        c.flyDur = Mathf.Clamp(c.flyDur + distance * 0.01f, c.flyDur, c.flyDur + 0.08f);
+        return c;
+    }
+
+    void ApplySummonPose()
+    {
+        Transform target = GetScaleTarget();
+        if (target == null)
         {
-            t += SummonDeltaTime;
-            _summonProgressFrame = Time.frameCount;
-            float k = Mathf.Clamp01(t / anticipation);
+            CompleteSummonAnimation();
+            return;
+        }
+
+        SummonCurve c = BuildSummonCurve();
+        float t = Mathf.Max(0f, _summonElapsed);
+        Vector3 baseScale = _summonBaseScale;
+
+        if (t < c.anticipation)
+        {
+            // 1) 蓄力：从起手点再后拉一点，压到 0.84。
+            float k = Mathf.Clamp01(t / c.anticipation);
             float e = 1f - Mathf.Pow(1f - k, 2f);
-            transform.position = Vector3.Lerp(from, antPos, e);
+            transform.position = Vector3.Lerp(_summonFrom, c.antPos, e);
+            transform.rotation = _summonBaseRot * Quaternion.Euler(-14f, 0f, 0f);
             target.localScale = baseScale * Mathf.Lerp(0.86f, 0.84f, e);
-            yield return null;
         }
-
-        // 2) 飞出：二次贝塞尔到槽位上方；起步快、接近顶点慢
-        Vector3 apex = to + Vector3.up * apexHeight + toCam * 0.35f;
-        Vector3 ctrl = Vector3.Lerp(antPos, apex, 0.5f) + toCam * 0.25f;
-
-        float distance = Vector3.Distance(antPos, apex);
-        float flyDur = Mathf.Clamp(launchDur + distance * 0.01f, launchDur, launchDur + 0.08f);
-
-        t = 0f;
-        while (t < flyDur)
+        else if (t < c.anticipation + c.flyDur)
         {
-            t += SummonDeltaTime;
-            _summonProgressFrame = Time.frameCount;
-            float k = Mathf.Clamp01(t / flyDur);
-            float e = 1f - Mathf.Pow(1f - k, 3f); // ease-out cubic
-
-            transform.position = Bezier2(antPos, ctrl, apex, e);
-            transform.rotation = baseRot * Quaternion.Euler(Mathf.Lerp(-14f, 0f, e), 0f, 0f);
+            // 2) 飞出：二次贝塞尔，起步快、接近顶点慢。
+            float k = Mathf.Clamp01((t - c.anticipation) / c.flyDur);
+            float e = 1f - Mathf.Pow(1f - k, 3f);
+            transform.position = Bezier2(c.antPos, c.ctrl, c.apex, e);
+            transform.rotation = _summonBaseRot * Quaternion.Euler(Mathf.Lerp(-14f, 0f, e), 0f, 0f);
             target.localScale = baseScale * Mathf.Lerp(0.84f, 1.06f, e);
-            yield return null;
         }
-
-        // 3) 顶点悬停：给下落留出高度差
-        t = 0f;
-        while (t < hangDur)
+        else if (t < c.anticipation + c.flyDur + c.hangDur)
         {
-            t += SummonDeltaTime;
-            _summonProgressFrame = Time.frameCount;
-            float k = Mathf.Clamp01(t / hangDur);
-            transform.position = apex + Vector3.up * (0.06f * Mathf.Sin(k * Mathf.PI));
-            transform.rotation = baseRot;
-            yield return null;
+            // 3) 顶点悬停：给下落留出高度差。
+            float k = Mathf.Clamp01((t - c.anticipation - c.flyDur) / c.hangDur);
+            transform.position = c.apex + Vector3.up * (0.06f * Mathf.Sin(k * Mathf.PI));
+            transform.rotation = _summonBaseRot;
+            target.localScale = baseScale * 1.06f;
         }
-
-        // 4) 砸下：ease-in，俯仰向前压
-        t = 0f;
-        while (t < dropDur)
+        else if (t < c.ImpactAt)
         {
-            t += SummonDeltaTime;
-            _summonProgressFrame = Time.frameCount;
-            float k = Mathf.Clamp01(t / dropDur);
+            // 4) 砸下：ease-in，俯仰向前压。
+            float k = Mathf.Clamp01((t - c.anticipation - c.flyDur - c.hangDur) / c.dropDur);
             float e = k * k;
-            transform.position = Vector3.Lerp(apex, to, e);
-            transform.rotation = baseRot * Quaternion.Euler(Mathf.Lerp(0f, 8f, k), 0f, 0f);
+            transform.position = Vector3.Lerp(c.apex, _summonTo, e);
+            transform.rotation = _summonBaseRot * Quaternion.Euler(Mathf.Lerp(0f, 8f, k), 0f, 0f);
             target.localScale = baseScale * Mathf.Lerp(1.06f, 1f, k);
-            yield return null;
         }
-
-        // 5) 落地帧：精确到位 + 压扁 + 冲击环/闪光/相机震动（同一帧）
-        transform.position = to;
-        transform.rotation = baseRot;
-        target.localScale = Vector3.Scale(baseScale, new Vector3(1.08f, 1f - squash, 1.08f));
-
-        Vector3 fxPos = to + Vector3.down * 0.85f;
-        CardSummonFX.PlayImpact(fxPos, 1f);
-        CardSummonFX.PlaySlotFlash(FindSummonSlot(gameObject, to));
-        CameraShake.Impulse(shakeAmp, shakeDur);
-        // 局部停顿 35ms（不碰全局 Time.timeScale，避免影响联机/UI）。
-        // 整段召唤动画用 unscaled 时间，但每帧时长做上限：一次长帧只推进一小段，
-        // 不会让整段演出在一帧里跳完。
-        float stopUntil = Time.unscaledTime + 0.035f;
-        while (Time.unscaledTime < stopUntil)
+        else if (t < c.ImpactAt + c.impactHold)
         {
-            _summonProgressFrame = Time.frameCount;
-            yield return null;
+            // 5) 落地硬停：精确到位 + 压扁。
+            transform.position = _summonTo;
+            transform.rotation = _summonBaseRot;
+            target.localScale = Vector3.Scale(baseScale, new Vector3(1.08f, 1f - c.squash, 1.08f));
         }
-
-        // 6) 回弹：阻尼余弦，Y 先压后弹、XZ 先胀后收
-        t = 0f;
-        while (t < settleDur)
+        else
         {
-            t += SummonDeltaTime;
-            _summonProgressFrame = Time.frameCount;
-            float k = Mathf.Clamp01(t / settleDur);
+            // 6) 回弹：阻尼余弦，Y 先压后弹、XZ 先胀后收。
+            float k = Mathf.Clamp01((t - c.ImpactAt - c.impactHold) / c.settleDur);
             float decay = Mathf.Exp(-7f * k);
             float osc = Mathf.Cos(k * Mathf.PI * 3f);
-
             float xz = 1f + 0.08f * decay * osc;
-            float y = 1f - squash * decay * osc;
+            float y = 1f - c.squash * decay * osc;
+            transform.position = _summonTo;
+            transform.rotation = _summonBaseRot;
             target.localScale = Vector3.Scale(baseScale, new Vector3(xz, y, xz));
-            yield return null;
         }
 
-        // 结束：复位并交回漂浮 / 悬停
-        target.localScale = baseScale;
-        transform.position = to;
-        transform.rotation = baseRot;
-
-        if (hover != null) hover.enabled = true;
-        if (floatAnim != null)
+        if (!_summonImpactTriggered && t >= c.ImpactAt)
         {
-            floatAnim.ResumeAtCurrentTransform();
+            _summonImpactTriggered = true;
+            PlaySummonImpact(c);
         }
-        _summonAnimating = false;
+
+        if (t >= c.Total)
+        {
+            transform.position = _summonTo;
+            transform.rotation = _summonBaseRot;
+            target.localScale = baseScale;
+            CompleteSummonAnimation();
+        }
+    }
+
+    void PlaySummonImpact(SummonCurve c)
+    {
+        Vector3 fxPos = _summonTo + Vector3.down * 0.85f;
+        CardSummonFX.PlayImpact(fxPos, 1f);
+        CardSummonFX.PlaySlotFlash(FindSummonSlot(gameObject, _summonTo));
+        CameraShake.Impulse(c.shakeAmp, c.shakeDur);
+    }
+
+    void RetireAfterSummonIfRequested()
+    {
+        if (!_summonRetireAfterComplete) return;
+        _summonRetireAfterComplete = false;
+
+        // 只清“仍指向自己”的槽位；期间若已经换了新卡，不能误清新模型。
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm != null)
+        {
+            BoardSlot[] slots = bm.GetAllSlots();
+            for (int i = 0; i < slots.Length; i++)
+            {
+                if (slots[i] != null && slots[i].currentCard3D == gameObject)
+                    slots[i].SetCard(null);
+            }
+        }
+        Destroy(gameObject);
     }
 
     /// <summary>没有手牌来源时（Token / 效果生成 / 敌方）按槽位推算起手点：

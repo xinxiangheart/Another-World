@@ -115,6 +115,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
     private Vector3 originalScale;
     public Image slotImage;
+    // 召唤演出结束后要恢复本端手牌。用序列化标志 + Update 检查而不是一次性协程：
+    // 编辑器域重载会杀掉 BoardSlot 上的协程，旧写法会让手牌一直保持隐藏。
+    [SerializeField, HideInInspector] bool _restoreHandAfterSummon;
     /// <summary>选择指示（四角括号 + 脉动）：只在"允许被选择 且 鼠标正悬停"的槽位上出现，运行时生成；
     /// 颜色随选择类型变（伤害红 / 治愈绿 / 减益紫 / 中性金 / 抛置绿，见 SelectionKindRules）。</summary>
     SlotSelectionIndicator _selectionIndicator;
@@ -1660,13 +1663,11 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             if (hm != null && hm.IsHandHidden && slotID >= 6
                 && summoning != null && summoning.IsSummonAnimating)
             {
-                StartCoroutine(ShowHandAfterSummon(hm, summoning));
+                _restoreHandAfterSummon = true;
             }
             else
             {
-                hm?.SetHandAreaRaycast(true);
-                hm?.ShowAllCards();
-                FindObjectOfType<CardDrag>()?.SetButtonsInteractable(true);
+                RestoreHandAfterSummon();
             }
         }
         // 放置/效果链路里残留的按钮禁用不再在这里特判"手牌为空"补救：
@@ -1676,17 +1677,23 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         BoardSyncManager.MarkDirty();
     }
 
-    /// <summary>等刚放下的卡飞完再恢复手牌：逻辑层已由 CleanupAfterPlacement 立即放行，
-    /// 这里只延迟「手牌显示 / 手牌射线 / 按钮」，避免起飞段被 Overlay 手牌盖住。</summary>
-    IEnumerator ShowHandAfterSummon(HandManager hm, Card3DInstance summoning)
+    void Update()
     {
-        // 只等动画自然结束，不在这里用固定时限强制收尾：编辑器导入 / 编译 / GC
-        // 造成的一次长帧可能超过任何墙钟时限，提前 CompleteSummonAnimation 会把
-        // 飞行段直接掐到落点（表现为召唤动画偶尔消失）。真卡死由 Card3DInstance
-        // 的按帧 watchdog 兜底。这里的帧数上限只防止对象异常时手牌永久隐藏。
-        int guardFrames = 0;
-        while (summoning != null && summoning.IsSummonAnimating && guardFrames++ < 900)
-            yield return null;
+        if (!_restoreHandAfterSummon) return;
+        Card3DInstance summoning = currentCard3D != null
+            ? currentCard3D.GetComponent<Card3DInstance>() : null;
+        if (summoning != null && summoning.IsSummonAnimating) return;
+        RestoreHandAfterSummon();
+    }
+
+    /// <summary>召唤飞入结束（或模型已被替换/销毁）后恢复手牌。逻辑层早已由
+    /// CleanupAfterPlacement 放行，这里只负责手牌显示 / 射线 / 按钮。</summary>
+    void RestoreHandAfterSummon()
+    {
+        _restoreHandAfterSummon = false;
+        HandManager hm = Player.Instance != null && Player.Instance.myHandManager != null
+            ? Player.Instance.myHandManager
+            : FindObjectOfType<HandManager>();
         hm?.SetHandAreaRaycast(true);
         hm?.ShowAllCards();
         FindObjectOfType<CardDrag>()?.SetButtonsInteractable(true);
@@ -1776,6 +1783,20 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             if (ci != null && RegistrySyncManager.Instance != null)
                 RegistrySyncManager.Instance.UpdateCard(ci, slotID >= 6 ? 0 : 1, CardZone.Board, slotID);
         }
+    }
+
+    /// <summary>同步/过期上报要求移除当前模型时统一走这里：若它仍在播放召唤演出，
+    /// 只登记“演完再销毁”，不要立刻 Destroy。返回 true 表示调用方不要再动这个模型。</summary>
+    public bool TryDeferCurrentCardRemoval(GameObject expected = null)
+    {
+        GameObject model = currentCard3D;
+        if (model == null || (expected != null && model != expected)) return false;
+
+        Card3DInstance summon = model.GetComponent<Card3DInstance>();
+        if (summon == null || !summon.IsSummonAnimating) return false;
+
+        summon.RequestDestroyAfterSummon();
+        return true;
     }
 
     /// <summary>抛置悬停：格子绿色高亮。复用黄色选择高亮（HighlightRow/OnPointerEnter 目标分支）的
@@ -5103,7 +5124,6 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             // 生成狼（空位或有被替换的随从）
             Vector3 pos = FindObjectOfType<HandManager>().GetSlotWorldPosition(i);
             GameObject model = Instantiate(wolfTemplate.prefab3D, pos, Quaternion.Euler(0, 180, 0));
-            Card3DInstance.PlaySummonOn(model); // 召唤动画
             Card3DInstance c3d = model.GetComponent<Card3DInstance>();
             if (c3d != null)
             {
@@ -5123,6 +5143,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 c3d.UpdateValues();
             }
             model.name = c3d?.cardInstance?.instanceID ?? model.name;
+            // 数据与卡面就绪后再起飞，避免狼群动画在未刷新的空卡上播放。
+            Card3DInstance.PlaySummonOn(model);
             slot.SetCard(model);
 
             // Sync wolf to server/opponent — 必须传 override 保留叠加数值

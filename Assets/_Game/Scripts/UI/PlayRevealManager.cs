@@ -51,6 +51,30 @@ public class PlayRevealManager : MonoBehaviour
         Instance.ProcessIfIdle();
     }
 
+    /// <summary>召唤物专用：等 3D 飞入/砸落演完再弹右侧展示卡。
+    /// 展示卡是 Screen Space Overlay，若与召唤同时开始，会盖住右侧槽位的飞入段，
+    /// 观感上等同于「召唤动画没播」。法术/反制仍走即时 Show。</summary>
+    public static void ShowAfterSummon(GameObject model, CardData td, bool back)
+    {
+        if (td == null) return;
+        EnsureInstance();
+        if (Instance == null) return;
+
+        Card3DInstance summon = model != null ? model.GetComponent<Card3DInstance>() : null;
+        if (summon == null || !summon.IsSummonAnimating)
+        {
+            Show(td, back);
+            return;
+        }
+        Instance.StartCoroutine(Instance.ShowAfterSummonRoutine(summon, td, back));
+    }
+
+    IEnumerator ShowAfterSummonRoutine(Card3DInstance summon, CardData td, bool back)
+    {
+        yield return summon.WaitForSummonAnimation();
+        Show(td, back);
+    }
+
     static void EnsureInstance()
     {
         if (Instance != null) return;

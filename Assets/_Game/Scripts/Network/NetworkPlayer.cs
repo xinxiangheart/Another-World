@@ -801,7 +801,6 @@ public partial class NetworkPlayer : NetworkBehaviour
                         }
                         Vector3 pos = FindObjectOfType<HandManager>().GetSlotWorldPosition(enemySlot);
                         GameObject model = Instantiate(template.prefab3D, pos, Quaternion.Euler(0, 180, 0));
-                        Card3DInstance.PlaySummonOn(model); // 召唤动画
                         Player.Scale3DModel(model);
                         Card3DInstance c3d = model.GetComponent<Card3DInstance>();
                         if (c3d != null)
@@ -854,6 +853,7 @@ public partial class NetworkPlayer : NetworkBehaviour
                             // 商人/收割者"召唤费用-1"场上固化（server 权威模型；上方已注册 aura，随 activeStatuses 同步）
                             CardInstance.ApplyCostDiscountStatus(ci, slot);
                         }
+                        Card3DInstance.PlaySummonOn(model); // 卡面数据就绪后再播放召唤动画
                         slot.SetCard(model);
                         // 非Token卡 → 玩家放置，禁止过期SyncNow覆盖
                         var placedCI = model.GetComponent<Card3DInstance>()?.cardInstance;
@@ -862,8 +862,8 @@ public partial class NetworkPlayer : NetworkBehaviour
                         if (GlobalEventManager.Instance != null
                             && GlobalEventManager.Instance.IsMistHiderActiveOwnedBy(false))
                             Card3DHover.SetHidden(model, true, false);
-                        // [打出展示] Host 视角看到远程/AI 召唤物落地 → 展示（卡背读模型统一隐藏源）
-                        PlayRevealManager.Show(template, PlayRevealManager.IsHiddenBack(model));
+                        // [打出展示] Host 视角看到远程/AI 召唤物落地 → 落位后再展示（卡背读模型统一隐藏源）
+                        PlayRevealManager.ShowAfterSummon(model, template, PlayRevealManager.IsHiddenBack(model));
                         // 召唤物「进场完成」通知（猩红圣徒 01533 等「敌进场」类光环）：服务端权威版。
                         // 真·远程客户端（有连接）的卡不在服务端跑进场效果（客户端本地跑），所以在这里补发；
                         // AI（离线、无连接）走 SimpleAI 出召唤物分支通知（那边在进场效果之后发，顺序一致）。
@@ -1728,7 +1728,6 @@ public partial class NetworkPlayer : NetworkBehaviour
 
         Vector3 pos = FindObjectOfType<HandManager>().GetSlotWorldPosition(enemySlot);
         GameObject model = Instantiate(template.prefab3D, pos, Quaternion.Euler(0, 180, 0));
-        Card3DInstance.PlaySummonOn(model); // 召唤动画
         Player.Scale3DModel(model);
         model.name = templateID + "_enemy";
 
@@ -1772,6 +1771,7 @@ public partial class NetworkPlayer : NetworkBehaviour
                 c3d.UpdateValues();
             }
         }
+        Card3DInstance.PlaySummonOn(model); // 卡面数据就绪后再播放召唤动画
         slot.SetCard(model);
         // 非Token卡（templateID不以"03"开头）→ 玩家放置，禁止过期SyncNow覆盖
         var tci = model.GetComponent<Card3DInstance>()?.cardInstance;
@@ -1783,8 +1783,8 @@ public partial class NetworkPlayer : NetworkBehaviour
         if (Card3DHover.EnemyCardsAreHidden)
             Card3DHover.SetHidden(model, true, false);
 
-        // [打出展示] 纯客户端看到对手(Host)召唤物 → 展示（卡背读模型统一隐藏源，雾隐/隐藏机制自动跟随）
-        PlayRevealManager.Show(template, PlayRevealManager.IsHiddenBack(model));
+        // [打出展示] 纯客户端看到对手(Host)召唤物 → 落位后再展示（不遮住飞入段）
+        PlayRevealManager.ShowAfterSummon(model, template, PlayRevealManager.IsHiddenBack(model));
 
         Debug.Log($"[NetworkPlayer] TargetSpawnCard3D: {templateID} to enemySlot={enemySlot}");
     }
@@ -2103,7 +2103,15 @@ public partial class NetworkPlayer : NetworkBehaviour
             // 仅上报方自己的槽位空→销毁（不销毁对方卡模型）
             else if (isReportingOwnSlot && slot.currentCard3D != null)
             {
-                Destroy(slot.currentCard3D); slot.SetCard(null);
+                var ownCI = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+                // 过期快照可能正好在 CmdPlayCard 落板后到达：刚放置的卡与召唤演出都不允许被它删掉。
+                if (ownCI != null && ownCI._placedAtTime > 0
+                    && Time.time - ownCI._placedAtTime < BoardSyncManager.PLACE_PROTECT_WINDOW) continue;
+                if (!slot.TryDeferCurrentCardRemoval())
+                {
+                    Destroy(slot.currentCard3D);
+                    slot.SetCard(null);
+                }
             }
         }
         ApplyAttachDiff(bm, attachBlock, isLocalPlayer);
@@ -2341,7 +2349,14 @@ public partial class NetworkPlayer : NetworkBehaviour
             // Empty report → clear the slot
             if (string.IsNullOrEmpty(tid))
             {
-                if (slot.currentCard3D != null) { Destroy(slot.currentCard3D); slot.SetCard(null); }
+                var ownCI = slot.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+                if (ownCI != null && ownCI._placedAtTime > 0
+                    && Time.time - ownCI._placedAtTime < BoardSyncManager.PLACE_PROTECT_WINDOW) continue;
+                if (slot.currentCard3D != null && !slot.TryDeferCurrentCardRemoval())
+                {
+                    Destroy(slot.currentCard3D);
+                    slot.SetCard(null);
+                }
                 continue;
             }
 
@@ -2367,7 +2382,6 @@ public partial class NetworkPlayer : NetworkBehaviour
                 {
                     Vector3 pos = FindObjectOfType<HandManager>().GetSlotWorldPosition(i);
                     GameObject model = Instantiate(t.prefab3D, pos, Quaternion.Euler(0, 180, 0));
-                    Card3DInstance.PlaySummonOn(model); // 召唤动画
                     Player.Scale3DModel(model);
                     Card3DInstance c3d = model.GetComponent<Card3DInstance>();
                     if (c3d != null)
@@ -2375,7 +2389,9 @@ public partial class NetworkPlayer : NetworkBehaviour
                         CardInstance nci = model.AddComponent<CardInstance>();
                         nci.InitFromTemplate(t, 0);
                         c3d.cardInstance = nci;
+                        c3d.UpdateValues();
                     }
+                    Card3DInstance.PlaySummonOn(model); // 卡面数据就绪后再播放召唤动画
                     slot.SetCard(model);
                     ci = model.GetComponent<Card3DInstance>()?.cardInstance;
                 }
@@ -2783,7 +2799,6 @@ public partial class NetworkPlayer : NetworkBehaviour
         HandManager hm = FindObjectOfType<HandManager>();
         Vector3 pos = hm.GetSlotWorldPosition(slotID);
         GameObject model = UnityEngine.Object.Instantiate(t.prefab3D, pos, Quaternion.Euler(0, 180, 0));
-        Card3DInstance.PlaySummonOn(model); // 召唤动画
         Player.Scale3DModel(model);
         Card3DInstance c3d = model.GetComponent<Card3DInstance>();
         if (c3d != null)
@@ -2793,6 +2808,7 @@ public partial class NetworkPlayer : NetworkBehaviour
             c3d.cardInstance = ci;
             c3d.UpdateValues();
         }
+        Card3DInstance.PlaySummonOn(model); // 卡面数据就绪后再播放召唤动画
         slot.SetCard(model);
     }
 
@@ -3176,7 +3192,11 @@ public partial class NetworkPlayer : NetworkBehaviour
         if (ci == null || ci.templateID != "01511" || ci.instanceID != scholarInstanceID) return;
         TargetReceiveReturnedCard(connectionToClient, "01511", scholarState, cardProto);
         var slot = bm.GetSlot(serverSlot);
-        if (slot?.currentCard3D != null) { Destroy(slot.currentCard3D); slot.SetCard(null); }
+        if (slot?.currentCard3D != null && !slot.TryDeferCurrentCardRemoval())
+        {
+            Destroy(slot.currentCard3D);
+            slot.SetCard(null);
+        }
         BoardSyncManager.MarkDirty();
     }
 
@@ -3395,6 +3415,13 @@ public partial class NetworkPlayer : NetworkBehaviour
         BoardSlot slot = bm.GetSlot(clientSlot);
         if (slot?.currentCard3D != null)
         {
+            // 召唤演出中收到移除 RPC（最常见的是服务端仍按旧板面发来的过期销毁），
+            // 先登记演出结束后再删，避免模型飞到一半直接消失。
+            if (slot.TryDeferCurrentCardRemoval()) return;
+            var ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+            if (ci != null && ci._placedAtTime > 0
+                && Time.time - ci._placedAtTime < BoardSyncManager.PLACE_PROTECT_WINDOW) return;
+
             // 清除附着在此槽位的附着模型
             for (int i = bm.attachedModels.Count - 1; i >= 0; i--)
             {

@@ -2,18 +2,20 @@ using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 
-/// <summary>召唤落地反馈：冲击环 + 中心闪光。
-/// 纹理 / 材质 / 四边形全部运行时生成，不新增美术资源；走 BoardLayer 着色器的加法混合，
-/// 队列 3100，盖在卡与棋盘之上。生命周期结束自动 Destroy，不常驻。</summary>
+/// <summary>召唤落地反馈：冲击环 + 中心闪光 + 落地尘土。
+/// 纹理 / 材质 / 四边形全部运行时生成，不新增美术资源；环与闪光是加法混合（队列 3100），
+/// 尘土是普通 alpha 混合（队列 3099），都盖在棋盘之上。生命周期结束自动 Destroy，不常驻。</summary>
 public static class CardSummonFX
 {
     static Mesh _quad;
     static Texture2D _ringTex;
     static Texture2D _flashTex;
     static Texture2D _slotFlashTex;
+    static Texture2D _dustTex;
     static Sprite _slotFlashSprite;
     static Material _ringMat;
     static Material _flashMat;
+    static Material _dustMat;
     static Runner _runner;
 
     // 静态类不能挂协程，借一个空 MonoBehaviour 跑生命周期
@@ -23,7 +25,9 @@ public static class CardSummonFX
     public static void PlayImpact(Vector3 worldPos, float size = 1f)
     {
         EnsureRunner();
-        _runner.StartCoroutine(ImpactRoutine(worldPos, Mathf.Max(0.01f, size)));
+        float s = Mathf.Max(0.01f, size);
+        _runner.StartCoroutine(ImpactRoutine(worldPos, s));
+        _runner.StartCoroutine(DustRoutine(worldPos, s));
     }
 
     /// <summary>槽位落地闪白：贴在槽位上的独立 UI 覆盖层，只负责「亮一下」。
@@ -52,7 +56,7 @@ public static class CardSummonFX
         {
             _slotFlashSprite = Sprite.Create(_slotFlashTex,
                 new Rect(0f, 0f, _slotFlashTex.width, _slotFlashTex.height),
-                new Vector2(0.5f, 0.5f), 100f);
+                new Vector2(0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect);
         }
 
         var go = new GameObject("SummonSlotFlash", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
@@ -107,7 +111,7 @@ public static class CardSummonFX
         var ringBlock = new MaterialPropertyBlock();
         var flashBlock = new MaterialPropertyBlock();
 
-        const float ringDur = 0.30f;
+        const float ringDur = 0.28f;
         const float flashDur = 0.18f;
         float t = 0f;
         while (t < ringDur)
@@ -118,7 +122,7 @@ public static class CardSummonFX
             {
                 float p = Mathf.Clamp01(t / ringDur);
                 float e = 1f - Mathf.Pow(1f - p, 3f);
-                ring.transform.localScale = Vector3.one * (Mathf.Lerp(0.45f, 1.65f, e) * size);
+                ring.transform.localScale = Vector3.one * (Mathf.Lerp(0.30f, 1.30f, e) * size);
                 ringBlock.SetColor("_Color", new Color(1f, 0.90f, 0.68f, 0.55f * (1f - p)));
                 ring.GetComponent<MeshRenderer>().SetPropertyBlock(ringBlock);
             }
@@ -140,6 +144,73 @@ public static class CardSummonFX
         }
 
         if (ring != null) Object.Destroy(ring);
+    }
+
+    /// <summary>落地尘土：8 片柔边小方片从槽位底部向外上方散开，0.45s 内淡出。
+    /// 与冲击环同帧启动；位置略退到相机方向后面，避免和环 / 闪光抢同一层。</summary>
+    static IEnumerator DustRoutine(Vector3 pos, float size)
+    {
+        EnsureAssets();
+        if (_quad == null || _dustMat == null) yield break;
+
+        Vector3 toCamera = Camera.main != null ? -Camera.main.transform.forward : Vector3.back;
+        Vector3 origin = pos + toCamera * 0.18f + Vector3.up * 0.06f;
+
+        const int count = 8;
+        const float duration = 0.45f;
+        var quads = new GameObject[count];
+        var renderers = new MeshRenderer[count];
+        var blocks = new MaterialPropertyBlock[count];
+        var velocities = new Vector3[count];
+        var startScales = new float[count];
+        var endScales = new float[count];
+
+        for (int i = 0; i < count; i++)
+        {
+            float angle = (i / (float)count) * Mathf.PI * 2f + Random.Range(-0.22f, 0.22f);
+            Vector3 dir = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
+            // 向外散开 + 向上偏；重力在循环里施加，粒子先扬后落
+            Vector3 velocity = dir * Random.Range(0.30f, 0.65f)
+                             + Vector3.up * Random.Range(0.35f, 0.70f);
+
+            GameObject quad = SpawnQuad("SummonDust", _dustMat, origin + dir * Random.Range(0f, 0.10f));
+            quad.transform.localRotation = Quaternion.Euler(0f, 0f, Random.Range(0f, 360f));
+            startScales[i] = Random.Range(0.08f, 0.13f) * size;
+            endScales[i] = Random.Range(0.26f, 0.36f) * size;
+            quad.transform.localScale = Vector3.one * startScales[i];
+            quads[i] = quad;
+            renderers[i] = quad.GetComponent<MeshRenderer>();
+            blocks[i] = new MaterialPropertyBlock();
+            velocities[i] = velocity;
+        }
+
+        float t = 0f;
+        while (t < duration)
+        {
+            t += Time.deltaTime;
+            float p = Mathf.Clamp01(t / duration);
+            float grow = 1f - Mathf.Pow(1f - p, 2f);
+            float alpha = 0.48f * Mathf.Pow(1f - p, 1.5f);
+
+            for (int i = 0; i < count; i++)
+            {
+                GameObject quad = quads[i];
+                if (quad == null) continue;
+
+                velocities[i] += Vector3.down * (2f * Time.deltaTime);
+                quad.transform.position += velocities[i] * Time.deltaTime;
+
+                float scale = Mathf.Lerp(startScales[i], endScales[i], grow);
+                quad.transform.localScale = new Vector3(scale, scale * 0.72f, 1f);
+
+                blocks[i].SetColor("_Color", new Color(0.84f, 0.77f, 0.63f, alpha));
+                if (renderers[i] != null) renderers[i].SetPropertyBlock(blocks[i]);
+            }
+            yield return null;
+        }
+
+        for (int i = 0; i < count; i++)
+            if (quads[i] != null) Object.Destroy(quads[i]);
     }
 
     static GameObject SpawnQuad(string name, Material material, Vector3 position)
@@ -164,8 +235,10 @@ public static class CardSummonFX
         if (_ringTex == null) _ringTex = BuildRingTexture();
         if (_flashTex == null) _flashTex = BuildFlashTexture();
         if (_slotFlashTex == null) _slotFlashTex = BuildSlotFlashTexture();
+        if (_dustTex == null) _dustTex = BuildDustTexture();
         if (_ringMat == null) _ringMat = BuildMaterial(_ringTex);
         if (_flashMat == null) _flashMat = BuildMaterial(_flashTex);
+        if (_dustMat == null) _dustMat = BuildMaterial(_dustTex, false, 3099);
     }
 
     static Mesh BuildQuad()
@@ -191,7 +264,7 @@ public static class CardSummonFX
 
     static Texture2D BuildRingTexture()
     {
-        const int n = 128;
+        const int n = 256;
         var tex = new Texture2D(n, n, TextureFormat.RGBA32, false);
         tex.wrapMode = TextureWrapMode.Clamp;
         tex.filterMode = FilterMode.Bilinear;
@@ -205,8 +278,9 @@ public static class CardSummonFX
                 float dy = (y + 0.5f) / n - 0.5f;
                 float r = Mathf.Sqrt(dx * dx + dy * dy);
 
-                float inner = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.34f, 0.40f, r));
-                float outer = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.46f, 0.50f, r));
+                // 内外都留出渐变：外沿在 0.47 处已经归零，四边形边缘不会把环切出硬边
+                float inner = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.28f, 0.38f, r));
+                float outer = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.38f, 0.47f, r));
                 float a = Mathf.Clamp01(inner * outer);
 
                 px[y * n + x] = new Color32(255, 255, 255, (byte)Mathf.RoundToInt(a * 255f));
@@ -220,7 +294,7 @@ public static class CardSummonFX
 
     static Texture2D BuildFlashTexture()
     {
-        const int n = 128;
+        const int n = 256;
         var tex = new Texture2D(n, n, TextureFormat.RGBA32, false);
         tex.wrapMode = TextureWrapMode.Clamp;
         tex.filterMode = FilterMode.Bilinear;
@@ -232,7 +306,8 @@ public static class CardSummonFX
             {
                 float dx = (x + 0.5f) / n - 0.5f;
                 float dy = (y + 0.5f) / n - 0.5f;
-                float r = Mathf.Sqrt(dx * dx + dy * dy) / 0.5f;
+                // 0.47 而不是 0.5：边缘留 6% 透明余量，quad 边界不会切出一圈硬边
+                float r = Mathf.Sqrt(dx * dx + dy * dy) / 0.47f;
                 float a = Mathf.Pow(Mathf.Clamp01(1f - r), 2f);
 
                 px[y * n + x] = new Color32(255, 255, 255, (byte)Mathf.RoundToInt(a * 255f));
@@ -248,7 +323,7 @@ public static class CardSummonFX
     /// 只有槽位四周亮一圈，读作金属边框被砸亮。</summary>
     static Texture2D BuildSlotFlashTexture()
     {
-        const int n = 128;
+        const int n = 256;
         var tex = new Texture2D(n, n, TextureFormat.RGBA32, false);
         tex.wrapMode = TextureWrapMode.Clamp;
         tex.filterMode = FilterMode.Bilinear;
@@ -262,9 +337,11 @@ public static class CardSummonFX
                 float dy = Mathf.Abs((y + 0.5f) / n - 0.5f) * 2f;
                 float m = Mathf.Max(dx, dy);
 
-                float inner = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.55f, 0.78f, m));
-                float outer = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.90f, 1.0f, m));
-                float a = inner * outer;
+                // 亮带在 0.70 附近，之后一路衰减到 0.94；最后 6% 完全透明，
+                // 槽位外沿不会再出现一条突然截断的方框边。
+                float inner = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.45f, 0.70f, m));
+                float outer = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.70f, 0.94f, m));
+                float a = Mathf.Clamp01(inner * outer);
 
                 px[y * n + x] = new Color32(255, 255, 255, (byte)Mathf.RoundToInt(a * 255f));
             }
@@ -275,7 +352,34 @@ public static class CardSummonFX
         return tex;
     }
 
-    static Material BuildMaterial(Texture2D tex)
+    /// <summary>尘土用的柔边圆片：中心略实、边缘完全透明，叠 8 片后读作一团散开的浮尘。</summary>
+    static Texture2D BuildDustTexture()
+    {
+        const int n = 128;
+        var tex = new Texture2D(n, n, TextureFormat.RGBA32, false);
+        tex.wrapMode = TextureWrapMode.Clamp;
+        tex.filterMode = FilterMode.Bilinear;
+
+        var px = new Color32[n * n];
+        for (int y = 0; y < n; y++)
+        {
+            for (int x = 0; x < n; x++)
+            {
+                float dx = (x + 0.5f) / n - 0.5f;
+                float dy = (y + 0.5f) / n - 0.5f;
+                float r = Mathf.Sqrt(dx * dx + dy * dy) / 0.47f;
+                float a = Mathf.Pow(Mathf.Clamp01(1f - r), 1.6f);
+
+                px[y * n + x] = new Color32(255, 255, 255, (byte)Mathf.RoundToInt(a * 255f));
+            }
+        }
+
+        tex.SetPixels32(px);
+        tex.Apply();
+        return tex;
+    }
+
+    static Material BuildMaterial(Texture2D tex, bool additive = true, int renderQueue = 3100)
     {
         Shader shader = Shader.Find("AnotherWorld/BoardLayer");
         if (shader == null) return null;
@@ -283,9 +387,9 @@ public static class CardSummonFX
         var mat = new Material(shader);
         mat.SetTexture("_MainTex", tex);
         mat.SetColor("_Color", Color.white);
-        mat.SetFloat("_SrcBlend", 5f);   // SrcAlpha
-        mat.SetFloat("_DstBlend", 1f);   // One（加法）
-        mat.renderQueue = 3100;
+        mat.SetFloat("_SrcBlend", 5f);                                  // SrcAlpha
+        mat.SetFloat("_DstBlend", additive ? 1f : 10f);                 // One / OneMinusSrcAlpha
+        mat.renderQueue = renderQueue;
         return mat;
     }
 }

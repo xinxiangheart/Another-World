@@ -401,14 +401,6 @@ public class HandManager : MonoBehaviour
             FindObjectOfType<CardDrag>()?.SetButtonsInteractable(false);
         }
 
-        // [打出展示] 己方真实手牌召唤物落地：仅带 CardView 的真手牌（效果直接生成的 Token 无 CardView，不捕获）→ 正面展示
-        if (cardObject.GetComponent<CardView>() != null
-            && template.cardType == CardType.Summon
-            && !sourceInstance.canAttach)
-        {
-            PlayRevealManager.Show(template, false);
-        }
-
         // ========== 附着牌打出处理 ==========
         if (sourceInstance.canAttach)
         {
@@ -535,7 +527,6 @@ public class HandManager : MonoBehaviour
         Vector3 worldPos = GetSlotWorldPosition(slot.slotID);
 
         GameObject model = Instantiate(template.prefab3D, worldPos, Quaternion.Euler(0, 180, 0));
-        Card3DInstance.PlaySummonOn(model); // 从所属玩家一侧正向飞入槽位
         model.name = sourceInstance.instanceID;
         model.transform.localScale = template.prefab3D.transform.localScale;
         Player.Scale3DModel(model);
@@ -556,8 +547,17 @@ public class HandManager : MonoBehaviour
             instance3D.cardInstance = cardInst;
             // 商人/收割者"召唤费用-1"场上固化（仅权威侧：host/离线/server 落板一次，随 activeStatuses 同步）
             if (NetworkServer.active) CardInstance.ApplyCostDiscountStatus(cardInst, slot);
+            // 先把卡面数据刷好，再播放飞入；否则起飞段可能是一张尚未刷新、甚至正面容器
+            // 未激活的空卡，玩家会以为「动画没播」。
+            instance3D.UpdateValues();
         }
 
+        Card3DInstance.PlaySummonOn(model); // 从所属玩家一侧正向飞入槽位
+        // [打出展示] 真手牌召唤物：等 3D 飞入落位后再弹展示，避免右侧 Overlay 盖住动画。
+        if (cardObject.GetComponent<CardView>() != null
+            && template.cardType == CardType.Summon
+            && !sourceInstance.canAttach)
+            PlayRevealManager.ShowAfterSummon(model, template, false);
         slot.SetCard(model);
         // 同步到服务器——纯客户端 MarkDirty 是空操作，必须显式通知服务器
         if (NetworkClient.isConnected && !string.IsNullOrEmpty(sourceInstance.templateID))
@@ -682,7 +682,6 @@ public class HandManager : MonoBehaviour
 
         Vector3 mergePos = GetSlotWorldPosition(slot.slotID);
         GameObject mergeModel = Instantiate(yinYangData.prefab3D, mergePos, Quaternion.Euler(0, 180, 0));
-        Card3DInstance.PlaySummonOn(mergeModel); // 召唤动画
         Player.Scale3DModel(mergeModel);
         mergeModel.name = "03012_merged";
         Card3DInstance mergeInst = mergeModel.GetComponent<Card3DInstance>();
@@ -703,6 +702,7 @@ public class HandManager : MonoBehaviour
             mergeInst.UpdateValues();
             mergeCard.xInitialHealth = mergeCard.currentHealth;
         }
+        Card3DInstance.PlaySummonOn(mergeModel); // 召唤动画
         slot.SetCard(mergeModel);
         if (mergeInst != null) UpdateXValues(mergeInst.cardInstance);
 
@@ -1339,7 +1339,6 @@ public class HandManager : MonoBehaviour
     {
         Vector3 worldPos = GetSlotWorldPosition(slot.slotID);
         GameObject model = Instantiate(template.prefab3D, worldPos, Quaternion.Euler(0, 180, 0));
-        Card3DInstance.PlaySummonOn(model); // 从所属玩家一侧正向飞入槽位
         Player.Scale3DModel(model);
         model.name = sourceInstance.instanceID;
         Card3DInstance instance3D = model.GetComponent<Card3DInstance>();
@@ -1355,8 +1354,9 @@ public class HandManager : MonoBehaviour
             instance3D.cardInstance = cardInst;
         }
 
-        slot.SetCard(model);
         if (instance3D != null) instance3D.UpdateValues();
+        Card3DInstance.PlaySummonOn(model); // 从所属玩家一侧正向飞入槽位
+        slot.SetCard(model);
 
         // 附着专用卡（baseHealth==0）永远不放独立槽位模型到服务器
         if (sourceInstance.canAttach && sourceInstance.baseHealth == 0)

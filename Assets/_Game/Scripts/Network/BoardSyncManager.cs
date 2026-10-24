@@ -74,13 +74,24 @@ public class BoardSyncManager : MonoBehaviour
                     {
                         // 当前槽位的卡更新 → 销毁旧槽位的
                         var oldSlot = bm.GetSlot(prev.slotID);
-                        if (oldSlot?.currentCard3D != null) { SafeDestroy(oldSlot.currentCard3D); oldSlot.SetCard(null); }
+                        if (oldSlot?.currentCard3D != null)
+                        {
+                            if (!oldSlot.TryDeferCurrentCardRemoval())
+                            {
+                                SafeDestroy(oldSlot.currentCard3D);
+                                oldSlot.SetCard(null);
+                            }
+                        }
                         seen[iid] = (i, curTime);
                     }
                     else
                     {
                         // 当前槽位的卡更旧 → 销毁当前
-                        SafeDestroy(slot.currentCard3D); slot.SetCard(null);
+                        if (!slot.TryDeferCurrentCardRemoval())
+                        {
+                            SafeDestroy(slot.currentCard3D);
+                            slot.SetCard(null);
+                        }
                     }
                 }
                 else
@@ -378,6 +389,8 @@ public class BoardSyncManager : MonoBehaviour
         if (slot.currentCard3D != null)
         {
             var ci = slot.currentCard3D.GetComponent<Card3DInstance>()?.cardInstance;
+            // 召唤演出期间一律不删：过期同步常见的“空槽快照”会正好落在刚打出的 0.6s 内。
+            if (slot.TryDeferCurrentCardRemoval()) return;
             // 刚放置/换位的卡不销毁（时间窗口，双端一致）——防止过期同步误删刚出的牌
             if (ci != null && Time.time - ci._placedAtTime < PLACE_PROTECT_WINDOW) return;
             // 纯客户端兜底守卫：从未被服务端同步确认（serverAckGen<0）的牌不销毁——
@@ -424,6 +437,7 @@ public class BoardSyncManager : MonoBehaviour
         // templateID 不匹配 → 当前模型已过时。纯客户端：TargetSpawnCard3D 权威处理，SyncNow 不做替换
         if (cur != null && cur.templateID != tid)
         {
+            if (slot.TryDeferCurrentCardRemoval()) return;
             if (NetworkClient.isConnected && !NetworkServer.active) return;
             if (cur._hadEnterEffect) return;
             if (cur._enterEffectRunning) return;
@@ -462,9 +476,9 @@ public class BoardSyncManager : MonoBehaviour
             if (t?.prefab3D != null)
             {
                 var m = Instantiate(t.prefab3D, hm.GetSlotWorldPosition(idx), Quaternion.Euler(0, 180, 0));
-                Card3DInstance.PlaySummonOn(m); // 召唤动画
                 var c = m.GetComponent<Card3DInstance>();
                 if (c != null) { var n = m.AddComponent<CardInstance>(); n.InitFromTemplate(t, 0); if (t.templateID == "03007") n.isShadow = true; if (t.templateID == "01502") CardInstance.shadowMasterAlive = true; n._placedAtTime = Time.time; n.placementGeneration = BoardSlot.NextPlacementGeneration(); n.serverAckGen = syncGen; c.cardInstance = n; c.UpdateValues(); }
+                Card3DInstance.PlaySummonOn(m); // 卡面数据就绪后再播放召唤动画
                 slot.SetCard(m);
                 cur = c?.cardInstance; justCreated = true;
             }
