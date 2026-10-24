@@ -29,6 +29,8 @@ public class CardView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
     bool _hovered;
     /// <summary>当前是否被悬停（HandManager 布局让位用）。</summary>
     public bool IsHovered => _hovered;
+    /// <summary>常态尺寸（含手牌 restScale，不含悬停放大）。拖拽回手以它为准。</summary>
+    public Vector3 RestScale => originalScale * _sizeScale;
 
     /// <summary>压暗是否真的落在这张卡上：**悬停期间一律视作未压暗** —— 鼠标压上来这张卡就脱出压暗
     /// （还原高度 / 原色），展示与非压暗态一致；鼠标离开后随 _dimOn 淡回压暗态。
@@ -117,7 +119,7 @@ public class CardView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
         if (_hovered) p.y += HOVER_RAISE; // 悬停上浮加在（压暗时的）休息位之上
         return p;
     }
-    Vector3 DesiredScale() => originalScale * _sizeScale * (_hovered ? HOVER_SCALE : 1f); // 悬停放大从常态（已缩小）尺寸起算
+    Vector3 DesiredScale() => RestScale * (_hovered ? HOVER_SCALE : 1f); // 悬停放大从常态（已缩小）尺寸起算
 
     /// <summary>整手尺寸 + 压暗/还原（HandManager 统一驱动）。scale = **常态尺寸倍率**
     /// （压暗态与常态同一份，所以不分 dim 与否都写进去）；dim=true 额外多一份下移 offsetY + 去饱和压暗
@@ -159,6 +161,13 @@ public class CardView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
     {
         if (IsFlying) return;
         rectTransform.localScale = DesiredScale();
+    }
+
+    /// <summary>手牌开始拖拽：清掉悬停状态并停掉悬停缓动，避免失败回手后仍按悬停态抬高、放大。</summary>
+    public void CancelHoverForDrag()
+    {
+        _hovered = false;
+        StopAllCoroutines();
     }
 
     void Update()

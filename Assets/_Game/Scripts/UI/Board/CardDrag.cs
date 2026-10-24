@@ -59,7 +59,16 @@ public class CardDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDrag
         if (handManager != null && handManager.IsDrawAnimating) return;
 
         originalLocalPos = rectTransform.localPosition;
-        originalScale = transform.localScale;
+        CardView cardView = GetComponent<CardView>();
+        if (cardView != null)
+        {
+            cardView.CancelHoverForDrag();
+            originalScale = cardView.RestScale;
+        }
+        else
+        {
+            originalScale = transform.localScale;
+        }
         originalParent = transform.parent;
 
         tempCanvas = gameObject.AddComponent<Canvas>();

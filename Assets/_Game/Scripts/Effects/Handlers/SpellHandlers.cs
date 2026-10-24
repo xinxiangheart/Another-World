@@ -28,6 +28,7 @@ public static class SpellHandlers
         Register("02002", Handle02002);
         Register("02004", Handle02004);
         Register("02006", Handle02006);
+        // 旧 ID 兼容；当前「飘荡元素」模板 ID 为 02113，注册在下方 1 费区块。
         Register("02009", Handle02009);
         Register("02010", Handle02010);
 
@@ -40,6 +41,7 @@ public static class SpellHandlers
         Register("02109", Handle02109);
         Register("02110", Handle02110);
         Register("02111", Handle02111);
+        Register("02113", Handle02009);
 
         // 2费
         Register("02201", Handle02201);
@@ -138,6 +140,7 @@ public static class SpellHandlers
         Cleanup();
     }
 
+    /// <summary>02113 飘荡元素（旧 ID 02009）：随机获得一张元素牌。</summary>
     static void Handle02009(EffectContext ctx)
     {
         string[] ids = { "03015", "03016", "03017", "03018", "03019" };

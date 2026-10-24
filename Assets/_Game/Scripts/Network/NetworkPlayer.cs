@@ -1722,7 +1722,7 @@ public partial class NetworkPlayer : NetworkBehaviour
         // instanceID 不同 → 旧卡需替换（如 token 重生、狼王变形），先清旧卡
         if (slot.currentCard3D != null)
         {
-            Destroy(slot.currentCard3D);
+            if (!slot.TryDeferCurrentCardRemoval()) Destroy(slot.currentCard3D);
             slot.SetCard(null);
         }
 

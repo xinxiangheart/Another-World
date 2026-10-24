@@ -1657,11 +1657,18 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 : FindObjectOfType<HandManager>();
             Card3DInstance summoning = currentCard3D != null
                 ? currentCard3D.GetComponent<Card3DInstance>() : null;
+            bool delayRestore = hm != null && hm.IsHandHidden && slotID >= 6
+                && summoning != null && summoning.IsSummonAnimating;
+            Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, this,
+                "{0}[hand] CLEANUP_DECIDE slot={1} handHidden={2} summoning={3} animating={4} elapsed={5:F3} delayRestore={6}",
+                Card3DInstance.SummonTracePrefix, slotID, hm != null && hm.IsHandHidden,
+                summoning != null ? $"{summoning.name}#{summoning.GetInstanceID()}" : "null",
+                summoning != null && summoning.IsSummonAnimating,
+                summoning != null ? summoning.SummonElapsedForTrace : -1f, delayRestore);
             // 本端手牌还压在下半屏、而新召唤动画正从玩家一侧起飞时，先别把手牌拉回来：
             // 手牌是 Screen Space Overlay，恢复后会把 y≈-2.3 的起飞段整段盖住
             // （旧动画只缩放槽位上的卡，碰不到这个区域，所以以前没有这个问题）。
-            if (hm != null && hm.IsHandHidden && slotID >= 6
-                && summoning != null && summoning.IsSummonAnimating)
+            if (delayRestore)
             {
                 _restoreHandAfterSummon = true;
             }
@@ -1691,6 +1698,11 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     void RestoreHandAfterSummon()
     {
         _restoreHandAfterSummon = false;
+        Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, this,
+            "{0}[hand] RESTORE_AFTER_SUMMON slot={1} current={2} animating={3}",
+            Card3DInstance.SummonTracePrefix, slotID,
+            currentCard3D != null ? $"{currentCard3D.name}#{currentCard3D.GetInstanceID()}" : "null",
+            currentCard3D != null && currentCard3D.GetComponent<Card3DInstance>()?.IsSummonAnimating == true);
         HandManager hm = Player.Instance != null && Player.Instance.myHandManager != null
             ? Player.Instance.myHandManager
             : FindObjectOfType<HandManager>();
@@ -1767,8 +1779,27 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
     public void SetCard(GameObject card3D)
     {
+        GameObject previous = currentCard3D;
+        // 槽位改指向另一张牌时，旧牌若还在播召唤演出，不能让它停在半空或凭空消失：
+        // 登记“演完再销毁”，演出照常可见，收尾时只清仍指向自己的槽位。
+        if (previous != null && previous != card3D)
+        {
+            Card3DInstance prevSummon = previous.GetComponent<Card3DInstance>();
+            if (prevSummon != null && prevSummon.IsSummonAnimating) prevSummon.RequestDestroyAfterSummon();
+        }
         currentCard3D = card3D;
         hasCard = card3D != null;
+        Card3DInstance incoming3D = card3D != null ? card3D.GetComponent<Card3DInstance>() : null;
+        Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, this,
+            "{0}[slot] SET_CARD slot={1} prev={2} next={3}#{4} nextTid={5} anim={6} ticker={7} activeSelf={8} activeHierarchy={9}",
+            Card3DInstance.SummonTracePrefix, slotID,
+            previous != null ? $"{previous.name}#{previous.GetInstanceID()}" : "null",
+            card3D != null ? card3D.name : "null", card3D != null ? card3D.GetInstanceID() : 0,
+            incoming3D?.cardInstance?.templateID ?? "-",
+            incoming3D != null && incoming3D.IsSummonAnimating,
+            incoming3D != null && incoming3D.SummonTickerRegistered,
+            card3D != null && card3D.activeSelf,
+            card3D != null && card3D.activeInHierarchy);
         if (card3D != null)
         {
             var ci = card3D.GetComponent<Card3DInstance>()?.cardInstance;
@@ -1795,6 +1826,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         Card3DInstance summon = model.GetComponent<Card3DInstance>();
         if (summon == null || !summon.IsSummonAnimating) return false;
 
+        Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, this,
+            "{0}[slot] DEFER_REMOVE slot={1} model={2}#{3} elapsed={4:F3}",
+            Card3DInstance.SummonTracePrefix, slotID, model.name, model.GetInstanceID(), summon.SummonElapsedForTrace);
         summon.RequestDestroyAfterSummon();
         return true;
     }

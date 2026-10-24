@@ -1,9 +1,67 @@
 using System.Collections;
+using TMPro;
 using UnityEngine;
 
 public class Card3DInstance : MonoBehaviour
 {
+    internal const string SummonTracePrefix = "[SUMMON-TRACE]";
     public CardInstance cardInstance;
+
+    internal string SummonTraceLabel => $"{SummonTracePrefix}[{name}#{GetInstanceID()}]";
+    internal bool SummonTickerRegistered => _summonTickerRegistered;
+    internal float SummonElapsedForTrace => _summonElapsed;
+
+    /// <summary>本端（玩家半场）是否有召唤演出正在播放。手牌区的“恢复显示”要等它结束，
+    /// 否则 Screen Space Overlay 的手牌会在飞行途中重新盖住卡。</summary>
+    public static bool AnyOwnSummonAnimating => s_ownSummonVisuals > 0;
+
+    /// <summary>诊断召唤丢失：每次只在关键节点输出，带激活态/可见渲染器/视口坐标。</summary>
+    void TraceSummon(string phase, string extra = null)
+    {
+        if (!Application.isPlaying) return;
+
+        Renderer[] renderers = GetComponentsInChildren<Renderer>(true);
+        int enabledRenderers = 0;
+        int visibleRenderers = 0;
+        float minAlpha = 1f;
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            Renderer r = renderers[i];
+            if (r == null || !r.enabled || !r.gameObject.activeInHierarchy) continue;
+            enabledRenderers++;
+            if (r.isVisible) visibleRenderers++;
+        }
+        SpriteRenderer[] sprites = GetComponentsInChildren<SpriteRenderer>(true);
+        for (int i = 0; i < sprites.Length; i++)
+        {
+            SpriteRenderer sr = sprites[i];
+            if (sr == null || !sr.gameObject.activeInHierarchy) continue;
+            if (sr.color.a < minAlpha) minAlpha = sr.color.a;
+        }
+        TMP_Text[] texts = GetComponentsInChildren<TMP_Text>(true);
+        for (int i = 0; i < texts.Length; i++)
+        {
+            TMP_Text t = texts[i];
+            if (t == null || !t.gameObject.activeInHierarchy) continue;
+            if (t.alpha < minAlpha) minAlpha = t.alpha;
+        }
+
+        Transform ui = transform.Find("UIComponents");
+        bool uiActive = ui == null || ui.gameObject.activeSelf;
+
+        Camera cam = Camera.main;
+        Vector3 viewport = cam != null ? cam.WorldToViewportPoint(transform.position) : Vector3.zero;
+        string extraText = string.IsNullOrEmpty(extra) ? "" : " " + extra;
+
+        Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, this,
+            "{0} {1} f={2} ut={3:F3} anim={4} ticker={5} elapsed={6:F3} activeSelf={7} activeHierarchy={8} compEnabled={9} tid={10} iid={11} renderers={12}/{13} visible={14} minAlpha={15:F2} ui={16} vp=({17:F2},{18:F2},{19:F2}) pos={20}{21}",
+            SummonTraceLabel, phase, Time.frameCount, Time.unscaledTime, _summonAnimating, _summonTickerRegistered,
+            _summonElapsed, gameObject.activeSelf, gameObject.activeInHierarchy, enabled,
+            cardInstance != null ? cardInstance.templateID : "-",
+            cardInstance != null ? cardInstance.instanceID : "-",
+            enabledRenderers, renderers.Length, visibleRenderers, minAlpha, uiActive,
+            viewport.x, viewport.y, viewport.z, transform.position, extraText);
+    }
 
     void Awake()
     {
@@ -40,21 +98,32 @@ public class Card3DInstance : MonoBehaviour
     public void PlaySummonAnimation(Vector3? fromWorld = null)
     {
         if (this == null) return;
+        TraceSummon("CALL", $"from={(fromWorld.HasValue ? fromWorld.Value.ToString("F2") : "auto")}");
 
         // 同帧两条生成/同步链路重复调用时只算一次；仍在正常推进的演出也不重播。
         bool startedThisFrame = _summonAnimating && _summonStartFrame == Time.frameCount;
         bool tickingNormally = _summonAnimating && _summonTickerRegistered
             && Time.unscaledTime - _summonLastTickTime < 0.35f;
-        if (startedThisFrame || tickingNormally) return;
+        if (startedThisFrame || tickingNormally)
+        {
+            TraceSummon("SKIP_REENTRANT", $"startedThisFrame={startedThisFrame} tickingNormally={tickingNormally}");
+            return;
+        }
 
         // 域重载 / 父节点失活后再次进入：序列化进度仍在，直接接回推进器，
         // 不从头重播，更不能因为残留的 _summonAnimating 把新演出永久挡掉。
         if (_summonAnimating && _summonElapsed > 0f)
         {
+            TraceSummon("RESUME_EXISTING", "domain-reload-or-reenable");
             PrepareVisualForSummon();
+            CaptureSummonVisual();
+            BeginSummonOverlay();
+            SetSummonVisualCounted(true);
+            EnforceSummonVisual();
             LockSummonPresentation();
             SummonAnimationTicker.Register(this);
             ApplySummonPose();
+            TraceSummon("RESUME_EXISTING_RETURN");
             return;
         }
 
@@ -63,6 +132,10 @@ public class Card3DInstance : MonoBehaviour
         if (scaleTarget == null)
         {
             Debug.LogWarning($"[Summon] 缺少卡面容器 {name}");
+            TraceSummon("ABORT_NO_SCALE_TARGET");
+            RestoreSummonVisual();
+            EndSummonOverlay();
+            SetSummonVisualCounted(false);
             return;
         }
 
@@ -70,25 +143,35 @@ public class Card3DInstance : MonoBehaviour
         _summonImpactTriggered = false;
         _summonRetireAfterComplete = false;
         _summonElapsed = 0f;
+        _summonTraceStage = -1;
         _summonProgressFrame = Time.frameCount;
         _summonStartFrame = Time.frameCount;
         _summonBasePos = transform.position;
         _summonBaseRot = transform.rotation;
         _summonBaseScale = scaleTarget.localScale;
         _summonTo = transform.position;
+        CaptureSummonVisual();
+        BeginSummonOverlay();
+        SetSummonVisualCounted(true);
+        EnforceSummonVisual();
         Camera cam = Camera.main;
         _summonToCam = cam != null ? -cam.transform.forward : Vector3.back;
         Vector3 from = fromWorld ?? ComputeSummonOrigin(_summonTo);
         // 正向：从所属玩家的一侧朝槽位直飞，横向与目标对齐。
         from.x = _summonTo.x;
         _summonFrom = from;
+        TraceSummon("START", $"from={_summonFrom.ToString("F2")} to={_summonTo.ToString("F2")} baseScale={_summonBaseScale.ToString("F3")}");
 
         // 同步抢占根 Transform：不能等协程第一帧再关，否则 Card3DAnimator / 攻击动画
         // 可能在同帧写入 localPosition/localScale，把飞行起点或落点覆盖掉。
         LockSummonPresentation();
         ApplySummonPose();
         // 最后一个动作再注册：上面的 ApplySummonPose 若当场完成（例如容器缺失）不会留下空目标。
-        if (_summonAnimating) SummonAnimationTicker.Register(this);
+        if (_summonAnimating)
+        {
+            SummonAnimationTicker.Register(this);
+            TraceSummon("REGISTERED");
+        }
     }
 
     public bool IsSummonAnimating => _summonAnimating;
@@ -125,15 +208,21 @@ public class Card3DInstance : MonoBehaviour
     {
         if (this == null || !_summonAnimating) return;
 
+        TraceSummon("COMPLETE", $"retireAfter={_summonRetireAfterComplete}");
+
         _summonAnimating = false;
         _summonImpactTriggered = false;
         _summonElapsed = 0f;
         _summonStartFrame = -1;
         SummonAnimationTicker.Unregister(this);
+        RestoreSummonVisual();
+        EndSummonOverlay();
+        SetSummonVisualCounted(false);
 
         RestoreSummonPresentation(
             GetScaleTarget(), _summonBasePos, _summonBaseRot, _summonBaseScale,
             GetComponent<Card3DHover>(), GetComponent<Card3DAnimator>());
+        ApplyPendingHiddenState();
         RetireAfterSummonIfRequested();
     }
 
@@ -142,9 +231,30 @@ public class Card3DInstance : MonoBehaviour
     public void RequestDestroyAfterSummon()
     {
         if (this == null) return;
+        TraceSummon("REQUEST_RETIRE_AFTER_SUMMON");
         _summonRetireAfterComplete = true;
         Card3DHover hover = GetComponent<Card3DHover>();
         if (hover != null) hover.enabled = false;
+    }
+
+    // 召唤期间收到的“翻面/隐藏”请求先压住：飞行中的正面容器不能被 ShowBack 关掉。
+    // 演出结束后再由 CompleteSummonAnimation 统一套用，保证终态仍是同步来的那一面。
+    bool _hasPendingHiddenState;
+    bool _pendingHidden;
+    bool _pendingHiddenIsAttachment;
+
+    public void DeferHiddenUntilSummonComplete(bool hidden, bool isAttachment)
+    {
+        _hasPendingHiddenState = true;
+        _pendingHidden = hidden;
+        _pendingHiddenIsAttachment = isAttachment;
+    }
+
+    void ApplyPendingHiddenState()
+    {
+        if (!_hasPendingHiddenState) return;
+        _hasPendingHiddenState = false;
+        Card3DHover.SetHidden(gameObject, _pendingHidden, _pendingHiddenIsAttachment);
     }
 
     void RestoreSummonPresentation(
@@ -177,6 +287,81 @@ public class Card3DInstance : MonoBehaviour
     [System.NonSerialized] bool _summonTickerRegistered;
     [System.NonSerialized] float _summonLastTickTime;
     [System.NonSerialized] int _summonStartFrame = -1;
+    [System.NonSerialized] int _summonTraceStage = -1;
+
+    // ── 召唤期“硬可见”快照 ──────────────────────────────────────────────
+    // 任何路径（翻面、压暗、展示层、状态刷新、运行时重建）只要把卡面任意一层
+    // 关掉或写成透明，玩家看到的就是“槽位凭空出现”。演出期间每帧按快照恢复，
+    // 并把 SortingOrder 抬到最上层；演出结束再把 SortingOrder 原样写回。
+    struct SummonSpriteVisual
+    {
+        public SpriteRenderer renderer;
+        public bool enabled;
+        public Color color;
+        public Sprite sprite;
+        public int sortingLayerID;
+        public int sortingOrder;
+    }
+
+    struct SummonTextVisual
+    {
+        public TMP_Text text;
+        public bool enabled;
+        public float alpha;
+    }
+
+    struct SummonRendererVisual
+    {
+        public Renderer renderer;
+        public bool enabled;
+    }
+
+    struct SummonGroupVisual
+    {
+        public CanvasGroup group;
+        public float alpha;
+    }
+
+    struct SummonChildVisual
+    {
+        public GameObject gameObject;
+        public bool activeSelf;
+    }
+
+    const int SummonTopSortingOrder = 30000;
+
+    SummonSpriteVisual[] _summonSpriteVisuals;
+    SummonTextVisual[] _summonTextVisuals;
+    SummonRendererVisual[] _summonRendererVisuals;
+    SummonGroupVisual[] _summonGroupVisuals;
+    SummonChildVisual[] _summonChildVisuals;
+    [System.NonSerialized] bool _summonVisualCaptured;
+    [System.NonSerialized] bool _summonVisualCounted;
+    [System.NonSerialized] bool _summonCountsForHand;
+    [System.NonSerialized] bool _summonOverlayActive;
+    static int s_ownSummonVisuals;
+
+    bool BeginSummonOverlay()
+    {
+        if (_summonOverlayActive) return true;
+        _summonOverlayActive = SummonOverlayRenderer.Begin(this);
+        return _summonOverlayActive;
+    }
+
+    void EndSummonOverlay()
+    {
+        if (!_summonOverlayActive) return;
+        _summonOverlayActive = false;
+        SummonOverlayRenderer.End(this);
+    }
+
+    /// <summary>推进器在每个 LateUpdate 末尾（所有普通脚本之后）再压一次可见态，
+    /// 防止同帧后续逻辑把卡面关掉或写透明。</summary>
+    internal void EnforceSummonVisibleNow()
+    {
+        if (!_summonAnimating) return;
+        EnsureSummonVisible();
+    }
 
     internal void MarkSummonTickerRegistered(bool registered)
     {
@@ -191,9 +376,19 @@ public class Card3DInstance : MonoBehaviour
         // 域重载 / SetActive 往返后，序列化进度还在、推进器的静态引用已经没了。
         // 先重新登记常驻推进器，再套用当前帧姿态；即使父节点稍后才激活也不会停住。
         if (!Application.isPlaying || !_summonAnimating) return;
+        TraceSummon("ON_ENABLE_RESUME");
+        CaptureSummonVisual();
+        BeginSummonOverlay();
+        SetSummonVisualCounted(true);
+        EnforceSummonVisual();
         SummonAnimationTicker.Register(this);
         LockSummonPresentation();
         ApplySummonPose();
+    }
+
+    void OnDisable()
+    {
+        if (_summonAnimating) TraceSummon("ON_DISABLE_MID_SUMMON");
     }
 
     void Update()
@@ -210,17 +405,23 @@ public class Card3DInstance : MonoBehaviour
     internal void TickSummon(float dt)
     {
         if (!_summonAnimating) return;
+        EnsureSummonVisible();
 
+        bool firstTick = _summonLastTickTime <= 0f;
         _summonLastTickTime = Time.unscaledTime;
         _summonProgressFrame = Time.frameCount;
         if (dt <= 0f) return;
 
         _summonElapsed += Mathf.Min(dt, 0.1f);
+        if (firstTick) TraceSummon("FIRST_TICK", $"dt={dt:F4}");
         ApplySummonPose();
     }
 
     void OnDestroy()
     {
+        if (_summonAnimating) TraceSummon("ON_DESTROY_MID_SUMMON");
+        EndSummonOverlay();
+        SetSummonVisualCounted(false);
         SummonAnimationTicker.Unregister(this);
     }
 
@@ -228,13 +429,50 @@ public class Card3DInstance : MonoBehaviour
     /// 避免先以完整尺寸闪现一帧）。fromWorld 可传手牌位置；不传则按槽位推算。</summary>
     public static void PlaySummonOn(GameObject model, Vector3? fromWorld = null)
     {
-        if (model == null) return;
+        if (model == null)
+        {
+            Debug.LogWarning($"{SummonTracePrefix} REQUEST model=null caller={DescribeSummonCaller()}");
+            return;
+        }
+
+        string caller = DescribeSummonCaller();
+        Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, model,
+            "{0}[{1}#{2}] REQUEST caller={3} activeSelf={4} activeHierarchy={5} from={6}",
+            SummonTracePrefix, model.name, model.GetInstanceID(), caller,
+            model.activeSelf, model.activeInHierarchy,
+            fromWorld.HasValue ? fromWorld.Value.ToString("F2") : "auto");
+
         if (!model.activeSelf) model.SetActive(true);
         Card3DInstance inst = model.GetComponent<Card3DInstance>();
-        if (inst == null) return;
+        if (inst == null)
+        {
+            Debug.LogWarning($"{SummonTracePrefix}[{model.name}#{model.GetInstanceID()}] ABORT_NO_CARD3DINSTANCE caller={caller}");
+            return;
+        }
         if (!inst.enabled) inst.enabled = true;
+        inst.TraceSummon("ACCEPT", $"caller={caller}");
         inst.PrepareVisualForSummon();
         inst.PlaySummonAnimation(fromWorld);
+        inst.TraceSummon("ACCEPT_RETURN", "PlaySummonOn finished");
+    }
+
+    static string DescribeSummonCaller()
+    {
+        try
+        {
+            var trace = new System.Diagnostics.StackTrace(2, true);
+            for (int i = 0; i < trace.FrameCount; i++)
+            {
+                var frame = trace.GetFrame(i);
+                var method = frame?.GetMethod();
+                if (method == null || method.DeclaringType == typeof(Card3DInstance)) continue;
+                string file = frame.GetFileName();
+                if (!string.IsNullOrEmpty(file)) file = System.IO.Path.GetFileName(file);
+                return $"{method.DeclaringType?.Name}.{method.Name} @ {file}:{frame.GetFileLineNumber()}";
+            }
+        }
+        catch { }
+        return "unknown";
     }
 
     /// <summary>生成入口在挂好 CardInstance / UpdateValues 后调用：确保正面容器可见，
@@ -245,6 +483,8 @@ public class Card3DInstance : MonoBehaviour
         if (display != null) display.ShowFront();
         Transform ui = transform.Find("UIComponents");
         if (ui != null && !ui.gameObject.activeSelf) ui.gameObject.SetActive(true);
+        CaptureSummonVisual();
+        EnforceSummonVisual();
     }
 
     /// <summary>附着滑入动画：从下一个附着牌位置滑到自己理论位置（约0.5s，仅表现，不影响附着逻辑/位置结算）。</summary>
@@ -336,6 +576,7 @@ public class Card3DInstance : MonoBehaviour
 
     void ApplySummonPose()
     {
+        EnsureSummonFrontVisible();
         Transform target = GetScaleTarget();
         if (target == null)
         {
@@ -346,6 +587,17 @@ public class Card3DInstance : MonoBehaviour
         SummonCurve c = BuildSummonCurve();
         float t = Mathf.Max(0f, _summonElapsed);
         Vector3 baseScale = _summonBaseScale;
+
+        int stage = t < c.anticipation ? 1
+            : t < c.anticipation + c.flyDur ? 2
+            : t < c.anticipation + c.flyDur + c.hangDur ? 3
+            : t < c.ImpactAt ? 4
+            : t < c.ImpactAt + c.impactHold ? 5 : 6;
+        if (stage != _summonTraceStage)
+        {
+            _summonTraceStage = stage;
+            TraceSummon("STAGE", $"stage={stage} t={t:F3} impactAt={c.ImpactAt:F3} total={c.Total:F3}");
+        }
 
         if (t < c.anticipation)
         {
@@ -402,6 +654,8 @@ public class Card3DInstance : MonoBehaviour
             target.localScale = Vector3.Scale(baseScale, new Vector3(xz, y, xz));
         }
 
+        ClampSummonPositionToViewport();
+
         if (!_summonImpactTriggered && t >= c.ImpactAt)
         {
             _summonImpactTriggered = true;
@@ -415,6 +669,260 @@ public class Card3DInstance : MonoBehaviour
             target.localScale = baseScale;
             CompleteSummonAnimation();
         }
+    }
+
+    /// <summary>飞行途中把卡心夹进视口安全区。起手点被夹过，但贝塞尔控制点/顶点仍可能
+    /// 把卡带到屏幕外（尤其是宽屏 + 透视相机）；任何一帧都不允许整张卡在视口外。</summary>
+    void ClampSummonPositionToViewport()
+    {
+        Camera cam = Camera.main;
+        if (cam == null) return;
+
+        Vector3 vp = cam.WorldToViewportPoint(transform.position);
+        if (vp.z <= 0f) return;
+        float x = Mathf.Clamp(vp.x, 0.07f, 0.93f);
+        float y = Mathf.Clamp(vp.y, 0.10f, 0.93f);
+        if (Mathf.Approximately(x, vp.x) && Mathf.Approximately(y, vp.y)) return;
+
+        vp.x = x;
+        vp.y = y;
+        transform.position = cam.ViewportToWorldPoint(vp);
+    }
+
+    /// <summary>演出开始前抓一份“可见状态”快照：每层渲染器开关 / 颜色 alpha / TMP alpha /
+    /// CanvasGroup alpha / SortingOrder。之后每帧按快照恢复，任何外部逻辑都藏不掉这张卡。</summary>
+    void CaptureSummonVisual()
+    {
+        if (_summonVisualCaptured) return;
+
+        SpriteRenderer[] sprites = GetComponentsInChildren<SpriteRenderer>(true);
+        _summonSpriteVisuals = new SummonSpriteVisual[sprites.Length];
+        for (int i = 0; i < sprites.Length; i++)
+        {
+            SpriteRenderer sr = sprites[i];
+            _summonSpriteVisuals[i] = new SummonSpriteVisual
+            {
+                renderer = sr,
+                enabled = sr != null && sr.enabled,
+                color = sr != null ? sr.color : Color.white,
+                sprite = sr != null ? sr.sprite : null,
+                sortingLayerID = sr != null ? sr.sortingLayerID : 0,
+                sortingOrder = sr != null ? sr.sortingOrder : 0,
+            };
+        }
+
+        Renderer[] renderers = GetComponentsInChildren<Renderer>(true);
+        _summonRendererVisuals = new SummonRendererVisual[renderers.Length];
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            _summonRendererVisuals[i] = new SummonRendererVisual
+            {
+                renderer = renderers[i],
+                enabled = renderers[i] != null && renderers[i].enabled,
+            };
+        }
+
+        TMP_Text[] texts = GetComponentsInChildren<TMP_Text>(true);
+        _summonTextVisuals = new SummonTextVisual[texts.Length];
+        for (int i = 0; i < texts.Length; i++)
+        {
+            _summonTextVisuals[i] = new SummonTextVisual
+            {
+                text = texts[i],
+                enabled = texts[i] != null && texts[i].enabled,
+                alpha = texts[i] != null ? texts[i].alpha : 1f,
+            };
+        }
+
+        CanvasGroup[] groups = GetComponentsInChildren<CanvasGroup>(true);
+        _summonGroupVisuals = new SummonGroupVisual[groups.Length];
+        for (int i = 0; i < groups.Length; i++)
+        {
+            _summonGroupVisuals[i] = new SummonGroupVisual
+            {
+                group = groups[i],
+                alpha = groups[i] != null ? groups[i].alpha : 1f,
+            };
+        }
+
+        Transform[] children = GetComponentsInChildren<Transform>(true);
+        _summonChildVisuals = new SummonChildVisual[children.Length];
+        for (int i = 0; i < children.Length; i++)
+        {
+            _summonChildVisuals[i] = new SummonChildVisual
+            {
+                gameObject = children[i] != null ? children[i].gameObject : null,
+                activeSelf = children[i] != null && children[i].gameObject.activeSelf,
+            };
+        }
+
+        _summonVisualCaptured = true;
+    }
+
+    /// <summary>把快照状态重新按到卡面上：渲染器启用、alpha 不低于起手值、正面容器激活、
+    /// SortingOrder 抬到最上层。只负责“看得见”，不改任何逻辑/隐藏终态。</summary>
+    void EnforceSummonVisual()
+    {
+        if (!_summonVisualCaptured) return;
+        if (cardInstance != null && cardInstance.isDead) return;
+
+        if (!gameObject.activeSelf) gameObject.SetActive(true);
+
+        // 正面容器 / 卡图 / 文字对象被 ShowBack / HideAllInfo 关掉时按起手态恢复；
+        // 起手就关闭的层（ModelRoot 卡背网格、无卡图的 CardArt）保持关闭，避免重影。
+        if (_summonChildVisuals != null)
+        {
+            for (int i = 0; i < _summonChildVisuals.Length; i++)
+            {
+                GameObject go = _summonChildVisuals[i].gameObject;
+                if (go != null && go.activeSelf != _summonChildVisuals[i].activeSelf)
+                    go.SetActive(_summonChildVisuals[i].activeSelf);
+            }
+        }
+
+        if (_summonRendererVisuals != null)
+        {
+            for (int i = 0; i < _summonRendererVisuals.Length; i++)
+            {
+                Renderer r = _summonRendererVisuals[i].renderer;
+                if (r == null) continue;
+                if (r.enabled != _summonRendererVisuals[i].enabled)
+                    r.enabled = _summonRendererVisuals[i].enabled;
+                if (r.enabled) r.forceRenderingOff = false;
+            }
+        }
+
+        if (_summonSpriteVisuals != null)
+        {
+            for (int i = 0; i < _summonSpriteVisuals.Length; i++)
+            {
+                SpriteRenderer sr = _summonSpriteVisuals[i].renderer;
+                if (sr == null) continue;
+                if (sr.enabled != _summonSpriteVisuals[i].enabled)
+                    sr.enabled = _summonSpriteVisuals[i].enabled;
+                if (!sr.enabled) continue;
+
+                if (sr.sprite == null && _summonSpriteVisuals[i].sprite != null)
+                    sr.sprite = _summonSpriteVisuals[i].sprite;
+                sr.sortingLayerID = _summonSpriteVisuals[i].sortingLayerID;
+                if (sr.sortingOrder < SummonTopSortingOrder) sr.sortingOrder = SummonTopSortingOrder;
+
+                // 只把被外部写低的 alpha 拉回起手值；起手就是透明的层（无卡图等）不动。
+                Color captured = _summonSpriteVisuals[i].color;
+                if (captured.a > 0.01f && sr.color.a + 0.01f < captured.a)
+                {
+                    Color c = sr.color;
+                    c.a = captured.a;
+                    sr.color = c;
+                }
+            }
+        }
+
+        if (_summonTextVisuals != null)
+        {
+            for (int i = 0; i < _summonTextVisuals.Length; i++)
+            {
+                TMP_Text t = _summonTextVisuals[i].text;
+                if (t == null) continue;
+                if (t.enabled != _summonTextVisuals[i].enabled)
+                    t.enabled = _summonTextVisuals[i].enabled;
+                float captured = _summonTextVisuals[i].alpha;
+                if (captured > 0.01f && t.alpha + 0.01f < captured) t.alpha = captured;
+            }
+        }
+
+        if (_summonGroupVisuals != null)
+        {
+            for (int i = 0; i < _summonGroupVisuals.Length; i++)
+            {
+                CanvasGroup g = _summonGroupVisuals[i].group;
+                if (g == null) continue;
+                float captured = _summonGroupVisuals[i].alpha;
+                if (captured > 0.01f && g.alpha + 0.01f < captured) g.alpha = captured;
+            }
+        }
+    }
+
+    /// <summary>演出结束时只写回 SortingOrder / Renderer.enabled —— alpha 恢复到起手值本身
+    /// 就是终态，不需要再动（避免覆盖演出期间正常发生的颜色刷新）。</summary>
+    void RestoreSummonVisual()
+    {
+        if (!_summonVisualCaptured) return;
+
+        if (_summonSpriteVisuals != null)
+        {
+            for (int i = 0; i < _summonSpriteVisuals.Length; i++)
+            {
+                SpriteRenderer sr = _summonSpriteVisuals[i].renderer;
+                if (sr != null) sr.sortingOrder = _summonSpriteVisuals[i].sortingOrder;
+            }
+        }
+        if (_summonRendererVisuals != null)
+        {
+            for (int i = 0; i < _summonRendererVisuals.Length; i++)
+            {
+                Renderer r = _summonRendererVisuals[i].renderer;
+                if (r == null) continue;
+                // 起手被关闭的渲染器（无卡图层等）恢复关闭；起手开启的保持开启。
+                if (!_summonRendererVisuals[i].enabled) r.enabled = false;
+            }
+        }
+
+        _summonVisualCaptured = false;
+        _summonSpriteVisuals = null;
+        _summonTextVisuals = null;
+        _summonRendererVisuals = null;
+        _summonGroupVisuals = null;
+        _summonChildVisuals = null;
+    }
+
+    void SetSummonVisualCounted(bool counted)
+    {
+        if (_summonVisualCounted == counted) return;
+        _summonVisualCounted = counted;
+        if (counted)
+        {
+            _summonCountsForHand = transform.position.y < 1f; // 己方半场（前排 -0.02 / 后排 -1.86）；敌方在 2.04 以上
+            if (_summonCountsForHand) s_ownSummonVisuals++;
+        }
+        else
+        {
+            if (_summonCountsForHand) s_ownSummonVisuals = Mathf.Max(0, s_ownSummonVisuals - 1);
+            _summonCountsForHand = false;
+        }
+    }
+
+    /// <summary>召唤演出期间无论谁调了 ShowBack / SetActive(false)，下一帧都恢复正面容器。
+    /// 只做表现兜底，不改隐藏态本身；真正要隐藏的终态由 DeferHiddenUntilSummonComplete 延后套用。</summary>
+    void EnsureSummonFrontVisible()
+    {
+        if (!_summonAnimating) return;
+        Transform ui = transform.Find("UIComponents");
+        if (ui == null || ui.gameObject.activeSelf) return;
+
+        Debug.LogFormat(LogType.Warning, LogOption.NoStacktrace, this,
+            "{0} ENSURE_FRONT_REACTIVATE elapsed={1:F3} activeSelf={2} activeHierarchy={3}",
+            SummonTraceLabel, _summonElapsed, ui.gameObject.activeSelf, ui.gameObject.activeInHierarchy);
+        ui.gameObject.SetActive(true);
+    }
+
+    void EnsureSummonVisible()
+    {
+        if (!_summonAnimating) return;
+        if (cardInstance != null && cardInstance.isDead) return;
+
+        if (!gameObject.activeSelf)
+        {
+            Debug.LogFormat(LogType.Warning, LogOption.NoStacktrace, this,
+                "{0} ENSURE_ROOT_REACTIVATE elapsed={1:F3} parent={2}",
+                SummonTraceLabel, _summonElapsed, transform.parent != null ? transform.parent.name : "null");
+            gameObject.SetActive(true);
+        }
+        EnsureSummonFrontVisible();
+        // 通道若因相机/RT 未就绪在第一帧失败，之后每帧重试；失败时卡牌仍留在主相机，
+        // 不会因为“改过 Layer 却没人渲染”而消失。
+        if (!_summonOverlayActive) BeginSummonOverlay();
+        EnforceSummonVisual();
     }
 
     void PlaySummonImpact(SummonCurve c)

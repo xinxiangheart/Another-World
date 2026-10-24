@@ -366,6 +366,17 @@ public class Card3DHover : MonoBehaviour
     {
         if (model == null) return;
 
+        Card3DInstance summon = model.GetComponent<Card3DInstance>();
+        if (summon != null && summon.IsSummonAnimating)
+        {
+            Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, model,
+                "{0}[hidden] HIDE_TOGGLE_DEFERRED model={1}#{2} hidden={3} attachment={4} activeSelf={5} activeHierarchy={6}",
+                Card3DInstance.SummonTracePrefix, model.name, model.GetInstanceID(),
+                hidden, isAttachment, model.activeSelf, model.activeInHierarchy);
+            summon.DeferHiddenUntilSummonComplete(hidden, isAttachment);
+            return;
+        }
+
         // 1. Rotation — hidden faces away (0°), visible faces toward viewer (180°)
         model.transform.rotation = hidden ? Quaternion.Euler(0, 0, 0) : Quaternion.Euler(0, 180, 0);
 

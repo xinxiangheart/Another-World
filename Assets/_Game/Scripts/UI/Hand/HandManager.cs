@@ -141,6 +141,8 @@ public class HandManager : MonoBehaviour
                 handCards.RemoveAt(i);
                 continue;
             }
+            Card3DInstance handSummon = handCards[i].GetComponent<Card3DInstance>();
+            if (handSummon != null && handSummon.IsSummonAnimating) continue;
             if (handCards[i].gameObject != dragging)
                 handCards[i].gameObject.SetActive(false);
         }
@@ -968,7 +970,12 @@ public class HandManager : MonoBehaviour
     public void HideAllCards()
     {
         foreach (CardView cv in handCards)
-            if (cv != null) cv.gameObject.SetActive(false);
+        {
+            if (cv == null) continue;
+            Card3DInstance handSummon = cv.GetComponent<Card3DInstance>();
+            if (handSummon != null && handSummon.IsSummonAnimating) continue;
+            cv.gameObject.SetActive(false);
+        }
         // 隐藏手牌 → 同步隐藏抽牌/结束回合按钮，防误触（幂等）
         if (!_handCardsHidden)
         {
