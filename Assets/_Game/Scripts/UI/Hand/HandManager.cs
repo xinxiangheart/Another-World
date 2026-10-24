@@ -384,6 +384,23 @@ public class HandManager : MonoBehaviour
         if (template?.prefab3D == null) return;
         if (slot == null && !sourceInstance.canAttach) return;
 
+        // 本端真实手牌召唤物的落位动画现在从玩家一侧起飞，起手点会经过手牌所在的
+        // 屏幕下半区。手牌是 Screen Space Overlay，只要这一帧还显示，3D 卡就会被
+        // 整张盖住——旧动画只缩槽位上的 UIComponents，从不进入这个区域。
+        // CardDrag 正常拖放时已经 HideAllCards，但点击落位/其它代打入口不一定走到
+        // 同一时序；这里在创建模型前强制保持隐藏，收尾统一交给
+        // BoardSlot.CleanupAfterPlacement 的 ShowHandAfterSummon。
+        bool localHandSummon = slot != null && slot.slotID >= 6
+            && !sourceInstance.canAttach
+            && template.cardType == CardType.Summon
+            && cardObject.GetComponent<CardView>() != null;
+        if (localHandSummon)
+        {
+            HideAllCards();
+            SetHandAreaRaycast(false);
+            FindObjectOfType<CardDrag>()?.SetButtonsInteractable(false);
+        }
+
         // [打出展示] 己方真实手牌召唤物落地：仅带 CardView 的真手牌（效果直接生成的 Token 无 CardView，不捕获）→ 正面展示
         if (cardObject.GetComponent<CardView>() != null
             && template.cardType == CardType.Summon
@@ -516,8 +533,9 @@ public class HandManager : MonoBehaviour
         }
 
         Vector3 worldPos = GetSlotWorldPosition(slot.slotID);
+
         GameObject model = Instantiate(template.prefab3D, worldPos, Quaternion.Euler(0, 180, 0));
-        Card3DInstance.PlaySummonOn(model); // 召唤动画（模型层 0→1.5→1.4→1.0）
+        Card3DInstance.PlaySummonOn(model); // 从所属玩家一侧正向飞入槽位
         model.name = sourceInstance.instanceID;
         model.transform.localScale = template.prefab3D.transform.localScale;
         Player.Scale3DModel(model);
@@ -921,6 +939,8 @@ public class HandManager : MonoBehaviour
     }
 
     bool _handCardsHidden; // 真手牌隐藏标志：置位才隐藏/恢复抽牌与结束回合按钮（预览/射线通道不置位）
+    /// <summary>手牌当前是否被真 HideAllCards 隐藏（仅用于摆放后延迟恢复的判定）。</summary>
+    public bool IsHandHidden => _handCardsHidden;
 
     public void HideAllCards()
     {
@@ -1296,7 +1316,7 @@ public class HandManager : MonoBehaviour
     {
         Vector3 worldPos = GetSlotWorldPosition(slot.slotID);
         GameObject model = Instantiate(template.prefab3D, worldPos, Quaternion.Euler(0, 180, 0));
-        Card3DInstance.PlaySummonOn(model); // 召唤动画
+        Card3DInstance.PlaySummonOn(model); // 从所属玩家一侧正向飞入槽位
         Player.Scale3DModel(model);
         model.name = sourceInstance.instanceID;
         Card3DInstance instance3D = model.GetComponent<Card3DInstance>();

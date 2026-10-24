@@ -37,3 +37,11 @@ MonoBehaviour:
   returnOvershoot: 1.05
   pitchAngle: 12
   attackTargetHeightOffset: 0.8
+  summonLaunchDuration: 0.22
+  summonApexHeight: 0.9
+  summonHangDuration: 0.08
+  summonDropDuration: 0.08
+  summonSettleDuration: 0.18
+  summonSquash: 0.14
+  summonShakeStrength: 0.1
+  summonShakeDuration: 0.12

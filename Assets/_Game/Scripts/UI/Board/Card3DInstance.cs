@@ -35,39 +35,84 @@ public class Card3DInstance : MonoBehaviour
         if (icons != null) icons.Refresh();
     }
 
-    /// <summary>召唤动画（缩放曲线：0 → 正常×1.25 → ×1.2 → ×1.0；前半 0.6s、后半 0.6s）。
-    /// 只影响表现，不改任何逻辑判断；缩放作用在可见正面容器（UIComponents），文字/图标随卡面整体缩放。
-    /// 用协程驱动，不阻塞其它逻辑。</summary>
-    public void PlaySummonAnimation()
+    /// <summary>召唤动画：从手牌 / 侧翼锚点飞出 → 顶点悬停 → 砸落 → 压扁回弹。
+    /// 只影响表现，不改任何逻辑判断。fromWorld 为空时按槽位位置推算己方/敌方锚点。</summary>
+    public void PlaySummonAnimation(Vector3? fromWorld = null)
     {
         if (_summonAnimating) return;
-        _summonRoutine = StartCoroutine(SummonAnimationRoutine());
+        _summonAnimating = true;
+
+        // 同步抢占根 Transform：不能等协程第一帧再关，否则 Card3DAnimator / 攻击动画
+        // 可能在同帧写入 localPosition/localScale，把飞行起点或落点覆盖掉。
+        Card3DAnimator floatAnim = GetComponent<Card3DAnimator>();
+        if (floatAnim != null) floatAnim.SuspendForExternalAnimation();
+        Card3DHover hover = GetComponent<Card3DHover>();
+        if (hover != null) hover.enabled = false;
+
+        _summonRoutine = StartCoroutine(SummonAnimationRoutine(fromWorld));
     }
 
-    /// <summary>立即完成召唤动画（攻击动画开始前调用）：停止缩放协程、复位正常缩放、恢复浮动。
+    public bool IsSummonAnimating => _summonAnimating;
+
+    /// <summary>攻击/进场等后续演出等待召唤结束。超时后仍强制收尾，防协程异常卡死。</summary>
+    public IEnumerator WaitForSummonAnimation(float timeout = 2f)
+    {
+        float deadline = Time.unscaledTime + Mathf.Max(0.01f, timeout);
+        while (_summonAnimating && Time.unscaledTime < deadline)
+            yield return null;
+        if (_summonAnimating) CompleteSummonAnimation();
+    }
+
+    /// <summary>立即完成召唤动画（攻击动画开始前调用）：停止协程、复位位置/旋转/缩放、恢复浮动。
     /// 防召唤动画未结束时攻击动画与其交互（缩放/浮动状态冲突）导致位置 bug。</summary>
     public void CompleteSummonAnimation()
     {
         if (!_summonAnimating) return;
         if (_summonRoutine != null) StopCoroutine(_summonRoutine);
         _summonRoutine = null;
+
         Transform target = GetScaleTarget();
-        if (target != null) target.localScale = _summonBaseScale; // 复位到正常缩放
-        Card3DAnimator fa = GetComponent<Card3DAnimator>();
-        if (fa != null) fa.enabled = true; // 恢复浮动（攻击动画随后自行暂停）
+        if (target != null) target.localScale = _summonBaseScale;
+        transform.position = _summonBasePos;
+        transform.rotation = _summonBaseRot;
+
+        Card3DHover hover = GetComponent<Card3DHover>();
+        if (hover != null) hover.enabled = true;
+
+        Card3DAnimator floatAnim = GetComponent<Card3DAnimator>();
+        if (floatAnim != null)
+        {
+            floatAnim.ResumeAtCurrentTransform();
+        }
         _summonAnimating = false;
+        _summonWatchdog = 0f;
     }
 
     Coroutine _summonRoutine;
     bool _summonAnimating;
     bool _bounceArmed; // 首刷后置 true；供 ElementBounceAllowed（抑制进场/召唤期弹跳）
     Vector3 _summonBaseScale = Vector3.one;
+    Vector3 _summonBasePos;
+    Quaternion _summonBaseRot = Quaternion.identity;
+    float _summonWatchdog;
 
-    /// <summary>生成入口统一调用：实例化后立即触发召唤动画（同步把可见正面容器缩到 0，避免先以完整尺寸闪现一帧）。</summary>
-    public static void PlaySummonOn(GameObject model)
+    void Update()
+    {
+        // 兜底：召唤协程若被暂停/打断（timeScale=0、对象临时失活等），
+        // 超时后直接把卡复位到槽位，绝不让它停在半空/屏幕外。
+        if (_summonAnimating && _summonWatchdog > 0f && Time.unscaledTime >= _summonWatchdog)
+        {
+            Debug.LogWarning($"[Summon] watchdog fired {name} pos={transform.position} -> {_summonBasePos}");
+            CompleteSummonAnimation();
+        }
+    }
+
+    /// <summary>生成入口统一调用：实例化后立即触发召唤动画（同步把可见正面容器缩到 0.86，
+    /// 避免先以完整尺寸闪现一帧）。fromWorld 可传手牌位置；不传则按槽位推算。</summary>
+    public static void PlaySummonOn(GameObject model, Vector3? fromWorld = null)
     {
         if (model != null)
-            model.GetComponent<Card3DInstance>()?.PlaySummonAnimation();
+            model.GetComponent<Card3DInstance>()?.PlaySummonAnimation(fromWorld);
     }
 
     /// <summary>附着滑入动画：从下一个附着牌位置滑到自己理论位置（约0.5s，仅表现，不影响附着逻辑/位置结算）。</summary>
@@ -98,56 +143,226 @@ public class Card3DInstance : MonoBehaviour
         if (floatAnim != null) { floatAnim.UpdateBaseLocalPos(); floatAnim.enabled = true; }
     }
 
-    IEnumerator SummonAnimationRoutine()
+    IEnumerator SummonAnimationRoutine(Vector3? fromOverride)
     {
-        Transform target = GetScaleTarget(); // 可见正面容器（UIComponents）；ModelRoot 是卡背，正面被 ShowFront 禁用不可见
+        Transform target = GetScaleTarget(); // 可见正面容器（UIComponents）；ModelRoot 是卡背
         if (target == null) yield break;
 
-        _summonAnimating = true;
-        _summonRoutine = null; // 本协程运行中（引用由 PlaySummonAnimation 持有）
-        // 动画期间暂停漂浮/呼吸（与攻击动画一致）：旧卡缩放整卡根时避免呼吸缩放覆盖动画
+        _summonRoutine = null;
+        _summonWatchdog = Time.unscaledTime + 1.5f;
+
+        // 动画期间暂停漂浮 / 悬停：漂浮每帧改 position，会与飞行插值打架
         Card3DAnimator floatAnim = GetComponent<Card3DAnimator>();
-        if (floatAnim != null) floatAnim.enabled = false;
+        if (floatAnim != null) floatAnim.SuspendForExternalAnimation();
+        Card3DHover hover = GetComponent<Card3DHover>();
+        if (hover != null) hover.enabled = false;
 
-        Vector3 baseScale = target.localScale; // 正常缩放（新卡 UIComponents=1）
-        _summonBaseScale = baseScale;          // 记录正常缩放（供攻击前强制完成时复位）
-        target.localScale = Vector3.zero;      // 立即置 0，避免生成后以完整尺寸闪现
+        Vector3 to = transform.position;
+        Quaternion baseRot = transform.rotation;
+        _summonBasePos = to;
+        _summonBaseRot = baseRot;
 
-        // 阶段1（共 0.6s）：0 → 正常×1.25 → ×1.2
-        const float growDur = 0.4f / 1.5f; // 0→1.25 放大阶段速度×1.5（0.4→≈0.267s）
-        const float bounceDur = 0.2f;  // 1.25→1.2 回弹
+        Vector3 baseScale = target.localScale;
+        _summonBaseScale = baseScale;
+
+        AnimationConfig cfg = AnimationConfig.Load();
+        float launchDur = cfg != null ? cfg.summonLaunchDuration : 0.22f;
+        float apexHeight = cfg != null ? cfg.summonApexHeight : 0.9f;
+        float hangDur = cfg != null ? cfg.summonHangDuration : 0.08f;
+        float dropDur = cfg != null ? cfg.summonDropDuration : 0.08f;
+        float settleDur = cfg != null ? cfg.summonSettleDuration : 0.18f;
+        float squash = cfg != null ? cfg.summonSquash : 0.14f;
+        float shakeAmp = cfg != null ? cfg.summonShakeStrength : 0.10f;
+        float shakeDur = cfg != null ? cfg.summonShakeDuration : 0.12f;
+
+        Vector3 toCam = Camera.main != null ? -Camera.main.transform.forward : Vector3.back;
+        // 己方在下、敌方在上（棋盘中心 y≈1）；敌方整套轨迹按此镜像
+        float outward = to.y < 1f ? -1f : 1f;
+
+        Vector3 from = fromOverride ?? ComputeSummonOrigin(to);
+        // 正向：从所属玩家的一侧朝槽位直飞，横向与目标对齐（手牌只借它的高度/深度，不借横向偏位）
+        from.x = to.x;
+        // 0) 起手：略小、后仰，保持水平（正向飞入）
+        transform.position = from;
+        transform.rotation = baseRot * Quaternion.Euler(-14f, 0f, 0f);
+        target.localScale = baseScale * 0.86f;
+
+        // 1) 蓄力 60ms：再往后拉一点，压到 0.84
+        Vector3 pullDir = from - to;
+        pullDir.z = 0f;
+        if (pullDir.sqrMagnitude < 0.0001f) pullDir = Vector3.up * outward;
+        Vector3 antPos = from + pullDir.normalized * 0.10f;
+
         float t = 0f;
-        while (t < growDur)
+        const float anticipation = 0.06f;
+        while (t < anticipation)
         {
             t += Time.deltaTime;
-            float k = Mathf.Clamp01(t / growDur);
-            float eased = 1f - Mathf.Pow(1f - k, 3f);
-            target.localScale = baseScale * (1.25f * eased);
-            yield return null;
-        }
-        t = 0f;
-        while (t < bounceDur)
-        {
-            t += Time.deltaTime;
-            float k = Mathf.Clamp01(t / bounceDur);
-            target.localScale = baseScale * Mathf.Lerp(1.25f, 1.2f, k);
+            float k = Mathf.Clamp01(t / anticipation);
+            float e = 1f - Mathf.Pow(1f - k, 2f);
+            transform.position = Vector3.Lerp(from, antPos, e);
+            target.localScale = baseScale * Mathf.Lerp(0.86f, 0.84f, e);
             yield return null;
         }
 
-        // 阶段2（0.6s）：×1.2 → ×1.0 慢慢缩小到正常
+        // 2) 飞出：二次贝塞尔到槽位上方；起步快、接近顶点慢
+        Vector3 apex = to + Vector3.up * apexHeight + toCam * 0.35f;
+        Vector3 ctrl = Vector3.Lerp(antPos, apex, 0.5f) + toCam * 0.25f;
+
+        float distance = Vector3.Distance(antPos, apex);
+        float flyDur = Mathf.Clamp(launchDur + distance * 0.01f, launchDur, launchDur + 0.08f);
+
         t = 0f;
-        while (t < 0.6f)
+        while (t < flyDur)
         {
             t += Time.deltaTime;
-            float k = Mathf.Clamp01(t / 0.6f);
-            float eased = 1f - Mathf.Pow(1f - k, 3f); // ease-out 慢收
-            target.localScale = baseScale * Mathf.Lerp(1.2f, 1.0f, eased);
+            float k = Mathf.Clamp01(t / flyDur);
+            float e = 1f - Mathf.Pow(1f - k, 3f); // ease-out cubic
+
+            transform.position = Bezier2(antPos, ctrl, apex, e);
+            transform.rotation = baseRot * Quaternion.Euler(Mathf.Lerp(-14f, 0f, e), 0f, 0f);
+            target.localScale = baseScale * Mathf.Lerp(0.84f, 1.06f, e);
             yield return null;
         }
-        target.localScale = baseScale; // 精确复位到正常
 
-        if (floatAnim != null) floatAnim.enabled = true;
+        // 3) 顶点悬停：给下落留出高度差
+        t = 0f;
+        while (t < hangDur)
+        {
+            t += Time.deltaTime;
+            float k = Mathf.Clamp01(t / hangDur);
+            transform.position = apex + Vector3.up * (0.06f * Mathf.Sin(k * Mathf.PI));
+            transform.rotation = baseRot;
+            yield return null;
+        }
+
+        // 4) 砸下：ease-in，俯仰向前压
+        t = 0f;
+        while (t < dropDur)
+        {
+            t += Time.deltaTime;
+            float k = Mathf.Clamp01(t / dropDur);
+            float e = k * k;
+            transform.position = Vector3.Lerp(apex, to, e);
+            transform.rotation = baseRot * Quaternion.Euler(Mathf.Lerp(0f, 8f, k), 0f, 0f);
+            target.localScale = baseScale * Mathf.Lerp(1.06f, 1f, k);
+            yield return null;
+        }
+
+        // 5) 落地帧：精确到位 + 压扁 + 冲击环/闪光/相机震动（同一帧）
+        transform.position = to;
+        transform.rotation = baseRot;
+        target.localScale = Vector3.Scale(baseScale, new Vector3(1.08f, 1f - squash, 1.08f));
+
+        Vector3 fxPos = to + Vector3.down * 0.85f;
+        CardSummonFX.PlayImpact(fxPos, 1f);
+        CardSummonFX.PlaySlotFlash(FindSummonSlot(gameObject, to));
+        CameraShake.Impulse(shakeAmp, shakeDur);
+        // 局部停顿 35ms（不碰全局 Time.timeScale，避免影响联机/UI）
+        float stopUntil = Time.time + 0.035f;
+        while (Time.time < stopUntil) yield return null;
+
+        // 6) 回弹：阻尼余弦，Y 先压后弹、XZ 先胀后收
+        t = 0f;
+        while (t < settleDur)
+        {
+            t += Time.deltaTime;
+            float k = Mathf.Clamp01(t / settleDur);
+            float decay = Mathf.Exp(-7f * k);
+            float osc = Mathf.Cos(k * Mathf.PI * 3f);
+
+            float xz = 1f + 0.08f * decay * osc;
+            float y = 1f - squash * decay * osc;
+            target.localScale = Vector3.Scale(baseScale, new Vector3(xz, y, xz));
+            yield return null;
+        }
+
+        // 结束：复位并交回漂浮 / 悬停
+        target.localScale = baseScale;
+        transform.position = to;
+        transform.rotation = baseRot;
+
+        if (hover != null) hover.enabled = true;
+        if (floatAnim != null)
+        {
+            floatAnim.ResumeAtCurrentTransform();
+        }
         _summonAnimating = false;
+        _summonWatchdog = 0f;
+    }
+
+    /// <summary>没有手牌来源时（Token / 效果生成 / 敌方）按槽位推算起手点：
+    /// 己方从下方、敌方从上方，并沿该玩家方向「正向」对准槽位飞入（不再横向扇开）。</summary>
+    static Vector3 ComputeSummonOrigin(Vector3 to)
+    {
+        Camera cam = Camera.main;
+        Vector3 toCam = cam != null ? -cam.transform.forward : Vector3.back;
+        float outward = to.y < 1f ? -1f : 1f;
+        // 越靠后排，起手离棋盘越远；横向保持在槽位正后方
+        float row = Mathf.Clamp01(Mathf.Abs(to.y - 1f) / 2.2f);
+        float y = to.y + outward * (2.0f + 0.5f * row);
+        Vector3 from = new Vector3(to.x, y, to.z) + toCam * 0.6f;
+
+        // 旧动画只缩放槽位上的卡，从不把卡挪出屏幕；新动画会写到玩家一侧，
+        // 后排/手牌区的起手点可能整张卡都在相机视口外，表现为「看不到起手，
+        // 只在槽位上突然出现」。按视口夹住起手点（保持与槽位同列）。
+        // 注意：夹在视口内不等于不被 UI 盖住。本端手牌 / 对方手牌排都是
+        // Screen Space Overlay，正常情况下落位入口会先隐藏本端手牌；若某条
+        // 路径漏了隐藏，就把起手点抬到手牌排之外，至少保证动画能被看到。
+        if (cam != null)
+        {
+            Vector3 vp = cam.WorldToViewportPoint(from);
+            // 只关心本端手牌是否还挡着下半屏；场景里另有一套对方手牌管理器。
+            HandManager hm = Player.Instance != null && Player.Instance.myHandManager != null
+                ? Player.Instance.myHandManager
+                : Object.FindObjectOfType<HandManager>();
+            bool ownHandVisible = hm == null || !hm.IsHandHidden;
+            bool opponentRowVisible = OpponentHandRow.Instance != null;
+            float slotY = cam.WorldToViewportPoint(to).y;
+            // 起手点必须仍在槽位下方（己方）/上方（敌方），不能为了躲手牌越过槽位。
+            float minY = outward < 0f
+                ? (ownHandVisible ? Mathf.Min(0.30f, slotY - 0.04f) : 0.10f)
+                : -0.10f;
+            float maxY = outward < 0f ? 1.05f : (opponentRowVisible ? 0.72f : 0.95f);
+            float clampedY = Mathf.Clamp(vp.y, minY, maxY);
+            if (!Mathf.Approximately(clampedY, vp.y))
+            {
+                vp.y = clampedY;
+                from = cam.ViewportToWorldPoint(vp);
+                from.x = to.x;
+            }
+        }
+        return from;
+    }
+
+    /// <summary>落到哪个槽位就闪哪一格：先按 currentCard3D 认领，再按平面距离兜底。
+    /// 只用于表现，找不到时安静跳过。</summary>
+    static BoardSlot FindSummonSlot(GameObject card, Vector3 worldPos)
+    {
+        BoardManager bm = Object.FindObjectOfType<BoardManager>();
+        if (bm == null) return null;
+
+        BoardSlot[] slots = bm.GetAllSlots();
+        for (int i = 0; i < slots.Length; i++)
+            if (slots[i] != null && slots[i].currentCard3D == card) return slots[i];
+
+        BoardSlot best = null;
+        float bestDist = 1.1f;
+        for (int i = 0; i < slots.Length; i++)
+        {
+            BoardSlot s = slots[i];
+            if (s == null) continue;
+            Vector3 p = s.transform.position;
+            float d = new Vector2(p.x - worldPos.x, p.y - worldPos.y).magnitude;
+            if (d < bestDist) { bestDist = d; best = s; }
+        }
+        return best;
+    }
+
+    static Vector3 Bezier2(Vector3 a, Vector3 b, Vector3 c, float t)
+    {
+        float u = 1f - t;
+        return u * u * a + 2f * u * t * b + t * t * c;
     }
 
     /// <summary>取缩放动画的目标层：可见正面容器 UIComponents（新卡正面视觉=UIComponents 卡面精灵+文字+图标，

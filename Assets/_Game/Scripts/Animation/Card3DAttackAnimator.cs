@@ -34,9 +34,11 @@ public class Card3DAttackAnimator : MonoBehaviour
     /// 同一卡连续攻击（先手+普通/多段）时串行：等前一次返回完成再开始，避免位置冲突和原点误捕获。</summary>
     public IEnumerator ApproachAndHit(GameObject target, Action onHit)
     {
-        // 攻击前立即完成召唤动画（防召唤缩放/浮动状态与攻击动画交互导致位置 bug）
+        // 召唤还没落地时先等它演出完，再从槽位捕获攻击原点。
+        // 旧写法直接 CompleteSummonAnimation() 会把飞入/悬停/砸落整段掐掉，
+        // 先手或进场链路一触发就表现为「召唤动画没播」。
         var c3dInst = GetComponent<Card3DInstance>();
-        if (c3dInst != null) c3dInst.CompleteSummonAnimation();
+        if (c3dInst != null) yield return c3dInst.WaitForSummonAnimation(2f);
 
         // 同一卡上一次攻击的返回仍在动画中 → 等待其完成（此时卡在静止位，原点捕获正确）。
         // 超时兜底：前一次返回若被中断导致 _attacking 卡死，强制复位并回到槽位，防卡停攻击位
@@ -50,7 +52,7 @@ public class Card3DAttackAnimator : MonoBehaviour
         _originalRot = transform.rotation;
 
         // 暂停漂浮动画，避免 position/localPosition 冲突
-        if (_floatAnimator != null) _floatAnimator.enabled = false;
+        if (_floatAnimator != null) _floatAnimator.SuspendForExternalAnimation();
 
         float windup = _cfg != null ? _cfg.windupDuration : 0.15f;
         float lunge = _cfg != null ? _cfg.lungeDuration : 0.20f;
@@ -125,8 +127,8 @@ public class Card3DAttackAnimator : MonoBehaviour
         // 攻击序列结束：允许下一次攻击开始（位置已精确复位到槽位）
         _attacking = false;
 
-        // 恢复漂浮
-        if (_floatAnimator != null) _floatAnimator.enabled = true;
+        // 恢复漂浮：以攻击返回后的真实槽位重新建立基准
+        if (_floatAnimator != null) _floatAnimator.ResumeAtCurrentTransform();
     }
 
     /// <summary>精确回归参考：以卡槽/卡牌放置的权威 XY（GetSlotWorldPosition）为参考，Z 保持卡牌自身的 Z。

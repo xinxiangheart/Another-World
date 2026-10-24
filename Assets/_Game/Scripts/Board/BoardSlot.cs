@@ -1043,7 +1043,12 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
             bool wasAttachFlow = ciPre != null && ciPre.canAttach;
 
-            HandManager hm = FindObjectOfType<HandManager>();
+            // 场景里同时存在己方 / 对方两套 HandManager。点击落位必须落到玩家自己的
+            // 手牌管理器上，否则 HideAllCards / ShowAllCards 会作用到另一套 UI，
+            // 本端手牌仍盖在屏幕下半区，召唤起飞段就会看不见。
+            HandManager hm = Player.Instance != null && Player.Instance.myHandManager != null
+                ? Player.Instance.myHandManager
+                : FindObjectOfType<HandManager>();
             if (hm != null)
             {
                 hm.PlaceCardToSlot(this, cardToPlace);
@@ -1644,16 +1649,41 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         if (!isTargetingMode && !isAttachSelectMode)
         {
-            HandManager hm = FindObjectOfType<HandManager>();
-            hm?.SetHandAreaRaycast(true);
-            hm?.ShowAllCards();
-            FindObjectOfType<CardDrag>()?.SetButtonsInteractable(true);
+            HandManager hm = Player.Instance != null && Player.Instance.myHandManager != null
+                ? Player.Instance.myHandManager
+                : FindObjectOfType<HandManager>();
+            Card3DInstance summoning = currentCard3D != null
+                ? currentCard3D.GetComponent<Card3DInstance>() : null;
+            // 本端手牌还压在下半屏、而新召唤动画正从玩家一侧起飞时，先别把手牌拉回来：
+            // 手牌是 Screen Space Overlay，恢复后会把 y≈-2.3 的起飞段整段盖住
+            // （旧动画只缩放槽位上的卡，碰不到这个区域，所以以前没有这个问题）。
+            if (hm != null && hm.IsHandHidden && slotID >= 6
+                && summoning != null && summoning.IsSummonAnimating)
+            {
+                StartCoroutine(ShowHandAfterSummon(hm, summoning));
+            }
+            else
+            {
+                hm?.SetHandAreaRaycast(true);
+                hm?.ShowAllCards();
+                FindObjectOfType<CardDrag>()?.SetButtonsInteractable(true);
+            }
         }
         // 放置/效果链路里残留的按钮禁用不再在这里特判"手牌为空"补救：
         // 按钮开关由 TurnButtonGate 每帧按状态派生（含非己方回合应保持禁用的情形）
         TurnButtonGate.Refresh();
 
         BoardSyncManager.MarkDirty();
+    }
+
+    /// <summary>等刚放下的卡飞完再恢复手牌：逻辑层已由 CleanupAfterPlacement 立即放行，
+    /// 这里只延迟「手牌显示 / 手牌射线 / 按钮」，避免起飞段被 Overlay 手牌盖住。</summary>
+    IEnumerator ShowHandAfterSummon(HandManager hm, Card3DInstance summoning)
+    {
+        if (summoning != null) yield return summoning.WaitForSummonAnimation(1.2f);
+        hm?.SetHandAreaRaycast(true);
+        hm?.ShowAllCards();
+        FindObjectOfType<CardDrag>()?.SetButtonsInteractable(true);
     }
 
     // ── 蛊惑之音(02304) 客户端方向：进场效果延迟表 ─────────────────────────────

@@ -72,6 +72,43 @@ public class AnimationConfig : ScriptableObject
     [Tooltip("空打（打英雄，无目标模型）时的攻击终点高度偏移（世界单位）。与有目标时目标偏移量(cardHalf)一致，防止俯仰下压穿模")]
     public float attackTargetHeightOffset = 0.8f;
 
+    [Header("召唤飞行")]
+    [Tooltip("飞出阶段基准时长（秒）；距离越远自动略加长，最多 +0.08s")]
+    public float summonLaunchDuration = 0.22f;
+    [Tooltip("槽位上方悬停高度（世界单位）")]
+    public float summonApexHeight = 0.9f;
+    [Tooltip("顶点悬停时长（秒），给下落留高度差")]
+    public float summonHangDuration = 0.08f;
+    [Tooltip("下坠时长（秒），ease-in")]
+    public float summonDropDuration = 0.08f;
+    [Tooltip("落地回弹时长（秒）")]
+    public float summonSettleDuration = 0.18f;
+    [Tooltip("落地压扁幅度（0.14 = Y 压到 0.86）")]
+    public float summonSquash = 0.14f;
+    [Tooltip("落地相机震动强度（世界单位）")]
+    public float summonShakeStrength = 0.10f;
+    [Tooltip("落地相机震动时长（秒）")]
+    public float summonShakeDuration = 0.12f;
+
     public static AnimationConfig Load()
-        => Resources.Load<AnimationConfig>("Config/AnimationConfig");
+    {
+        AnimationConfig cfg = Resources.Load<AnimationConfig>("Config/AnimationConfig");
+        if (cfg != null) cfg.EnsureSummonDefaults();
+        return cfg;
+    }
+
+    /// <summary>旧 .asset 没有「召唤飞行」这组字段时，Unity 反序列化会给 0（不是 C# 初始值）。
+    /// 这里在运行期补齐，避免召唤动画瞬间完成、看不见压扁与反馈。0 视为缺省，
+    /// 想关掉某一项就填一个很小的正数。</summary>
+    void EnsureSummonDefaults()
+    {
+        if (summonLaunchDuration <= 0f) summonLaunchDuration = 0.22f;
+        if (summonApexHeight <= 0f) summonApexHeight = 0.9f;
+        if (summonHangDuration <= 0f) summonHangDuration = 0.08f;
+        if (summonDropDuration <= 0f) summonDropDuration = 0.08f;
+        if (summonSettleDuration <= 0f) summonSettleDuration = 0.18f;
+        if (summonSquash <= 0f) summonSquash = 0.14f;
+        if (summonShakeStrength <= 0f) summonShakeStrength = 0.10f;
+        if (summonShakeDuration <= 0f) summonShakeDuration = 0.12f;
+    }
 }
