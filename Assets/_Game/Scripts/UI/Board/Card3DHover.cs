@@ -32,9 +32,22 @@ public class Card3DHover : MonoBehaviour
 
     }
 
+    void Update()
+    {
+        // 手牌 / 拖拽 / 择牌界面盖在世界之上时，碰撞体鼠标消息仍会到达 3D 卡。
+        // 若当前已经有 3D 悬停态，必须在指针仍压在碰撞体上的情况下主动收尾。
+        if (_hovering && WorldInputBlocked())
+            EndHover();
+    }
+
     void OnMouseEnter()
     {
-        if (PickDrawUI.BlocksWorldInput) return;   // 择牌选择期间：屏蔽选择界面外的射线（碰撞体鼠标消息）
+        if (WorldInputBlocked()) return;
+        BeginHover();
+    }
+
+    void BeginHover()
+    {
         Debug.Log($"OnMouseEnter 被调用：hasDiscard={cardInstance?.hasDiscard}, isMyTurn={FindObjectOfType<TurnManager>()?.IsMyTurn()}, isPlacingCard={BoardSlot.isPlacingCard}, isTargetingMode={BoardSlot.isTargetingMode}, isAttachSelectMode={BoardSlot.isAttachSelectMode}");
         _hovering = true;
         _dwellDetail = 0f; // 新进入：停留计时清零
@@ -43,7 +56,7 @@ public class Card3DHover : MonoBehaviour
         if (CanDiscard())
         {
         // 1. 恢复 HandArea 的射线阻挡
-            HandManager hm = FindObjectOfType<HandManager>();
+            HandManager hm = LocalHandManager();
             if (hm != null) hm.SetHandAreaRaycast(false);
 
         // 2. 恢复颜色和大小
@@ -72,7 +85,10 @@ public class Card3DHover : MonoBehaviour
 
     void OnMouseOver()
     {
-        if (PickDrawUI.BlocksWorldInput) return;   // 择牌选择期间：屏蔽选择界面外的射线（碰撞体鼠标消息）
+        if (WorldInputBlocked()) return;
+        // 手牌移开后指针可能仍停在同一个碰撞体上，Unity 不会再发 OnMouseEnter；
+        // 这里补一次进入逻辑，否则 3D 悬停要等鼠标彻底离开再回来才恢复。
+        if (!_hovering) BeginHover();
         // 悬停+按住右键 → 显示 Test1Panel；右键松开 → 隐藏（边沿检测，防每帧重建）
         UpdateDetailPanel();
 
@@ -100,8 +116,15 @@ public class Card3DHover : MonoBehaviour
 
     void OnMouseExit()
     {
+        EndHover();
+    }
+
+    void EndHover()
+    {
+        if (!_hovering && !_discardHovered && _targetHoverSlot == null && !_detailShown) return;
+
         // 1. 恢复 HandArea 的射线阻挡
-        HandManager hm = FindObjectOfType<HandManager>();
+        HandManager hm = LocalHandManager();
         if (hm != null) hm.SetHandAreaRaycast(true);
 
         // 2. 恢复颜色和大小
@@ -190,7 +213,7 @@ public class Card3DHover : MonoBehaviour
     /// 附着卡牌不可选；lastTargetClickTime 防与槽位 UI OnPointerClick 双触发。</summary>
     void OnMouseUpAsButton()
     {
-        if (PickDrawUI.BlocksWorldInput) return;   // 择牌选择期间：屏蔽选择界面外的射线（碰撞体鼠标消息）
+        if (WorldInputBlocked()) return;
         if (!BoardSlot.isTargetingMode || BoardSlot.currentTargetType == TargetType.None) return;
         if (cardInstance != null && cardInstance.isAttached) return; // 附着卡牌不可选
         BoardSlot slot = GetMySlot();
@@ -204,7 +227,7 @@ public class Card3DHover : MonoBehaviour
 
     void OnMouseDown()
     {
-        if (PickDrawUI.BlocksWorldInput) return;   // 择牌选择期间：屏蔽选择界面外的射线（碰撞体鼠标消息）
+        if (WorldInputBlocked()) return;
         if (!CanDiscard()) return;
 
         BoardSlot slot = GetMySlot();
@@ -239,6 +262,24 @@ public class Card3DHover : MonoBehaviour
 
         TurnManager.SyncMyBoardToOpponent();
     }
+
+    /// <summary>uGUI 或拖拽状态压在指针上时，屏蔽 3D 卡的鼠标消息。
+    /// 手牌卡片要按实际屏幕矩形判断：只看 IsPointerOverGameObject 会把槽位等世界 UI 也误判成阻挡。</summary>
+    bool WorldInputBlocked()
+    {
+        if (PickDrawUI.BlocksWorldInput || CardView.IsAnyCardDragging) return true;
+
+        HandManager hm = LocalHandManager();
+        return hm != null && hm.IsPointerOverVisibleCard((Vector2)Input.mousePosition);
+    }
+
+    HandManager LocalHandManager()
+    {
+        if (Player.Instance != null && Player.Instance.myHandManager != null)
+            return Player.Instance.myHandManager;
+        return FindObjectOfType<HandManager>();
+    }
+
     private bool CanDiscard()
     {
         if (!allowDiscard) return false;

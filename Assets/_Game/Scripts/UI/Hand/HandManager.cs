@@ -942,6 +942,29 @@ public class HandManager : MonoBehaviour
     /// <summary>手牌当前是否被真 HideAllCards 隐藏（仅用于摆放后延迟恢复的判定）。</summary>
     public bool IsHandHidden => _handCardsHidden;
 
+    /// <summary>指针是否落在某张可见手牌的实际屏幕矩形内。
+    /// 3D 卡走 OnMouseEnter/OnMouseDown，uGUI 的 GraphicRaycaster 不会替它们挡射线；
+    /// 这里给 Card3DHover 提供同一套「手牌在上、世界在下」的命中判据。</summary>
+    public bool IsPointerOverVisibleCard(Vector2 screenPos)
+    {
+        if (_handCardsHidden || handCards == null) return false;
+
+        Canvas canvas = GetComponentInParent<Canvas>();
+        Camera uiCamera = canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay
+            ? canvas.worldCamera
+            : null;
+
+        for (int i = 0; i < handCards.Count; i++)
+        {
+            CardView card = handCards[i];
+            if (card == null || card.rectTransform == null) continue;
+            if (!card.gameObject.activeInHierarchy) continue;
+            if (RectTransformUtility.RectangleContainsScreenPoint(card.rectTransform, screenPos, uiCamera))
+                return true;
+        }
+        return false;
+    }
+
     public void HideAllCards()
     {
         foreach (CardView cv in handCards)
