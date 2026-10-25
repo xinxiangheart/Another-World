@@ -263,7 +263,7 @@ public class Card3DHover : MonoBehaviour
     /// 手牌卡片要按实际屏幕矩形判断：只看 IsPointerOverGameObject 会把槽位等世界 UI 也误判成阻挡。</summary>
     bool WorldInputBlocked()
     {
-        if (PickDrawUI.BlocksWorldInput || CardView.IsAnyCardDragging) return true;
+        if (PickDrawUI.BlocksWorldInput || CardDisplayPanel.BlocksWorldInput || CardView.IsAnyCardDragging) return true;
 
         HandManager hm = LocalHandManager();
         return hm != null && hm.IsPointerOverVisibleCard((Vector2)Input.mousePosition);

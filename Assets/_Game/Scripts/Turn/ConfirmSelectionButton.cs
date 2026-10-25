@@ -38,6 +38,7 @@ public class ConfirmSelectionButton : MonoBehaviour
         onConfirm = onConfirmCallback;
         canvasGroup.interactable = true;
         canvasGroup.blocksRaycasts = true;
+        transform.SetAsLastSibling(); // 选牌层是整屏的，确认键必须始终压在它上面
         gameObject.SetActive(true);
     }
 
