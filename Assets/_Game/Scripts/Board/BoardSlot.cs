@@ -139,6 +139,9 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     bool _pointerHovered;
     /// <summary>整排 / 整片悬停（HighlightRow 设置）：鼠标停在其中一个格或格上卡牌时，同组其它格一起算悬停。</summary>
     bool _groupHovered;
+    /// <summary>目标选择期由 SelectionManager 按屏幕矩形补的悬停。3D 卡 / EventSystem 没命中时，
+    /// 四角框选仍然要跟着鼠标显示。</summary>
+    bool _geometryHovered;
     Color _origCardColor = Color.white;  // 高亮时卡牌材质原色（恢复用）
     bool _cardColorStored;
     public Color normalColor;
@@ -736,6 +739,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             else if (slotRt.sizeDelta.x > 0.0001f && slotRt.sizeDelta.y > 0.0001f) slotSize = slotRt.sizeDelta;
         }
         _selectionIndicator = SlotSelectionIndicator.AttachTo(this, slotSize);
+        SlotLockFX01505.Sync(this, permaBlocked);
     }
     // 从CardInstance提取数据包
     public class DeathEffectData
@@ -929,14 +933,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
         if (isTargetingMode && !isAttachSelectMode && !isReplaceMode && IsValidTarget(currentTargetType))
         {
-            if (currentTargetType == TargetType.SingleAlly || currentTargetType == TargetType.SingleEnemy || currentTargetType == TargetType.AllMinions || currentTargetType == TargetType.SingleAny)
-            {
-                transform.localScale = originalScale * 1.15f;
-            }
-            else
-            {
-                HighlightRow(true);
-            }
+            HighlightRow(true);
         }
     }
     public void OnPointerExit(PointerEventData eventData)
@@ -993,11 +990,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         lastClickTime = Time.time;
         if (isTargetingMode && IsValidTarget(currentTargetType))
         {
-            // 3D 射线路径已处理本次点击（穿透卡牌选格子）→ 跳过避免双触发
-            if (Time.time - lastTargetClickTime < 0.05f) return;
-            lastTargetClickTime = Time.time;
-            Debug.Log($"[TargetClick] slot={slotID}, type={currentTargetType}, onTargetSelected={onTargetSelected != null}");
-            onTargetSelected?.Invoke(this);
+            TrySelectTarget(this, "slot-ui");
             return;
         }
 
@@ -1233,6 +1226,56 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         return false;
     }
 
+    /// <summary>按屏幕点命中槽位矩形，返回该点下可选的槽位（多个重合时取离中心最近的）。
+    /// 目标选择不能依赖 3D 卡碰撞体或某一张 UI Graphic 是否抢到射线：卡牌比槽位更靠近相机，
+    /// 不同排位的投影遮挡关系也不一样，容易出现"中心能点、边缘不能点"这种按位置分裂的命中。
+    /// 这里只做几何判定，点击 / 悬停的语义仍由 IsValidTarget 决定。</summary>
+    public static BoardSlot FindSelectableSlotAtScreenPoint(Vector2 screenPos, TargetType type)
+    {
+        if (_selectionBoardManager == null) _selectionBoardManager = FindObjectOfType<BoardManager>();
+        if (_selectionCamera == null) _selectionCamera = Camera.main;
+        BoardManager bm = _selectionBoardManager;
+        if (bm == null) return null;
+
+        BoardSlot best = null;
+        float bestDistance = float.MaxValue;
+        for (int i = 0; i < 12; i++)
+        {
+            BoardSlot slot = bm.GetSlot(i);
+            if (slot == null || !slot.isActiveAndEnabled) continue;
+            if (!slot.IsValidTarget(type)) continue;
+
+            RectTransform rt = slot.transform as RectTransform;
+            if (rt == null) continue;
+            if (!RectTransformUtility.RectangleContainsScreenPoint(rt, screenPos, _selectionCamera)) continue;
+
+            Vector2 center = RectTransformUtility.WorldToScreenPoint(_selectionCamera, rt.TransformPoint(rt.rect.center));
+            float distance = (center - screenPos).sqrMagnitude;
+            if (distance < bestDistance)
+            {
+                bestDistance = distance;
+                best = slot;
+            }
+        }
+        return best;
+    }
+
+    // 选择期悬停逐帧调用：棋盘 / 相机各缓存一次；场景切换后 Unity 的销毁对象会与 null 相等，自动重取。
+    static BoardManager _selectionBoardManager;
+    static Camera _selectionCamera;
+
+    /// <summary>目标选择的唯一落点入口。UI、3D 卡与屏幕矩形兜底都走这里，
+    /// 用 lastTargetClickTime 统一防同一次点击被多条路径重复结算。</summary>
+    public static bool TrySelectTarget(BoardSlot slot, string source)
+    {
+        if (slot == null || onTargetSelected == null) return false;
+        if (Time.time - lastTargetClickTime < 0.05f) return false;
+        lastTargetClickTime = Time.time;
+        Debug.Log($"[TargetClick-{source}] slot={slot.slotID}, type={currentTargetType}");
+        onTargetSelected.Invoke(slot);
+        return true;
+    }
+
     int[] GetRowSlots(TargetType type)
     {
         switch (type)
@@ -1308,7 +1351,6 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     void SetHoverHighlight(bool hover)
     {
         _groupHovered = hover;
-        transform.localScale = hover ? originalScale * 1.15f : originalScale;
     }
 
     /// <summary>清掉悬停标记并还原缩放（选择结束 / 强制收尾用）。</summary>
@@ -1316,12 +1358,17 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     {
         _groupHovered = false;
         _pointerHovered = false;
+        _geometryHovered = false;
         transform.localScale = originalScale;
     }
 
     /// <summary>选择期「框选」是否显示在本格：允许被选择 且 鼠标（或拖拽）正停在上面 / 属于被悬停的那一组。
     /// 抛置悬停（_discardHighlighted）本身就是一次悬停提示，一并算悬停（框选走绿色）。</summary>
-    public bool IsSelectionHovered => _pointerHovered || _groupHovered || _discardHighlighted;
+    public bool IsSelectionHovered => _pointerHovered || _groupHovered || _geometryHovered || _discardHighlighted;
+
+    /// <summary>目标选择期由 SelectionManager 按槽位屏幕矩形维护的悬停。
+    /// 只影响四角框选的显示，不改状态色与缩放，避免和既有 OnPointerEnter / HighlightRow 打架。</summary>
+    public void SetGeometrySelectionHover(bool hover) => _geometryHovered = hover;
 
     /// <summary>本格此刻是否处于抛置悬停提示（框选绿色）。</summary>
     public bool IsDiscardHinted => _discardHighlighted;
@@ -1477,7 +1524,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     /// (true) 包含 inactive：隐藏(雾隐)卡模型正面被禁用时也能命中模型网格，
     /// 否则 GetComponentInChildren 会跳过 inactive 模型、误抓到第一个 TMP 文字渲染器（同 CardDisplay3D 注释）。
     /// 再按 _Color 判别跳过 TMP(Distance Field) 与 CardComposite(无 _Color 属性)——
-    /// 只有带 _Color 的模型材质才可 tint。无模型网格返回 null（高亮退化为格子环，HighlightRow 已带 1.15x 放大）。</summary>
+    /// 只有带 _Color 的模型材质才可 tint。无模型网格返回 null（高亮退化为格子环）。</summary>
     static MeshRenderer FindCardModelRenderer(GameObject cardRoot)
     {
         foreach (MeshRenderer mr in cardRoot.GetComponentsInChildren<MeshRenderer>(true))
@@ -1856,6 +1903,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     /// <summary>Force-refresh slot visual after syncing flags from server.</summary>
     public void SyncVisual()
     {
+        SlotLockFX01505.Sync(this, permaBlocked);
         // 抛置悬停激活中 → 保持绿色。同步/EndSelection 触发的 SyncVisual 不能把悬停高亮清掉。
         if (_discardHighlighted) { SetSlotColor(discardHighlightColor); return; }
         if (permaBlocked) SetSlotColor(Color.black);
@@ -3849,6 +3897,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 else
                     BoardSyncManager.MarkDirty();
             }
+
+            yield return SlotLockFX01505.Play(target);
         }
 
         CleanupAfterPlacement();

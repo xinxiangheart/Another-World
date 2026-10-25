@@ -11,6 +11,14 @@ public class SelectionManager : MonoBehaviour
     private readonly Stack<SelectionKind> kindStack = new Stack<SelectionKind>();
     private int idCounter;
 
+    // 目标选择的屏幕矩形兜底：按下与松开都落在同一个合法槽位才算一次点击。
+    // 不依赖 3D 卡碰撞体 / EventSystem 谁抢到射线，避免不同排位只有中心或只有边缘能点。
+    BoardSlot _fallbackPressSlot;
+    Vector2 _fallbackPressPos;
+    bool _fallbackPressActive;
+    BoardSlot _geometryHoverSlot;
+    const float TargetClickSlopPx = 18f;
+
     /// <summary>当前选择层的语义类型（伤害/治愈/减益/中性）。槽位选择指示器据此决定颜色；
     /// 不在选择状态时一律为 Neutral。层栈清空时复位。</summary>
     public static SelectionKind CurrentKind { get; private set; } = SelectionKind.Neutral;
@@ -215,6 +223,99 @@ public class SelectionManager : MonoBehaviour
         // 选择期压暗：不允许选择的格子（含其 2D 格子底与 3D 卡牌）与不可选的手牌压暗，合法目标保持原色。
         // 非选择期只需在退出时复原一次，Tick 内部自行短路。
         SelectionDim.Tick(IsSelecting);
+        TickGeometryHover();
+        TickTargetClickFallback();
+    }
+
+    /// <summary>目标选择期的悬停也按槽位屏幕矩形判：卡牌碰撞体 / UI 射线谁没命中，
+    /// 都不该让四角框选在格子中央消失。</summary>
+    void TickGeometryHover()
+    {
+        if (!IsSelecting || BoardSlot.currentTargetType == TargetType.None || TargetClickBlocked())
+        {
+            if (_geometryHoverSlot != null)
+            {
+                _geometryHoverSlot.SetGeometrySelectionHover(false);
+                _geometryHoverSlot = null;
+            }
+            return;
+        }
+
+        BoardSlot hovered = BoardSlot.FindSelectableSlotAtScreenPoint(
+            Input.mousePosition, BoardSlot.currentTargetType);
+        if (hovered == _geometryHoverSlot)
+        {
+            if (hovered != null) hovered.SetGeometrySelectionHover(true);
+            return;
+        }
+
+        if (_geometryHoverSlot != null)
+            _geometryHoverSlot.SetGeometrySelectionHover(false);
+        _geometryHoverSlot = hovered;
+        if (hovered != null)
+            hovered.SetGeometrySelectionHover(true);
+    }
+
+    /// <summary>目标选择期间，在鼠标松开时按槽位屏幕矩形再判一次。</summary>
+    void TickTargetClickFallback()
+    {
+        if (!IsSelecting || BoardSlot.currentTargetType == TargetType.None)
+        {
+            _fallbackPressActive = false;
+            _fallbackPressSlot = null;
+            return;
+        }
+
+        if (Input.GetMouseButtonDown(0))
+        {
+            _fallbackPressActive = false;
+            _fallbackPressSlot = null;
+            if (!TargetClickBlocked())
+            {
+                BoardSlot pressed = BoardSlot.FindSelectableSlotAtScreenPoint(
+                    Input.mousePosition, BoardSlot.currentTargetType);
+                if (pressed != null)
+                {
+                    _fallbackPressSlot = pressed;
+                    _fallbackPressPos = Input.mousePosition;
+                    _fallbackPressActive = true;
+                }
+            }
+        }
+
+        if (!Input.GetMouseButtonUp(0)) return;
+
+        if (!_fallbackPressActive)
+        {
+            _fallbackPressSlot = null;
+            return;
+        }
+
+        BoardSlot pressedSlot = _fallbackPressSlot;
+        _fallbackPressActive = false;
+        _fallbackPressSlot = null;
+
+        // 3D 卡 / 槽位 UI 可能已经在本帧先处理了这次点击并结束选择。
+        if (!IsSelecting || BoardSlot.currentTargetType == TargetType.None) return;
+        if (TargetClickBlocked()) return;
+
+        Vector2 delta = (Vector2)Input.mousePosition - _fallbackPressPos;
+        if (delta.sqrMagnitude > TargetClickSlopPx * TargetClickSlopPx) return;
+
+        BoardSlot released = BoardSlot.FindSelectableSlotAtScreenPoint(
+            Input.mousePosition, BoardSlot.currentTargetType);
+        if (released == null || released != pressedSlot) return;
+
+        BoardSlot.TrySelectTarget(released, "geometry");
+    }
+
+    bool TargetClickBlocked()
+    {
+        if (PickDrawUI.BlocksWorldInput || CardView.IsAnyCardDragging) return true;
+        HandManager hm = Player.Instance != null && Player.Instance.myHandManager != null
+            ? Player.Instance.myHandManager
+            : FindObjectOfType<HandManager>();
+        return hm != null && hm.IsPointerOverVisibleCard((Vector2)Input.mousePosition);
     }
 
     // 目标选择模式不再在这里做 3D 射线穿透检测格子。

@@ -218,11 +218,7 @@ public class Card3DHover : MonoBehaviour
         if (cardInstance != null && cardInstance.isAttached) return; // 附着卡牌不可选
         BoardSlot slot = GetMySlot();
         if (slot == null || !slot.IsValidTarget(BoardSlot.currentTargetType)) return;
-        if (BoardSlot.onTargetSelected == null) return;
-        if (Time.time - BoardSlot.lastTargetClickTime < 0.05f) return;
-        BoardSlot.lastTargetClickTime = Time.time;
-        Debug.Log($"[TargetClick-card] slot={slot.slotID}, type={BoardSlot.currentTargetType}, onTargetSelected={BoardSlot.onTargetSelected != null}");
-        BoardSlot.onTargetSelected?.Invoke(slot);
+        BoardSlot.TrySelectTarget(slot, "card-3d");
     }
 
     void OnMouseDown()
