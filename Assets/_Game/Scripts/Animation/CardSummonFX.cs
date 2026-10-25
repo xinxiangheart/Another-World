@@ -33,11 +33,11 @@ public static class CardSummonFX
     /// <summary>槽位落地闪白：贴在槽位上的独立 UI 覆盖层，只负责「亮一下」。
     /// 不读写 BoardSlot.SetSlotColor / SelectionDim，状态色链与压暗完全不受影响；
     /// 卡面在它前面（z 更靠近相机），所以只会从卡四周溢出一圈柔光。</summary>
-    public static void PlaySlotFlash(BoardSlot slot, float duration = 0.22f, float size = 1.30f)
+    public static void PlaySlotFlash(BoardSlot slot, float duration = 0.22f, float size = 1.20f)
     {
         if (slot == null) return;
         EnsureRunner();
-        _runner.StartCoroutine(SlotFlashRoutine(slot, Mathf.Max(0.01f, duration), Mathf.Max(0.1f, size)));
+        _runner.StartCoroutine(SlotFlashRoutine(slot, Mathf.Max(0.01f, duration), Mathf.Max(1f, size)));
     }
 
     static void EnsureRunner()
@@ -72,9 +72,12 @@ public static class CardSummonFX
         rt.anchorMax = new Vector2(0.5f, 0.5f);
         rt.pivot = new Vector2(0.5f, 0.5f);
         rt.anchoredPosition = Vector2.zero;
-        rt.sizeDelta = slotSize * size;
+        // 把多出的宽度平均分到四条边，卡面挡住中间后只剩一圈等宽窄边光。
+        float border = slotSize.x * (size - 1f) * 0.5f;
+        rt.sizeDelta = slotSize + new Vector2(border * 2f, border * 2f);
         // 略向相机方向挪一点：盖住槽位底板，但仍在 3D 卡牌之后（卡再靠前 0.1）
         rt.localPosition = new Vector3(0f, 0f, -0.02f);
+        rt.localScale = Vector3.one * 0.99f;
 
         Image image = go.GetComponent<Image>();
         image.sprite = _slotFlashSprite;
@@ -82,11 +85,14 @@ public static class CardSummonFX
         image.color = new Color(1f, 0.97f, 0.90f, 0f);
 
         float t = 0f;
-        const float peak = 0.82f;
+        const float peak = 0.78f;
         while (t < duration && go != null)
         {
             t += Time.deltaTime;
             float p = Mathf.Clamp01(t / duration);
+            // 只做极小幅度的外扩，避免光边离开卡牌。
+            float expand = 1f - Mathf.Pow(1f - p, 3f);
+            rt.localScale = Vector3.one * Mathf.Lerp(0.99f, 1.01f, expand);
             // 起亮快、退得干净：前 18% 冲到峰值，之后平方衰减
             float rise = Mathf.Clamp01(p / 0.18f);
             float a = p < 0.18f ? peak * rise : peak * Mathf.Pow(1f - (p - 0.18f) / 0.82f, 2f);
@@ -319,31 +325,32 @@ public static class CardSummonFX
         return tex;
     }
 
-    /// <summary>槽位闪白用的「边缘亮、中心透」方框光：卡面在中间不被洗白，
-    /// 只有槽位四周亮一圈，读作金属边框被砸亮。</summary>
+    /// <summary>贴边闪光用的长方形软边环：卡面挡住中间，只露出一圈窄窄的光。
+    /// 外缘连续渐隐，内缘也保持透明，避免覆盖卡面。</summary>
     static Texture2D BuildSlotFlashTexture()
     {
-        const int n = 256;
-        var tex = new Texture2D(n, n, TextureFormat.RGBA32, false);
+        // 与「槽位 + 四周等宽窄边」同比例，贴图不会被拉伸。
+        const int w = 256;
+        const int h = 423;
+        var tex = new Texture2D(w, h, TextureFormat.RGBA32, false);
         tex.wrapMode = TextureWrapMode.Clamp;
         tex.filterMode = FilterMode.Bilinear;
 
-        var px = new Color32[n * n];
-        for (int y = 0; y < n; y++)
+        var px = new Color32[w * h];
+        for (int y = 0; y < h; y++)
         {
-            for (int x = 0; x < n; x++)
+            for (int x = 0; x < w; x++)
             {
-                float dx = Mathf.Abs((x + 0.5f) / n - 0.5f) * 2f;
-                float dy = Mathf.Abs((y + 0.5f) / n - 0.5f) * 2f;
-                float m = Mathf.Max(dx, dy);
-
-                // 亮带在 0.70 附近，之后一路衰减到 0.94；最后 6% 完全透明，
-                // 槽位外沿不会再出现一条突然截断的方框边。
-                float inner = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.45f, 0.70f, m));
-                float outer = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.70f, 0.94f, m));
+                // 到最近边的像素距离。卡面边缘约在 20 px 处，
+                // 因此 0→12 px 渐隐、12→20 px 实体、20 px 之后向内透明。
+                float edgeDistance = Mathf.Min(
+                    Mathf.Min(x + 0.5f, w - x - 0.5f),
+                    Mathf.Min(y + 0.5f, h - y - 0.5f));
+                float outer = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0f, 12f, edgeDistance));
+                float inner = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(20f, 36f, edgeDistance));
                 float a = Mathf.Clamp01(inner * outer);
 
-                px[y * n + x] = new Color32(255, 255, 255, (byte)Mathf.RoundToInt(a * 255f));
+                px[y * w + x] = new Color32(255, 255, 255, (byte)Mathf.RoundToInt(a * 255f));
             }
         }
 

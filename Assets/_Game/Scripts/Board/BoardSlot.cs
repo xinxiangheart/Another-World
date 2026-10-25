@@ -2709,8 +2709,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             if (hc == null) continue;
             CardInstance c1314 = hc.GetComponent<CardInstance>();
             if (c1314 == null) continue;
-            CardData td1314 = CardDatabase.Instance?.GetTemplate(c1314.templateID);
-            if (td1314 == null || td1314.cardType != CardType.Summon || td1314.summonType != SummonType.Hero) continue;
+            if (!HandManager.IsHandHeroCandidate(ai1314, c1314)) continue;
             int r1314 = System.Array.IndexOf(pref1314, c1314.currentCost);
             if (r1314 < 0) r1314 = pref1314.Length;
             if (r1314 < bestRank1314) { bestRank1314 = r1314; pick1314 = c1314; }
@@ -2747,12 +2746,13 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         NetworkPlayer.Local.handCards.RemoveAll(c => c == null);
         HandManager hm = FindObjectOfType<HandManager>();
 
-        // 第一段：选手牌一张 Hero 召唤物 → CardDisplayPanel 弹窗（01349 收藏家式）
-        List<CardInstance> candidates = hm != null ? hm.BuildHandCardList(ci =>
-        {
-            CardData td = CardDatabase.Instance?.GetTemplate(ci.templateID);
-            return td != null && td.cardType == CardType.Summon && td.summonType == SummonType.Hero;
-        }) : new List<CardInstance>();
+        // 第一段：选手牌一张 Hero 召唤物 → CardDisplayPanel 弹窗（01349 收藏家式）。
+        // 候选必须同时满足：在当前手牌列表、模板为 Hero、未附着、且不在场上。
+        // 只看模板类型会把「已经落场的同名/同实例召唤物」也放进来，导致再次召唤。
+        NetworkPlayer local1314 = NetworkPlayer.Local;
+        List<CardInstance> candidates = hm != null
+            ? hm.BuildHandCardList(ci => HandManager.IsHandHeroCandidate(local1314, ci))
+            : new List<CardInstance>();
         if (candidates.Count == 0)
         {
             CleanupAfterPlacement();
@@ -2761,25 +2761,39 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         bool confirmed = false;
         CardDisplayPanel.Instance.multiSelect = false;
-        CardDisplayPanel.Instance.ShowWithCallback(candidates, ci => true, () => confirmed = true, "选择英雄");
+        CardDisplayPanel.Instance.ShowWithCallback(
+            candidates,
+            ci => HandManager.IsHandHeroCandidate(local1314, ci),
+            () => confirmed = true,
+            "选择英雄");
         float heartDeadline = Time.time + 30f;
         while (!confirmed && Time.time < heartDeadline) yield return null;
         if (!confirmed) { hm?.EndHandSelectionCleanup(); CleanupAfterPlacement(); yield break; }
 
         CardInstance chosen = CardDisplayPanel.Instance.GetSelectedCard();
+        // 弹窗返回的是展示克隆；这里先按实例 ID 校验它仍属于手牌，再做真身回查。
+        if (chosen == null || !HandManager.IsHandHeroCandidate(local1314, chosen))
+        {
+            Debug.LogWarning($"[01314] 拒绝非手牌英雄选择: iid={chosen?.instanceID}, tid={chosen?.templateID}");
+            hm?.EndHandSelectionCleanup();
+            CleanupAfterPlacement();
+            yield break;
+        }
+
         GameObject selectedCard = chosen != null
             ? hm?.ResolveHandCardByInstanceID(chosen.instanceID)
             : null;
         hm?.EndHandSelectionCleanup();
 
-        if (selectedCard == null)
+        CardInstance selInst = selectedCard?.GetComponent<CardInstance>();
+        if (selInst == null || !HandManager.IsHandHeroCandidate(local1314, selInst))
         {
+            Debug.LogWarning($"[01314] 目标已不在手牌或已在场上: iid={chosen?.instanceID}");
             CleanupAfterPlacement();
             yield break;
         }
 
-        CardInstance selInst = selectedCard.GetComponent<CardInstance>();
-        bool isAttachCard = selInst != null && selInst.canAttach;
+        bool isAttachCard = selInst.canAttach;
 
         if (isAttachCard)
         {

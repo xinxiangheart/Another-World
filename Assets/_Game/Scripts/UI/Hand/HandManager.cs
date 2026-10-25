@@ -2846,6 +2846,61 @@ public class HandManager : MonoBehaviour
         return list;
     }
 
+    /// <summary>手牌中的「英雄」：必须在 owner 的当前手牌列表里、是 Hero 召唤物、未附着，且不在场上。
+    /// 只查模板类型不够——旧手牌对象/异常 instanceID 可能仍指向已经落场的召唤物，
+    /// 万人迷(01314) 这类「从手牌召唤」的效果必须在候选与结算两处都拦掉。</summary>
+    public static bool IsHandHeroCandidate(NetworkPlayer owner, CardInstance ci)
+    {
+        if (owner?.handCards == null || ci == null || ci.isAttached) return false;
+
+        CardData td = CardDatabase.Instance?.GetTemplate(ci.templateID);
+        if (td == null || td.cardType != CardType.Summon || td.summonType != SummonType.Hero) return false;
+
+        bool inHand = false;
+        foreach (GameObject handCard in owner.handCards)
+        {
+            if (handCard == null) continue;
+            CardInstance handCI = handCard.GetComponent<CardInstance>();
+            if (handCI == null) continue;
+            if (handCI == ci || (!string.IsNullOrEmpty(ci.instanceID) && handCI.instanceID == ci.instanceID))
+            {
+                inHand = true;
+                break;
+            }
+        }
+        return inHand && !IsCardOnBoard(ci);
+    }
+
+    /// <summary>该实例是否仍在 12 个场上槽位或附着模型里（按引用，退化时按非空 instanceID）。</summary>
+    static bool IsCardOnBoard(CardInstance ci)
+    {
+        if (ci == null) return false;
+        BoardManager bm = FindObjectOfType<BoardManager>();
+        if (bm == null) return false;
+
+        for (int i = 0; i < 12; i++)
+        {
+            CardInstance fieldCI = bm.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
+            if (SameCardInstance(fieldCI, ci)) return true;
+        }
+        if (bm.attachedModels != null)
+        {
+            foreach (GameObject obj in bm.attachedModels)
+            {
+                CardInstance attachedCI = obj?.GetComponent<Card3DInstance>()?.cardInstance;
+                if (SameCardInstance(attachedCI, ci)) return true;
+            }
+        }
+        return false;
+    }
+
+    static bool SameCardInstance(CardInstance a, CardInstance b)
+    {
+        if (a == null || b == null) return false;
+        if (a == b) return true;
+        return !string.IsNullOrEmpty(a.instanceID) && a.instanceID == b.instanceID;
+    }
+
     /// <summary>组装"手牌 + 场上"混合候选列表（side=己方半场起点，默认6；可选过滤作用于两源）。
     /// 场上以 Card3DInstance.cardInstance 入列，弹窗按模板重建 2D 卡展示。</summary>
     public List<CardInstance> BuildHandPlusFieldCardList(System.Func<CardInstance, bool> filter = null, int side = 6)
