@@ -2835,15 +2835,27 @@ public class HandManager : MonoBehaviour
     {
         var list = new List<CardInstance>();
         if (NetworkPlayer.Local?.handCards == null) return list;
+        var seenIDs = new HashSet<string>(System.StringComparer.Ordinal);
+        var seenRefs = new HashSet<CardInstance>();
         foreach (var card in NetworkPlayer.Local.handCards)
         {
             if (card == null) continue;
             var ci = card.GetComponent<CardInstance>();
             if (ci == null) continue;
             if (filter != null && !filter(ci)) continue;
+            // 主机的 UI 手牌与服务器跟踪卡共用 handCards：同一 instanceID 只能算一张。
+            if (!AcceptUniqueCard(ci, seenIDs, seenRefs)) continue;
             list.Add(ci);
         }
         return list;
+    }
+
+    /// <summary>候选去重：有 instanceID 按 ID，临时卡（无 ID）按对象引用。</summary>
+    static bool AcceptUniqueCard(CardInstance ci, HashSet<string> seenIDs, HashSet<CardInstance> seenRefs)
+    {
+        if (ci == null) return false;
+        if (!string.IsNullOrEmpty(ci.instanceID)) return seenIDs.Add(ci.instanceID);
+        return seenRefs.Add(ci);
     }
 
     /// <summary>手牌中的「英雄」：必须在 owner 的当前手牌列表里、是 Hero 召唤物、未附着，且不在场上。
@@ -2906,6 +2918,9 @@ public class HandManager : MonoBehaviour
     public List<CardInstance> BuildHandPlusFieldCardList(System.Func<CardInstance, bool> filter = null, int side = 6)
     {
         var list = BuildHandCardList(filter);
+        var seenIDs = new HashSet<string>(System.StringComparer.Ordinal);
+        var seenRefs = new HashSet<CardInstance>();
+        foreach (var ci in list) AcceptUniqueCard(ci, seenIDs, seenRefs);
         var bm = FindObjectOfType<BoardManager>();
         if (bm == null) return list;
         for (int i = side; i < side + 6; i++)
@@ -2913,6 +2928,8 @@ public class HandManager : MonoBehaviour
             var ci = bm?.GetSlot(i)?.currentCard3D?.GetComponent<Card3DInstance>()?.cardInstance;
             if (ci == null) continue;
             if (filter != null && !filter(ci)) continue;
+            // 回手后旧槽位仍可能挂着同一实例的 currentCard3D：同一张卡不能既算手牌又算场上。
+            if (!AcceptUniqueCard(ci, seenIDs, seenRefs)) continue;
             list.Add(ci);
         }
         return list;

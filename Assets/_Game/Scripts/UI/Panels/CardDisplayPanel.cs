@@ -120,12 +120,25 @@ public class CardDisplayPanel : MonoBehaviour
         const float rawCardH = 146.333333f;
 
         var valid = new List<CardInstance>();
+        var seenIDs = new HashSet<string>(StringComparer.Ordinal);
+        var seenRefs = new HashSet<CardInstance>();
         if (cards != null)
         {
             foreach (var ci in cards)
             {
                 if (ci == null) continue;
                 if (CardDatabase.Instance?.GetTemplate(ci.templateID) == null) continue;
+
+                // 防御重复候选：同一个实例可能同时留在手牌列表和场上快照里。
+                // 有 instanceID 时按 ID 去重；没有 ID 的临时卡按对象引用去重。
+                if (!string.IsNullOrEmpty(ci.instanceID))
+                {
+                    if (!seenIDs.Add(ci.instanceID)) continue;
+                }
+                else if (!seenRefs.Add(ci))
+                {
+                    continue;
+                }
                 valid.Add(ci);
             }
         }

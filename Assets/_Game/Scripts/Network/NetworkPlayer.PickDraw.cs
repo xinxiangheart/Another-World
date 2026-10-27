@@ -183,7 +183,9 @@ public partial class NetworkPlayer
         {
             if (connectionToClient != null)
                 TargetReceiveCard(connectionToClient, chosen.tid, chosen.iid);
-            AddServerSideCard(tpl, chosen.iid);
+            // 主机 Local 收到 TargetReceiveCard 后已经有 UI 手牌对象（同一个 handCards 列表）；
+            // 再补 AddServerSideCard 会让一张阴谋家在手牌里变成两条候选。远端 / AI 仍需要跟踪卡。
+            if (!HasLocalHandUi) AddServerSideCard(tpl, chosen.iid);
             ServerMarkActiveDraw();   // 择牌择中也算「主动花能量抽牌」
         }
 

@@ -559,11 +559,13 @@ public class CounterManager : MonoBehaviour
         if (!NetworkServer.active || player == null) return;
         CardData data = DeckManager.Instance?.DrawFromMain();
         if (data == null) return;
+        string iid = data._instanceID ?? "";
         // AI(server-only) 没有连接：老写法 TargetReceiveCard(null) 每次都让 Mirror 报
         // "can't be sent because it was given a null connection"；牌本身照旧只走服务器手牌追踪。
         if (player.connectionToClient != null)
-            player.TargetReceiveCard(player.connectionToClient, data.templateID, "");
-        player.AddServerSideCard(data);
+            player.TargetReceiveCard(player.connectionToClient, data.templateID, iid);
+        // 主机 Local 已经有 UI 手牌对象（同一个 handCards 列表），再补跟踪卡会让一张牌变成两条。
+        if (!player.HasLocalHandUi) player.AddServerSideCard(data, iid);
     }
 
     /// <summary>Tell Remote to remove their visual copy of a counter that the server just consumed.</summary>

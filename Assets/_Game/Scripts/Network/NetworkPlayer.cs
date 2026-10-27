@@ -483,7 +483,8 @@ public partial class NetworkPlayer : NetworkBehaviour
         TargetConfirmDraw(connectionToClient);
 
         // Server-side tracking: add a lightweight card so CmdPlayCard can find it
-        AddServerSideCard(data, iid);
+        // 主机已有 UI 手牌对象（同一个 handCards 列表）→ 不再补第二份跟踪卡。
+        if (!HasLocalHandUi) AddServerSideCard(data, iid);
         if (activeDraw) ServerMarkActiveDraw();   // 表现：对面播一次卡背飞入
     }
 
@@ -494,7 +495,7 @@ public partial class NetworkPlayer : NetworkBehaviour
         if (data == null) return;
         string iid = data._instanceID ?? "";
         TargetReceiveCard(connectionToClient, data.templateID, iid);
-        AddServerSideCard(data, iid);
+        if (!HasLocalHandUi) AddServerSideCard(data, iid);
     }
 
     [Command]
@@ -506,7 +507,7 @@ public partial class NetworkPlayer : NetworkBehaviour
         {
             string iid = CardZoneManager.GenerateInstanceID(templateID);
             TargetReceiveCard(connectionToClient, templateID, iid);
-            AddServerSideCard(template, iid);
+            if (!HasLocalHandUi) AddServerSideCard(template, iid);
         }
     }
 
@@ -1574,6 +1575,31 @@ public partial class NetworkPlayer : NetworkBehaviour
     /// 旧实现只按模板 InitFromTemplate —— AI 的执念亡魂(03504)回手即变成全新个体，减费与永久数值改动全丢。</summary>
     public void AddServerSideCard(CardData data, string instanceID = null, CardInstance oldInstance = null)
     {
+        // 主机 Local 的 handCards 本身就是 UI 手牌列表：服务器跟踪卡没有独立容器，
+        // 再建一份只会让同一张牌在遍历时出现两次。远端 / AI 没有本地 UI，仍然需要跟踪卡。
+        if (HasLocalHandUi)
+        {
+            Debug.Log($"[NetworkPlayer] AddServerSideCard: 主机已有 UI 手牌，跳过跟踪卡 {data.templateID} iid={instanceID}");
+            return;
+        }
+
+        // 同端已有同 instanceID 的手牌对象（重复调用 / 旧会话残留）时不再建跟踪卡：
+        // 同一张牌在 handCards 里出现两次，会让选牌弹窗、手牌英雄校验、弃牌计数都把它当成两张。
+        if (!string.IsNullOrEmpty(instanceID))
+        {
+            for (int i = 0; i < handCards.Count; i++)
+            {
+                GameObject existing = handCards[i];
+                if (existing == null) continue;
+                CardInstance existingCI = existing.GetComponent<CardInstance>();
+                if (existingCI != null && existingCI.instanceID == instanceID)
+                {
+                    Debug.Log($"[NetworkPlayer] AddServerSideCard: 跳过重复跟踪卡 {data.templateID} iid={instanceID}");
+                    return;
+                }
+            }
+        }
+
         GameObject card = new GameObject($"ServerCard_{data.templateID}");
         CardInstance ci = card.AddComponent<CardInstance>();
         if (oldInstance != null)
@@ -1605,6 +1631,10 @@ public partial class NetworkPlayer : NetworkBehaviour
         // Registry: 手牌入区
         RegistrySyncManager.Instance?.UpdateCard(ci, this == LocalHalfPlayer ? 0 : 1, CardZone.Hand, -1);
     }
+
+    /// <summary>本端是否已经有本地 UI 手牌对象。主机 Local 的 TargetReceiveCard 与服务器跟踪
+    /// 写在同一个 handCards 列表里，因此主机不能再补 AddServerSideCard；远端 / AI 仍需要。</summary>
+    public bool HasLocalHandUi => this == NetworkPlayer.Local && connectionToClient != null;
 
     int GetCopyIndex(string templateID)
     {
