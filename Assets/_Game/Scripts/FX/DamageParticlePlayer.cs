@@ -20,6 +20,7 @@ public class DamageParticlePlayer : MonoBehaviour
     static readonly Queue<DamageParticlePlayer> _pool = new Queue<DamageParticlePlayer>();
     static Transform _poolRoot;
     static Sprite _sharedSprite;
+    static Material _sharedTrailMat;
 
     SpriteRenderer _sr;
     TrailRenderer _trail;
@@ -159,16 +160,42 @@ public class DamageParticlePlayer : MonoBehaviour
         _sr.sprite = _sharedSprite;
         _sr.sortingOrder = 200;
 
-        // 短拖尾（startColor/endColor 控制红色渐隐）——不创建运行时材质，用 TrailRenderer 默认材质
+        // 短拖尾：必须显式给材质。运行时 AddComponent 出来的 TrailRenderer 材质为空，
+        // 会走 Unity 的品红 missing-material 着色器（就是那条紫线的来源）。
+        // 复用 SpriteRenderer 自带的 Sprites-Default（支持顶点色），全局只有这一份。
         _trail = gameObject.AddComponent<TrailRenderer>();
-        _trail.startColor = new Color(1f, 0.3f, 0.2f, 0.9f);
-        _trail.endColor = new Color(1f, 0.1f, 0.1f, 0f);
-        _trail.time = 0.25f;
-        _trail.startWidth = 0.12f;
-        _trail.endWidth = 0.02f;
-        _trail.minVertexDistance = 0.05f;
+        _trail.sharedMaterial = ResolveTrailMaterial(_sr.sharedMaterial);
+        _trail.alignment = LineAlignment.View;
+        _trail.textureMode = LineTextureMode.Stretch;
+        _trail.numCapVertices = 2;
+        _trail.startColor = new Color(1f, 0.62f, 0.35f, 0.85f);   // 头：暖白偏橙
+        _trail.endColor = new Color(0.90f, 0.17f, 0.17f, 0f);     // 尾：伤害红渐隐
+        _trail.time = 0.18f;
+        _trail.startWidth = 0.05f;
+        _trail.endWidth = 0.005f;
+        _trail.minVertexDistance = 0.02f;
+        _trail.sortingOrder = 199;                                 // 压在粒子头（200）下面
 
         transform.localScale = new Vector3(0.6f, 0.6f, 1f);
+    }
+
+    /// <summary>取拖尾共享材质：优先 SpriteRenderer 默认材质，必要时按 Sprites/Default 建一份。</summary>
+    static Material ResolveTrailMaterial(Material spriteDefault)
+    {
+        if (_sharedTrailMat != null) return _sharedTrailMat;
+        if (spriteDefault != null)
+        {
+            _sharedTrailMat = spriteDefault;
+            return _sharedTrailMat;
+        }
+
+        Shader shader = Shader.Find("Sprites/Default");
+        if (shader == null) return null;
+        _sharedTrailMat = new Material(shader);
+        _sharedTrailMat.name = "DamageTrail (Shared)";
+        _sharedTrailMat.hideFlags = HideFlags.HideAndDontSave;
+        _sharedTrailMat.SetColor("_Color", Color.white);
+        return _sharedTrailMat;
     }
 
     /// <summary>运行时生成一个中心实心圆贴图（不依赖外部美术）。size=像素边长（32→0.32 世界单位）。</summary>
