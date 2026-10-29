@@ -23,6 +23,8 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     private static float lastClickTime = 0f;
     public int plagueRoundCount;
     public bool hasPlague;
+    /// <summary>囚牢格底色：压暗的紫，亮度和色彩交给 SlotPrisonFX01331 的雾层。</summary>
+    public static readonly Color PrisonSlotTint = new Color(0.26f, 0.17f, 0.34f);
     /// <summary>瘟疫(02408)来源 templateID（施法法术离场，用模板ID记录）；空=无来源。用于扣血归因。</summary>
     public string plagueSourceTemplateID;
     /// <summary>聚光灯(02310 法术)来源 templateID；空=无。法术离场记模板ID（同 plague）。4.3 来源记录。</summary>
@@ -740,6 +742,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
         }
         _selectionIndicator = SlotSelectionIndicator.AttachTo(this, slotSize);
         SlotLockFX01505.Sync(this, permaBlocked);
+        SlotPrisonFX01331.Sync(this, prisonBlocked, prisonAllowYuan);
     }
     // 从CardInstance提取数据包
     public class DeathEffectData
@@ -893,7 +896,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
                 }
             }
             transform.localScale = originalScale;
-            SetSlotColor(new Color(0.6f, 0.2f, 0.8f));
+            SetSlotColor(PrisonSlotTint);
             return;
         }
 
@@ -947,7 +950,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         if (prisonBlocked)
         {
-            SetSlotColor(new Color(0.6f, 0.2f, 0.8f));
+            SetSlotColor(PrisonSlotTint);
             return;
         }
 
@@ -976,7 +979,7 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             SetSlotColor(discardHighlightColor);
         }
         else if (isBlocked) SetSlotColor(Color.black);   // 封锁者/封锁 = 纯黑（与永封同色）
-        else if (prisonBlocked) SetSlotColor(new Color(0.6f, 0.2f, 0.8f));
+        else if (prisonBlocked) SetSlotColor(PrisonSlotTint);
         else if (hasPlague) SetSlotColor(Color.green);
         else if (deepSeaMarked) SetSlotColor(Color.blue);
         else SetSlotColor(normalColor);
@@ -1904,11 +1907,12 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     public void SyncVisual()
     {
         SlotLockFX01505.Sync(this, permaBlocked);
+        SlotPrisonFX01331.Sync(this, prisonBlocked, prisonAllowYuan);
         // 抛置悬停激活中 → 保持绿色。同步/EndSelection 触发的 SyncVisual 不能把悬停高亮清掉。
         if (_discardHighlighted) { SetSlotColor(discardHighlightColor); return; }
         if (permaBlocked) SetSlotColor(Color.black);
         else if (isBlocked) SetSlotColor(Color.black);   // 封锁者/封锁 = 纯黑（与永封同色）
-        else if (prisonBlocked) SetSlotColor(new Color(0.6f, 0.2f, 0.8f));
+        else if (prisonBlocked) SetSlotColor(PrisonSlotTint);
         else if (hasPlague) SetSlotColor(Color.green);
         else if (deepSeaMarked) SetSlotColor(Color.blue);
         else SetSlotColor(normalColor);
@@ -3560,16 +3564,19 @@ public class BoardSlot : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
         myPrison.prisonBlocked = true;
         myPrison.prisonAllowYuan = true;
-        myPrison.SetSlotColor(new Color(0.6f, 0.2f, 0.8f));
+        myPrison.SetSlotColor(PrisonSlotTint);
         myPrison.prisonSourceInstanceID = giver.instanceID; // 4.3 囚牢来源
 
         enemyPrison.prisonBlocked = true;
         enemyPrison.prisonAllowYuan = false;
-        enemyPrison.SetSlotColor(new Color(0.6f, 0.2f, 0.8f));
+        enemyPrison.SetSlotColor(PrisonSlotTint);
         enemyPrison.prisonSourceInstanceID = giver.instanceID; // 4.3 囚牢来源
 
         giver.prisonMySlot = myPrison.slotID;
         giver.prisonEnemySlot = enemyPrison.slotID;
+
+        SlotPrisonFX01331.Play(myPrison);
+        SlotPrisonFX01331.Play(enemyPrison);
 
         // Sync slot prison flags to opponent — must reach server & remote
         TurnManager.SyncMyBoardToOpponent();
